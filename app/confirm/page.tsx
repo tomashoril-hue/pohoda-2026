@@ -1,10 +1,28 @@
 'use client'
 
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 
 export default function ConfirmPage() {
+  return (
+    <Suspense fallback={<ConfirmLoading />}>
+      <ConfirmContent />
+    </Suspense>
+  )
+}
+
+function ConfirmLoading() {
+  return (
+    <main style={styles.page}>
+      <section style={styles.card}>
+        <p style={styles.status}>Načítavam potvrdenie...</p>
+      </section>
+    </main>
+  )
+}
+
+function ConfirmContent() {
   const params = useSearchParams()
   const token = params.get('token')
 
