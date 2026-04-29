@@ -31,10 +31,10 @@ export default async function DashboardPage() {
       <section style={styles.card}>
         <div style={styles.badge}>Moja aplikácia</div>
 
-        {/* HEADER + LOGOUT */}
-        <div style={styles.headerRow}>
+        <div style={styles.titleRow}>
           <div>
             <h1 style={styles.title}>Vitaj</h1>
+
             <p style={styles.name}>
               {user.meno} {user.priezvisko}
             </p>
@@ -125,27 +125,27 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'Arial, Helvetica, sans-serif',
     color: '#000'
   },
-
   topBar: {
     maxWidth: 980,
     margin: '0 auto 24px auto',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    gap: 20
   },
-
   logo: {
-    height: 54
+    height: 54,
+    maxWidth: 260,
+    objectFit: 'contain'
   },
-
   date: {
     background: '#000',
     color: '#fff',
     borderRadius: 999,
     padding: '10px 18px',
-    fontWeight: 900
+    fontWeight: 900,
+    fontSize: 18
   },
-
   card: {
     maxWidth: 760,
     margin: '0 auto',
@@ -155,7 +155,6 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 32,
     boxShadow: '12px 12px 0 #000'
   },
-
   badge: {
     display: 'inline-block',
     background: '#56db3f',
@@ -165,16 +164,16 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 900,
     marginBottom: 20
   },
-
-  headerRow: {
+  titleRow: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start'
+    alignItems: 'flex-start',
+    gap: 16
   },
-
   logoutCircle: {
-    width: 52,
-    height: 52,
+    width: 54,
+    height: 54,
+    minWidth: 54,
     borderRadius: '50%',
     background: '#ff3b30',
     color: '#fff',
@@ -182,132 +181,148 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 900,
     textDecoration: 'none',
     boxShadow: '4px 4px 0 #000'
   },
-
   title: {
     fontSize: 46,
+    lineHeight: 1,
+    margin: 0,
     fontWeight: 950
   },
-
   name: {
     fontSize: 26,
     fontWeight: 900,
     marginTop: 10
   },
-
   infoBox: {
     marginTop: 24,
     background: '#f25be6',
     border: '3px solid #000',
     borderRadius: 20,
     padding: 18,
+    fontSize: 18,
     fontWeight: 700
   },
-
   menuGrid: {
     marginTop: 28,
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
     gap: 14
   },
-
   menuButton: {
+    display: 'block',
     textAlign: 'center',
     background: '#000',
     color: '#fff',
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '15px'
+    padding: '15px 18px',
+    fontSize: 17,
+    fontWeight: 900,
+    textDecoration: 'none'
   },
-
   menuButtonPink: {
+    display: 'block',
     textAlign: 'center',
     background: '#f25be6',
     color: '#000',
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '15px'
+    padding: '15px 18px',
+    fontSize: 17,
+    fontWeight: 900,
+    textDecoration: 'none'
   },
-
   menuButtonGreen: {
+    display: 'block',
     textAlign: 'center',
     background: '#56db3f',
     color: '#000',
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '15px'
+    padding: '15px 18px',
+    fontSize: 17,
+    fontWeight: 900,
+    textDecoration: 'none'
   },
-
   groupsBox: {
     marginTop: 30,
     border: '3px solid #000',
     borderRadius: 24,
-    padding: 18
+    padding: 18,
+    background: '#fff'
   },
-
   groupsTitle: {
+    margin: '0 0 14px 0',
     fontSize: 28,
     fontWeight: 900
   },
-
   emptyGroup: {
     background: '#f25be6',
     border: '3px solid #000',
     borderRadius: 18,
-    padding: 14
+    padding: 14,
+    fontWeight: 900
   },
-
   groupsList: {
     display: 'grid',
     gap: 14
   },
-
   groupCard: {
     border: '3px solid #000',
     borderRadius: 22,
-    padding: 16
+    padding: 16,
+    background: '#fff',
+    display: 'grid',
+    gap: 14
   },
-
   groupName: {
     fontSize: 22,
     fontWeight: 900
   },
-
   roleBadge: {
+    display: 'inline-block',
     marginTop: 8,
     background: '#000',
     color: '#fff',
     borderRadius: 999,
     padding: '6px 12px',
+    fontWeight: 900,
     fontSize: 13
   },
-
   groupActions: {
     display: 'flex',
-    gap: 10,
-    marginTop: 10
+    flexWrap: 'wrap',
+    gap: 10
   },
-
   smallButton: {
     background: '#000',
     color: '#fff',
+    border: '3px solid #000',
     borderRadius: 999,
-    padding: '8px 12px'
+    padding: '10px 14px',
+    fontWeight: 900,
+    textDecoration: 'none'
   },
-
   smallButtonGreen: {
     background: '#56db3f',
+    color: '#000',
+    border: '3px solid #000',
     borderRadius: 999,
-    padding: '8px 12px'
+    padding: '10px 14px',
+    fontWeight: 900,
+    textDecoration: 'none'
   },
-
   smallButtonPink: {
     background: '#f25be6',
+    color: '#000',
+    border: '3px solid #000',
     borderRadius: 999,
-    padding: '8px 12px'
+    padding: '10px 14px',
+    fontWeight: 900,
+    textDecoration: 'none'
   }
 }
