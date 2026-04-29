@@ -178,30 +178,32 @@ export default function MembersManager({
         <p style={styles.subtitle}>V skupine zatiaľ nie sú žiadni členovia.</p>
       )}
 
-      <div style={styles.scrollBox}>
+      <div style={styles.membersList}>
         {normalizedMembers.map(member => {
           const fullName = `${member.user?.meno || ''} ${member.user?.priezvisko || ''}`.trim()
 
           return (
-            <div key={member.id} style={styles.memberRow}>
-              {canEdit && (
-                <input
-                  type="checkbox"
-                  checked={selected.includes(member.id)}
-                  disabled={member.isMe || loading}
-                  onChange={() => toggleOne(member.id)}
-                  style={styles.checkbox}
-                />
-              )}
+            <div key={member.id} style={styles.memberCard}>
+              <div style={styles.memberTop}>
+                {canEdit && (
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(member.id)}
+                    disabled={member.isMe || loading}
+                    onChange={() => toggleOne(member.id)}
+                    style={styles.checkbox}
+                  />
+                )}
 
-              <div style={styles.memberInfo}>
-                <div style={styles.memberName}>
-                  {fullName || 'Bez mena'}
-                  {member.isMe ? ' (vy)' : ''}
-                </div>
+                <div style={styles.memberInfo}>
+                  <div style={styles.memberName}>
+                    {fullName || 'Bez mena'}
+                    {member.isMe ? ' (vy)' : ''}
+                  </div>
 
-                <div style={styles.memberEmail}>
-                  {member.user?.email || '-'}
+                  <div style={styles.memberEmail}>
+                    {member.user?.email || '-'}
+                  </div>
                 </div>
               </div>
 
@@ -271,50 +273,64 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 18,
     fontWeight: 700
   },
-  scrollBox: {
-    maxHeight: 430,
-    overflowY: 'auto',
-    paddingRight: 8,
-    marginTop: 14
-  },
-  memberRow: {
+  membersList: {
+    marginTop: 14,
     display: 'grid',
-    gridTemplateColumns: 'auto 1fr auto',
+    gap: 14
+  },
+  memberCard: {
+    border: '3px solid #000',
+    borderRadius: 18,
+    padding: 14,
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 14,
+    alignItems: 'center',
+    background: '#fff'
+  },
+  memberTop: {
+    display: 'flex',
     alignItems: 'center',
     gap: 12,
-    padding: '12px 0',
-    borderBottom: '2px solid #000'
+    minWidth: 0
   },
   checkbox: {
-    width: 20,
-    height: 20
+    width: 22,
+    height: 22,
+    minWidth: 22
   },
   memberInfo: {
     minWidth: 0
   },
   memberName: {
-    fontSize: 17,
-    fontWeight: 900
+    fontSize: 18,
+    fontWeight: 900,
+    lineHeight: 1.2
   },
   memberEmail: {
-    marginTop: 3,
-    fontSize: 14,
-    fontWeight: 700,
-    wordBreak: 'break-all'
+    marginTop: 5,
+    fontSize: 15,
+    fontWeight: 800,
+    overflowWrap: 'anywhere',
+    wordBreak: 'normal',
+    lineHeight: 1.25
   },
   actions: {
     display: 'flex',
     gap: 8,
     alignItems: 'center',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end'
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap'
   },
   select: {
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '8px 12px',
+    padding: '10px 14px',
     fontWeight: 900,
-    background: '#fff'
+    background: '#fff',
+    color: '#000',
+    fontSize: 15,
+    maxWidth: '100%'
   },
   smallButton: {
     background: '#000',
@@ -322,7 +338,8 @@ const styles: Record<string, React.CSSProperties> = {
     border: '3px solid #000',
     borderRadius: 999,
     padding: '10px 15px',
-    fontWeight: 900
+    fontWeight: 900,
+    fontSize: 15
   },
   bulkBox: {
     marginTop: 16,
@@ -342,7 +359,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#fff',
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '9px 14px',
+    padding: '10px 14px',
     fontWeight: 900
   },
   removeButton: {
@@ -350,7 +367,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#000',
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '9px 14px',
+    padding: '10px 14px',
     fontWeight: 900
   },
   error: {
