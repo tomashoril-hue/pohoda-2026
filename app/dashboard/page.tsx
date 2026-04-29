@@ -48,6 +48,7 @@ export default async function DashboardPage() {
           <a href="/dashboard/qr" style={styles.menuButton}>Môj QR kód</a>
           <a href="/dashboard/group/create" style={styles.menuButtonPink}>Vytvoriť skupinu</a>
           <a href="/admin/menu" style={styles.menuButtonGreen}>Admin menu</a>
+          <a href="/logout" style={styles.menuButtonRed}>Odhlásiť sa</a>
         </div>
 
         <div style={styles.groupsBox}>
@@ -76,10 +77,7 @@ export default async function DashboardPage() {
                     </div>
 
                     <div style={styles.groupActions}>
-                      <a
-                        href={`/dashboard/group`}
-                        style={styles.smallButton}
-                      >
+                      <a href="/dashboard/group" style={styles.smallButton}>
                         Detail
                       </a>
 
@@ -93,7 +91,7 @@ export default async function DashboardPage() {
                           </a>
 
                           <a
-                            href={`/dashboard/group/invites`}
+                            href="/dashboard/group/invites"
                             style={styles.smallButtonPink}
                           >
                             Pozvánky
@@ -161,7 +159,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   title: {
     fontSize: 46,
-    lineHeight: 1,
     margin: 0,
     fontWeight: 950
   },
@@ -214,6 +211,18 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center',
     background: '#56db3f',
     color: '#000',
+    border: '3px solid #000',
+    borderRadius: 999,
+    padding: '15px 18px',
+    fontSize: 17,
+    fontWeight: 900,
+    textDecoration: 'none'
+  },
+  menuButtonRed: {
+    display: 'block',
+    textAlign: 'center',
+    background: '#ff3b30',
+    color: '#fff',
     border: '3px solid #000',
     borderRadius: 999,
     padding: '15px 18px',
