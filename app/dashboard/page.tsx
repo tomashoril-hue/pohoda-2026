@@ -31,11 +31,19 @@ export default async function DashboardPage() {
       <section style={styles.card}>
         <div style={styles.badge}>Moja aplikácia</div>
 
-        <h1 style={styles.title}>Vitaj</h1>
+        {/* HEADER + LOGOUT */}
+        <div style={styles.headerRow}>
+          <div>
+            <h1 style={styles.title}>Vitaj</h1>
+            <p style={styles.name}>
+              {user.meno} {user.priezvisko}
+            </p>
+          </div>
 
-        <p style={styles.name}>
-          {user.meno} {user.priezvisko}
-        </p>
+          <a href="/logout" style={styles.logoutCircle} title="Odhlásiť sa">
+            ⏻
+          </a>
+        </div>
 
         <div style={styles.infoBox}>
           <p><b>E-mail:</b> {user.email}</p>
@@ -43,16 +51,13 @@ export default async function DashboardPage() {
           <p><b>Typ stravy:</b> {user.typ_stravy || user.typStravy || '-'}</p>
         </div>
 
-        {/* MENU */}
         <div style={styles.menuGrid}>
           <a href="/menu" style={styles.menuButton}>Výber stravy</a>
           <a href="/dashboard/qr" style={styles.menuButton}>Môj QR kód</a>
           <a href="/dashboard/group/create" style={styles.menuButtonPink}>Vytvoriť skupinu</a>
           <a href="/admin/menu" style={styles.menuButtonGreen}>Admin menu</a>
-          <a href="/logout" style={styles.menuButtonRed}>Odhlásiť sa</a>
         </div>
 
-        {/* SKUPINY */}
         <div style={styles.groupsBox}>
           <h2 style={styles.groupsTitle}>Moje skupiny</h2>
 
@@ -120,6 +125,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'Arial, Helvetica, sans-serif',
     color: '#000'
   },
+
   topBar: {
     maxWidth: 980,
     margin: '0 auto 24px auto',
@@ -127,9 +133,11 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between'
   },
+
   logo: {
     height: 54
   },
+
   date: {
     background: '#000',
     color: '#fff',
@@ -137,6 +145,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '10px 18px',
     fontWeight: 900
   },
+
   card: {
     maxWidth: 760,
     margin: '0 auto',
@@ -146,6 +155,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 32,
     boxShadow: '12px 12px 0 #000'
   },
+
   badge: {
     display: 'inline-block',
     background: '#56db3f',
@@ -155,15 +165,40 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 900,
     marginBottom: 20
   },
+
+  headerRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start'
+  },
+
+  logoutCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: '50%',
+    background: '#ff3b30',
+    color: '#fff',
+    border: '3px solid #000',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 22,
+    fontWeight: 900,
+    textDecoration: 'none',
+    boxShadow: '4px 4px 0 #000'
+  },
+
   title: {
     fontSize: 46,
     fontWeight: 950
   },
+
   name: {
     fontSize: 26,
     fontWeight: 900,
     marginTop: 10
   },
+
   infoBox: {
     marginTop: 24,
     background: '#f25be6',
@@ -172,12 +207,14 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 18,
     fontWeight: 700
   },
+
   menuGrid: {
     marginTop: 28,
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
     gap: 14
   },
+
   menuButton: {
     textAlign: 'center',
     background: '#000',
@@ -186,6 +223,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 999,
     padding: '15px'
   },
+
   menuButtonPink: {
     textAlign: 'center',
     background: '#f25be6',
@@ -194,6 +232,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 999,
     padding: '15px'
   },
+
   menuButtonGreen: {
     textAlign: 'center',
     background: '#56db3f',
@@ -202,43 +241,42 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 999,
     padding: '15px'
   },
-  menuButtonRed: {
-    textAlign: 'center',
-    background: '#ff3b30',
-    color: '#fff',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '15px'
-  },
+
   groupsBox: {
     marginTop: 30,
     border: '3px solid #000',
     borderRadius: 24,
     padding: 18
   },
+
   groupsTitle: {
     fontSize: 28,
     fontWeight: 900
   },
+
   emptyGroup: {
     background: '#f25be6',
     border: '3px solid #000',
     borderRadius: 18,
     padding: 14
   },
+
   groupsList: {
     display: 'grid',
     gap: 14
   },
+
   groupCard: {
     border: '3px solid #000',
     borderRadius: 22,
     padding: 16
   },
+
   groupName: {
     fontSize: 22,
     fontWeight: 900
   },
+
   roleBadge: {
     marginTop: 8,
     background: '#000',
@@ -247,22 +285,26 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '6px 12px',
     fontSize: 13
   },
+
   groupActions: {
     display: 'flex',
     gap: 10,
     marginTop: 10
   },
+
   smallButton: {
     background: '#000',
     color: '#fff',
     borderRadius: 999,
     padding: '8px 12px'
   },
+
   smallButtonGreen: {
     background: '#56db3f',
     borderRadius: 999,
     padding: '8px 12px'
   },
+
   smallButtonPink: {
     background: '#f25be6',
     borderRadius: 999,
