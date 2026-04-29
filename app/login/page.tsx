@@ -1,13 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { supabase } from '../../lib/supabaseClient'
 import Link from 'next/link'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
+  const [error, setError] = useState('')
 
   const handleLogin = async () => {
     if (!email.trim()) {
@@ -16,22 +16,25 @@ export default function LoginPage() {
     }
 
     setLoading(true)
+    setError('')
 
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: {
-          shouldCreateUser: false,
-          emailRedirectTo: `${window.location.origin}/auth/callback`
-        }
+      const res = await fetch('/api/auth/login/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() })
       })
 
-      if (error) {
-        alert('E-mail sa nepodarilo odoslať. Skontroluj, či si registrovaný.')
+      const json = await res.json()
+
+      if (!res.ok || json.error) {
+        setError(json.error || 'E-mail sa nepodarilo odoslať.')
         return
       }
 
       setSent(true)
+    } catch (err: any) {
+      setError('Chyba: ' + err.message)
     } finally {
       setLoading(false)
     }
@@ -74,6 +77,12 @@ export default function LoginPage() {
             >
               {loading ? 'Odosielam...' : 'Poslať prihlasovací link'}
             </button>
+
+            {error && (
+              <div style={styles.error}>
+                {error}
+              </div>
+            )}
 
             <Link href="/register" style={styles.registerLink}>
               Ešte nemám registráciu
@@ -175,6 +184,15 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 999,
     padding: '16px 22px',
     fontSize: 19,
+    fontWeight: 900
+  },
+  error: {
+    marginTop: 18,
+    padding: 14,
+    borderRadius: 18,
+    background: '#ff3b30',
+    color: '#fff',
+    border: '3px solid #000',
     fontWeight: 900
   },
   registerLink: {
