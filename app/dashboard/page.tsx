@@ -43,6 +43,7 @@ export default async function DashboardPage() {
           <p><b>Typ stravy:</b> {user.typ_stravy || user.typStravy || '-'}</p>
         </div>
 
+        {/* MENU */}
         <div style={styles.menuGrid}>
           <a href="/menu" style={styles.menuButton}>Výber stravy</a>
           <a href="/dashboard/qr" style={styles.menuButton}>Môj QR kód</a>
@@ -51,6 +52,7 @@ export default async function DashboardPage() {
           <a href="/logout" style={styles.menuButtonRed}>Odhlásiť sa</a>
         </div>
 
+        {/* SKUPINY */}
         <div style={styles.groupsBox}>
           <h2 style={styles.groupsTitle}>Moje skupiny</h2>
 
@@ -123,21 +125,17 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '0 auto 24px auto',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 20
+    justifyContent: 'space-between'
   },
   logo: {
-    height: 54,
-    maxWidth: 260,
-    objectFit: 'contain'
+    height: 54
   },
   date: {
     background: '#000',
     color: '#fff',
     borderRadius: 999,
     padding: '10px 18px',
-    fontWeight: 900,
-    fontSize: 18
+    fontWeight: 900
   },
   card: {
     maxWidth: 760,
@@ -159,7 +157,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   title: {
     fontSize: 46,
-    margin: 0,
     fontWeight: 950
   },
   name: {
@@ -173,7 +170,6 @@ const styles: Record<string, React.CSSProperties> = {
     border: '3px solid #000',
     borderRadius: 20,
     padding: 18,
-    fontSize: 18,
     fontWeight: 700
   },
   menuGrid: {
@@ -183,62 +179,44 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 14
   },
   menuButton: {
-    display: 'block',
     textAlign: 'center',
     background: '#000',
     color: '#fff',
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '15px 18px',
-    fontSize: 17,
-    fontWeight: 900,
-    textDecoration: 'none'
+    padding: '15px'
   },
   menuButtonPink: {
-    display: 'block',
     textAlign: 'center',
     background: '#f25be6',
     color: '#000',
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '15px 18px',
-    fontSize: 17,
-    fontWeight: 900,
-    textDecoration: 'none'
+    padding: '15px'
   },
   menuButtonGreen: {
-    display: 'block',
     textAlign: 'center',
     background: '#56db3f',
     color: '#000',
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '15px 18px',
-    fontSize: 17,
-    fontWeight: 900,
-    textDecoration: 'none'
+    padding: '15px'
   },
   menuButtonRed: {
-    display: 'block',
     textAlign: 'center',
     background: '#ff3b30',
     color: '#fff',
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '15px 18px',
-    fontSize: 17,
-    fontWeight: 900,
-    textDecoration: 'none'
+    padding: '15px'
   },
   groupsBox: {
     marginTop: 30,
     border: '3px solid #000',
     borderRadius: 24,
-    padding: 18,
-    background: '#fff'
+    padding: 18
   },
   groupsTitle: {
-    margin: '0 0 14px 0',
     fontSize: 28,
     fontWeight: 900
   },
@@ -246,8 +224,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#f25be6',
     border: '3px solid #000',
     borderRadius: 18,
-    padding: 14,
-    fontWeight: 900
+    padding: 14
   },
   groupsList: {
     display: 'grid',
@@ -256,55 +233,39 @@ const styles: Record<string, React.CSSProperties> = {
   groupCard: {
     border: '3px solid #000',
     borderRadius: 22,
-    padding: 16,
-    background: '#fff',
-    display: 'grid',
-    gap: 14
+    padding: 16
   },
   groupName: {
     fontSize: 22,
     fontWeight: 900
   },
   roleBadge: {
-    display: 'inline-block',
     marginTop: 8,
     background: '#000',
     color: '#fff',
     borderRadius: 999,
     padding: '6px 12px',
-    fontWeight: 900,
     fontSize: 13
   },
   groupActions: {
     display: 'flex',
-    flexWrap: 'wrap',
-    gap: 10
+    gap: 10,
+    marginTop: 10
   },
   smallButton: {
     background: '#000',
     color: '#fff',
-    border: '3px solid #000',
     borderRadius: 999,
-    padding: '10px 14px',
-    fontWeight: 900,
-    textDecoration: 'none'
+    padding: '8px 12px'
   },
   smallButtonGreen: {
     background: '#56db3f',
-    color: '#000',
-    border: '3px solid #000',
     borderRadius: 999,
-    padding: '10px 14px',
-    fontWeight: 900,
-    textDecoration: 'none'
+    padding: '8px 12px'
   },
   smallButtonPink: {
     background: '#f25be6',
-    color: '#000',
-    border: '3px solid #000',
     borderRadius: 999,
-    padding: '10px 14px',
-    fontWeight: 900,
-    textDecoration: 'none'
+    padding: '8px 12px'
   }
 }
