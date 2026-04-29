@@ -49,15 +49,21 @@ export async function POST(req: NextRequest) {
         group_id: membership.group_id,
         email,
         token,
-        created_by: user.id
+        created_by: user.id,
+        status: 'PENDING'
       })
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
-    const inviteLink = `${baseUrl}/dashboard/invites`
+    const baseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      (process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : 'http://localhost:3000')
+
+    const inviteLink = `${baseUrl}/dashboard/group/accept?token=${token}`
 
     const emailResult = await resend.emails.send({
       from: 'POHODA Strava <noreply@pohodapass.sk>',
@@ -67,12 +73,14 @@ export async function POST(req: NextRequest) {
         <div style="font-family: Arial, sans-serif; line-height: 1.5;">
           <h2>Pozvánka do skupiny</h2>
           <p>Boli ste pozvaný/á do skupiny <b>${group?.name || ''}</b>.</p>
-          <p>Prihláste sa do aplikácie a pozvánku potvrďte alebo odmietnite.</p>
+          <p>Kliknutím na tlačidlo pozvánku potvrdíte.</p>
           <p>
             <a href="${inviteLink}" style="display:inline-block;background:#000;color:#fff;padding:12px 18px;border-radius:999px;text-decoration:none;font-weight:bold;">
-              Otvoriť aplikáciu
+              Potvrdiť pozvánku
             </a>
           </p>
+          <p>Ak tlačidlo nefunguje, skopírujte tento link do prehliadača:</p>
+          <p>${inviteLink}</p>
         </div>
       `
     })
