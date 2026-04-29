@@ -4,24 +4,24 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function POST(req: Request) {
   try {
-    const { email, token } = await req.json()
-
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      (process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : 'http://localhost:3000')
-
-    const confirmLink = `${baseUrl}/confirm?token=${token}`
+    const { email, meno, loginUrl } = await req.json()
 
     const { data, error } = await resend.emails.send({
       from: 'POHODA 2026 <registracia@pohodapass.sk>',
       to: email,
-      subject: 'Potvrdenie registrácie – POHODA 2026',
+      subject: 'Prihlásenie do systému – POHODA 2026',
       html: `
-        <h2>Potvrď registráciu</h2>
-        <p>Klikni na link:</p>
-        <a href="${confirmLink}">${confirmLink}</a>
+        <h2>Prihlásenie</h2>
+        <p>Dobrý deň${meno ? `, ${meno}` : ''},</p>
+        <p>Klikni na tlačidlo pre prihlásenie:</p>
+
+        <p>
+          <a href="${loginUrl}" style="font-weight:bold;">
+            Prihlásiť sa
+          </a>
+        </p>
+
+        <p>Link je jednorazový a platí krátky čas.</p>
       `
     })
 
