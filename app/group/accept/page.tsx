@@ -1,9 +1,27 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 export default function AcceptGroupInvitePage() {
+  return (
+    <Suspense fallback={<AcceptLoading />}>
+      <AcceptGroupInviteContent />
+    </Suspense>
+  )
+}
+
+function AcceptLoading() {
+  return (
+    <main style={styles.page}>
+      <section style={styles.card}>
+        <p style={styles.status}>Načítavam pozvánku...</p>
+      </section>
+    </main>
+  )
+}
+
+function AcceptGroupInviteContent() {
   const params = useSearchParams()
   const token = params.get('token')
 
