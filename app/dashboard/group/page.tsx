@@ -19,7 +19,6 @@ export default async function GroupPage() {
 
   const myRole = String(membership?.role || '').toUpperCase()
 
-  // Dočasne podporujeme aj OWNER, kým premigrujeme databázu.
   const canManageGroup =
     myRole === 'MANAGER' ||
     myRole === 'OWNER'
@@ -28,6 +27,10 @@ export default async function GroupPage() {
     myRole === 'MANAGER' ||
     myRole === 'POVERENY' ||
     myRole === 'OWNER'
+
+  const canCreateBulkIssue =
+    myRole === 'MANAGER' ||
+    myRole === 'POVERENY'
 
   let group: any = null
   let members: any[] = []
@@ -108,6 +111,12 @@ export default async function GroupPage() {
               <p><b>Vaša rola:</b> {myRole}</p>
             </div>
 
+            {canCreateBulkIssue && (
+              <a href="/dashboard/group/issue" style={styles.issueButton}>
+                Hromadný výdaj
+              </a>
+            )}
+
             <MembersManager
               members={members}
               myRole={myRole}
@@ -126,7 +135,7 @@ export default async function GroupPage() {
             {!canManageGroup && myRole === 'MEMBER' && (
               <div style={styles.memberNotice}>
                 Ako člen skupiny môžete vidieť svoju skupinu a odísť zo skupiny.
-                Správu členov a pozvánky rieši poverená osoba alebo manažér.
+                Správu členov, pozvánky a hromadný výdaj rieši poverená osoba alebo manažér.
               </div>
             )}
           </div>
@@ -208,6 +217,19 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 18,
     fontSize: 18,
     fontWeight: 700
+  },
+  issueButton: {
+    display: 'block',
+    marginTop: 24,
+    background: '#000',
+    color: '#fff',
+    border: '3px solid #000',
+    borderRadius: 999,
+    padding: '15px 22px',
+    fontSize: 18,
+    fontWeight: 950,
+    textAlign: 'center',
+    textDecoration: 'none'
   },
   memberNotice: {
     marginTop: 24,
