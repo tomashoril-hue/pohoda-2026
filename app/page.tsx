@@ -95,7 +95,7 @@ const styles: Record<string, React.CSSProperties> = {
   color: '#000',
   overflowX: 'clip'
 },
-  },
+  
   shell: {
     maxWidth: 1040,
     margin: '0 auto',
