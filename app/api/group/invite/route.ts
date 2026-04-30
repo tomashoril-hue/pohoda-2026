@@ -87,21 +87,21 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    /**
-     * Dôležité:
-     * Dovolíme viac čakajúcich pozvánok z rôznych skupín.
-     * Ale nedovolíme duplicitnú PENDING pozvánku z tej istej skupiny.
-     * Ak owner pošle znova do tej istej skupiny, starú zrušíme a vytvoríme novú.
-     */
-    await supabaseServer
+    const { data: existingPendingInvite } = await supabaseServer
       .from('group_invites')
-      .update({
-        status: 'CANCELLED',
-        cancelled_at: new Date().toISOString()
-      })
+      .select('id, email, group_id, status, created_at')
       .eq('email', email)
       .eq('group_id', membership.group_id)
       .eq('status', 'PENDING')
+      .maybeSingle()
+
+    if (existingPendingInvite) {
+      return NextResponse.json({
+        ok: true,
+        alreadySent: true,
+        message: 'Pozvánka už bola poslaná na e-mail. Nie je potrebné posielať ďalšiu.'
+      })
+    }
 
     const token = crypto.randomBytes(32).toString('hex')
 
@@ -162,7 +162,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      inviteLink
+      alreadySent: false,
+      message: 'Pozvánka bola vytvorená a odoslaná na e-mail.'
     })
   } catch (err: any) {
     return NextResponse.json(

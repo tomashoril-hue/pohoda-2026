@@ -41,7 +41,7 @@ export default function InviteBox() {
         return
       }
 
-      setMessage('Pozvánka bola vytvorená.')
+      setMessage(json.message || 'Pozvánka bola vytvorená.')
       setEmail('')
     } catch (err: any) {
       setMessage('Chyba spojenia so serverom: ' + err.message)
