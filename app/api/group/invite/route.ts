@@ -11,27 +11,18 @@ export async function POST(req: NextRequest) {
     const user = await getCurrentUser()
 
     if (!user) {
-      return NextResponse.json(
-        { error: 'Nie ste prihlásený.' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Nie ste prihlásený.' }, { status: 401 })
     }
 
     const body = await req.json()
     const email = String(body.email || '').trim().toLowerCase()
 
     if (!email) {
-      return NextResponse.json(
-        { error: 'Zadajte e-mail.' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Zadajte e-mail.' }, { status: 400 })
     }
 
     if (email === String(user.email || '').toLowerCase()) {
-      return NextResponse.json(
-        { error: 'Nemôžete pozvať sám seba.' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Nemôžete pozvať sám seba.' }, { status: 400 })
     }
 
     const { data: membership } = await supabaseServer
@@ -41,17 +32,11 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     if (!membership) {
-      return NextResponse.json(
-        { error: 'Nie ste v skupine.' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Nie ste v skupine.' }, { status: 400 })
     }
 
     if (membership.role !== 'OWNER') {
-      return NextResponse.json(
-        { error: 'Pozývať môže iba vlastník skupiny.' },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: 'Pozývať môže iba vlastník skupiny.' }, { status: 403 })
     }
 
     const { data: group } = await supabaseServer
@@ -67,10 +52,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     if (invitedUserError) {
-      return NextResponse.json(
-        { error: invitedUserError.message },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: invitedUserError.message }, { status: 500 })
     }
 
     if (!invitedUser) {
@@ -105,19 +87,21 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { data: existingPendingInvite } = await supabaseServer
+    /**
+     * Dôležité:
+     * Dovolíme viac čakajúcich pozvánok z rôznych skupín.
+     * Ale nedovolíme duplicitnú PENDING pozvánku z tej istej skupiny.
+     * Ak owner pošle znova do tej istej skupiny, starú zrušíme a vytvoríme novú.
+     */
+    await supabaseServer
       .from('group_invites')
-      .select('id')
+      .update({
+        status: 'CANCELLED',
+        cancelled_at: new Date().toISOString()
+      })
       .eq('email', email)
+      .eq('group_id', membership.group_id)
       .eq('status', 'PENDING')
-      .maybeSingle()
-
-    if (existingPendingInvite) {
-      return NextResponse.json(
-        { error: 'Tento používateľ už má čakajúcu pozvánku.' },
-        { status: 400 }
-      )
-    }
 
     const token = crypto.randomBytes(32).toString('hex')
 
@@ -132,10 +116,7 @@ export async function POST(req: NextRequest) {
       })
 
     if (inviteError) {
-      return NextResponse.json(
-        { error: inviteError.message },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: inviteError.message }, { status: 500 })
     }
 
     const baseUrl =
@@ -158,7 +139,7 @@ export async function POST(req: NextRequest) {
 
           <p>Boli ste pozvaný/á do skupiny <b>${group?.name || ''}</b>.</p>
 
-          <p>Kliknutím na tlačidlo pozvánku potvrdíte.</p>
+          <p>Pozvánku môžete potvrdiť kliknutím na tlačidlo alebo ju nájdete po prihlásení v aplikácii.</p>
 
           <p>
             <a href="${inviteLink}" style="display:inline-block;background:#000;color:#fff;padding:12px 18px;border-radius:999px;text-decoration:none;font-weight:bold;">
