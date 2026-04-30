@@ -38,6 +38,9 @@ export default async function DashboardPage() {
     .eq('status', 'PENDING')
     .order('created_at', { ascending: false })
 
+  const hasMembership = !!memberships && memberships.length > 0
+  const hasPendingInvites = !!pendingInvites && pendingInvites.length > 0
+
   return (
     <main style={styles.page}>
       <div style={styles.topBar}>
@@ -78,50 +81,58 @@ export default async function DashboardPage() {
         <div style={styles.groupsBox}>
           <h2 style={styles.groupsTitle}>Moje skupiny</h2>
 
-          {!memberships || memberships.length === 0 ? (
+          {!hasMembership ? (
             <>
               <div style={styles.emptyGroup}>
                 Zatiaľ nie si v žiadnej skupine.
               </div>
 
-              <DashboardInvites invites={pendingInvites || []} />
+              {hasPendingInvites && (
+                <DashboardInvites invites={pendingInvites || []} />
+              )}
             </>
           ) : (
-            <div style={styles.groupsList}>
-              {memberships.map((m: any) => {
-                const group = Array.isArray(m.groups) ? m.groups[0] : m.groups
-                const isManager = m.role === 'OWNER' || m.role === 'MANAGER'
+            <>
+              {hasPendingInvites && (
+                <DashboardInvites invites={pendingInvites || []} />
+              )}
 
-                return (
-                  <div key={m.group_id} style={styles.groupCard}>
-                    <div>
-                      <div style={styles.groupName}>
-                        {group?.name || 'Skupina bez názvu'}
+              <div style={styles.groupsList}>
+                {memberships.map((m: any) => {
+                  const group = Array.isArray(m.groups) ? m.groups[0] : m.groups
+                  const isManager = m.role === 'OWNER' || m.role === 'MANAGER'
+
+                  return (
+                    <div key={m.group_id} style={styles.groupCard}>
+                      <div>
+                        <div style={styles.groupName}>
+                          {group?.name || 'Skupina bez názvu'}
+                        </div>
+
+                        <div style={styles.roleBadge}>
+                          {m.role}
+                        </div>
                       </div>
 
-                      <div style={styles.roleBadge}>
-                        {m.role}
-                      </div>
-                    </div>
-
-                    <div style={styles.groupActions}>
-                      <a href="/dashboard/group" style={styles.smallButton}>
-                        Detail
-                      </a>
-
-                      {isManager && (
-                        <a
-                          href={`/groups/${m.group_id}/add-by-qr`}
-                          style={styles.smallButtonGreen}
-                        >
-                          Pridať cez QR
+                      <div style={styles.groupActions}>
+                        <a href="/dashboard/group" style={styles.smallButton}>
+                          Detail
                         </a>
-                      )}
+
+                        {isManager && (
+                          <a
+                            href={`/groups/${m.group_id}/add-by-qr`}
+                            style={styles.smallButtonGreen}
+                          >
+                            Pridať cez QR
+                          </a>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+            </>
           )}
         </div>
       </section>
