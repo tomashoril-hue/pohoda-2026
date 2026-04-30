@@ -14,6 +14,8 @@ export default function MembersManager({
 }) {
   const router = useRouter()
   const [selected, setSelected] = useState<string[]>([])
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [bulkRole, setBulkRole] = useState('MEMBER')
@@ -34,7 +36,29 @@ export default function MembersManager({
     })
   }, [members, myUserId])
 
-  const selectableMembers = normalizedMembers.filter(m => !m.isMe)
+  const showSearch = normalizedMembers.length > 10
+
+  const filteredMembers = useMemo(() => {
+    const q = search.trim().toLowerCase()
+
+    if (!q) return normalizedMembers
+
+    return normalizedMembers.filter(member => {
+      const meno = `${member.user?.meno || ''} ${member.user?.priezvisko || ''}`.toLowerCase()
+      const email = String(member.user?.email || '').toLowerCase()
+      const telefon = String(member.user?.telefon || '').toLowerCase()
+      const role = String(member.role || '').toLowerCase()
+
+      return (
+        meno.includes(q) ||
+        email.includes(q) ||
+        telefon.includes(q) ||
+        role.includes(q)
+      )
+    })
+  }, [normalizedMembers, search])
+
+  const selectableMembers = filteredMembers.filter(m => !m.isMe)
 
   const allSelected =
     selectableMembers.length > 0 &&
@@ -55,6 +79,10 @@ export default function MembersManager({
     }
 
     setSelected(selectableMembers.map(m => m.id))
+  }
+
+  const toggleExpanded = (id: string) => {
+    setExpandedId(prev => (prev === id ? null : id))
   }
 
   const bulkAction = async (memberIds: string[], action: string, role?: string) => {
@@ -90,6 +118,7 @@ export default function MembersManager({
       }
 
       setSelected([])
+      setExpandedId(null)
       router.refresh()
     } catch (err: any) {
       setMessage('Chyba: ' + err.message)
@@ -107,7 +136,10 @@ export default function MembersManager({
       <div style={styles.headerRow}>
         <div>
           <h2 style={styles.sectionTitle}>Členovia skupiny</h2>
-          <p style={styles.counter}>Počet členov: {normalizedMembers.length}</p>
+          <p style={styles.counter}>
+            Počet členov: {normalizedMembers.length}
+            {showSearch && search.trim() ? ` / zobrazené: ${filteredMembers.length}` : ''}
+          </p>
         </div>
 
         {canEdit && (
@@ -124,6 +156,15 @@ export default function MembersManager({
           </button>
         )}
       </div>
+
+      {showSearch && (
+        <input
+          style={styles.searchInput}
+          placeholder="Hľadať podľa mena, e-mailu, telefónu alebo roly"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+      )}
 
       {message && <div style={styles.error}>{message}</div>}
 
@@ -174,69 +215,104 @@ export default function MembersManager({
         </div>
       )}
 
-      {!normalizedMembers.length && (
-        <p style={styles.subtitle}>V skupine zatiaľ nie sú žiadni členovia.</p>
+      {!filteredMembers.length && (
+        <p style={styles.subtitle}>Nenašli sa žiadni členovia.</p>
       )}
 
       <div style={styles.membersList}>
-        {normalizedMembers.map(member => {
+        {filteredMembers.map(member => {
           const fullName = `${member.user?.meno || ''} ${member.user?.priezvisko || ''}`.trim()
+          const isExpanded = expandedId === member.id
 
           return (
-            <div key={member.id} style={styles.memberCard}>
-              <div style={styles.memberTop}>
+            <div key={member.id} style={styles.memberItem}>
+              <div style={styles.memberSummary}>
                 {canEdit && (
                   <input
                     type="checkbox"
                     checked={selected.includes(member.id)}
                     disabled={member.isMe || loading}
                     onChange={() => toggleOne(member.id)}
+                    onClick={e => e.stopPropagation()}
                     style={styles.checkbox}
                   />
                 )}
 
-                <div style={styles.memberInfo}>
-                  <div style={styles.memberName}>
+                <button
+                  type="button"
+                  style={styles.nameButton}
+                  onClick={() => toggleExpanded(member.id)}
+                >
+                  <span style={styles.memberName}>
                     {fullName || 'Bez mena'}
                     {member.isMe ? ' (vy)' : ''}
-                  </div>
+                  </span>
 
-                  <div style={styles.memberEmail}>
-                    {member.user?.email || '-'}
-                  </div>
+                  <span style={styles.memberHint}>
+                    {isExpanded ? 'Skryť detail' : 'Zobraziť detail'}
+                  </span>
+                </button>
+
+                <div style={styles.rolePill}>
+                  {member.role}
                 </div>
               </div>
 
-              <div style={styles.actions}>
-                <select
-                  style={styles.select}
-                  value={member.role}
-                  disabled={!canEdit || loading}
-                  onChange={e => singleAction(member.id, 'ROLE', e.target.value)}
-                >
-                  <option value="MEMBER">MEMBER</option>
-                  <option value="MANAGER">MANAGER</option>
-                  <option value="OWNER">OWNER</option>
-                </select>
+              {isExpanded && (
+                <div style={styles.detailBox}>
+                  <div style={styles.detailGrid}>
+                    <div>
+                      <div style={styles.label}>Meno a priezvisko</div>
+                      <div style={styles.value}>{fullName || '-'}</div>
+                    </div>
 
-                {canEdit && (
-                  <button
-                    style={{
-                      ...styles.removeButton,
-                      opacity: member.isMe || loading ? 0.45 : 1,
-                      cursor: member.isMe || loading ? 'not-allowed' : 'pointer'
-                    }}
-                    disabled={member.isMe || loading}
-                    onClick={() => {
-                      if (confirm('Naozaj chcete odobrať tohto člena zo skupiny?')) {
-                        singleAction(member.id, 'REMOVE')
-                      }
-                    }}
-                  >
-                    Odobrať
-                  </button>
-                )}
-              </div>
+                    <div>
+                      <div style={styles.label}>E-mail</div>
+                      <div style={styles.valueBreak}>{member.user?.email || '-'}</div>
+                    </div>
+
+                    <div>
+                      <div style={styles.label}>Telefón</div>
+                      <div style={styles.value}>{member.user?.telefon || '-'}</div>
+                    </div>
+
+                    <div>
+                      <div style={styles.label}>Rola</div>
+
+                      <select
+                        style={styles.select}
+                        value={member.role}
+                        disabled={!canEdit || loading}
+                        onChange={e => singleAction(member.id, 'ROLE', e.target.value)}
+                      >
+                        <option value="MEMBER">MEMBER</option>
+                        <option value="MANAGER">MANAGER</option>
+                        <option value="OWNER">OWNER</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {canEdit && (
+                    <div style={styles.detailActions}>
+                      <button
+                        style={{
+                          ...styles.removeButton,
+                          opacity: member.isMe || loading ? 0.45 : 1,
+                          cursor: member.isMe || loading ? 'not-allowed' : 'pointer'
+                        }}
+                        disabled={member.isMe || loading}
+                        onClick={() => {
+                          if (confirm('Naozaj chcete odobrať tohto člena zo skupiny?')) {
+                            singleAction(member.id, 'REMOVE')
+                          }
+                        }}
+                      >
+                        Odobrať člena
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}
@@ -273,54 +349,108 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 18,
     fontWeight: 700
   },
-  membersList: {
-    marginTop: 14,
-    display: 'grid',
-    gap: 14
-  },
-  memberCard: {
+  searchInput: {
+    width: '100%',
+    boxSizing: 'border-box',
+    marginTop: 16,
     border: '3px solid #000',
     borderRadius: 18,
-    padding: 14,
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) auto',
-    gap: 14,
-    alignItems: 'center',
-    background: '#fff'
+    padding: '13px 15px',
+    fontSize: 16,
+    outline: 'none',
+    background: '#fff',
+    color: '#000',
+    fontWeight: 800
   },
-  memberTop: {
-    display: 'flex',
+  membersList: {
+    marginTop: 16,
+    display: 'grid',
+    gap: 0,
+    borderTop: '3px solid #000'
+  },
+  memberItem: {
+    borderBottom: '3px solid #000',
+    padding: '14px 0'
+  },
+  memberSummary: {
+    display: 'grid',
+    gridTemplateColumns: 'auto minmax(0, 1fr) auto',
     alignItems: 'center',
-    gap: 12,
-    minWidth: 0
+    gap: 12
   },
   checkbox: {
     width: 22,
     height: 22,
     minWidth: 22
   },
-  memberInfo: {
-    minWidth: 0
+  nameButton: {
+    border: 0,
+    background: 'transparent',
+    padding: 0,
+    textAlign: 'left',
+    minWidth: 0,
+    cursor: 'pointer',
+    color: '#000'
   },
   memberName: {
-    fontSize: 18,
-    fontWeight: 900,
-    lineHeight: 1.2
+    display: 'block',
+    fontSize: 19,
+    fontWeight: 950,
+    lineHeight: 1.15,
+    overflowWrap: 'anywhere'
   },
-  memberEmail: {
-    marginTop: 5,
-    fontSize: 15,
+  memberHint: {
+    display: 'block',
+    marginTop: 4,
+    fontSize: 13,
     fontWeight: 800,
-    overflowWrap: 'anywhere',
-    wordBreak: 'normal',
-    lineHeight: 1.25
+    opacity: 0.65
   },
-  actions: {
+  rolePill: {
+    background: '#f25be6',
+    color: '#000',
+    border: '3px solid #000',
+    borderRadius: 999,
+    padding: '8px 12px',
+    fontWeight: 950,
+    fontSize: 14,
+    whiteSpace: 'nowrap'
+  },
+  detailBox: {
+    marginTop: 14,
+    background: '#fff',
+    border: '3px solid #000',
+    borderRadius: 18,
+    padding: 14,
+    boxShadow: '5px 5px 0 #f25be6'
+  },
+  detailGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: 14
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: 950,
+    textTransform: 'uppercase',
+    opacity: 0.65,
+    marginBottom: 4
+  },
+  value: {
+    fontSize: 16,
+    fontWeight: 900
+  },
+  valueBreak: {
+    fontSize: 16,
+    fontWeight: 900,
+    overflowWrap: 'anywhere'
+  },
+  detailActions: {
+    marginTop: 16,
     display: 'flex',
-    gap: 8,
-    alignItems: 'center',
     justifyContent: 'flex-end',
-    flexWrap: 'wrap'
+    flexWrap: 'wrap',
+    gap: 10
   },
   select: {
     border: '3px solid #000',
