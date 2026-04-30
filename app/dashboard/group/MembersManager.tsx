@@ -14,11 +14,11 @@ export default function MembersManager({
 }) {
   const router = useRouter()
   const [selected, setSelected] = useState<string[]>([])
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [bulkRole, setBulkRole] = useState('MEMBER')
-  const [search, setSearch] = useState('')
-  const [openMemberId, setOpenMemberId] = useState<string | null>(null)
 
   const canEdit = myRole === 'OWNER'
 
@@ -36,26 +36,24 @@ export default function MembersManager({
     })
   }, [members, myUserId])
 
+  const showSearch = normalizedMembers.length > 10
+
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase()
 
     if (!q) return normalizedMembers
 
     return normalizedMembers.filter(member => {
-      const meno = String(member.user?.meno || '').toLowerCase()
-      const priezvisko = String(member.user?.priezvisko || '').toLowerCase()
+      const meno = `${member.user?.meno || ''} ${member.user?.priezvisko || ''}`.toLowerCase()
       const email = String(member.user?.email || '').toLowerCase()
       const telefon = String(member.user?.telefon || '').toLowerCase()
       const role = String(member.role || '').toLowerCase()
-      const fullName = `${meno} ${priezvisko}`.trim()
 
       return (
         meno.includes(q) ||
-        priezvisko.includes(q) ||
         email.includes(q) ||
         telefon.includes(q) ||
-        role.includes(q) ||
-        fullName.includes(q)
+        role.includes(q)
       )
     })
   }, [normalizedMembers, search])
@@ -81,6 +79,10 @@ export default function MembersManager({
     }
 
     setSelected(selectableMembers.map(m => m.id))
+  }
+
+  const toggleExpanded = (id: string) => {
+    setExpandedId(prev => (prev === id ? null : id))
   }
 
   const bulkAction = async (memberIds: string[], action: string, role?: string) => {
@@ -116,7 +118,7 @@ export default function MembersManager({
       }
 
       setSelected([])
-      setOpenMemberId(null)
+      setExpandedId(null)
       router.refresh()
     } catch (err: any) {
       setMessage('Chyba: ' + err.message)
@@ -128,8 +130,6 @@ export default function MembersManager({
   const singleAction = async (memberId: string, action: string, role?: string) => {
     await bulkAction([memberId], action, role)
   }
-
-  const showSearch = normalizedMembers.length > 10
 
   return (
     <div style={styles.membersBox}>
@@ -158,14 +158,12 @@ export default function MembersManager({
       </div>
 
       {showSearch && (
-        <div style={styles.searchWrap}>
-          <input
-            style={styles.searchInput}
-            placeholder="Hľadať podľa mena, e-mailu, telefónu..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
+        <input
+          style={styles.searchInput}
+          placeholder="Hľadať podľa mena, e-mailu, telefónu alebo roly"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
       )}
 
       {message && <div style={styles.error}>{message}</div>}
@@ -218,101 +216,79 @@ export default function MembersManager({
       )}
 
       {!filteredMembers.length && (
-        <p style={styles.subtitle}>
-          {search.trim()
-            ? 'Nenašli sa žiadni členovia podľa zadaného filtra.'
-            : 'V skupine zatiaľ nie sú žiadni členovia.'}
-        </p>
+        <p style={styles.subtitle}>Nenašli sa žiadni členovia.</p>
       )}
 
-      <div style={styles.list}>
+      <div style={styles.membersList}>
         {filteredMembers.map(member => {
           const fullName = `${member.user?.meno || ''} ${member.user?.priezvisko || ''}`.trim()
-          const isOpen = openMemberId === member.id
+          const isExpanded = expandedId === member.id
 
           return (
-            <div key={member.id} style={styles.memberCard}>
-              <div
-                style={{
-                  ...styles.memberRow,
-                  gridTemplateColumns: canEdit
-                    ? '32px minmax(0, 1fr) auto'
-                    : 'minmax(0, 1fr) auto'
-                }}
-              >
+            <div key={member.id} style={styles.memberItem}>
+              <div style={styles.memberSummary}>
                 {canEdit && (
-                  <div style={styles.leftCol}>
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(member.id)}
-                      disabled={member.isMe || loading}
-                      onChange={() => toggleOne(member.id)}
-                      style={styles.checkbox}
-                    />
-                  </div>
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(member.id)}
+                    disabled={member.isMe || loading}
+                    onChange={() => toggleOne(member.id)}
+                    onClick={e => e.stopPropagation()}
+                    style={styles.checkbox}
+                  />
                 )}
 
-                <div style={styles.centerCol}>
-                  <div style={styles.memberName}>
+                <button
+                  type="button"
+                  style={styles.nameButton}
+                  onClick={() => toggleExpanded(member.id)}
+                >
+                  <span style={styles.memberName}>
                     {fullName || 'Bez mena'}
                     {member.isMe ? ' (vy)' : ''}
-                  </div>
+                  </span>
 
-                  <button
-                    type="button"
-                    style={styles.detailLink}
-                    onClick={() =>
-                      setOpenMemberId(prev => (prev === member.id ? null : member.id))
-                    }
-                  >
-                    {isOpen ? 'Skryť detail' : 'Zobraziť detail'}
-                  </button>
-                </div>
+                  <span style={styles.memberHint}>
+                    {isExpanded ? 'Skryť detail' : 'Zobraziť detail'}
+                  </span>
+                </button>
 
-                <div style={styles.rightCol}>
-                  {canEdit ? (
-                    <select
-                      style={styles.roleBadgeSelect}
-                      value={member.role}
-                      disabled={loading}
-                      onChange={e => singleAction(member.id, 'ROLE', e.target.value)}
-                    >
-                      <option value="MEMBER">MEMBER</option>
-                      <option value="MANAGER">MANAGER</option>
-                      <option value="OWNER">OWNER</option>
-                    </select>
-                  ) : (
-                    <div style={styles.roleBadgeStatic}>{member.role}</div>
-                  )}
+                <div style={styles.rolePill}>
+                  {member.role}
                 </div>
               </div>
 
-              {isOpen && (
-                <div
-                  style={{
-                    ...styles.detailCard,
-                    marginLeft: canEdit ? 46 : 0
-                  }}
-                >
+              {isExpanded && (
+                <div style={styles.detailBox}>
                   <div style={styles.detailGrid}>
                     <div>
-                      <div style={styles.detailLabel}>Meno</div>
-                      <div style={styles.detailValue}>{member.user?.meno || '-'}</div>
+                      <div style={styles.label}>Meno a priezvisko</div>
+                      <div style={styles.value}>{fullName || '-'}</div>
                     </div>
 
                     <div>
-                      <div style={styles.detailLabel}>Priezvisko</div>
-                      <div style={styles.detailValue}>{member.user?.priezvisko || '-'}</div>
+                      <div style={styles.label}>E-mail</div>
+                      <div style={styles.valueBreak}>{member.user?.email || '-'}</div>
                     </div>
 
                     <div>
-                      <div style={styles.detailLabel}>E-mail</div>
-                      <div style={styles.detailValue}>{member.user?.email || '-'}</div>
+                      <div style={styles.label}>Telefón</div>
+                      <div style={styles.value}>{member.user?.telefon || '-'}</div>
                     </div>
 
                     <div>
-                      <div style={styles.detailLabel}>Telefón</div>
-                      <div style={styles.detailValue}>{member.user?.telefon || '-'}</div>
+                      <div style={styles.label}>Rola</div>
+
+                      <select
+                        style={styles.select}
+                        value={member.role}
+                        disabled={!canEdit || loading}
+                        onChange={e => singleAction(member.id, 'ROLE', e.target.value)}
+                      >
+                        <option value="MEMBER">MEMBER</option>
+                        <option value="MANAGER">MANAGER</option>
+                        <option value="OWNER">OWNER</option>
+                      </select>
                     </div>
                   </div>
 
@@ -331,7 +307,7 @@ export default function MembersManager({
                           }
                         }}
                       >
-                        Odobrať
+                        Odobrať člena
                       </button>
                     </div>
                   )}
@@ -373,126 +349,118 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 18,
     fontWeight: 700
   },
-  searchWrap: {
-    marginTop: 16
-  },
   searchInput: {
     width: '100%',
     boxSizing: 'border-box',
+    marginTop: 16,
     border: '3px solid #000',
     borderRadius: 18,
-    padding: '14px 16px',
+    padding: '13px 15px',
     fontSize: 16,
-    fontWeight: 700,
     outline: 'none',
+    background: '#fff',
     color: '#000',
-    background: '#fff'
+    fontWeight: 800
   },
-  list: {
+  membersList: {
     marginTop: 16,
     display: 'grid',
-    gap: 12
+    gap: 0,
+    borderTop: '3px solid #000'
   },
-  memberCard: {
-    borderTop: '4px solid #000',
-    paddingTop: 14
+  memberItem: {
+    borderBottom: '3px solid #000',
+    padding: '14px 0'
   },
-  memberRow: {
+  memberSummary: {
     display: 'grid',
-    gap: 14,
-    alignItems: 'center'
-  },
-  leftCol: {
-    display: 'flex',
+    gridTemplateColumns: 'auto minmax(0, 1fr) auto',
     alignItems: 'center',
-    justifyContent: 'center'
-  },
-  centerCol: {
-    minWidth: 0
-  },
-  rightCol: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end'
+    gap: 12
   },
   checkbox: {
     width: 22,
-    height: 22
+    height: 22,
+    minWidth: 22
+  },
+  nameButton: {
+    border: 0,
+    background: 'transparent',
+    padding: 0,
+    textAlign: 'left',
+    minWidth: 0,
+    cursor: 'pointer',
+    color: '#000'
   },
   memberName: {
+    display: 'block',
     fontSize: 19,
     fontWeight: 950,
     lineHeight: 1.15,
     overflowWrap: 'anywhere'
   },
-  detailLink: {
-    marginTop: 8,
-    padding: 0,
-    background: 'transparent',
-    border: 'none',
-    color: '#666',
+  memberHint: {
+    display: 'block',
+    marginTop: 4,
+    fontSize: 13,
     fontWeight: 800,
-    fontSize: 15,
-    textDecoration: 'underline',
-    cursor: 'pointer'
+    opacity: 0.65
   },
-  detailCard: {
+  rolePill: {
+    background: '#f25be6',
+    color: '#000',
+    border: '3px solid #000',
+    borderRadius: 999,
+    padding: '8px 12px',
+    fontWeight: 950,
+    fontSize: 14,
+    whiteSpace: 'nowrap'
+  },
+  detailBox: {
     marginTop: 14,
-    padding: 14,
+    background: '#fff',
+    border: '3px solid #000',
     borderRadius: 18,
-    background: '#f7f7f7',
-    border: '2px solid #d9d9d9'
+    padding: 14,
+    boxShadow: '5px 5px 0 #f25be6'
   },
   detailGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
     gap: 14
   },
-  detailLabel: {
-    fontSize: 13,
-    fontWeight: 900,
+  label: {
+    fontSize: 12,
+    fontWeight: 950,
     textTransform: 'uppercase',
-    opacity: 0.7,
+    opacity: 0.65,
     marginBottom: 4
   },
-  detailValue: {
+  value: {
     fontSize: 16,
-    fontWeight: 800,
+    fontWeight: 900
+  },
+  valueBreak: {
+    fontSize: 16,
+    fontWeight: 900,
     overflowWrap: 'anywhere'
   },
   detailActions: {
-    marginTop: 14,
+    marginTop: 16,
     display: 'flex',
     justifyContent: 'flex-end',
     flexWrap: 'wrap',
     gap: 10
   },
-  roleBadgeSelect: {
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '10px 16px',
-    fontWeight: 900,
-    background: '#f25be6',
-    color: '#000',
-    minWidth: 130
-  },
-  roleBadgeStatic: {
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '10px 16px',
-    fontWeight: 900,
-    background: '#f25be6',
-    color: '#000',
-    minWidth: 130,
-    textAlign: 'center'
-  },
   select: {
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '8px 12px',
+    padding: '10px 14px',
     fontWeight: 900,
     background: '#fff',
-    color: '#000'
+    color: '#000',
+    fontSize: 15,
+    maxWidth: '100%'
   },
   smallButton: {
     background: '#000',
@@ -500,7 +468,8 @@ const styles: Record<string, React.CSSProperties> = {
     border: '3px solid #000',
     borderRadius: 999,
     padding: '10px 15px',
-    fontWeight: 900
+    fontWeight: 900,
+    fontSize: 15
   },
   bulkBox: {
     marginTop: 16,
@@ -520,7 +489,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#fff',
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '9px 14px',
+    padding: '10px 14px',
     fontWeight: 900
   },
   removeButton: {
@@ -528,7 +497,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#000',
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '9px 14px',
+    padding: '10px 14px',
     fontWeight: 900
   },
   error: {
