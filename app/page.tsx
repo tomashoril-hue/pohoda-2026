@@ -126,14 +126,14 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'block'
   },
   card: {
-    maxWidth: 760,
-    margin: '0 auto',
-    background: 'rgba(255,255,255,0.96)',
-    border: '3px solid #000',
-    borderRadius: 32,
-    padding: 30,
-    boxShadow: '8px 8px 0 #000'
-  },
+  maxWidth: 760,
+  margin: '0 auto',
+  background: 'rgba(255,255,255,0.97)',
+  border: '2px solid rgba(0,0,0,0.92)',
+  borderRadius: 34,
+  padding: 30,
+  boxShadow: '0 18px 46px rgba(0,0,0,0.24)'
+},
   badge: {
     display: 'inline-block',
     background: '#56db3f',
