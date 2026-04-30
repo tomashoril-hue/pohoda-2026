@@ -19,9 +19,7 @@ export default async function HomePage() {
         <header style={styles.topBar}>
           <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
 
-          <div style={styles.dateBadge}>
-            8. & 9. – 11. 7. 2026
-          </div>
+          
         </header>
 
         <section style={styles.heroCard}>
