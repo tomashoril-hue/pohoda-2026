@@ -6,11 +6,9 @@ export default function InviteBox() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
-  const [inviteLink, setInviteLink] = useState('')
 
   const sendInvite = async () => {
     setMessage('')
-    setInviteLink('')
 
     if (!email.trim()) {
       setMessage('Zadajte e-mail.')
@@ -44,7 +42,6 @@ export default function InviteBox() {
       }
 
       setMessage('Pozvánka bola vytvorená.')
-      setInviteLink(json.inviteLink || '')
       setEmail('')
     } catch (err: any) {
       setMessage('Chyba spojenia so serverom: ' + err.message)
@@ -81,13 +78,6 @@ export default function InviteBox() {
       </button>
 
       {message && <p style={styles.message}>{message}</p>}
-
-      {inviteLink && (
-        <div style={styles.linkBox}>
-          <p style={styles.linkTitle}>Testovací link:</p>
-          <p style={styles.linkText}>{inviteLink}</p>
-        </div>
-      )}
     </div>
   )
 }
@@ -136,20 +126,5 @@ const styles: Record<string, React.CSSProperties> = {
   message: {
     marginTop: 14,
     fontWeight: 900
-  },
-  linkBox: {
-    marginTop: 14,
-    background: '#fff',
-    border: '3px solid #000',
-    borderRadius: 16,
-    padding: 14
-  },
-  linkTitle: {
-    margin: '0 0 6px',
-    fontWeight: 900
-  },
-  linkText: {
-    wordBreak: 'break-all',
-    fontWeight: 700
   }
 }
