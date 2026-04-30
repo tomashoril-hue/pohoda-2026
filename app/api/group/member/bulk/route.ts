@@ -12,11 +12,14 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const memberIds: string[] = Array.isArray(body.memberIds) ? body.memberIds : []
-    const action = String(body.action || '').trim()
-    const role = String(body.role || '').trim()
+    const action = String(body.action || '').trim().toUpperCase()
+    const role = String(body.role || '').trim().toUpperCase()
 
     if (!memberIds.length) {
-      return NextResponse.json({ error: 'Nie sú vybraní žiadni členovia.' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Nie sú vybraní žiadni členovia.' },
+        { status: 400 }
+      )
     }
 
     const { data: myMembership } = await supabaseServer
@@ -25,8 +28,17 @@ export async function POST(req: NextRequest) {
       .eq('user_id', user.id)
       .maybeSingle()
 
-    if (!myMembership || myMembership.role !== 'OWNER') {
-      return NextResponse.json({ error: 'Nemáte oprávnenie.' }, { status: 403 })
+    const myRole = String(myMembership?.role || '').toUpperCase()
+
+    // Dočasne povoľujeme aj OWNER, kým spravíme migráciu databázy.
+    // Po migrácii bude hlavná rola MANAGER.
+    const canManageMembers = myRole === 'MANAGER' || myRole === 'OWNER'
+
+    if (!myMembership || !canManageMembers) {
+      return NextResponse.json(
+        { error: 'Nemáte oprávnenie upravovať členov skupiny.' },
+        { status: 403 }
+      )
     }
 
     const { data: targetMembers, error: targetError } = await supabaseServer
@@ -38,7 +50,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: targetError.message }, { status: 500 })
     }
 
-    const invalidMember = targetMembers?.find(m => m.group_id !== myMembership.group_id)
+    if (!targetMembers || targetMembers.length !== memberIds.length) {
+      return NextResponse.json(
+        { error: 'Niektorí členovia sa nenašli.' },
+        { status: 404 }
+      )
+    }
+
+    const invalidMember = targetMembers.find(m => m.group_id !== myMembership.group_id)
 
     if (invalidMember) {
       return NextResponse.json(
@@ -47,12 +66,12 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const selfSelected = targetMembers?.some(m => m.user_id === user.id)
+    const selfSelected = targetMembers.some(m => m.user_id === user.id)
 
     if (action === 'REMOVE') {
       if (selfSelected) {
         return NextResponse.json(
-          { error: 'Nemôžete hromadne odobrať sám seba.' },
+          { error: 'Nemôžete odobrať sám seba cez správu členov.' },
           { status: 400 }
         )
       }
@@ -70,8 +89,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'ROLE') {
-      if (!['MEMBER', 'MANAGER', 'OWNER'].includes(role)) {
+      if (!['MEMBER', 'POVERENY', 'MANAGER'].includes(role)) {
         return NextResponse.json({ error: 'Neplatná rola.' }, { status: 400 })
+      }
+
+      if (selfSelected) {
+        return NextResponse.json(
+          { error: 'Nemôžete meniť vlastnú rolu.' },
+          { status: 400 }
+        )
       }
 
       const { error } = await supabaseServer

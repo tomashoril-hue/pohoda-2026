@@ -36,9 +36,18 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (membership.role !== 'OWNER') {
+    const myRole = String(membership.role || '').toUpperCase()
+
+    // Dočasne povoľujeme aj OWNER, kým spravíme migráciu databázy.
+    // Nový model: MANAGER a POVERENY môžu rušiť pozvánky.
+    const canCancelInvite =
+      myRole === 'MANAGER' ||
+      myRole === 'POVERENY' ||
+      myRole === 'OWNER'
+
+    if (!canCancelInvite) {
       return NextResponse.json(
-        { error: 'Pozvánku môže zrušiť iba vlastník skupiny.' },
+        { error: 'Nemáte oprávnenie zrušiť pozvánku.' },
         { status: 403 }
       )
     }

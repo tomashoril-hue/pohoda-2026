@@ -35,8 +35,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Nie ste v skupine.' }, { status: 400 })
     }
 
-    if (membership.role !== 'OWNER') {
-      return NextResponse.json({ error: 'Pozývať môže iba vlastník skupiny.' }, { status: 403 })
+    const myRole = String(membership.role || '').toUpperCase()
+
+    // Dočasne povoľujeme aj OWNER, kým spravíme migráciu databázy.
+    // Nový model: MANAGER a POVERENY môžu pozývať.
+    const canInvite =
+      myRole === 'MANAGER' ||
+      myRole === 'POVERENY' ||
+      myRole === 'OWNER'
+
+    if (!canInvite) {
+      return NextResponse.json(
+        { error: 'Nemáte oprávnenie posielať pozvánky do skupiny.' },
+        { status: 403 }
+      )
     }
 
     const { data: group } = await supabaseServer

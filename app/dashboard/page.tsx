@@ -100,7 +100,11 @@ export default async function DashboardPage() {
               <div style={styles.groupsList}>
                 {memberships.map((m: any) => {
                   const group = Array.isArray(m.groups) ? m.groups[0] : m.groups
-                  const isManager = m.role === 'OWNER' || m.role === 'MANAGER'
+                  const role = String(m.role || '').toUpperCase()
+
+                  // Dočasne podporujeme aj OWNER, kým premigrujeme databázu.
+                  // Pridať cez QR do skupiny môže po novom iba MANAGER.
+                  const canAddByQr = role === 'MANAGER' || role === 'OWNER'
 
                   return (
                     <div key={m.group_id} style={styles.groupCard}>
@@ -110,7 +114,7 @@ export default async function DashboardPage() {
                         </div>
 
                         <div style={styles.roleBadge}>
-                          {m.role}
+                          {role}
                         </div>
                       </div>
 
@@ -119,7 +123,7 @@ export default async function DashboardPage() {
                           Detail
                         </a>
 
-                        {isManager && (
+                        {canAddByQr && (
                           <a
                             href={`/groups/${m.group_id}/add-by-qr`}
                             style={styles.smallButtonGreen}

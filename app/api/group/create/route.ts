@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       .insert({
         group_id: group.id,
         user_id: user.id,
-        role: 'OWNER'
+        role: 'MANAGER'
       })
 
     if (memberError) {
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
         .eq('id', group.id)
 
       return NextResponse.json(
-        { error: 'Chyba pri pridaní vlastníka skupiny: ' + memberError.message },
+        { error: 'Chyba pri pridaní manažéra skupiny: ' + memberError.message },
         { status: 500 }
       )
     }

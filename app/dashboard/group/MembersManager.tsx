@@ -20,7 +20,9 @@ export default function MembersManager({
   const [message, setMessage] = useState('')
   const [bulkRole, setBulkRole] = useState('MEMBER')
 
-  const canEdit = myRole === 'OWNER'
+  // Dočasne povoľujeme aj OWNER, aby appka fungovala pred migráciou databázy.
+  // Po migrácii bude hlavná rola MANAGER.
+  const canEdit = myRole === 'MANAGER' || myRole === 'OWNER'
 
   const normalizedMembers = useMemo(() => {
     return members.map(member => {
@@ -180,8 +182,8 @@ export default function MembersManager({
               disabled={loading}
             >
               <option value="MEMBER">MEMBER</option>
+              <option value="POVERENY">POVERENY</option>
               <option value="MANAGER">MANAGER</option>
-              <option value="OWNER">OWNER</option>
             </select>
 
             <button
@@ -289,12 +291,12 @@ export default function MembersManager({
                       <select
                         style={styles.select}
                         value={member.role}
-                        disabled={!canEdit || loading}
+                        disabled={!canEdit || member.isMe || loading}
                         onChange={e => singleAction(member.id, 'ROLE', e.target.value)}
                       >
                         <option value="MEMBER">MEMBER</option>
+                        <option value="POVERENY">POVERENY</option>
                         <option value="MANAGER">MANAGER</option>
-                        <option value="OWNER">OWNER</option>
                       </select>
                     </div>
                   </div>

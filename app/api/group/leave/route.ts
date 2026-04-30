@@ -17,19 +17,38 @@ export async function POST() {
       .maybeSingle()
 
     if (!membership) {
-      return NextResponse.json({ error: 'Nie ste členom žiadnej skupiny.' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Nie ste členom žiadnej skupiny.' },
+        { status: 400 }
+      )
     }
 
-    if (membership.role === 'OWNER') {
-      const { data: owners } = await supabaseServer
+    const myRole = String(membership.role || '').toUpperCase()
+
+    // Dočasne podporujeme aj OWNER, kým premigrujeme databázu.
+    // Po novom je hlavná rola MANAGER.
+    const isMainManager = myRole === 'MANAGER' || myRole === 'OWNER'
+
+    if (isMainManager) {
+      const { data: managers, error: managersError } = await supabaseServer
         .from('group_members')
         .select('id')
         .eq('group_id', membership.group_id)
-        .eq('role', 'OWNER')
+        .in('role', ['MANAGER', 'OWNER'])
 
-      if (!owners || owners.length <= 1) {
+      if (managersError) {
         return NextResponse.json(
-          { error: 'Nemôžete opustiť skupinu ako jediný OWNER. Najprv nastavte iného člena ako OWNER.' },
+          { error: 'Chyba pri kontrole manažérov skupiny: ' + managersError.message },
+          { status: 500 }
+        )
+      }
+
+      if (!managers || managers.length <= 1) {
+        return NextResponse.json(
+          {
+            error:
+              'Nemôžete opustiť skupinu ako jediný MANAGER. Najprv nastavte iného člena ako MANAGER.'
+          },
           { status: 400 }
         )
       }

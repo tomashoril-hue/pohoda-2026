@@ -17,6 +17,18 @@ export default async function GroupPage() {
     .eq('user_id', user.id)
     .maybeSingle()
 
+  const myRole = String(membership?.role || '').toUpperCase()
+
+  // Dočasne podporujeme aj OWNER, kým premigrujeme databázu.
+  const canManageGroup =
+    myRole === 'MANAGER' ||
+    myRole === 'OWNER'
+
+  const canInvite =
+    myRole === 'MANAGER' ||
+    myRole === 'POVERENY' ||
+    myRole === 'OWNER'
+
   let group: any = null
   let members: any[] = []
   let sentInvites: any[] = []
@@ -50,7 +62,7 @@ export default async function GroupPage() {
 
     members = membersData || []
 
-    if (membership.role === 'OWNER') {
+    if (canInvite) {
       const { data: invitesData } = await supabaseServer
         .from('group_invites')
         .select(`
@@ -93,22 +105,29 @@ export default async function GroupPage() {
           <div>
             <div style={styles.infoBox}>
               <p><b>Názov skupiny:</b> {group.name}</p>
-              <p><b>Vaša rola:</b> {membership?.role}</p>
+              <p><b>Vaša rola:</b> {myRole}</p>
             </div>
 
             <MembersManager
               members={members}
-              myRole={membership?.role || ''}
+              myRole={myRole}
               myUserId={user.id}
             />
 
             <LeaveGroupButton />
 
-            {membership?.role === 'OWNER' && (
+            {canInvite && (
               <>
                 <InviteBox />
                 <SentInvites invites={sentInvites} />
               </>
+            )}
+
+            {!canManageGroup && myRole === 'MEMBER' && (
+              <div style={styles.memberNotice}>
+                Ako člen skupiny môžete vidieť svoju skupinu a odísť zo skupiny.
+                Správu členov a pozvánky rieši poverená osoba alebo manažér.
+              </div>
             )}
           </div>
         )}
@@ -189,6 +208,15 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 18,
     fontSize: 18,
     fontWeight: 700
+  },
+  memberNotice: {
+    marginTop: 24,
+    background: '#fff',
+    border: '3px solid #000',
+    borderRadius: 20,
+    padding: 16,
+    fontSize: 16,
+    fontWeight: 800
   },
   buttonLink: {
     display: 'inline-block',
