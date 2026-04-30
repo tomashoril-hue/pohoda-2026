@@ -21,7 +21,7 @@ export default async function HomePage() {
 
           <div style={styles.chefIconWrap}>
             <img
-              src="/kuchar-capica.png"
+              src="/kuchar%20capica.png"
               alt="Stravovanie"
               style={styles.chefIcon}
             />
@@ -89,35 +89,38 @@ export default async function HomePage() {
 const styles: Record<string, React.CSSProperties> = {
   page: {
     position: 'relative',
-    minHeight: '100vh',
-    overflow: 'hidden',
+    minHeight: '100svh',
+    overflowX: 'hidden',
+    overflowY: 'auto',
     background: 'linear-gradient(135deg, #7417e8 0%, #ed59dc 45%, #56db3f 100%)',
     padding: '22px',
     fontFamily: 'Arial, Helvetica, sans-serif',
     color: '#000'
   },
   bgBlobOne: {
-    position: 'absolute',
+    position: 'fixed',
     width: 280,
     height: 280,
     borderRadius: '50%',
     background: 'rgba(255,255,255,0.23)',
     top: -90,
     right: -70,
-    filter: 'blur(2px)'
+    filter: 'blur(2px)',
+    pointerEvents: 'none'
   },
   bgBlobTwo: {
-    position: 'absolute',
+    position: 'fixed',
     width: 230,
     height: 230,
     borderRadius: '50%',
     background: 'rgba(86,219,63,0.35)',
     bottom: -70,
     left: -70,
-    filter: 'blur(2px)'
+    filter: 'blur(2px)',
+    pointerEvents: 'none'
   },
   bgGrid: {
-    position: 'absolute',
+    position: 'fixed',
     inset: 0,
     backgroundImage:
       'linear-gradient(rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.12) 1px, transparent 1px)',
