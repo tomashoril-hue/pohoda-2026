@@ -226,7 +226,14 @@ export default function MembersManager({
 
           return (
             <div key={member.id} style={styles.memberItem}>
-              <div style={styles.memberSummary}>
+              <div
+                style={{
+                  ...styles.memberSummary,
+                  gridTemplateColumns: canEdit
+                    ? 'auto minmax(0, 1fr) auto'
+                    : 'minmax(0, 1fr) auto'
+                }}
+              >
                 {canEdit && (
                   <input
                     type="checkbox"
@@ -374,7 +381,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   memberSummary: {
     display: 'grid',
-    gridTemplateColumns: 'auto minmax(0, 1fr) auto',
     alignItems: 'center',
     gap: 12
   },
