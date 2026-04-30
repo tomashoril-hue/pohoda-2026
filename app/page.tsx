@@ -19,7 +19,13 @@ export default async function HomePage() {
         <header style={styles.topBar}>
           <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
 
-          
+          <div style={styles.chefIconWrap}>
+            <img
+              src="/kuchar-capica.png"
+              alt="Stravovanie"
+              style={styles.chefIcon}
+            />
+          </div>
         </header>
 
         <section style={styles.heroCard}>
@@ -137,15 +143,23 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: 260,
     objectFit: 'contain'
   },
-  dateBadge: {
-    background: '#000',
-    color: '#fff',
-    borderRadius: 999,
-    padding: '11px 18px',
-    fontWeight: 950,
-    fontSize: 17,
-    boxShadow: '0 10px 24px rgba(0,0,0,0.22)',
-    whiteSpace: 'nowrap'
+  chefIconWrap: {
+    width: 54,
+    height: 54,
+    minWidth: 54,
+    borderRadius: '50%',
+    background: 'rgba(255,255,255,0.92)',
+    border: '2px solid #000',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 10px 24px rgba(0,0,0,0.22)'
+  },
+  chefIcon: {
+    width: 34,
+    height: 34,
+    objectFit: 'contain',
+    display: 'block'
   },
   heroCard: {
     maxWidth: 780,
