@@ -83,14 +83,18 @@ export default async function HomePage() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  
   page: {
-    minHeight: '100vh',
-    background:
-      'radial-gradient(circle at 85% 10%, rgba(255,255,255,0.22) 0, rgba(255,255,255,0.22) 120px, transparent 260px), radial-gradient(circle at 0% 100%, rgba(86,219,63,0.35) 0, rgba(86,219,63,0.35) 120px, transparent 260px), linear-gradient(135deg, #7417e8 0%, #ed59dc 45%, #56db3f 100%)',
-    padding: '22px',
-    fontFamily: 'Arial, Helvetica, sans-serif',
-    color: '#000',
-    overflowX: 'hidden'
+  minHeight: '100dvh',
+  background:
+    'radial-gradient(circle at 85% 10%, rgba(255,255,255,0.22) 0, rgba(255,255,255,0.22) 120px, transparent 260px), radial-gradient(circle at 0% 100%, rgba(86,219,63,0.35) 0, rgba(86,219,63,0.35) 120px, transparent 260px), linear-gradient(135deg, #7417e8 0%, #ed59dc 45%, #56db3f 100%)',
+  backgroundAttachment: 'scroll',
+  padding: '22px',
+  paddingBottom: 40,
+  fontFamily: 'Arial, Helvetica, sans-serif',
+  color: '#000',
+  overflowX: 'clip'
+},
   },
   shell: {
     maxWidth: 1040,
