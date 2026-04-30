@@ -39,7 +39,8 @@ export default async function GroupPage() {
           id,
           email,
           meno,
-          priezvisko
+          priezvisko,
+          telefon
         )
       `)
       .eq('group_id', membership.group_id)
