@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
+import DashboardInvites from './DashboardInvites'
 
 export default async function DashboardPage() {
   const user = await getCurrentUser()
@@ -20,6 +21,22 @@ export default async function DashboardPage() {
       )
     `)
     .eq('user_id', user.id)
+
+  const { data: pendingInvites } = await supabaseServer
+    .from('group_invites')
+    .select(`
+      id,
+      email,
+      status,
+      created_at,
+      groups (
+        id,
+        name
+      )
+    `)
+    .eq('email', String(user.email || '').toLowerCase())
+    .eq('status', 'PENDING')
+    .order('created_at', { ascending: false })
 
   return (
     <main style={styles.page}>
@@ -62,9 +79,13 @@ export default async function DashboardPage() {
           <h2 style={styles.groupsTitle}>Moje skupiny</h2>
 
           {!memberships || memberships.length === 0 ? (
-            <div style={styles.emptyGroup}>
-              Zatiaľ nie si v žiadnej skupine.
-            </div>
+            <>
+              <div style={styles.emptyGroup}>
+                Zatiaľ nie si v žiadnej skupine.
+              </div>
+
+              <DashboardInvites invites={pendingInvites || []} />
+            </>
           ) : (
             <div style={styles.groupsList}>
               {memberships.map((m: any) => {
@@ -89,21 +110,12 @@ export default async function DashboardPage() {
                       </a>
 
                       {isManager && (
-                        <>
-                          <a
-                            href={`/groups/${m.group_id}/add-by-qr`}
-                            style={styles.smallButtonGreen}
-                          >
-                            Pridať cez QR
-                          </a>
-
-                          <a
-                            href="/dashboard/group/invites"
-                            style={styles.smallButtonPink}
-                          >
-                            Pozvánky
-                          </a>
-                        </>
+                        <a
+                          href={`/groups/${m.group_id}/add-by-qr`}
+                          style={styles.smallButtonGreen}
+                        >
+                          Pridať cez QR
+                        </a>
                       )}
                     </div>
                   </div>
