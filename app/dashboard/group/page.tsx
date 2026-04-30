@@ -4,6 +4,7 @@ import { supabaseServer } from '@/lib/supabaseServer'
 import InviteBox from './InviteBox'
 import MembersManager from './MembersManager'
 import LeaveGroupButton from './LeaveGroupButton'
+import SentInvites from './SentInvites'
 
 export default async function GroupPage() {
   const user = await getCurrentUser()
@@ -18,6 +19,7 @@ export default async function GroupPage() {
 
   let group: any = null
   let members: any[] = []
+  let sentInvites: any[] = []
 
   if (membership) {
     const { data: groupData } = await supabaseServer
@@ -47,6 +49,22 @@ export default async function GroupPage() {
       .order('created_at', { ascending: true })
 
     members = membersData || []
+
+    if (membership.role === 'OWNER') {
+      const { data: invitesData } = await supabaseServer
+        .from('group_invites')
+        .select(`
+          id,
+          email,
+          status,
+          created_at
+        `)
+        .eq('group_id', membership.group_id)
+        .eq('status', 'PENDING')
+        .order('created_at', { ascending: false })
+
+      sentInvites = invitesData || []
+    }
   }
 
   return (
@@ -86,7 +104,12 @@ export default async function GroupPage() {
 
             <LeaveGroupButton />
 
-            {membership?.role === 'OWNER' && <InviteBox />}
+            {membership?.role === 'OWNER' && (
+              <>
+                <InviteBox />
+                <SentInvites invites={sentInvites} />
+              </>
+            )}
           </div>
         )}
 
