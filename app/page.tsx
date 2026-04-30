@@ -17,16 +17,16 @@ export default async function HomePage() {
 
       <div style={styles.shell}>
         <header style={styles.topBar}>
-          <div style={styles.brandBlock}>
-            <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
-            <div style={styles.dateText}>8. & 9. – 11. 7. 2026</div>
+          <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
+
+          <div style={styles.dateBadge}>
+            8. & 9. – 11. 7. 2026
           </div>
         </header>
 
         <section style={styles.heroCard}>
-          <div style={styles.systemPill}>
-            <span style={styles.systemDot} />
-            <span>Stravovací systém</span>
+          <div style={styles.heroBadge}>
+            Stravovací systém
           </div>
 
           <h1 style={styles.title}>
@@ -129,25 +129,25 @@ const styles: Record<string, React.CSSProperties> = {
   },
   topBar: {
     display: 'flex',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 16,
     marginBottom: 24
   },
-  brandBlock: {
-    textAlign: 'center'
-  },
   logo: {
-    height: 58,
-    maxWidth: 270,
+    height: 54,
+    maxWidth: 260,
     objectFit: 'contain'
   },
-  dateText: {
-    marginTop: 8,
+  dateBadge: {
+    background: '#000',
     color: '#fff',
+    borderRadius: 999,
+    padding: '11px 18px',
     fontWeight: 950,
     fontSize: 17,
-    letterSpacing: 0.4,
-    textShadow: '0 2px 12px rgba(0,0,0,0.35)'
+    boxShadow: '0 10px 24px rgba(0,0,0,0.22)',
+    whiteSpace: 'nowrap'
   },
   heroCard: {
     maxWidth: 780,
@@ -159,24 +159,15 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
     backdropFilter: 'blur(12px)'
   },
-  systemPill: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 9,
-    background: 'rgba(86,219,63,0.18)',
-    border: '2px solid #000',
-    borderRadius: 999,
-    padding: '8px 14px',
-    fontWeight: 950,
-    marginBottom: 18
-  },
-  systemDot: {
-    width: 10,
-    height: 10,
-    borderRadius: '50%',
+  heroBadge: {
+    display: 'inline-block',
     background: '#56db3f',
     border: '2px solid #000',
-    display: 'inline-block'
+    borderRadius: 999,
+    padding: '9px 15px',
+    fontWeight: 950,
+    marginBottom: 18,
+    boxShadow: '4px 4px 0 #000'
   },
   title: {
     margin: 0,
