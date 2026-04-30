@@ -11,17 +11,13 @@ export default async function HomePage() {
 
   return (
     <main style={styles.page}>
-      <div style={styles.bgBlobOne} />
-      <div style={styles.bgBlobTwo} />
-      <div style={styles.bgGrid} />
-
       <div style={styles.shell}>
         <header style={styles.topBar}>
           <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
 
           <div style={styles.chefIconWrap}>
             <img
-              src="/kuchar%20capica.png"
+              src="/kuchar-capica.png"
               alt="Stravovanie"
               style={styles.chefIcon}
             />
@@ -88,51 +84,18 @@ export default async function HomePage() {
 
 const styles: Record<string, React.CSSProperties> = {
   page: {
-    position: 'relative',
-    minHeight: '100svh',
-    overflowX: 'hidden',
-    overflowY: 'auto',
-    background: 'linear-gradient(135deg, #7417e8 0%, #ed59dc 45%, #56db3f 100%)',
+    minHeight: '100vh',
+    background:
+      'radial-gradient(circle at 85% 10%, rgba(255,255,255,0.22) 0, rgba(255,255,255,0.22) 120px, transparent 260px), radial-gradient(circle at 0% 100%, rgba(86,219,63,0.35) 0, rgba(86,219,63,0.35) 120px, transparent 260px), linear-gradient(135deg, #7417e8 0%, #ed59dc 45%, #56db3f 100%)',
     padding: '22px',
     fontFamily: 'Arial, Helvetica, sans-serif',
-    color: '#000'
-  },
-  bgBlobOne: {
-    position: 'fixed',
-    width: 280,
-    height: 280,
-    borderRadius: '50%',
-    background: 'rgba(255,255,255,0.23)',
-    top: -90,
-    right: -70,
-    filter: 'blur(2px)',
-    pointerEvents: 'none'
-  },
-  bgBlobTwo: {
-    position: 'fixed',
-    width: 230,
-    height: 230,
-    borderRadius: '50%',
-    background: 'rgba(86,219,63,0.35)',
-    bottom: -70,
-    left: -70,
-    filter: 'blur(2px)',
-    pointerEvents: 'none'
-  },
-  bgGrid: {
-    position: 'fixed',
-    inset: 0,
-    backgroundImage:
-      'linear-gradient(rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.12) 1px, transparent 1px)',
-    backgroundSize: '42px 42px',
-    opacity: 0.22,
-    pointerEvents: 'none'
+    color: '#000',
+    overflowX: 'hidden'
   },
   shell: {
-    position: 'relative',
-    zIndex: 1,
     maxWidth: 1040,
-    margin: '0 auto'
+    margin: '0 auto',
+    paddingBottom: 28
   },
   topBar: {
     display: 'flex',
@@ -144,14 +107,15 @@ const styles: Record<string, React.CSSProperties> = {
   logo: {
     height: 54,
     maxWidth: 260,
-    objectFit: 'contain'
+    objectFit: 'contain',
+    display: 'block'
   },
   chefIconWrap: {
     width: 54,
     height: 54,
     minWidth: 54,
     borderRadius: '50%',
-    background: 'rgba(255,255,255,0.92)',
+    background: 'rgba(255,255,255,0.94)',
     border: '2px solid #000',
     display: 'flex',
     alignItems: 'center',
@@ -167,12 +131,11 @@ const styles: Record<string, React.CSSProperties> = {
   heroCard: {
     maxWidth: 780,
     margin: '0 auto',
-    background: 'rgba(255,255,255,0.94)',
-    border: '2px solid rgba(0,0,0,0.95)',
+    background: 'rgba(255,255,255,0.96)',
+    border: '2px solid #000',
     borderRadius: 34,
     padding: 30,
-    boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
-    backdropFilter: 'blur(12px)'
+    boxShadow: '0 24px 70px rgba(0,0,0,0.28)'
   },
   heroBadge: {
     display: 'inline-block',
