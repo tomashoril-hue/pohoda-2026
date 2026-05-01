@@ -56,6 +56,14 @@ function isIssuedStatus(status: string) {
   return status === 'INDIVIDUAL_ISSUED' || status === 'BULK_ISSUED'
 }
 
+function statusLabel(status: string) {
+  if (status === 'PLANNED') return 'PRIPRAVENÉ'
+  if (status === 'BULK_ISSUED') return 'PREVZATÉ HROMADNE'
+  if (status === 'INDIVIDUAL_ISSUED') return 'PREVZATÉ OSOBNE'
+  if (status === 'REMOVED') return 'VYRADENÉ'
+  return status
+}
+
 export default function IssueDetailClient({
   issue,
   items,
@@ -122,7 +130,7 @@ export default function IssueDetailClient({
           : openGroup === 'UNKNOWN'
             ? 'Zoznam NEZADANÉ'
             : openGroup === 'ISSUED'
-              ? 'Zoznam UŽ VYDANÉ'
+              ? 'Zoznam PREVZATÉ'
               : ''
 
   const allSelected =
@@ -376,7 +384,7 @@ export default function IssueDetailClient({
           onClick={() => toggleSummary('ISSUED')}
         >
           <div style={styles.summaryNumber}>{issuedCount}</div>
-          <div style={styles.summaryLabel}>Už vydané</div>
+          <div style={styles.summaryLabel}>Prevzaté</div>
         </button>
       </div>
 
@@ -467,44 +475,24 @@ export default function IssueDetailClient({
           Vybraní: <b>{selected.length}</b>
         </div>
       </div>
+<div style={styles.issueActions}>
+  <div style={styles.preparedNotice}>
+    Tento zoznam je iba <b>pripravený hromadný výdaj</b>.
+    Fyzické vydanie jedla prebehne až pri QR skene pri výdajnom okienku.
+  </div>
 
-      <div style={styles.issueActions}>
-        <button
-          style={{
-            ...styles.issueButton,
-            opacity: loading || selected.length === 0 || !isReady ? 0.55 : 1,
-            cursor: loading || selected.length === 0 || !isReady ? 'not-allowed' : 'pointer'
-          }}
-          disabled={loading || selected.length === 0 || !isReady}
-          onClick={() => issueSelected(selected)}
-        >
-          {loading ? 'Zapisujem...' : 'Vydať označeným'}
-        </button>
-
-        <button
-          style={{
-            ...styles.issueAllButton,
-            opacity: loading || selectableItems.length === 0 || !isReady ? 0.55 : 1,
-            cursor: loading || selectableItems.length === 0 || !isReady ? 'not-allowed' : 'pointer'
-          }}
-          disabled={loading || selectableItems.length === 0 || !isReady}
-          onClick={issueAllPrepared}
-        >
-          Vydať všetkým pripraveným
-        </button>
-
-        <button
-          style={{
-            ...styles.cancelButton,
-            opacity: loading || issuedCount > 0 ? 0.55 : 1,
-            cursor: loading || issuedCount > 0 ? 'not-allowed' : 'pointer'
-          }}
-          disabled={loading || issuedCount > 0}
-          onClick={cancelIssue}
-        >
-          Zrušiť hromadný výdaj
-        </button>
-      </div>
+  <button
+    style={{
+      ...styles.cancelButton,
+      opacity: loading || issuedCount > 0 ? 0.55 : 1,
+      cursor: loading || issuedCount > 0 ? 'not-allowed' : 'pointer'
+    }}
+    disabled={loading || issuedCount > 0}
+    onClick={cancelIssue}
+  >
+    Zrušiť pripravený hromadný výdaj
+  </button>
+</div>
 
       {!isReady && (
         <div style={styles.warningBox}>
@@ -576,7 +564,7 @@ export default function IssueDetailClient({
 
                 {isIssued && (
                   <div style={styles.issuedText}>
-                    Táto osoba už má jedlo vydané.
+                    Táto osoba už jedlo prevzala pri výdajnom okienku.
                   </div>
                 )}
               </div>
@@ -584,7 +572,7 @@ export default function IssueDetailClient({
               <div style={styles.metaCol}>
                 {isIssued && (
                   <div style={styles.issuedBadge}>
-                    VYDANÉ
+                    PREVZATÉ
                   </div>
                 )}
 
@@ -604,8 +592,8 @@ export default function IssueDetailClient({
                 </div>
 
                 <div style={styles.itemStatus}>
-                  {item.status}
-                </div>
+  {statusLabel(item.status)}
+</div>
 
                 {item.source === 'QR_EXTRA' && (
                   <div style={styles.sourceBadge}>
@@ -816,6 +804,18 @@ const styles: Record<string, React.CSSProperties> = {
     gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
     gap: 12
   },
+
+  preparedNotice: {
+  background: '#fff',
+  color: '#000',
+  border: '3px solid #000',
+  borderRadius: 20,
+  padding: 14,
+  fontSize: 15,
+  fontWeight: 850,
+  lineHeight: 1.4
+},
+
   issueButton: {
     background: '#000',
     color: '#fff',
