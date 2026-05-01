@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
 function formatDate(value: string) {
   try {
@@ -69,8 +70,12 @@ export default function IssueDetailClient({
   items: any[]
   myRole: string
 }) {
+  const router = useRouter()
   const [selected, setSelected] = useState<string[]>([])
   const [now, setNow] = useState(Date.now())
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState('')
+  const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -121,9 +126,80 @@ export default function IssueDetailClient({
     setSelected(selectableItems.map(item => item.id))
   }
 
+  const issueSelected = async (itemIds: string[]) => {
+    setMessage('')
+    setMessageType('')
+
+    if (!itemIds.length) {
+      setMessage('Nie sú vybrané žiadne osoby.')
+      setMessageType('error')
+      return
+    }
+
+    if (!isReady) {
+      setMessage('Hromadný výdaj ešte nie je aktívny. Počkajte na skončenie odpočtu.')
+      setMessageType('error')
+      return
+    }
+
+    const confirmText =
+      itemIds.length === selectableItems.length
+        ? `Naozaj chcete vydať všetkým pripraveným osobám? Počet: ${itemIds.length}`
+        : `Naozaj chcete vydať označeným osobám? Počet: ${itemIds.length}`
+
+    if (!confirm(confirmText)) return
+
+    setLoading(true)
+
+    try {
+      const res = await fetch('/api/group/issue/issue-selected', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          issueId: issue.id,
+          itemIds
+        })
+      })
+
+      const text = await res.text()
+      let json: any = {}
+
+      try {
+        json = text ? JSON.parse(text) : {}
+      } catch {
+        setMessage('Server vrátil neplatnú odpoveď.')
+        setMessageType('error')
+        return
+      }
+
+      if (!res.ok || json.error) {
+        setMessage(json.error || 'Výdaj sa nepodarilo zapísať.')
+        setMessageType('error')
+        return
+      }
+
+      setMessage(json.message || 'Výdaj bol zapísaný.')
+      setMessageType('ok')
+      setSelected([])
+      router.refresh()
+    } catch (err: any) {
+      setMessage('Chyba spojenia so serverom: ' + err.message)
+      setMessageType('error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const issueAllPrepared = () => {
+    issueSelected(selectableItems.map(item => item.id))
+  }
+
   const masoCount = activeItems.filter(item => item.volba === 'MASO').length
   const vegeCount = activeItems.filter(item => item.volba === 'VEGE').length
   const unknownCount = activeItems.filter(item => item.volba !== 'MASO' && item.volba !== 'VEGE').length
+  const issuedCount = activeItems.filter(
+    item => item.status === 'INDIVIDUAL_ISSUED' || item.status === 'BULK_ISSUED'
+  ).length
 
   return (
     <div style={styles.wrap}>
@@ -183,13 +259,22 @@ export default function IssueDetailClient({
           <div style={styles.summaryNumber}>{unknownCount}</div>
           <div style={styles.summaryLabel}>Nezadané</div>
         </div>
+
+        <div style={styles.summaryCard}>
+          <div style={styles.summaryNumber}>{issuedCount}</div>
+          <div style={styles.summaryLabel}>Už vydané</div>
+        </div>
       </div>
 
       <div style={styles.actionsTop}>
         <button
-          style={styles.smallButton}
+          style={{
+            ...styles.smallButton,
+            opacity: loading || selectableItems.length === 0 ? 0.55 : 1,
+            cursor: loading || selectableItems.length === 0 ? 'not-allowed' : 'pointer'
+          }}
           onClick={toggleAll}
-          disabled={selectableItems.length === 0}
+          disabled={loading || selectableItems.length === 0}
         >
           {allSelected ? 'Zrušiť výber' : 'Označiť všetkých'}
         </button>
@@ -199,9 +284,48 @@ export default function IssueDetailClient({
         </div>
       </div>
 
-      <div style={styles.warningBox}>
-        Toto je zatiaľ príprava výdaja. V ďalšom kroku pridáme tlačidlo na finálne vydanie označeným osobám.
+      <div style={styles.issueActions}>
+        <button
+          style={{
+            ...styles.issueButton,
+            opacity: loading || selected.length === 0 || !isReady ? 0.55 : 1,
+            cursor: loading || selected.length === 0 || !isReady ? 'not-allowed' : 'pointer'
+          }}
+          disabled={loading || selected.length === 0 || !isReady}
+          onClick={() => issueSelected(selected)}
+        >
+          {loading ? 'Zapisujem...' : 'Vydať označeným'}
+        </button>
+
+        <button
+          style={{
+            ...styles.issueAllButton,
+            opacity: loading || selectableItems.length === 0 || !isReady ? 0.55 : 1,
+            cursor: loading || selectableItems.length === 0 || !isReady ? 'not-allowed' : 'pointer'
+          }}
+          disabled={loading || selectableItems.length === 0 || !isReady}
+          onClick={issueAllPrepared}
+        >
+          Vydať všetkým pripraveným
+        </button>
       </div>
+
+      {!isReady && (
+        <div style={styles.warningBox}>
+          Výdaj ešte nie je aktívny. Tlačidlá na vydanie sa sprístupnia po skončení odpočtu.
+        </div>
+      )}
+
+      {message && (
+        <div
+          style={{
+            ...styles.messageBox,
+            background: messageType === 'ok' ? '#56db3f' : '#f25be6'
+          }}
+        >
+          {message}
+        </div>
+      )}
 
       <div style={styles.list}>
         {activeItems.map(item => {
@@ -223,7 +347,7 @@ export default function IssueDetailClient({
                 <input
                   type="checkbox"
                   checked={isSelected}
-                  disabled={isIssued}
+                  disabled={isIssued || loading}
                   onChange={() => toggleOne(item.id)}
                   style={styles.checkbox}
                 />
@@ -367,6 +491,30 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 900,
     fontSize: 16
   },
+  issueActions: {
+    marginTop: 14,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+    gap: 12
+  },
+  issueButton: {
+    background: '#000',
+    color: '#fff',
+    border: '3px solid #000',
+    borderRadius: 999,
+    padding: '14px 18px',
+    fontSize: 16,
+    fontWeight: 950
+  },
+  issueAllButton: {
+    background: '#56db3f',
+    color: '#000',
+    border: '3px solid #000',
+    borderRadius: 999,
+    padding: '14px 18px',
+    fontSize: 16,
+    fontWeight: 950
+  },
   warningBox: {
     marginTop: 14,
     background: '#fff',
@@ -375,6 +523,13 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 14,
     fontWeight: 850,
     lineHeight: 1.35
+  },
+  messageBox: {
+    marginTop: 14,
+    border: '3px solid #000',
+    borderRadius: 18,
+    padding: 14,
+    fontWeight: 900
   },
   list: {
     marginTop: 18,
