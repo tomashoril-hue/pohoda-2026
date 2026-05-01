@@ -230,6 +230,50 @@ export default function IssueDetailClient({
     issueSelected(selectableItems.map(item => item.id))
   }
 
+  const cancelIssue = async () => {
+    setMessage('')
+    setMessageType('')
+
+    if (!confirm('Naozaj chcete zrušiť tento hromadný výdaj?')) return
+
+    setLoading(true)
+
+    try {
+      const res = await fetch('/api/group/issue/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issueId: issue.id })
+      })
+
+      const text = await res.text()
+      let json: any = {}
+
+      try {
+        json = text ? JSON.parse(text) : {}
+      } catch {
+        setMessage('Server vrátil neplatnú odpoveď.')
+        setMessageType('error')
+        return
+      }
+
+      if (!res.ok || json.error) {
+        setMessage(json.error || 'Hromadný výdaj sa nepodarilo zrušiť.')
+        setMessageType('error')
+        return
+      }
+
+      setMessage(json.message || 'Hromadný výdaj bol zrušený.')
+      setMessageType('ok')
+      setSelected([])
+      router.refresh()
+    } catch (err: any) {
+      setMessage('Chyba spojenia so serverom: ' + err.message)
+      setMessageType('error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const masoCount = masoItems.length
   const vegeCount = vegeItems.length
   const unknownCount = unknownItems.length
@@ -406,8 +450,7 @@ export default function IssueDetailClient({
           )}
         </div>
       )}
-
-      <div style={styles.actionsTop}>
+            <div style={styles.actionsTop}>
         <button
           style={{
             ...styles.smallButton,
@@ -449,11 +492,29 @@ export default function IssueDetailClient({
         >
           Vydať všetkým pripraveným
         </button>
+
+        <button
+          style={{
+            ...styles.cancelButton,
+            opacity: loading || issuedCount > 0 ? 0.55 : 1,
+            cursor: loading || issuedCount > 0 ? 'not-allowed' : 'pointer'
+          }}
+          disabled={loading || issuedCount > 0}
+          onClick={cancelIssue}
+        >
+          Zrušiť hromadný výdaj
+        </button>
       </div>
 
       {!isReady && (
         <div style={styles.warningBox}>
           Výdaj ešte nie je aktívny. Tlačidlá na vydanie sa sprístupnia po skončení odpočtu.
+        </div>
+      )}
+
+      {issuedCount > 0 && (
+        <div style={styles.warningBox}>
+          Tento výdaj už obsahuje vydané osoby. Zrušenie celého hromadného výdaja je preto zablokované.
         </div>
       )}
 
@@ -766,6 +827,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
   issueAllButton: {
     background: '#56db3f',
+    color: '#000',
+    border: '3px solid #000',
+    borderRadius: 999,
+    padding: '14px 18px',
+    fontSize: 16,
+    fontWeight: 950
+  },
+  cancelButton: {
+    background: '#f25be6',
     color: '#000',
     border: '3px solid #000',
     borderRadius: 999,
