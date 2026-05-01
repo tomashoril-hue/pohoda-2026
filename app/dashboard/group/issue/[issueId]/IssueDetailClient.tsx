@@ -52,6 +52,10 @@ function choiceLabel(value: string | null) {
   return 'NEZADANÉ'
 }
 
+function isIssuedStatus(status: string) {
+  return status === 'INDIVIDUAL_ISSUED' || status === 'BULK_ISSUED'
+}
+
 export default function IssueDetailClient({
   issue,
   items,
@@ -76,6 +80,7 @@ export default function IssueDetailClient({
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
+  const [openGroup, setOpenGroup] = useState<'ALL' | 'MASO' | 'VEGE' | 'UNKNOWN' | 'ISSUED' | null>(null)
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -92,6 +97,33 @@ export default function IssueDetailClient({
   const selectableItems = activeItems.filter(item => {
     return item.status === 'PLANNED'
   })
+
+  const issuedItems = activeItems.filter(item => isIssuedStatus(item.status))
+  const masoItems = activeItems.filter(item => item.volba === 'MASO')
+  const vegeItems = activeItems.filter(item => item.volba === 'VEGE')
+  const unknownItems = activeItems.filter(item => item.volba !== 'MASO' && item.volba !== 'VEGE')
+
+  const selectedGroupItems = useMemo(() => {
+    if (openGroup === 'ALL') return activeItems
+    if (openGroup === 'MASO') return masoItems
+    if (openGroup === 'VEGE') return vegeItems
+    if (openGroup === 'UNKNOWN') return unknownItems
+    if (openGroup === 'ISSUED') return issuedItems
+    return []
+  }, [openGroup, activeItems, masoItems, vegeItems, unknownItems, issuedItems])
+
+  const openGroupTitle =
+    openGroup === 'ALL'
+      ? 'Všetky osoby'
+      : openGroup === 'MASO'
+        ? 'Zoznam MASO'
+        : openGroup === 'VEGE'
+          ? 'Zoznam VEGE'
+          : openGroup === 'UNKNOWN'
+            ? 'Zoznam NEZADANÉ'
+            : openGroup === 'ISSUED'
+              ? 'Zoznam UŽ VYDANÉ'
+              : ''
 
   const allSelected =
     selectableItems.length > 0 &&
@@ -124,6 +156,10 @@ export default function IssueDetailClient({
     }
 
     setSelected(selectableItems.map(item => item.id))
+  }
+
+  const toggleSummary = (type: 'ALL' | 'MASO' | 'VEGE' | 'UNKNOWN' | 'ISSUED') => {
+    setOpenGroup(prev => (prev === type ? null : type))
   }
 
   const issueSelected = async (itemIds: string[]) => {
@@ -194,12 +230,10 @@ export default function IssueDetailClient({
     issueSelected(selectableItems.map(item => item.id))
   }
 
-  const masoCount = activeItems.filter(item => item.volba === 'MASO').length
-  const vegeCount = activeItems.filter(item => item.volba === 'VEGE').length
-  const unknownCount = activeItems.filter(item => item.volba !== 'MASO' && item.volba !== 'VEGE').length
-  const issuedCount = activeItems.filter(
-    item => item.status === 'INDIVIDUAL_ISSUED' || item.status === 'BULK_ISSUED'
-  ).length
+  const masoCount = masoItems.length
+  const vegeCount = vegeItems.length
+  const unknownCount = unknownItems.length
+  const issuedCount = issuedItems.length
 
   return (
     <div style={styles.wrap}>
@@ -240,31 +274,138 @@ export default function IssueDetailClient({
       </div>
 
       <div style={styles.summaryGrid}>
-        <div style={styles.summaryCard}>
+        <button
+          type="button"
+          style={{
+            ...styles.summaryCard,
+            ...(openGroup === 'ALL' ? styles.summaryCardActive : {})
+          }}
+          onClick={() => toggleSummary('ALL')}
+        >
           <div style={styles.summaryNumber}>{activeItems.length}</div>
           <div style={styles.summaryLabel}>Spolu osôb</div>
-        </div>
+        </button>
 
-        <div style={styles.summaryCard}>
+        <button
+          type="button"
+          style={{
+            ...styles.summaryCard,
+            ...(openGroup === 'MASO' ? styles.summaryCardActive : {})
+          }}
+          onClick={() => toggleSummary('MASO')}
+        >
           <div style={styles.summaryNumber}>{masoCount}</div>
           <div style={styles.summaryLabel}>MASO</div>
-        </div>
+        </button>
 
-        <div style={styles.summaryCard}>
+        <button
+          type="button"
+          style={{
+            ...styles.summaryCard,
+            ...(openGroup === 'VEGE' ? styles.summaryCardActive : {})
+          }}
+          onClick={() => toggleSummary('VEGE')}
+        >
           <div style={styles.summaryNumber}>{vegeCount}</div>
           <div style={styles.summaryLabel}>VEGE</div>
-        </div>
+        </button>
 
-        <div style={styles.summaryCard}>
+        <button
+          type="button"
+          style={{
+            ...styles.summaryCard,
+            ...(openGroup === 'UNKNOWN' ? styles.summaryCardActive : {})
+          }}
+          onClick={() => toggleSummary('UNKNOWN')}
+        >
           <div style={styles.summaryNumber}>{unknownCount}</div>
           <div style={styles.summaryLabel}>Nezadané</div>
-        </div>
+        </button>
 
-        <div style={styles.summaryCard}>
+        <button
+          type="button"
+          style={{
+            ...styles.summaryCard,
+            ...(openGroup === 'ISSUED' ? styles.summaryCardActive : {}),
+            background: openGroup === 'ISSUED' ? '#56db3f' : '#eeeeee'
+          }}
+          onClick={() => toggleSummary('ISSUED')}
+        >
           <div style={styles.summaryNumber}>{issuedCount}</div>
           <div style={styles.summaryLabel}>Už vydané</div>
-        </div>
+        </button>
       </div>
+
+      {openGroup && (
+        <div style={styles.peoplePanel}>
+          <div style={styles.peoplePanelHeader}>
+            <div>
+              <h3 style={styles.peoplePanelTitle}>{openGroupTitle}</h3>
+              <div style={styles.peoplePanelCount}>Počet: {selectedGroupItems.length}</div>
+            </div>
+
+            <button
+              type="button"
+              style={styles.closePanelButton}
+              onClick={() => setOpenGroup(null)}
+            >
+              Zavrieť
+            </button>
+          </div>
+
+          {!selectedGroupItems.length ? (
+            <div style={styles.emptyPanel}>V tejto kategórii nie je nikto.</div>
+          ) : (
+            <div style={styles.peoplePanelList}>
+              {selectedGroupItems.map(item => {
+                const issued = isIssuedStatus(item.status)
+
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      ...styles.peoplePanelRow,
+                      background: issued ? '#eeeeee' : '#fff'
+                    }}
+                  >
+                    <div>
+                      <div style={styles.peoplePanelName}>
+                        {item.fullName || 'Bez mena'}
+                      </div>
+                      <div style={styles.peoplePanelEmail}>
+                        {item.email || '-'}
+                      </div>
+                    </div>
+
+                    <div style={styles.peoplePanelBadges}>
+                      <span
+                        style={{
+                          ...styles.panelChoiceBadge,
+                          background:
+                            item.volba === 'MASO'
+                              ? '#000'
+                              : item.volba === 'VEGE'
+                                ? '#56db3f'
+                                : '#f25be6',
+                          color: item.volba === 'MASO' ? '#fff' : '#000'
+                        }}
+                      >
+                        {choiceLabel(item.volba)}
+                      </span>
+
+                      {issued && (
+                        <span style={styles.issuedBadgeSmall}>
+                          VYDANÉ
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={styles.actionsTop}>
         <button
@@ -330,17 +471,16 @@ export default function IssueDetailClient({
       <div style={styles.list}>
         {activeItems.map(item => {
           const isSelected = selected.includes(item.id)
-          const isIssued =
-            item.status === 'INDIVIDUAL_ISSUED' ||
-            item.status === 'BULK_ISSUED'
+          const isIssued = isIssuedStatus(item.status)
 
           return (
             <div
               key={item.id}
               style={{
                 ...styles.itemCard,
-                background: isSelected ? '#56db3f' : '#fff',
-                opacity: isIssued ? 0.6 : 1
+                background: isIssued ? '#eeeeee' : isSelected ? '#56db3f' : '#fff',
+                opacity: isIssued ? 0.78 : 1,
+                borderColor: isIssued ? '#777' : '#000'
               }}
             >
               <div style={styles.checkCol}>
@@ -354,7 +494,12 @@ export default function IssueDetailClient({
               </div>
 
               <div style={styles.personCol}>
-                <div style={styles.name}>
+                <div
+                  style={{
+                    ...styles.name,
+                    textDecoration: isIssued ? 'line-through' : 'none'
+                  }}
+                >
                   {item.fullName || 'Bez mena'}
                 </div>
 
@@ -367,9 +512,21 @@ export default function IssueDetailClient({
                     {item.telefon}
                   </div>
                 )}
+
+                {isIssued && (
+                  <div style={styles.issuedText}>
+                    Táto osoba už má jedlo vydané.
+                  </div>
+                )}
               </div>
 
               <div style={styles.metaCol}>
+                {isIssued && (
+                  <div style={styles.issuedBadge}>
+                    VYDANÉ
+                  </div>
+                )}
+
                 <div
                   style={{
                     ...styles.choiceBadge,
@@ -457,7 +614,13 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 18,
     padding: 14,
     background: '#fff',
-    textAlign: 'center'
+    textAlign: 'center',
+    cursor: 'pointer',
+    color: '#000'
+  },
+  summaryCardActive: {
+    background: '#56db3f',
+    boxShadow: '5px 5px 0 #000'
   },
   summaryNumber: {
     fontSize: 30,
@@ -469,6 +632,101 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 900,
     textTransform: 'uppercase'
+  },
+  peoplePanel: {
+    marginTop: 16,
+    background: '#fff',
+    border: '3px solid #000',
+    borderRadius: 22,
+    padding: 16,
+    boxShadow: '6px 6px 0 #f25be6'
+  },
+  peoplePanelHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 12,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 12
+  },
+  peoplePanelTitle: {
+    margin: 0,
+    fontSize: 22,
+    fontWeight: 950
+  },
+  peoplePanelCount: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: 850,
+    opacity: 0.75
+  },
+  closePanelButton: {
+    background: '#000',
+    color: '#fff',
+    border: '3px solid #000',
+    borderRadius: 999,
+    padding: '9px 13px',
+    fontWeight: 950
+  },
+  emptyPanel: {
+    background: '#f25be6',
+    border: '3px solid #000',
+    borderRadius: 16,
+    padding: 12,
+    fontWeight: 900
+  },
+  peoplePanelList: {
+    display: 'grid',
+    gap: 10,
+    maxHeight: 360,
+    overflowY: 'auto',
+    paddingRight: 4
+  },
+  peoplePanelRow: {
+    border: '3px solid #000',
+    borderRadius: 16,
+    padding: 12,
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 10,
+    alignItems: 'center'
+  },
+  peoplePanelName: {
+    fontSize: 16,
+    fontWeight: 950,
+    overflowWrap: 'anywhere'
+  },
+  peoplePanelEmail: {
+    marginTop: 3,
+    fontSize: 13,
+    fontWeight: 800,
+    opacity: 0.72,
+    overflowWrap: 'anywhere'
+  },
+  peoplePanelBadges: {
+    display: 'flex',
+    gap: 6,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end'
+  },
+  panelChoiceBadge: {
+    border: '2px solid #000',
+    borderRadius: 999,
+    padding: '5px 8px',
+    fontSize: 12,
+    fontWeight: 950,
+    whiteSpace: 'nowrap'
+  },
+  issuedBadgeSmall: {
+    background: '#000',
+    color: '#fff',
+    border: '2px solid #000',
+    borderRadius: 999,
+    padding: '5px 8px',
+    fontSize: 12,
+    fontWeight: 950,
+    whiteSpace: 'nowrap'
   },
   actionsTop: {
     marginTop: 18,
@@ -575,10 +833,26 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 800,
     opacity: 0.7
   },
+  issuedText: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: 950,
+    color: '#000'
+  },
   metaCol: {
     display: 'grid',
     gap: 7,
     justifyItems: 'end'
+  },
+  issuedBadge: {
+    background: '#000',
+    color: '#fff',
+    border: '3px solid #000',
+    borderRadius: 999,
+    padding: '6px 10px',
+    fontSize: 12,
+    fontWeight: 950,
+    whiteSpace: 'nowrap'
   },
   choiceBadge: {
     border: '3px solid #000',
