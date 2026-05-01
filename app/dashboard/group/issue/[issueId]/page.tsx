@@ -61,7 +61,7 @@ export default async function IssueDetailPage({
     redirect('/dashboard')
   }
 
-  const { data: itemsData, error: itemsError } = await supabaseServer
+  const { data: rawItems, error: itemsError } = await supabaseServer
     .from('hromadny_vydaj_polozky')
     .select(`
       id,
@@ -69,15 +69,7 @@ export default async function IssueDetailPage({
       source,
       volba,
       status,
-      created_at,
-      users (
-        id,
-        meno,
-        priezvisko,
-        email,
-        telefon,
-        typ_stravy
-      )
+      created_at
     `)
     .eq('hromadny_vydaj_id', issue.id)
     .neq('status', 'REMOVED')
@@ -87,14 +79,36 @@ export default async function IssueDetailPage({
     redirect('/dashboard/group/issue')
   }
 
+  const userIds = Array.from(
+    new Set((rawItems || []).map((item: any) => item.user_id).filter(Boolean))
+  )
+
+  let usersById = new Map<string, any>()
+
+  if (userIds.length > 0) {
+    const { data: usersData } = await supabaseServer
+      .from('users')
+      .select(`
+        id,
+        meno,
+        priezvisko,
+        email,
+        telefon,
+        typ_stravy
+      `)
+      .in('id', userIds)
+
+    usersById = new Map(
+      (usersData || []).map((u: any) => [u.id, u])
+    )
+  }
+
   const group = Array.isArray(issue.groups)
     ? issue.groups[0]
     : issue.groups
 
-  const items = (itemsData || []).map((item: any) => {
-    const itemUser = Array.isArray(item.users)
-      ? item.users[0]
-      : item.users
+  const items = (rawItems || []).map((item: any) => {
+    const itemUser = usersById.get(item.user_id)
 
     const fullName = `${itemUser?.meno || ''} ${itemUser?.priezvisko || ''}`.trim()
 
