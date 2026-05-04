@@ -27,7 +27,7 @@ body {
 
 .issue-form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
   gap: 8px;
   align-items: end;
 }
