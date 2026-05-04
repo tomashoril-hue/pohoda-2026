@@ -8,6 +8,7 @@ function todayIsoDate() {
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
   const day = String(now.getDate()).padStart(2, '0')
+
   return `${year}-${month}-${day}`
 }
 
@@ -104,17 +105,23 @@ export default function GroupIssueClient({
 
   const selectedActiveIssue = activeIssues.find(issue => issue.id === selectedIssueId) || null
 
-  const validAfterMs = selectedActiveIssue?.valid_after
-    ? new Date(selectedActiveIssue.valid_after).getTime()
+  const matchingIssue = activeIssues.find(issue => {
+    return issue.datum === datum && issue.typ_jedla === typJedla
+  }) || null
+
+  const currentIssue = selectedActiveIssue || matchingIssue || null
+
+  const validAfterMs = currentIssue?.valid_after
+    ? new Date(currentIssue.valid_after).getTime()
     : null
 
   const remainingMs =
-    selectedActiveIssue?.status === 'WAITING' && validAfterMs
+    currentIssue?.status === 'WAITING' && validAfterMs
       ? validAfterMs - now
       : 0
 
-  const isWaiting = selectedActiveIssue?.status === 'WAITING' && remainingMs > 0
-  const isActive = selectedActiveIssue?.status === 'READY' || (selectedActiveIssue?.status === 'WAITING' && remainingMs <= 0)
+  const isWaiting = currentIssue?.status === 'WAITING' && remainingMs > 0
+  const isActive = currentIssue?.status === 'READY' || (currentIssue?.status === 'WAITING' && remainingMs <= 0)
 
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -151,11 +158,57 @@ export default function GroupIssueClient({
     return choice !== 'MASO' && choice !== 'VEGE'
   }).length
 
-  const switchToActiveIssue = (issue: any) => {
+  const loadIssueToEditor = (issue: any | null) => {
+    if (!issue) {
+      setSelectedIssueId(null)
+      setSelected(members.map(member => member.userId))
+      return
+    }
+
     setSelectedIssueId(issue.id)
     setDatum(issue.datum)
     setTypJedla(issue.typ_jedla)
     setSelected(issue.userIds || [])
+  }
+
+  const handleDateChange = (value: string) => {
+    setDatum(value)
+    setMessage('')
+    setMessageType('')
+
+    const issue = activeIssues.find(item => {
+      return item.datum === value && item.typ_jedla === typJedla
+    }) || null
+
+    if (issue) {
+      setSelectedIssueId(issue.id)
+      setSelected(issue.userIds || [])
+    } else {
+      setSelectedIssueId(null)
+      setSelected(members.map(member => member.userId))
+    }
+  }
+
+  const handleMealChange = (value: string) => {
+    setTypJedla(value)
+    setMessage('')
+    setMessageType('')
+
+    const issue = activeIssues.find(item => {
+      return item.datum === datum && item.typ_jedla === value
+    }) || null
+
+    if (issue) {
+      setSelectedIssueId(issue.id)
+      setSelected(issue.userIds || [])
+    } else {
+      setSelectedIssueId(null)
+      setSelected(members.map(member => member.userId))
+    }
+  }
+
+  const switchToActiveIssue = (issue: any) => {
+    loadIssueToEditor(issue)
     setMessage('')
     setMessageType('')
   }
@@ -163,17 +216,13 @@ export default function GroupIssueClient({
   const startNewPreparation = () => {
     setSelectedIssueId(null)
     setSelected(members.map(member => member.userId))
-    setDatum(todayIsoDate())
-    setTypJedla('OBED')
     setMessage('')
     setMessageType('')
   }
 
   const markAsChanged = () => {
-    if (selectedIssueId) {
-      setMessage('')
-      setMessageType('')
-    }
+    setMessage('')
+    setMessageType('')
   }
 
   const toggleOne = (userId: string) => {
@@ -219,6 +268,12 @@ export default function GroupIssueClient({
 
     if (!selected.length) {
       setMessage('Nie sú vybrané žiadne osoby do hromadného výdaja.')
+      setMessageType('error')
+      return
+    }
+
+    if (currentIssue) {
+      setMessage('Pre tento dátum a typ jedla už existuje príprava. Použite tlačidlo Uložiť zmeny.')
       setMessageType('error')
       return
     }
@@ -275,7 +330,7 @@ export default function GroupIssueClient({
     setMessage('')
     setMessageType('')
 
-    if (!selectedActiveIssue) {
+    if (!currentIssue) {
       setMessage('Nie je vybraná žiadna potvrdená príprava.')
       setMessageType('error')
       return
@@ -301,7 +356,7 @@ export default function GroupIssueClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          issueId: selectedActiveIssue.id,
+          issueId: currentIssue.id,
           userIds: selected
         })
       })
@@ -338,7 +393,7 @@ export default function GroupIssueClient({
     setMessage('')
     setMessageType('')
 
-    if (!selectedActiveIssue) {
+    if (!currentIssue) {
       setMessage('Nie je vybraná žiadna príprava na zrušenie.')
       setMessageType('error')
       return
@@ -353,7 +408,7 @@ export default function GroupIssueClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          issueId: selectedActiveIssue.id
+          issueId: currentIssue.id
         })
       })
 
@@ -387,12 +442,12 @@ export default function GroupIssueClient({
     }
   }
 
-  const modeTitle = selectedActiveIssue
+  const modeTitle = currentIssue
     ? 'Upravujete potvrdenú prípravu'
     : 'Pripravujete hromadný výdaj'
 
-  const modeText = selectedActiveIssue
-    ? `${formatDate(selectedActiveIssue.datum)} · ${mealLabel(selectedActiveIssue.typ_jedla)} · ${statusLabel(selectedActiveIssue.status)}`
+  const modeText = currentIssue
+    ? `${formatDate(currentIssue.datum)} · ${mealLabel(currentIssue.typ_jedla)} · ${statusLabel(currentIssue.status)}`
     : `${formatDate(datum)} · ${mealLabel(typJedla)} · zatiaľ nepotvrdené`
 
   return (
@@ -411,14 +466,14 @@ export default function GroupIssueClient({
       <section
         style={{
           ...styles.modeBar,
-          background: selectedActiveIssue
+          background: currentIssue
             ? isWaiting
               ? '#fff7ed'
               : isActive
                 ? '#ecfdf5'
                 : '#fff'
             : '#eff6ff',
-          borderColor: selectedActiveIssue
+          borderColor: currentIssue
             ? isWaiting
               ? '#fed7aa'
               : isActive
@@ -427,12 +482,12 @@ export default function GroupIssueClient({
             : '#bfdbfe'
         }}
       >
-        <div>
+        <div style={styles.modeMain}>
           <b>{modeTitle}</b>
           <span>{modeText}</span>
         </div>
 
-        {selectedActiveIssue && (
+        {currentIssue && (
           <div style={styles.modeStatus}>
             {isWaiting ? (
               <>
@@ -448,7 +503,8 @@ export default function GroupIssueClient({
           </div>
         )}
       </section>
-            <section style={styles.topGrid}>
+
+      <section style={styles.topGrid}>
         <div style={styles.panel}>
           <div style={styles.panelTitle}>Nastavenie prípravy</div>
 
@@ -458,11 +514,7 @@ export default function GroupIssueClient({
               <input
                 type="date"
                 value={datum}
-                disabled={!!selectedActiveIssue}
-                onChange={e => {
-                  setDatum(e.target.value)
-                  setSelectedIssueId(null)
-                }}
+                onChange={e => handleDateChange(e.target.value)}
                 style={styles.input}
               />
             </label>
@@ -471,11 +523,7 @@ export default function GroupIssueClient({
               <span>Jedlo</span>
               <select
                 value={typJedla}
-                disabled={!!selectedActiveIssue}
-                onChange={e => {
-                  setTypJedla(e.target.value)
-                  setSelectedIssueId(null)
-                }}
+                onChange={e => handleMealChange(e.target.value)}
                 style={styles.input}
               >
                 <option value="OBED">OBED</option>
@@ -493,19 +541,19 @@ export default function GroupIssueClient({
             <div
               style={{
                 ...styles.waitNotice,
-                background: selectedActiveIssue && isWaiting ? '#fee2e2' : '#fff7ed',
-                color: selectedActiveIssue && isWaiting ? '#991b1b' : '#9a3412',
-                borderColor: selectedActiveIssue && isWaiting ? '#fecaca' : '#fed7aa'
+                background: currentIssue && isWaiting ? '#fee2e2' : '#fff7ed',
+                color: currentIssue && isWaiting ? '#991b1b' : '#9a3412',
+                borderColor: currentIssue && isWaiting ? '#fecaca' : '#fed7aa'
               }}
             >
-              {selectedActiveIssue ? (
+              {currentIssue ? (
                 isWaiting ? (
                   <>
                     Úprava poverenej osoby ešte nie je platná. Ostáva: <b>{formatCountdown(remainingMs)}</b>
                   </>
                 ) : (
                   <>
-                    Príprava poverenej osoby je už platná.
+                    Príprava poverenej osoby je platná.
                   </>
                 )
               ) : (
@@ -537,7 +585,7 @@ export default function GroupIssueClient({
           ) : (
             <div style={styles.activeList}>
               {activeIssues.map((item: any) => {
-                const active = selectedIssueId === item.id
+                const active = currentIssue?.id === item.id
 
                 return (
                   <button
@@ -636,7 +684,7 @@ export default function GroupIssueClient({
         </div>
 
         <div style={styles.actionRight}>
-          {selectedActiveIssue ? (
+          {currentIssue ? (
             <>
               <button
                 type="button"
@@ -822,10 +870,15 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid',
     borderRadius: 16,
     padding: 12,
-    display: 'flex',
-    justifyContent: 'space-between',
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
     gap: 10,
     alignItems: 'center'
+  },
+  modeMain: {
+    minWidth: 0,
+    display: 'grid',
+    gap: 5
   },
   modeStatus: {
     background: '#111827',
@@ -871,7 +924,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   formGrid: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     gap: 8
   },
   field: {
@@ -885,14 +938,16 @@ const styles: Record<string, React.CSSProperties> = {
   input: {
     width: '100%',
     minWidth: 0,
+    maxWidth: '100%',
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
     borderRadius: 12,
-    padding: '10px 10px',
-    fontSize: 14,
+    padding: '10px 8px',
+    fontSize: 13,
     fontWeight: 800,
     background: '#fff',
-    color: '#111827'
+    color: '#111827',
+    overflow: 'hidden'
   },
   metaLine: {
     marginTop: 10,
