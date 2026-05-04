@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 function todayIsoDate() {
@@ -37,6 +37,15 @@ function formatDateTime(value: string | null) {
   } catch {
     return value
   }
+}
+
+function formatCountdown(ms: number) {
+  const safeMs = Math.max(0, ms)
+  const totalSeconds = Math.floor(safeMs / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
 function mealLabel(value: string) {
@@ -83,8 +92,29 @@ export default function GroupIssueClient({
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now())
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [])
 
   const selectedActiveIssue = activeIssues.find(issue => issue.id === selectedIssueId) || null
+
+  const validAfterMs = selectedActiveIssue?.valid_after
+    ? new Date(selectedActiveIssue.valid_after).getTime()
+    : null
+
+  const remainingMs =
+    selectedActiveIssue?.status === 'WAITING' && validAfterMs
+      ? validAfterMs - now
+      : 0
+
+  const isWaiting = selectedActiveIssue?.status === 'WAITING' && remainingMs > 0
+  const isActive = selectedActiveIssue?.status === 'READY' || (selectedActiveIssue?.status === 'WAITING' && remainingMs <= 0)
 
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -133,12 +163,21 @@ export default function GroupIssueClient({
   const startNewPreparation = () => {
     setSelectedIssueId(null)
     setSelected(members.map(member => member.userId))
+    setDatum(todayIsoDate())
+    setTypJedla('OBED')
     setMessage('')
     setMessageType('')
   }
 
+  const markAsChanged = () => {
+    if (selectedIssueId) {
+      setMessage('')
+      setMessageType('')
+    }
+  }
+
   const toggleOne = (userId: string) => {
-    setSelectedIssueId(null)
+    markAsChanged()
 
     setSelected(prev =>
       prev.includes(userId)
@@ -148,7 +187,7 @@ export default function GroupIssueClient({
   }
 
   const toggleFiltered = () => {
-    setSelectedIssueId(null)
+    markAsChanged()
 
     if (allFilteredSelected) {
       setSelected(prev =>
@@ -165,24 +204,18 @@ export default function GroupIssueClient({
   }
 
   const selectAll = () => {
-    setSelectedIssueId(null)
+    markAsChanged()
     setSelected(members.map(member => member.userId))
   }
 
   const clearSelected = () => {
-    setSelectedIssueId(null)
+    markAsChanged()
     setSelected([])
   }
 
   const confirmPreparation = async () => {
     setMessage('')
     setMessageType('')
-
-    if (selectedActiveIssue) {
-      setMessage('Táto príprava už je potvrdená. Ak ju chcete zmeniť, najprv ju zrušte alebo neskôr doplníme úpravu existujúcej prípravy.')
-      setMessageType('error')
-      return
-    }
 
     if (!selected.length) {
       setMessage('Nie sú vybrané žiadne osoby do hromadného výdaja.')
@@ -238,6 +271,130 @@ export default function GroupIssueClient({
     }
   }
 
+  const updatePreparation = async () => {
+    setMessage('')
+    setMessageType('')
+
+    if (!selectedActiveIssue) {
+      setMessage('Nie je vybraná žiadna potvrdená príprava.')
+      setMessageType('error')
+      return
+    }
+
+    if (!selected.length) {
+      setMessage('Príprava musí obsahovať aspoň jednu osobu.')
+      setMessageType('error')
+      return
+    }
+
+    const confirmText =
+      myRole === 'POVERENY'
+        ? `Uložiť zmeny prípravy pre ${selected.length} osôb? Po úprave začne znovu plynúť 15 minút.`
+        : `Uložiť zmeny prípravy pre ${selected.length} osôb?`
+
+    if (!confirm(confirmText)) return
+
+    setLoading(true)
+
+    try {
+      const res = await fetch('/api/group/issue/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          issueId: selectedActiveIssue.id,
+          userIds: selected
+        })
+      })
+
+      const text = await res.text()
+      let json: any = {}
+
+      try {
+        json = text ? JSON.parse(text) : {}
+      } catch {
+        setMessage('Server vrátil neplatnú odpoveď.')
+        setMessageType('error')
+        return
+      }
+
+      if (!res.ok || json.error) {
+        setMessage(json.error || 'Zmeny prípravy sa nepodarilo uložiť.')
+        setMessageType('error')
+        return
+      }
+
+      setMessage(json.message || 'Zmeny prípravy boli uložené.')
+      setMessageType('ok')
+      router.refresh()
+    } catch (err: any) {
+      setMessage('Chyba spojenia so serverom: ' + err.message)
+      setMessageType('error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const cancelPreparation = async () => {
+    setMessage('')
+    setMessageType('')
+
+    if (!selectedActiveIssue) {
+      setMessage('Nie je vybraná žiadna príprava na zrušenie.')
+      setMessageType('error')
+      return
+    }
+
+    if (!confirm('Naozaj chcete zrušiť túto prípravu hromadného výdaja?')) return
+
+    setLoading(true)
+
+    try {
+      const res = await fetch('/api/group/issue/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          issueId: selectedActiveIssue.id
+        })
+      })
+
+      const text = await res.text()
+      let json: any = {}
+
+      try {
+        json = text ? JSON.parse(text) : {}
+      } catch {
+        setMessage('Server vrátil neplatnú odpoveď.')
+        setMessageType('error')
+        return
+      }
+
+      if (!res.ok || json.error) {
+        setMessage(json.error || 'Prípravu sa nepodarilo zrušiť.')
+        setMessageType('error')
+        return
+      }
+
+      setMessage(json.message || 'Príprava bola zrušená.')
+      setMessageType('ok')
+      setSelectedIssueId(null)
+      setSelected(members.map(member => member.userId))
+      router.refresh()
+    } catch (err: any) {
+      setMessage('Chyba spojenia so serverom: ' + err.message)
+      setMessageType('error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const modeTitle = selectedActiveIssue
+    ? 'Upravujete potvrdenú prípravu'
+    : 'Pripravujete hromadný výdaj'
+
+  const modeText = selectedActiveIssue
+    ? `${formatDate(selectedActiveIssue.datum)} · ${mealLabel(selectedActiveIssue.typ_jedla)} · ${statusLabel(selectedActiveIssue.status)}`
+    : `${formatDate(datum)} · ${mealLabel(typJedla)} · zatiaľ nepotvrdené`
+
   return (
     <div style={styles.screen}>
       <header style={styles.mobileHeader}>
@@ -251,7 +408,47 @@ export default function GroupIssueClient({
         </a>
       </header>
 
-      <section style={styles.topGrid}>
+      <section
+        style={{
+          ...styles.modeBar,
+          background: selectedActiveIssue
+            ? isWaiting
+              ? '#fff7ed'
+              : isActive
+                ? '#ecfdf5'
+                : '#fff'
+            : '#eff6ff',
+          borderColor: selectedActiveIssue
+            ? isWaiting
+              ? '#fed7aa'
+              : isActive
+                ? '#86efac'
+                : '#e5e7eb'
+            : '#bfdbfe'
+        }}
+      >
+        <div>
+          <b>{modeTitle}</b>
+          <span>{modeText}</span>
+        </div>
+
+        {selectedActiveIssue && (
+          <div style={styles.modeStatus}>
+            {isWaiting ? (
+              <>
+                <strong>{formatCountdown(remainingMs)}</strong>
+                <small>do aktivácie</small>
+              </>
+            ) : (
+              <>
+                <strong>Platná</strong>
+                <small>príprava</small>
+              </>
+            )}
+          </div>
+        )}
+      </section>
+            <section style={styles.topGrid}>
         <div style={styles.panel}>
           <div style={styles.panelTitle}>Nastavenie prípravy</div>
 
@@ -261,9 +458,10 @@ export default function GroupIssueClient({
               <input
                 type="date"
                 value={datum}
+                disabled={!!selectedActiveIssue}
                 onChange={e => {
-                  setSelectedIssueId(null)
                   setDatum(e.target.value)
+                  setSelectedIssueId(null)
                 }}
                 style={styles.input}
               />
@@ -273,9 +471,10 @@ export default function GroupIssueClient({
               <span>Jedlo</span>
               <select
                 value={typJedla}
+                disabled={!!selectedActiveIssue}
                 onChange={e => {
-                  setSelectedIssueId(null)
                   setTypJedla(e.target.value)
+                  setSelectedIssueId(null)
                 }}
                 style={styles.input}
               >
@@ -290,15 +489,30 @@ export default function GroupIssueClient({
             <span>{myRole}</span>
           </div>
 
-          {selectedActiveIssue && (
-            <div style={styles.activeInfo}>
-              Zobrazuje sa už potvrdená príprava: {formatDate(selectedActiveIssue.datum)} · {mealLabel(selectedActiveIssue.typ_jedla)}
-            </div>
-          )}
-
           {myRole === 'POVERENY' && (
-            <div style={styles.waitNotice}>
-              Poverená osoba: príprava bude aktívna až po 15 minútach.
+            <div
+              style={{
+                ...styles.waitNotice,
+                background: selectedActiveIssue && isWaiting ? '#fee2e2' : '#fff7ed',
+                color: selectedActiveIssue && isWaiting ? '#991b1b' : '#9a3412',
+                borderColor: selectedActiveIssue && isWaiting ? '#fecaca' : '#fed7aa'
+              }}
+            >
+              {selectedActiveIssue ? (
+                isWaiting ? (
+                  <>
+                    Úprava poverenej osoby ešte nie je platná. Ostáva: <b>{formatCountdown(remainingMs)}</b>
+                  </>
+                ) : (
+                  <>
+                    Príprava poverenej osoby je už platná.
+                  </>
+                )
+              ) : (
+                <>
+                  Poverená osoba: po potvrdení alebo úprave začne platiť 15 minútový odpočet.
+                </>
+              )}
             </div>
           )}
         </div>
@@ -421,17 +635,47 @@ export default function GroupIssueClient({
           </button>
         </div>
 
-        <button
-          type="button"
-          style={{
-            ...styles.confirmButton,
-            opacity: loading || selected.length === 0 || !!selectedActiveIssue ? 0.55 : 1
-          }}
-          disabled={loading || selected.length === 0 || !!selectedActiveIssue}
-          onClick={confirmPreparation}
-        >
-          {loading ? 'Potvrdzujem...' : selectedActiveIssue ? 'Príprava potvrdená' : 'Potvrdiť prípravu'}
-        </button>
+        <div style={styles.actionRight}>
+          {selectedActiveIssue ? (
+            <>
+              <button
+                type="button"
+                style={{
+                  ...styles.confirmButton,
+                  opacity: loading || selected.length === 0 ? 0.55 : 1
+                }}
+                disabled={loading || selected.length === 0}
+                onClick={updatePreparation}
+              >
+                {loading ? 'Ukladám...' : 'Uložiť zmeny'}
+              </button>
+
+              <button
+                type="button"
+                style={{
+                  ...styles.cancelButton,
+                  opacity: loading ? 0.55 : 1
+                }}
+                disabled={loading}
+                onClick={cancelPreparation}
+              >
+                Zrušiť prípravu
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              style={{
+                ...styles.confirmButton,
+                opacity: loading || selected.length === 0 ? 0.55 : 1
+              }}
+              disabled={loading || selected.length === 0}
+              onClick={confirmPreparation}
+            >
+              {loading ? 'Potvrdzujem...' : 'Potvrdiť prípravu'}
+            </button>
+          )}
+        </div>
       </section>
 
       {message && (
@@ -574,6 +818,24 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 900,
     whiteSpace: 'nowrap'
   },
+  modeBar: {
+    border: '1px solid',
+    borderRadius: 16,
+    padding: 12,
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 10,
+    alignItems: 'center'
+  },
+  modeStatus: {
+    background: '#111827',
+    color: '#fff',
+    borderRadius: 12,
+    padding: '8px 10px',
+    display: 'grid',
+    justifyItems: 'center',
+    minWidth: 82
+  },
   topGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
@@ -641,22 +903,9 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 850,
     color: '#374151'
   },
-  activeInfo: {
-    marginTop: 9,
-    background: '#ecfdf5',
-    color: '#166534',
-    border: '1px solid #86efac',
-    borderRadius: 12,
-    padding: 9,
-    fontSize: 12,
-    fontWeight: 850,
-    lineHeight: 1.35
-  },
   waitNotice: {
     marginTop: 9,
-    background: '#fff7ed',
-    color: '#9a3412',
-    border: '1px solid #fed7aa',
+    border: '1px solid',
     borderRadius: 12,
     padding: 9,
     fontSize: 12,
@@ -768,6 +1017,11 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 7,
     flexWrap: 'wrap'
   },
+  actionRight: {
+    display: 'flex',
+    gap: 7,
+    flexWrap: 'wrap'
+  },
   darkButton: {
     background: '#111827',
     color: '#fff',
@@ -790,6 +1044,15 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#22c55e',
     color: '#052e16',
     border: '1px solid #16a34a',
+    borderRadius: 12,
+    padding: '10px 12px',
+    fontSize: 13,
+    fontWeight: 950
+  },
+  cancelButton: {
+    background: '#fee2e2',
+    color: '#991b1b',
+    border: '1px solid #fecaca',
     borderRadius: 12,
     padding: '10px 12px',
     fontSize: 13,
