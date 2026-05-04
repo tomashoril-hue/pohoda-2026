@@ -42,10 +42,20 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const datum = normalizeDate(body.datum)
     const typJedla = normalizeMealType(body.typJedla)
+    const selectedUserIds: string[] = Array.isArray(body.userIds)
+      ? body.userIds.map((id: any) => String(id)).filter(Boolean)
+      : []
 
     if (!datum || !typJedla) {
       return NextResponse.json(
         { error: 'Chýba alebo je neplatný dátum / typ jedla.' },
+        { status: 400 }
+      )
+    }
+
+    if (!selectedUserIds.length) {
+      return NextResponse.json(
+        { error: 'Nie sú vybrané žiadne osoby do prípravy hromadného výdaja.' },
         { status: 400 }
       )
     }
@@ -75,16 +85,10 @@ export async function POST(req: NextRequest) {
 
     if (!canCreateIssue) {
       return NextResponse.json(
-        { error: 'Nemáte oprávnenie vytvoriť hromadný výdaj.' },
+        { error: 'Nemáte oprávnenie pripraviť hromadný výdaj.' },
         { status: 403 }
       )
     }
-
-    const issueStatus = myRole === 'MANAGER' ? 'READY' : 'WAITING'
-    const validAfter =
-      myRole === 'POVERENY'
-        ? new Date(Date.now() + 15 * 60 * 1000).toISOString()
-        : null
 
     const { data: existingIssue, error: existingError } = await supabaseServer
       .from('hromadne_vydaje')
@@ -103,15 +107,46 @@ export async function POST(req: NextRequest) {
     }
 
     if (existingIssue) {
-      return NextResponse.json({
-        ok: true,
-        alreadyExists: true,
-        issueId: existingIssue.id,
-        status: existingIssue.status,
-        validAfter: existingIssue.valid_after,
-        message: 'Hromadný výdaj pre tento deň a typ jedla už existuje.'
-      })
+      return NextResponse.json(
+        {
+          error:
+            'Pre tento dátum a typ jedla už existuje aktívna príprava hromadného výdaja. Najprv ju zrušte alebo upravte.'
+        },
+        { status: 400 }
+      )
     }
+
+    const { data: selectedMembers, error: selectedMembersError } = await supabaseServer
+      .from('group_members')
+      .select(`
+        user_id,
+        users (
+          id,
+          typ_stravy
+        )
+      `)
+      .eq('group_id', membership.group_id)
+      .in('user_id', selectedUserIds)
+
+    if (selectedMembersError) {
+      return NextResponse.json(
+        { error: selectedMembersError.message },
+        { status: 500 }
+      )
+    }
+
+    if (!selectedMembers || selectedMembers.length === 0) {
+      return NextResponse.json(
+        { error: 'Vybrané osoby nepatria do vašej skupiny.' },
+        { status: 400 }
+      )
+    }
+
+    const issueStatus = myRole === 'MANAGER' ? 'READY' : 'WAITING'
+    const validAfter =
+      myRole === 'POVERENY'
+        ? new Date(Date.now() + 15 * 60 * 1000).toISOString()
+        : null
 
     const now = new Date().toISOString()
 
@@ -133,35 +168,12 @@ export async function POST(req: NextRequest) {
 
     if (issueError || !issue) {
       return NextResponse.json(
-        { error: issueError?.message || 'Hromadný výdaj sa nepodarilo vytvoriť.' },
+        { error: issueError?.message || 'Prípravu hromadného výdaja sa nepodarilo vytvoriť.' },
         { status: 500 }
       )
     }
 
-    const { data: members, error: membersError } = await supabaseServer
-      .from('group_members')
-      .select(`
-        user_id,
-        users (
-          id,
-          typ_stravy
-        )
-      `)
-      .eq('group_id', membership.group_id)
-
-    if (membersError) {
-      await supabaseServer
-        .from('hromadne_vydaje')
-        .delete()
-        .eq('id', issue.id)
-
-      return NextResponse.json(
-        { error: membersError.message },
-        { status: 500 }
-      )
-    }
-
-    const userIds = (members || []).map((m: any) => m.user_id)
+    const userIds = selectedMembers.map((m: any) => m.user_id)
 
     let selections: any[] = []
 
@@ -192,7 +204,7 @@ export async function POST(req: NextRequest) {
       selections.map((s: any) => [s.user_id, normalizeChoice(s.volba)])
     )
 
-    const items = (members || []).map((member: any) => {
+    const items = selectedMembers.map((member: any) => {
       const memberUser = Array.isArray(member.users)
         ? member.users[0]
         : member.users
@@ -211,22 +223,20 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    if (items.length > 0) {
-      const { error: insertItemsError } = await supabaseServer
-        .from('hromadny_vydaj_polozky')
-        .insert(items)
+    const { error: insertItemsError } = await supabaseServer
+      .from('hromadny_vydaj_polozky')
+      .insert(items)
 
-      if (insertItemsError) {
-        await supabaseServer
-          .from('hromadne_vydaje')
-          .delete()
-          .eq('id', issue.id)
+    if (insertItemsError) {
+      await supabaseServer
+        .from('hromadne_vydaje')
+        .delete()
+        .eq('id', issue.id)
 
-        return NextResponse.json(
-          { error: insertItemsError.message },
-          { status: 500 }
-        )
-      }
+      return NextResponse.json(
+        { error: insertItemsError.message },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({
@@ -237,8 +247,8 @@ export async function POST(req: NextRequest) {
       itemsCount: items.length,
       message:
         issue.status === 'WAITING'
-          ? 'Hromadný výdaj bol vytvorený a začne platiť o 15 minút.'
-          : 'Hromadný výdaj bol vytvorený a je okamžite platný.'
+          ? 'Príprava hromadného výdaja bola potvrdená a začne platiť o 15 minút.'
+          : 'Príprava hromadného výdaja bola potvrdená a je okamžite aktívna.'
     })
   } catch (err: any) {
     return NextResponse.json(
