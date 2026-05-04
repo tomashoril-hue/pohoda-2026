@@ -15,10 +15,18 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const issueId = String(body.issueId || '').trim()
+    const itemIds: string[] = Array.isArray(body.itemIds) ? body.itemIds : []
 
     if (!issueId) {
       return NextResponse.json(
         { error: 'Chýba ID prípravy hromadného výdaja.' },
+        { status: 400 }
+      )
+    }
+
+    if (!itemIds.length) {
+      return NextResponse.json(
+        { error: 'Nie sú vybrané žiadne osoby na vyradenie.' },
         { status: 400 }
       )
     }
@@ -69,26 +77,14 @@ export async function POST(req: NextRequest) {
 
     if (myRole !== 'MANAGER' && myRole !== 'POVERENY') {
       return NextResponse.json(
-        { error: 'Nemáte oprávnenie zrušiť prípravu hromadného výdaja.' },
+        { error: 'Nemáte oprávnenie upravovať prípravu hromadného výdaja.' },
         { status: 403 }
       )
     }
 
     const now = new Date().toISOString()
 
-    const { error: updateIssueError } = await supabaseServer
-      .from('hromadne_vydaje')
-      .update({
-        status: 'CANCELLED',
-        updated_at: now
-      })
-      .eq('id', issue.id)
-
-    if (updateIssueError) {
-      return NextResponse.json({ error: updateIssueError.message }, { status: 500 })
-    }
-
-    const { error: updateItemsError } = await supabaseServer
+    const { error: updateError } = await supabaseServer
       .from('hromadny_vydaj_polozky')
       .update({
         status: 'REMOVED',
@@ -96,14 +92,15 @@ export async function POST(req: NextRequest) {
       })
       .eq('hromadny_vydaj_id', issue.id)
       .eq('status', 'PLANNED')
+      .in('id', itemIds)
 
-    if (updateItemsError) {
-      return NextResponse.json({ error: updateItemsError.message }, { status: 500 })
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
 
     return NextResponse.json({
       ok: true,
-      message: 'Príprava hromadného výdaja bola zrušená.'
+      message: 'Označené osoby boli vyradené z prípravy hromadného výdaja.'
     })
   } catch (err: any) {
     return NextResponse.json(

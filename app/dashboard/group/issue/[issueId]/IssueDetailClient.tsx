@@ -43,7 +43,7 @@ function formatCountdown(ms: number) {
 function mealLabel(value: string) {
   if (value === 'OBED') return 'OBED'
   if (value === 'VECERA') return 'VEČERA'
-  return value
+  return value || '-'
 }
 
 function choiceLabel(value: string | null) {
@@ -52,16 +52,16 @@ function choiceLabel(value: string | null) {
   return 'NEZADANÉ'
 }
 
-function isIssuedStatus(status: string) {
-  return status === 'INDIVIDUAL_ISSUED' || status === 'BULK_ISSUED'
-}
-
 function statusLabel(status: string) {
   if (status === 'PLANNED') return 'PRIPRAVENÉ'
+  if (status === 'REMOVED') return 'VYRADENÉ'
   if (status === 'BULK_ISSUED') return 'PREVZATÉ HROMADNE'
   if (status === 'INDIVIDUAL_ISSUED') return 'PREVZATÉ OSOBNE'
-  if (status === 'REMOVED') return 'VYRADENÉ'
-  return status
+  return status || '-'
+}
+
+function isTakenStatus(status: string) {
+  return status === 'INDIVIDUAL_ISSUED' || status === 'BULK_ISSUED'
 }
 
 export default function IssueDetailClient({
@@ -83,12 +83,16 @@ export default function IssueDetailClient({
   myRole: string
 }) {
   const router = useRouter()
+
   const [selected, setSelected] = useState<string[]>([])
   const [now, setNow] = useState(Date.now())
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
-  const [openGroup, setOpenGroup] = useState<'ALL' | 'MASO' | 'VEGE' | 'UNKNOWN' | 'ISSUED' | null>(null)
+
+  const [search, setSearch] = useState('')
+  const [choiceFilter, setChoiceFilter] = useState<'ALL' | 'MASO' | 'VEGE' | 'UNKNOWN'>('ALL')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PLANNED' | 'TAKEN'>('ALL')
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -102,40 +106,42 @@ export default function IssueDetailClient({
     return items.filter(item => item.status !== 'REMOVED')
   }, [items])
 
-  const selectableItems = activeItems.filter(item => {
-    return item.status === 'PLANNED'
-  })
-
-  const issuedItems = activeItems.filter(item => isIssuedStatus(item.status))
+  const plannedItems = activeItems.filter(item => item.status === 'PLANNED')
+  const takenItems = activeItems.filter(item => isTakenStatus(item.status))
   const masoItems = activeItems.filter(item => item.volba === 'MASO')
   const vegeItems = activeItems.filter(item => item.volba === 'VEGE')
   const unknownItems = activeItems.filter(item => item.volba !== 'MASO' && item.volba !== 'VEGE')
 
-  const selectedGroupItems = useMemo(() => {
-    if (openGroup === 'ALL') return activeItems
-    if (openGroup === 'MASO') return masoItems
-    if (openGroup === 'VEGE') return vegeItems
-    if (openGroup === 'UNKNOWN') return unknownItems
-    if (openGroup === 'ISSUED') return issuedItems
-    return []
-  }, [openGroup, activeItems, masoItems, vegeItems, unknownItems, issuedItems])
+  const visibleItems = useMemo(() => {
+    const q = search.trim().toLowerCase()
 
-  const openGroupTitle =
-    openGroup === 'ALL'
-      ? 'Všetky osoby'
-      : openGroup === 'MASO'
-        ? 'Zoznam MASO'
-        : openGroup === 'VEGE'
-          ? 'Zoznam VEGE'
-          : openGroup === 'UNKNOWN'
-            ? 'Zoznam NEZADANÉ'
-            : openGroup === 'ISSUED'
-              ? 'Zoznam PREVZATÉ'
-              : ''
+    return activeItems.filter(item => {
+      const matchesSearch =
+        !q ||
+        String(item.fullName || '').toLowerCase().includes(q) ||
+        String(item.email || '').toLowerCase().includes(q) ||
+        String(item.telefon || '').toLowerCase().includes(q)
 
-  const allSelected =
-    selectableItems.length > 0 &&
-    selectableItems.every(item => selected.includes(item.id))
+      const matchesChoice =
+        choiceFilter === 'ALL' ||
+        (choiceFilter === 'MASO' && item.volba === 'MASO') ||
+        (choiceFilter === 'VEGE' && item.volba === 'VEGE') ||
+        (choiceFilter === 'UNKNOWN' && item.volba !== 'MASO' && item.volba !== 'VEGE')
+
+      const matchesStatus =
+        statusFilter === 'ALL' ||
+        (statusFilter === 'PLANNED' && item.status === 'PLANNED') ||
+        (statusFilter === 'TAKEN' && isTakenStatus(item.status))
+
+      return matchesSearch && matchesChoice && matchesStatus
+    })
+  }, [activeItems, search, choiceFilter, statusFilter])
+
+  const selectableVisibleItems = visibleItems.filter(item => item.status === 'PLANNED')
+
+  const allVisibleSelected =
+    selectableVisibleItems.length > 0 &&
+    selectableVisibleItems.every(item => selected.includes(item.id))
 
   const validAfterMs = issue.validAfter
     ? new Date(issue.validAfter).getTime()
@@ -147,7 +153,19 @@ export default function IssueDetailClient({
       : 0
 
   const isWaiting = issue.status === 'WAITING' && remainingMs > 0
-  const isReady = issue.status === 'READY' || (issue.status === 'WAITING' && remainingMs <= 0)
+  const isActivePreparation =
+    issue.status === 'READY' ||
+    (issue.status === 'WAITING' && remainingMs <= 0)
+
+  const isCancelled = issue.status === 'CANCELLED'
+
+  const statusTitle = isCancelled
+    ? 'Príprava je zrušená'
+    : isWaiting
+      ? 'Príprava čaká na aktiváciu'
+      : isActivePreparation
+        ? 'Príprava je aktívna'
+        : 'Príprava hromadného výdaja'
 
   const toggleOne = (id: string) => {
     setSelected(prev =>
@@ -157,51 +175,52 @@ export default function IssueDetailClient({
     )
   }
 
-  const toggleAll = () => {
-    if (allSelected) {
-      setSelected([])
+  const toggleAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelected(prev =>
+        prev.filter(id => !selectableVisibleItems.some(item => item.id === id))
+      )
       return
     }
 
-    setSelected(selectableItems.map(item => item.id))
+    setSelected(prev => {
+      const next = new Set(prev)
+      selectableVisibleItems.forEach(item => next.add(item.id))
+      return Array.from(next)
+    })
   }
 
-  const toggleSummary = (type: 'ALL' | 'MASO' | 'VEGE' | 'UNKNOWN' | 'ISSUED') => {
-    setOpenGroup(prev => (prev === type ? null : type))
+  const clearSelection = () => {
+    setSelected([])
   }
 
-  const issueSelected = async (itemIds: string[]) => {
+  const removeSelectedFromPreparation = async () => {
     setMessage('')
     setMessageType('')
 
-    if (!itemIds.length) {
-      setMessage('Nie sú vybrané žiadne osoby.')
+    if (!selected.length) {
+      setMessage('Nie sú vybrané žiadne osoby na vyradenie.')
       setMessageType('error')
       return
     }
 
-    if (!isReady) {
-      setMessage('Hromadný výdaj ešte nie je aktívny. Počkajte na skončenie odpočtu.')
+    if (isCancelled) {
+      setMessage('Táto príprava je už zrušená.')
       setMessageType('error')
       return
     }
 
-    const confirmText =
-      itemIds.length === selectableItems.length
-        ? `Naozaj chcete vydať všetkým pripraveným osobám? Počet: ${itemIds.length}`
-        : `Naozaj chcete vydať označeným osobám? Počet: ${itemIds.length}`
-
-    if (!confirm(confirmText)) return
+    if (!confirm(`Vyradiť označené osoby z prípravy? Počet: ${selected.length}`)) return
 
     setLoading(true)
 
     try {
-      const res = await fetch('/api/group/issue/issue-selected', {
+      const res = await fetch('/api/group/issue/remove-items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           issueId: issue.id,
-          itemIds
+          itemIds: selected
         })
       })
 
@@ -217,12 +236,12 @@ export default function IssueDetailClient({
       }
 
       if (!res.ok || json.error) {
-        setMessage(json.error || 'Výdaj sa nepodarilo zapísať.')
+        setMessage(json.error || 'Osoby sa nepodarilo vyradiť z prípravy.')
         setMessageType('error')
         return
       }
 
-      setMessage(json.message || 'Výdaj bol zapísaný.')
+      setMessage(json.message || 'Označené osoby boli vyradené z prípravy.')
       setMessageType('ok')
       setSelected([])
       router.refresh()
@@ -234,15 +253,17 @@ export default function IssueDetailClient({
     }
   }
 
-  const issueAllPrepared = () => {
-    issueSelected(selectableItems.map(item => item.id))
-  }
-
-  const cancelIssue = async () => {
+  const cancelPreparation = async () => {
     setMessage('')
     setMessageType('')
 
-    if (!confirm('Naozaj chcete zrušiť tento hromadný výdaj?')) return
+    if (isCancelled) {
+      setMessage('Táto príprava je už zrušená.')
+      setMessageType('error')
+      return
+    }
+
+    if (!confirm('Naozaj chcete zrušiť celú prípravu hromadného výdaja?')) return
 
     setLoading(true)
 
@@ -265,12 +286,12 @@ export default function IssueDetailClient({
       }
 
       if (!res.ok || json.error) {
-        setMessage(json.error || 'Hromadný výdaj sa nepodarilo zrušiť.')
+        setMessage(json.error || 'Prípravu sa nepodarilo zrušiť.')
         setMessageType('error')
         return
       }
 
-      setMessage(json.message || 'Hromadný výdaj bol zrušený.')
+      setMessage(json.message || 'Príprava hromadného výdaja bola zrušená.')
       setMessageType('ok')
       setSelected([])
       router.refresh()
@@ -282,667 +303,649 @@ export default function IssueDetailClient({
     }
   }
 
-  const masoCount = masoItems.length
-  const vegeCount = vegeItems.length
-  const unknownCount = unknownItems.length
-  const issuedCount = issuedItems.length
+  const selectedPlannedCount = selected.filter(id =>
+    plannedItems.some(item => item.id === id)
+  ).length
 
   return (
-    <div style={styles.wrap}>
-      <div style={styles.infoBox}>
-        <p><b>Skupina:</b> {issue.groupName}</p>
-        <p><b>Dátum:</b> {formatDate(issue.datum)}</p>
-        <p><b>Typ jedla:</b> {mealLabel(issue.typJedla)}</p>
-        <p><b>Vaša rola:</b> {myRole}</p>
-      </div>
-
-      <div
-        style={{
-          ...styles.statusBox,
-          background: isReady ? '#56db3f' : '#f25be6'
-        }}
-      >
+    <div style={styles.app}>
+      <div style={styles.headerPanel}>
         <div>
-          <div style={styles.statusTitle}>
-            {isReady ? 'Výdaj je pripravený' : 'Výdaj čaká na aktiváciu'}
-          </div>
-
-          <div style={styles.statusText}>
-            Status: <b>{issue.status}</b>
-          </div>
-
-          {issue.validAfter && (
-            <div style={styles.statusText}>
-              Platné od: <b>{formatDateTime(issue.validAfter)}</b>
-            </div>
-          )}
+          <div style={styles.kicker}>Príprava hromadného výdaja</div>
+          <h2 style={styles.pageTitle}>
+            {issue.groupName}
+          </h2>
         </div>
 
+        <div
+          style={{
+            ...styles.statusChip,
+            background: isCancelled ? '#fee2e2' : isWaiting ? '#fff7ed' : '#dcfce7',
+            color: isCancelled ? '#991b1b' : isWaiting ? '#9a3412' : '#166534'
+          }}
+        >
+          {statusTitle}
+        </div>
+      </div>
+
+      <div style={styles.metaGrid}>
+        <div style={styles.metaItem}>
+          <span>Dátum</span>
+          <b>{formatDate(issue.datum)}</b>
+        </div>
+
+        <div style={styles.metaItem}>
+          <span>Jedlo</span>
+          <b>{mealLabel(issue.typJedla)}</b>
+        </div>
+
+        <div style={styles.metaItem}>
+          <span>Rola</span>
+          <b>{myRole}</b>
+        </div>
+
+        <div style={styles.metaItem}>
+          <span>Status</span>
+          <b>{issue.status}</b>
+        </div>
+
+        {issue.validAfter && (
+          <div style={styles.metaItemWide}>
+            <span>Platné od</span>
+            <b>{formatDateTime(issue.validAfter)}</b>
+          </div>
+        )}
+
         {issue.status === 'WAITING' && (
-          <div style={styles.countdownBox}>
-            {isWaiting ? formatCountdown(remainingMs) : '00:00'}
+          <div style={styles.countdownItem}>
+            <span>Odpočet</span>
+            <b>{isWaiting ? formatCountdown(remainingMs) : '00:00'}</b>
           </div>
         )}
       </div>
 
-      <div style={styles.summaryGrid}>
+      <div style={styles.statsGrid}>
         <button
           type="button"
           style={{
-            ...styles.summaryCard,
-            ...(openGroup === 'ALL' ? styles.summaryCardActive : {})
+            ...styles.statCard,
+            ...(statusFilter === 'ALL' && choiceFilter === 'ALL' ? styles.statActive : {})
           }}
-          onClick={() => toggleSummary('ALL')}
+          onClick={() => {
+            setStatusFilter('ALL')
+            setChoiceFilter('ALL')
+          }}
         >
-          <div style={styles.summaryNumber}>{activeItems.length}</div>
-          <div style={styles.summaryLabel}>Spolu osôb</div>
+          <b>{activeItems.length}</b>
+          <span>Spolu</span>
         </button>
 
         <button
           type="button"
           style={{
-            ...styles.summaryCard,
-            ...(openGroup === 'MASO' ? styles.summaryCardActive : {})
+            ...styles.statCard,
+            ...(statusFilter === 'PLANNED' ? styles.statActive : {})
           }}
-          onClick={() => toggleSummary('MASO')}
+          onClick={() => setStatusFilter(statusFilter === 'PLANNED' ? 'ALL' : 'PLANNED')}
         >
-          <div style={styles.summaryNumber}>{masoCount}</div>
-          <div style={styles.summaryLabel}>MASO</div>
+          <b>{plannedItems.length}</b>
+          <span>Pripravené</span>
         </button>
 
         <button
           type="button"
           style={{
-            ...styles.summaryCard,
-            ...(openGroup === 'VEGE' ? styles.summaryCardActive : {})
+            ...styles.statCard,
+            ...(choiceFilter === 'MASO' ? styles.statActive : {})
           }}
-          onClick={() => toggleSummary('VEGE')}
+          onClick={() => setChoiceFilter(choiceFilter === 'MASO' ? 'ALL' : 'MASO')}
         >
-          <div style={styles.summaryNumber}>{vegeCount}</div>
-          <div style={styles.summaryLabel}>VEGE</div>
+          <b>{masoItems.length}</b>
+          <span>MASO</span>
         </button>
 
         <button
           type="button"
           style={{
-            ...styles.summaryCard,
-            ...(openGroup === 'UNKNOWN' ? styles.summaryCardActive : {})
+            ...styles.statCard,
+            ...(choiceFilter === 'VEGE' ? styles.statActive : {})
           }}
-          onClick={() => toggleSummary('UNKNOWN')}
+          onClick={() => setChoiceFilter(choiceFilter === 'VEGE' ? 'ALL' : 'VEGE')}
         >
-          <div style={styles.summaryNumber}>{unknownCount}</div>
-          <div style={styles.summaryLabel}>Nezadané</div>
+          <b>{vegeItems.length}</b>
+          <span>VEGE</span>
         </button>
 
         <button
           type="button"
           style={{
-            ...styles.summaryCard,
-            ...(openGroup === 'ISSUED' ? styles.summaryCardActive : {}),
-            background: openGroup === 'ISSUED' ? '#56db3f' : '#eeeeee'
+            ...styles.statCard,
+            ...(choiceFilter === 'UNKNOWN' ? styles.statActive : {})
           }}
-          onClick={() => toggleSummary('ISSUED')}
+          onClick={() => setChoiceFilter(choiceFilter === 'UNKNOWN' ? 'ALL' : 'UNKNOWN')}
         >
-          <div style={styles.summaryNumber}>{issuedCount}</div>
-          <div style={styles.summaryLabel}>Prevzaté</div>
+          <b>{unknownItems.length}</b>
+          <span>Nezadané</span>
+        </button>
+
+        <button
+          type="button"
+          style={{
+            ...styles.statCard,
+            ...(statusFilter === 'TAKEN' ? styles.statActive : {})
+          }}
+          onClick={() => setStatusFilter(statusFilter === 'TAKEN' ? 'ALL' : 'TAKEN')}
+        >
+          <b>{takenItems.length}</b>
+          <span>Prevzaté</span>
         </button>
       </div>
+            <div style={styles.toolbar}>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Hľadať meno, e-mail, telefón..."
+          style={styles.searchInput}
+        />
 
-      {openGroup && (
-        <div style={styles.peoplePanel}>
-          <div style={styles.peoplePanelHeader}>
-            <div>
-              <h3 style={styles.peoplePanelTitle}>{openGroupTitle}</h3>
-              <div style={styles.peoplePanelCount}>Počet: {selectedGroupItems.length}</div>
-            </div>
+        <select
+          value={choiceFilter}
+          onChange={e => setChoiceFilter(e.target.value as any)}
+          style={styles.select}
+        >
+          <option value="ALL">Všetky jedlá</option>
+          <option value="MASO">MASO</option>
+          <option value="VEGE">VEGE</option>
+          <option value="UNKNOWN">Nezadané</option>
+        </select>
 
-            <button
-              type="button"
-              style={styles.closePanelButton}
-              onClick={() => setOpenGroup(null)}
-            >
-              Zavrieť
-            </button>
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value as any)}
+          style={styles.select}
+        >
+          <option value="ALL">Všetky stavy</option>
+          <option value="PLANNED">Pripravené</option>
+          <option value="TAKEN">Prevzaté</option>
+        </select>
+      </div>
+
+      <div style={styles.actionBar}>
+        <div style={styles.actionLeft}>
+          <button
+            type="button"
+            style={{
+              ...styles.smallButton,
+              opacity: loading || selectableVisibleItems.length === 0 || isCancelled ? 0.5 : 1
+            }}
+            disabled={loading || selectableVisibleItems.length === 0 || isCancelled}
+            onClick={toggleAllVisible}
+          >
+            {allVisibleSelected ? 'Zrušiť výber' : 'Označiť zobrazených'}
+          </button>
+
+          <button
+            type="button"
+            style={{
+              ...styles.ghostButton,
+              opacity: selected.length === 0 ? 0.5 : 1
+            }}
+            disabled={selected.length === 0}
+            onClick={clearSelection}
+          >
+            Vyčistiť
+          </button>
+
+          <div style={styles.selectedPill}>
+            Vybraní: <b>{selectedPlannedCount}</b>
           </div>
-
-          {!selectedGroupItems.length ? (
-            <div style={styles.emptyPanel}>V tejto kategórii nie je nikto.</div>
-          ) : (
-            <div style={styles.peoplePanelList}>
-              {selectedGroupItems.map(item => {
-                const issued = isIssuedStatus(item.status)
-
-                return (
-                  <div
-                    key={item.id}
-                    style={{
-                      ...styles.peoplePanelRow,
-                      background: issued ? '#eeeeee' : '#fff'
-                    }}
-                  >
-                    <div>
-                      <div style={styles.peoplePanelName}>
-                        {item.fullName || 'Bez mena'}
-                      </div>
-                      <div style={styles.peoplePanelEmail}>
-                        {item.email || '-'}
-                      </div>
-                    </div>
-
-                    <div style={styles.peoplePanelBadges}>
-                      <span
-                        style={{
-                          ...styles.panelChoiceBadge,
-                          background:
-                            item.volba === 'MASO'
-                              ? '#000'
-                              : item.volba === 'VEGE'
-                                ? '#56db3f'
-                                : '#f25be6',
-                          color: item.volba === 'MASO' ? '#fff' : '#000'
-                        }}
-                      >
-                        {choiceLabel(item.volba)}
-                      </span>
-
-                      {issued && (
-                        <span style={styles.issuedBadgeSmall}>
-                          VYDANÉ
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
         </div>
-      )}
-            <div style={styles.actionsTop}>
-        <button
-          style={{
-            ...styles.smallButton,
-            opacity: loading || selectableItems.length === 0 ? 0.55 : 1,
-            cursor: loading || selectableItems.length === 0 ? 'not-allowed' : 'pointer'
-          }}
-          onClick={toggleAll}
-          disabled={loading || selectableItems.length === 0}
-        >
-          {allSelected ? 'Zrušiť výber' : 'Označiť všetkých'}
-        </button>
 
-        <div style={styles.selectedInfo}>
-          Vybraní: <b>{selected.length}</b>
+        <div style={styles.actionRight}>
+          <button
+            type="button"
+            style={{
+              ...styles.removeButton,
+              opacity: loading || selectedPlannedCount === 0 || isCancelled ? 0.5 : 1
+            }}
+            disabled={loading || selectedPlannedCount === 0 || isCancelled}
+            onClick={removeSelectedFromPreparation}
+          >
+            Vyradiť z prípravy
+          </button>
+
+          <button
+            type="button"
+            style={{
+              ...styles.cancelButton,
+              opacity: loading || isCancelled ? 0.5 : 1
+            }}
+            disabled={loading || isCancelled}
+            onClick={cancelPreparation}
+          >
+            Zrušiť prípravu
+          </button>
         </div>
       </div>
-<div style={styles.issueActions}>
-  <div style={styles.preparedNotice}>
-    Tento zoznam je iba <b>pripravený hromadný výdaj</b>.
-    Fyzické vydanie jedla prebehne až pri QR skene pri výdajnom okienku.
-  </div>
 
-  <button
-    style={{
-      ...styles.cancelButton,
-      opacity: loading || issuedCount > 0 ? 0.55 : 1,
-      cursor: loading || issuedCount > 0 ? 'not-allowed' : 'pointer'
-    }}
-    disabled={loading || issuedCount > 0}
-    onClick={cancelIssue}
-  >
-    Zrušiť pripravený hromadný výdaj
-  </button>
-</div>
-
-      {!isReady && (
-        <div style={styles.warningBox}>
-          Výdaj ešte nie je aktívny. Tlačidlá na vydanie sa sprístupnia po skončení odpočtu.
-        </div>
-      )}
-
-      {issuedCount > 0 && (
-        <div style={styles.warningBox}>
-          Tento výdaj už obsahuje vydané osoby. Zrušenie celého hromadného výdaja je preto zablokované.
-        </div>
-      )}
+      <div style={styles.helpBox}>
+        Táto obrazovka slúži iba na <b>prípravu hromadného výdaja</b>.
+        Skutočný výdaj jedla sa bude zapisovať až neskôr cez QR sken pri výdajnom okienku.
+      </div>
 
       {message && (
         <div
           style={{
             ...styles.messageBox,
-            background: messageType === 'ok' ? '#56db3f' : '#f25be6'
+            background: messageType === 'ok' ? '#dcfce7' : '#fee2e2',
+            color: messageType === 'ok' ? '#166534' : '#991b1b',
+            borderColor: messageType === 'ok' ? '#86efac' : '#fecaca'
           }}
         >
           {message}
         </div>
       )}
 
-      <div style={styles.list}>
-        {activeItems.map(item => {
-          const isSelected = selected.includes(item.id)
-          const isIssued = isIssuedStatus(item.status)
+      <div style={styles.tableWrap}>
+        <div style={styles.tableHeader}>
+          <div></div>
+          <div>Osoba</div>
+          <div>Jedlo</div>
+          <div>Stav</div>
+          <div>Zdroj</div>
+        </div>
 
-          return (
-            <div
-              key={item.id}
-              style={{
-                ...styles.itemCard,
-                background: isIssued ? '#eeeeee' : isSelected ? '#56db3f' : '#fff',
-                opacity: isIssued ? 0.78 : 1,
-                borderColor: isIssued ? '#777' : '#000'
-              }}
-            >
-              <div style={styles.checkCol}>
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  disabled={isIssued || loading}
-                  onChange={() => toggleOne(item.id)}
-                  style={styles.checkbox}
-                />
-              </div>
+        {!visibleItems.length ? (
+          <div style={styles.emptyState}>
+            Nenašli sa žiadne osoby podľa zvolených filtrov.
+          </div>
+        ) : (
+          <div style={styles.rows}>
+            {visibleItems.map(item => {
+              const selectedNow = selected.includes(item.id)
+              const taken = isTakenStatus(item.status)
+              const planned = item.status === 'PLANNED'
 
-              <div style={styles.personCol}>
+              return (
                 <div
+                  key={item.id}
                   style={{
-                    ...styles.name,
-                    textDecoration: isIssued ? 'line-through' : 'none'
+                    ...styles.row,
+                    background: taken ? '#f3f4f6' : selectedNow ? '#ecfdf5' : '#fff',
+                    borderColor: selectedNow ? '#22c55e' : '#e5e7eb',
+                    opacity: taken ? 0.72 : 1
                   }}
                 >
-                  {item.fullName || 'Bez mena'}
+                  <div style={styles.checkCell}>
+                    <input
+                      type="checkbox"
+                      checked={selectedNow}
+                      disabled={!planned || loading || isCancelled}
+                      onChange={() => toggleOne(item.id)}
+                      style={styles.checkbox}
+                    />
+                  </div>
+
+                  <div style={styles.personCell}>
+                    <div style={styles.personName}>
+                      {item.fullName || 'Bez mena'}
+                    </div>
+
+                    <div style={styles.personMeta}>
+                      {item.email || '-'}
+                      {item.telefon ? ` · ${item.telefon}` : ''}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span
+                      style={{
+                        ...styles.choiceBadge,
+                        background:
+                          item.volba === 'MASO'
+                            ? '#111827'
+                            : item.volba === 'VEGE'
+                              ? '#dcfce7'
+                              : '#fef3c7',
+                        color:
+                          item.volba === 'MASO'
+                            ? '#fff'
+                            : item.volba === 'VEGE'
+                              ? '#166534'
+                              : '#92400e'
+                      }}
+                    >
+                      {choiceLabel(item.volba)}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span
+                      style={{
+                        ...styles.statusBadge,
+                        background:
+                          item.status === 'PLANNED'
+                            ? '#e0f2fe'
+                            : taken
+                              ? '#e5e7eb'
+                              : '#fee2e2',
+                        color:
+                          item.status === 'PLANNED'
+                            ? '#075985'
+                            : taken
+                              ? '#374151'
+                              : '#991b1b'
+                      }}
+                    >
+                      {statusLabel(item.status)}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span style={styles.sourceBadge}>
+                      {item.source === 'QR_EXTRA' ? 'Mimo skupiny' : 'Skupina'}
+                    </span>
+                  </div>
                 </div>
-
-                <div style={styles.email}>
-                  {item.email || '-'}
-                </div>
-
-                {item.telefon && (
-                  <div style={styles.phone}>
-                    {item.telefon}
-                  </div>
-                )}
-
-                {isIssued && (
-                  <div style={styles.issuedText}>
-                    Táto osoba už jedlo prevzala pri výdajnom okienku.
-                  </div>
-                )}
-              </div>
-
-              <div style={styles.metaCol}>
-                {isIssued && (
-                  <div style={styles.issuedBadge}>
-                    PREVZATÉ
-                  </div>
-                )}
-
-                <div
-                  style={{
-                    ...styles.choiceBadge,
-                    background:
-                      item.volba === 'MASO'
-                        ? '#000'
-                        : item.volba === 'VEGE'
-                          ? '#56db3f'
-                          : '#f25be6',
-                    color: item.volba === 'MASO' ? '#fff' : '#000'
-                  }}
-                >
-                  {choiceLabel(item.volba)}
-                </div>
-
-                <div style={styles.itemStatus}>
-  {statusLabel(item.status)}
-</div>
-
-                {item.source === 'QR_EXTRA' && (
-                  <div style={styles.sourceBadge}>
-                    mimo skupiny
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        })}
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  wrap: {
-    marginTop: 24
-  },
-  infoBox: {
-    background: '#f25be6',
-    border: '3px solid #000',
-    borderRadius: 20,
-    padding: 18,
-    fontSize: 18,
-    fontWeight: 700
-  },
-  statusBox: {
-    marginTop: 18,
-    border: '3px solid #000',
-    borderRadius: 22,
-    padding: 16,
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) auto',
-    gap: 16,
-    alignItems: 'center'
-  },
-  statusTitle: {
-    fontSize: 22,
-    fontWeight: 950,
-    marginBottom: 5
-  },
-  statusText: {
-    fontSize: 15,
-    fontWeight: 800,
-    lineHeight: 1.4
-  },
-  countdownBox: {
-    background: '#000',
-    color: '#fff',
-    borderRadius: 18,
-    padding: '12px 16px',
-    fontSize: 28,
-    fontWeight: 950,
-    letterSpacing: 1,
-    minWidth: 100,
-    textAlign: 'center'
-  },
-  summaryGrid: {
+  app: {
     marginTop: 18,
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-    gap: 12
+    gap: 12,
+    color: '#111827'
   },
-  summaryCard: {
-    border: '3px solid #000',
+  headerPanel: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
     borderRadius: 18,
-    padding: 14,
-    background: '#fff',
-    textAlign: 'center',
-    cursor: 'pointer',
-    color: '#000'
-  },
-  summaryCardActive: {
-    background: '#56db3f',
-    boxShadow: '5px 5px 0 #000'
-  },
-  summaryNumber: {
-    fontSize: 30,
-    fontWeight: 950,
-    lineHeight: 1
-  },
-  summaryLabel: {
-    marginTop: 5,
-    fontSize: 13,
-    fontWeight: 900,
-    textTransform: 'uppercase'
-  },
-  peoplePanel: {
-    marginTop: 16,
-    background: '#fff',
-    border: '3px solid #000',
-    borderRadius: 22,
     padding: 16,
-    boxShadow: '6px 6px 0 #f25be6'
-  },
-  peoplePanelHeader: {
     display: 'flex',
     justifyContent: 'space-between',
-    gap: 12,
     alignItems: 'center',
-    flexWrap: 'wrap',
-    marginBottom: 12
+    gap: 12,
+    boxShadow: '0 8px 24px rgba(0,0,0,0.06)'
   },
-  peoplePanelTitle: {
-    margin: 0,
-    fontSize: 22,
-    fontWeight: 950
+  kicker: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: '#6b7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4
   },
-  peoplePanelCount: {
-    marginTop: 4,
-    fontSize: 14,
-    fontWeight: 850,
-    opacity: 0.75
-  },
-  closePanelButton: {
-    background: '#000',
-    color: '#fff',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '9px 13px',
-    fontWeight: 950
-  },
-  emptyPanel: {
-    background: '#f25be6',
-    border: '3px solid #000',
-    borderRadius: 16,
-    padding: 12,
+  pageTitle: {
+    margin: '4px 0 0',
+    fontSize: 24,
+    lineHeight: 1.1,
     fontWeight: 900
   },
-  peoplePanelList: {
-    display: 'grid',
-    gap: 10,
-    maxHeight: 360,
-    overflowY: 'auto',
-    paddingRight: 4
+  statusChip: {
+    borderRadius: 999,
+    padding: '8px 12px',
+    fontSize: 13,
+    fontWeight: 900,
+    whiteSpace: 'nowrap'
   },
-  peoplePanelRow: {
-    border: '3px solid #000',
+  metaGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+    gap: 8
+  },
+  metaItem: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 14,
+    padding: '10px 12px',
+    display: 'grid',
+    gap: 2
+  },
+  metaItemWide: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 14,
+    padding: '10px 12px',
+    display: 'grid',
+    gap: 2
+  },
+  countdownItem: {
+    background: '#111827',
+    color: '#fff',
+    borderRadius: 14,
+    padding: '10px 12px',
+    display: 'grid',
+    gap: 2
+  },
+  statsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))',
+    gap: 8
+  },
+  statCard: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
     borderRadius: 16,
-    padding: 12,
+    padding: '10px 8px',
+    textAlign: 'center',
+    color: '#111827',
+    cursor: 'pointer',
+    boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+  },
+  statActive: {
+    borderColor: '#22c55e',
+    background: '#ecfdf5',
+    boxShadow: '0 0 0 2px rgba(34,197,94,0.15)'
+  },
+  toolbar: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 16,
+    padding: 10,
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) auto',
-    gap: 10,
-    alignItems: 'center'
+    gridTemplateColumns: 'minmax(0, 1fr) 150px 150px',
+    gap: 8
   },
-  peoplePanelName: {
-    fontSize: 16,
-    fontWeight: 950,
-    overflowWrap: 'anywhere'
+  searchInput: {
+    width: '100%',
+    boxSizing: 'border-box',
+    border: '1px solid #d1d5db',
+    borderRadius: 12,
+    padding: '10px 12px',
+    fontSize: 14,
+    fontWeight: 700,
+    outline: 'none'
   },
-  peoplePanelEmail: {
-    marginTop: 3,
+  select: {
+    width: '100%',
+    border: '1px solid #d1d5db',
+    borderRadius: 12,
+    padding: '10px 10px',
     fontSize: 13,
     fontWeight: 800,
-    opacity: 0.72,
-    overflowWrap: 'anywhere'
+    background: '#fff',
+    color: '#111827'
   },
-  peoplePanelBadges: {
-    display: 'flex',
-    gap: 6,
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end'
-  },
-  panelChoiceBadge: {
-    border: '2px solid #000',
-    borderRadius: 999,
-    padding: '5px 8px',
-    fontSize: 12,
-    fontWeight: 950,
-    whiteSpace: 'nowrap'
-  },
-  issuedBadgeSmall: {
-    background: '#000',
-    color: '#fff',
-    border: '2px solid #000',
-    borderRadius: 999,
-    padding: '5px 8px',
-    fontSize: 12,
-    fontWeight: 950,
-    whiteSpace: 'nowrap'
-  },
-  actionsTop: {
-    marginTop: 18,
+  actionBar: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 16,
+    padding: 10,
     display: 'flex',
     justifyContent: 'space-between',
+    gap: 10,
+    flexWrap: 'wrap'
+  },
+  actionLeft: {
+    display: 'flex',
+    gap: 8,
     alignItems: 'center',
-    gap: 12,
+    flexWrap: 'wrap'
+  },
+  actionRight: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
     flexWrap: 'wrap'
   },
   smallButton: {
-    background: '#000',
+    background: '#111827',
     color: '#fff',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '11px 16px',
-    fontSize: 15,
-    fontWeight: 950
-  },
-  selectedInfo: {
-    fontWeight: 900,
-    fontSize: 16
-  },
-  issueActions: {
-    marginTop: 14,
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-    gap: 12
-  },
-
-  preparedNotice: {
-  background: '#fff',
-  color: '#000',
-  border: '3px solid #000',
-  borderRadius: 20,
-  padding: 14,
-  fontSize: 15,
-  fontWeight: 850,
-  lineHeight: 1.4
-},
-
-  issueButton: {
-    background: '#000',
-    color: '#fff',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '14px 18px',
-    fontSize: 16,
-    fontWeight: 950
-  },
-  issueAllButton: {
-    background: '#56db3f',
-    color: '#000',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '14px 18px',
-    fontSize: 16,
-    fontWeight: 950
-  },
-  cancelButton: {
-    background: '#f25be6',
-    color: '#000',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '14px 18px',
-    fontSize: 16,
-    fontWeight: 950
-  },
-  warningBox: {
-    marginTop: 14,
-    background: '#fff',
-    border: '3px solid #000',
-    borderRadius: 18,
-    padding: 14,
-    fontWeight: 850,
-    lineHeight: 1.35
-  },
-  messageBox: {
-    marginTop: 14,
-    border: '3px solid #000',
-    borderRadius: 18,
-    padding: 14,
+    border: 0,
+    borderRadius: 12,
+    padding: '10px 12px',
+    fontSize: 13,
     fontWeight: 900
   },
-  list: {
-    marginTop: 18,
-    display: 'grid',
-    gap: 12
+  ghostButton: {
+    background: '#f3f4f6',
+    color: '#111827',
+    border: '1px solid #e5e7eb',
+    borderRadius: 12,
+    padding: '9px 12px',
+    fontSize: 13,
+    fontWeight: 900
   },
-  itemCard: {
-    border: '3px solid #000',
-    borderRadius: 20,
-    padding: 14,
-    display: 'grid',
-    gridTemplateColumns: 'auto minmax(0, 1fr) auto',
-    gap: 12,
-    alignItems: 'center'
+  selectedPill: {
+    background: '#f3f4f6',
+    borderRadius: 999,
+    padding: '8px 11px',
+    fontSize: 13,
+    fontWeight: 800
   },
-  checkCol: {
+  removeButton: {
+    background: '#fff7ed',
+    color: '#9a3412',
+    border: '1px solid #fed7aa',
+    borderRadius: 12,
+    padding: '10px 12px',
+    fontSize: 13,
+    fontWeight: 900
+  },
+  cancelButton: {
+    background: '#fee2e2',
+    color: '#991b1b',
+    border: '1px solid #fecaca',
+    borderRadius: 12,
+    padding: '10px 12px',
+    fontSize: 13,
+    fontWeight: 900
+  },
+  helpBox: {
+    background: '#f8fafc',
+    border: '1px solid #e5e7eb',
+    borderRadius: 14,
+    padding: 12,
+    fontSize: 13,
+    fontWeight: 700,
+    lineHeight: 1.45,
+    color: '#374151'
+  },
+  messageBox: {
+    border: '1px solid',
+    borderRadius: 14,
+    padding: 12,
+    fontSize: 13,
+    fontWeight: 850
+  },
+  tableWrap: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 18,
+    overflow: 'hidden',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.06)'
+  },
+  tableHeader: {
+    display: 'grid',
+    gridTemplateColumns: '34px minmax(0, 1fr) 92px 130px 92px',
+    gap: 8,
+    alignItems: 'center',
+    padding: '10px 12px',
+    background: '#f9fafb',
+    borderBottom: '1px solid #e5e7eb',
+    fontSize: 11,
+    fontWeight: 900,
+    color: '#6b7280',
+    textTransform: 'uppercase'
+  },
+  rows: {
+    display: 'grid'
+  },
+  row: {
+    display: 'grid',
+    gridTemplateColumns: '34px minmax(0, 1fr) 92px 130px 92px',
+    gap: 8,
+    alignItems: 'center',
+    padding: '10px 12px',
+    borderBottom: '1px solid #e5e7eb'
+  },
+  checkCell: {
     display: 'flex',
     alignItems: 'center'
   },
   checkbox: {
-    width: 22,
-    height: 22
+    width: 18,
+    height: 18
   },
-  personCol: {
+  personCell: {
     minWidth: 0
   },
-  name: {
-    fontSize: 18,
-    fontWeight: 950,
-    lineHeight: 1.15,
-    overflowWrap: 'anywhere'
-  },
-  email: {
-    marginTop: 4,
+  personName: {
     fontSize: 14,
-    fontWeight: 800,
-    opacity: 0.75,
+    fontWeight: 900,
+    lineHeight: 1.2,
     overflowWrap: 'anywhere'
   },
-  phone: {
-    marginTop: 3,
-    fontSize: 13,
-    fontWeight: 800,
-    opacity: 0.7
-  },
-  issuedText: {
-    marginTop: 6,
-    fontSize: 13,
-    fontWeight: 950,
-    color: '#000'
-  },
-  metaCol: {
-    display: 'grid',
-    gap: 7,
-    justifyItems: 'end'
-  },
-  issuedBadge: {
-    background: '#000',
-    color: '#fff',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '6px 10px',
+  personMeta: {
+    marginTop: 2,
     fontSize: 12,
-    fontWeight: 950,
-    whiteSpace: 'nowrap'
+    fontWeight: 700,
+    color: '#6b7280',
+    overflowWrap: 'anywhere'
   },
   choiceBadge: {
-    border: '3px solid #000',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 64,
     borderRadius: 999,
-    padding: '7px 11px',
-    fontSize: 13,
-    fontWeight: 950,
+    padding: '5px 8px',
+    fontSize: 11,
+    fontWeight: 900
+  },
+  statusBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    padding: '5px 8px',
+    fontSize: 11,
+    fontWeight: 900,
     whiteSpace: 'nowrap'
   },
-  itemStatus: {
-    fontSize: 12,
-    fontWeight: 900,
-    opacity: 0.7
-  },
   sourceBadge: {
-    background: '#f25be6',
-    border: '2px solid #000',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 999,
-    padding: '4px 8px',
+    padding: '5px 8px',
     fontSize: 11,
-    fontWeight: 950
+    fontWeight: 850,
+    background: '#f3f4f6',
+    color: '#374151',
+    whiteSpace: 'nowrap'
+  },
+  emptyState: {
+    padding: 18,
+    fontSize: 14,
+    fontWeight: 800,
+    color: '#6b7280',
+    textAlign: 'center'
   }
 }
