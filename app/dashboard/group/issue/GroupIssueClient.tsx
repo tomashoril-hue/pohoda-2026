@@ -45,6 +45,13 @@ function mealLabel(value: string) {
   return value || '-'
 }
 
+function statusLabel(value: string) {
+  if (value === 'READY') return 'Aktívna'
+  if (value === 'WAITING') return 'Čaká na aktiváciu'
+  if (value === 'CANCELLED') return 'Zrušená'
+  return value || '-'
+}
+
 function choiceLabel(value: string | null) {
   if (value === 'MASO') return 'MASO'
   if (value === 'VEGE') return 'VEGE'
@@ -72,9 +79,12 @@ export default function GroupIssueClient({
   const [search, setSearch] = useState('')
   const [choiceFilter, setChoiceFilter] = useState<'ALL' | 'MASO' | 'VEGE' | 'UNKNOWN'>('ALL')
   const [selected, setSelected] = useState<string[]>(members.map(member => member.userId))
+  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
+
+  const selectedActiveIssue = activeIssues.find(issue => issue.id === selectedIssueId) || null
 
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -111,7 +121,25 @@ export default function GroupIssueClient({
     return choice !== 'MASO' && choice !== 'VEGE'
   }).length
 
+  const switchToActiveIssue = (issue: any) => {
+    setSelectedIssueId(issue.id)
+    setDatum(issue.datum)
+    setTypJedla(issue.typ_jedla)
+    setSelected(issue.userIds || [])
+    setMessage('')
+    setMessageType('')
+  }
+
+  const startNewPreparation = () => {
+    setSelectedIssueId(null)
+    setSelected(members.map(member => member.userId))
+    setMessage('')
+    setMessageType('')
+  }
+
   const toggleOne = (userId: string) => {
+    setSelectedIssueId(null)
+
     setSelected(prev =>
       prev.includes(userId)
         ? prev.filter(id => id !== userId)
@@ -120,6 +148,8 @@ export default function GroupIssueClient({
   }
 
   const toggleFiltered = () => {
+    setSelectedIssueId(null)
+
     if (allFilteredSelected) {
       setSelected(prev =>
         prev.filter(id => !filteredMembers.some(member => member.userId === id))
@@ -135,16 +165,24 @@ export default function GroupIssueClient({
   }
 
   const selectAll = () => {
+    setSelectedIssueId(null)
     setSelected(members.map(member => member.userId))
   }
 
   const clearSelected = () => {
+    setSelectedIssueId(null)
     setSelected([])
   }
 
   const confirmPreparation = async () => {
     setMessage('')
     setMessageType('')
+
+    if (selectedActiveIssue) {
+      setMessage('Táto príprava už je potvrdená. Ak ju chcete zmeniť, najprv ju zrušte alebo neskôr doplníme úpravu existujúcej prípravy.')
+      setMessageType('error')
+      return
+    }
 
     if (!selected.length) {
       setMessage('Nie sú vybrané žiadne osoby do hromadného výdaja.')
@@ -215,7 +253,7 @@ export default function GroupIssueClient({
 
       <section style={styles.topGrid}>
         <div style={styles.panel}>
-          <div style={styles.panelTitle}>Nastavenie</div>
+          <div style={styles.panelTitle}>Nastavenie prípravy</div>
 
           <div style={styles.formGrid}>
             <label style={styles.field}>
@@ -223,7 +261,10 @@ export default function GroupIssueClient({
               <input
                 type="date"
                 value={datum}
-                onChange={e => setDatum(e.target.value)}
+                onChange={e => {
+                  setSelectedIssueId(null)
+                  setDatum(e.target.value)
+                }}
                 style={styles.input}
               />
             </label>
@@ -232,7 +273,10 @@ export default function GroupIssueClient({
               <span>Jedlo</span>
               <select
                 value={typJedla}
-                onChange={e => setTypJedla(e.target.value)}
+                onChange={e => {
+                  setSelectedIssueId(null)
+                  setTypJedla(e.target.value)
+                }}
                 style={styles.input}
               >
                 <option value="OBED">OBED</option>
@@ -246,6 +290,12 @@ export default function GroupIssueClient({
             <span>{myRole}</span>
           </div>
 
+          {selectedActiveIssue && (
+            <div style={styles.activeInfo}>
+              Zobrazuje sa už potvrdená príprava: {formatDate(selectedActiveIssue.datum)} · {mealLabel(selectedActiveIssue.typ_jedla)}
+            </div>
+          )}
+
           {myRole === 'POVERENY' && (
             <div style={styles.waitNotice}>
               Poverená osoba: príprava bude aktívna až po 15 minútach.
@@ -254,7 +304,17 @@ export default function GroupIssueClient({
         </div>
 
         <div style={styles.panel}>
-          <div style={styles.panelTitle}>Aktívne prípravy</div>
+          <div style={styles.panelHeaderRow}>
+            <div style={styles.panelTitle}>Aktívne prípravy</div>
+
+            <button
+              type="button"
+              style={styles.tinyButton}
+              onClick={startNewPreparation}
+            >
+              Nová
+            </button>
+          </div>
 
           {!activeIssues.length ? (
             <div style={styles.emptySmall}>
@@ -262,22 +322,38 @@ export default function GroupIssueClient({
             </div>
           ) : (
             <div style={styles.activeList}>
-              {activeIssues.map((item: any) => (
-                <a
-                  key={item.id}
-                  href={`/dashboard/group/issue/${item.id}`}
-                  style={styles.activeIssue}
-                >
-                  <div>
-                    <b>{formatDate(item.datum)} · {mealLabel(item.typ_jedla)}</b>
-                    <span>{item.status}</span>
-                  </div>
+              {activeIssues.map((item: any) => {
+                const active = selectedIssueId === item.id
 
-                  {item.valid_after && (
-                    <small>{formatDateTime(item.valid_after)}</small>
-                  )}
-                </a>
-              ))}
+                return (
+                  <button
+                    type="button"
+                    key={item.id}
+                    onClick={() => switchToActiveIssue(item)}
+                    style={{
+                      ...styles.activeIssue,
+                      borderColor: active ? '#22c55e' : '#e5e7eb',
+                      background: active ? '#ecfdf5' : '#f9fafb'
+                    }}
+                  >
+                    <div style={styles.activeIssueTop}>
+                      <b>{formatDate(item.datum)}</b>
+                      <b>{mealLabel(item.typ_jedla)}</b>
+                    </div>
+
+                    <div style={styles.activeIssueBottom}>
+                      <span>{statusLabel(item.status)}</span>
+                      <span>{item.peopleCount || 0} osôb</span>
+                    </div>
+
+                    {item.valid_after && (
+                      <div style={styles.activeIssueTime}>
+                        Platné od: {formatDateTime(item.valid_after)}
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
@@ -304,12 +380,13 @@ export default function GroupIssueClient({
           <span>Nezadané</span>
         </button>
 
-        <button type="button" style={{ ...styles.statCard, ...styles.selectedStat }} onClick={() => {}}>
+        <button type="button" style={{ ...styles.statCard, ...styles.selectedStat }}>
           <b>{selectedMembers.length}</b>
           <span>Vybraní</span>
         </button>
       </section>
-            <section style={styles.toolbar}>
+
+      <section style={styles.toolbar}>
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
@@ -348,12 +425,12 @@ export default function GroupIssueClient({
           type="button"
           style={{
             ...styles.confirmButton,
-            opacity: loading || selected.length === 0 ? 0.55 : 1
+            opacity: loading || selected.length === 0 || !!selectedActiveIssue ? 0.55 : 1
           }}
-          disabled={loading || selected.length === 0}
+          disabled={loading || selected.length === 0 || !!selectedActiveIssue}
           onClick={confirmPreparation}
         >
-          {loading ? 'Potvrdzujem...' : 'Potvrdiť prípravu'}
+          {loading ? 'Potvrdzujem...' : selectedActiveIssue ? 'Príprava potvrdená' : 'Potvrdiť prípravu'}
         </button>
       </section>
 
@@ -509,10 +586,26 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 12,
     boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
   },
+  panelHeaderRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 8,
+    alignItems: 'center',
+    marginBottom: 10
+  },
   panelTitle: {
     fontSize: 13,
     fontWeight: 950,
     marginBottom: 10
+  },
+  tinyButton: {
+    background: '#f3f4f6',
+    color: '#111827',
+    border: '1px solid #e5e7eb',
+    borderRadius: 10,
+    padding: '6px 9px',
+    fontSize: 11,
+    fontWeight: 900
   },
   formGrid: {
     display: 'grid',
@@ -524,10 +617,12 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
     fontSize: 11,
     fontWeight: 900,
-    color: '#6b7280'
+    color: '#6b7280',
+    minWidth: 0
   },
   input: {
     width: '100%',
+    minWidth: 0,
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
     borderRadius: 12,
@@ -545,6 +640,17 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     fontWeight: 850,
     color: '#374151'
+  },
+  activeInfo: {
+    marginTop: 9,
+    background: '#ecfdf5',
+    color: '#166534',
+    border: '1px solid #86efac',
+    borderRadius: 12,
+    padding: 9,
+    fontSize: 12,
+    fontWeight: 850,
+    lineHeight: 1.35
   },
   waitNotice: {
     marginTop: 9,
@@ -570,14 +676,33 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 7
   },
   activeIssue: {
-    background: '#f9fafb',
+    width: '100%',
+    textAlign: 'left',
     border: '1px solid #e5e7eb',
     borderRadius: 12,
     padding: 10,
     color: '#111827',
-    textDecoration: 'none',
     display: 'grid',
-    gap: 3
+    gap: 5
+  },
+  activeIssueTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 8,
+    fontSize: 13
+  },
+  activeIssueBottom: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 8,
+    fontSize: 12,
+    fontWeight: 800,
+    color: '#6b7280'
+  },
+  activeIssueTime: {
+    fontSize: 11,
+    fontWeight: 800,
+    color: '#9a3412'
   },
   statsGrid: {
     display: 'grid',
@@ -608,6 +733,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   searchInput: {
     width: '100%',
+    minWidth: 0,
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
     borderRadius: 12,
@@ -618,6 +744,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   select: {
     width: '100%',
+    minWidth: 0,
     border: '1px solid #d1d5db',
     borderRadius: 12,
     padding: '10px 10px',

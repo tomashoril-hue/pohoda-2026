@@ -88,6 +88,32 @@ export default async function GroupIssuePage() {
     .in('status', ['READY', 'WAITING'])
     .order('created_at', { ascending: false })
 
+  const activeIssueIds = (activeIssuesData || []).map((issue: any) => issue.id)
+
+  let activeIssueItems: any[] = []
+
+  if (activeIssueIds.length > 0) {
+    const { data: itemsData } = await supabaseServer
+      .from('hromadny_vydaj_polozky')
+      .select('id, hromadny_vydaj_id, user_id, status')
+      .in('hromadny_vydaj_id', activeIssueIds)
+      .neq('status', 'REMOVED')
+
+    activeIssueItems = itemsData || []
+  }
+
+  const activeIssues = (activeIssuesData || []).map((issue: any) => {
+    const issueItems = activeIssueItems.filter(
+      item => item.hromadny_vydaj_id === issue.id
+    )
+
+    return {
+      ...issue,
+      userIds: issueItems.map(item => item.user_id),
+      peopleCount: issueItems.length
+    }
+  })
+
   return (
     <main style={styles.page}>
       <GroupIssueClient
@@ -97,7 +123,7 @@ export default async function GroupIssuePage() {
         }}
         myRole={role}
         members={members}
-        activeIssues={activeIssuesData || []}
+        activeIssues={activeIssues}
       />
     </main>
   )
