@@ -27,7 +27,13 @@ body {
 
 .issue-form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  grid-template-columns: minmax(180px, 1.25fr) minmax(110px, 0.75fr);
   gap: 8px;
   align-items: end;
+}
+
+@media (max-width: 700px) {
+  .issue-form-grid {
+    grid-template-columns: 1fr;
+  }
 }
