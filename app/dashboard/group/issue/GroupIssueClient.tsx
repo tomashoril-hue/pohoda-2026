@@ -68,18 +68,23 @@ function choiceLabel(value: string | null) {
   return 'NEZADANÉ'
 }
 
-function itemStatusLabel(item: any, selectedIds: string[]) {
+function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: string[]) {
   if (item.status === 'INDIVIDUAL_ISSUED') return 'PREVZAL OSOBNE'
   if (item.status === 'BULK_ISSUED') return 'PREVZATÉ HROMADNE'
 
-  if (item.status === 'REMOVED') {
-    if (item.removeReason === 'REMOVED_FROM_GROUP') return 'ODSTRÁNENÝ ZO SKUPINY'
-    if (item.removeReason === 'MOVED_TO_OTHER_GROUP') return 'PRESUNUTÝ DO INEJ SKUPINY'
-
-    return 'NEPRIPRAVENÝ'
+  if (item.status === 'REMOVED' && item.removeReason === 'REMOVED_FROM_GROUP') {
+    return 'ODSTRÁNENÝ ZO SKUPINY'
   }
 
-  if (selectedIds.includes(item.userId)) return 'PRIPRAVENÝ'
+  if (item.status === 'REMOVED' && item.removeReason === 'MOVED_TO_OTHER_GROUP') {
+    return 'PRESUNUTÝ DO INEJ SKUPINY'
+  }
+
+  const wasPrepared = savedPreparedIds.includes(item.userId)
+  const isSelectedNow = selectedIds.includes(item.userId)
+
+  if (wasPrepared !== isSelectedNow) return 'UPRAVUJE SA'
+  if (wasPrepared) return 'PRIPRAVENÝ'
 
   return 'NEPRIPRAVENÝ'
 }
@@ -142,6 +147,8 @@ export default function GroupIssueClient({
 
   const currentIssue = selectedActiveIssue || matchingIssue || null
 
+  const savedPreparedIds: string[] = currentIssue ? (currentIssue.userIds || []) : []
+
   const validAfterMs = currentIssue?.valid_after
     ? new Date(currentIssue.valid_after).getTime()
     : null
@@ -156,18 +163,60 @@ export default function GroupIssueClient({
 
   const rows = useMemo(() => {
     if (currentIssue) {
-      return (currentIssue.items || []).map((item: any) => ({
-        ...item,
-        rowId: item.id || item.userId,
-        typStravy: item.typStravy || item.volba || '',
-        isFromIssue: true
-      }))
+      const issueItems = currentIssue.items || []
+
+      const issueItemByUserId = new Map(
+        issueItems.map((item: any) => [item.userId, item])
+      )
+
+      const mergedRows = members.map((member: any) => {
+        const issueItem: any = issueItemByUserId.get(member.userId)
+
+        if (issueItem) {
+          return {
+            ...member,
+            ...issueItem,
+            rowId: issueItem.id || member.userId,
+            userId: member.userId,
+            fullName: issueItem.fullName || member.fullName,
+            email: issueItem.email || member.email,
+            telefon: issueItem.telefon || member.telefon,
+            typStravy: issueItem.typStravy || issueItem.volba || member.typStravy || '',
+            role: member.role || issueItem.role || '—',
+            isFromIssue: true
+          }
+        }
+
+        return {
+          ...member,
+          rowId: member.userId,
+          status: 'NOT_PREPARED',
+          removeReason: null,
+          typStravy: member.typStravy || '',
+          isFromIssue: false
+        }
+      })
+
+      const removedOrSpecialItems = issueItems.filter((item: any) => {
+        return !members.some((member: any) => member.userId === item.userId)
+      })
+
+      return [
+        ...mergedRows,
+        ...removedOrSpecialItems.map((item: any) => ({
+          ...item,
+          rowId: item.id || item.userId,
+          typStravy: item.typStravy || item.volba || '',
+          role: item.role || '—',
+          isFromIssue: true
+        }))
+      ]
     }
 
     return members.map((member: any) => ({
       ...member,
       rowId: member.userId,
-      status: 'PLANNED',
+      status: 'NOT_PREPARED',
       removeReason: null,
       isFromIssue: false
     }))
@@ -379,7 +428,7 @@ export default function GroupIssueClient({
     }
 
     if (currentIssue) {
-      setMessage('Pre tento dátum a typ jedla už existuje príprava. Použite tlačidlo Uložiť zmeny.')
+      setMessage('Pre tento dátum a typ jedla už existuje príprava. Použite tlačidlo Potvrdiť úpravu.')
       setMessageType('error')
       return
     }
@@ -450,8 +499,8 @@ export default function GroupIssueClient({
 
     const confirmText =
       myRole === 'POVERENY'
-        ? `Uložiť zmeny prípravy pre ${selected.length} osôb? Po úprave začne znovu plynúť 15 minút.`
-        : `Uložiť zmeny prípravy pre ${selected.length} osôb?`
+        ? `Potvrdiť úpravu prípravy pre ${selected.length} osôb? Po úprave začne znovu plynúť 15 minút.`
+        : `Potvrdiť úpravu prípravy pre ${selected.length} osôb?`
 
     if (!confirm(confirmText)) return
 
@@ -479,12 +528,12 @@ export default function GroupIssueClient({
       }
 
       if (!res.ok || json.error) {
-        setMessage(json.error || 'Zmeny prípravy sa nepodarilo uložiť.')
+        setMessage(json.error || 'Úpravu prípravy sa nepodarilo potvrdiť.')
         setMessageType('error')
         return
       }
 
-      setMessage(json.message || 'Zmeny prípravy boli uložené.')
+      setMessage(json.message || 'Úprava prípravy bola potvrdená.')
       setMessageType('ok')
       router.refresh()
     } catch (err: any) {
@@ -842,7 +891,7 @@ export default function GroupIssueClient({
                 disabled={loading || selected.length === 0}
                 onClick={updatePreparation}
               >
-                {loading ? 'Ukladám...' : 'Uložiť zmeny'}
+                {loading ? 'Ukladám...' : 'Potvrdiť úpravu'}
               </button>
 
               <button
@@ -904,6 +953,7 @@ export default function GroupIssueClient({
             const isSelected = selected.includes(row.userId)
             const choice = String(row.typStravy || row.volba || '').toUpperCase()
             const selectable = canSelectRow(row, currentIssue)
+            const statusText = itemStatusLabel(row, selected, savedPreparedIds)
             const isRemovedFromGroup =
               row.status === 'REMOVED' && row.removeReason === 'REMOVED_FROM_GROUP'
 
@@ -984,22 +1034,26 @@ export default function GroupIssueClient({
                       background:
                         isRemovedFromGroup
                           ? '#fee2e2'
-                          : isSelected
-                            ? '#dbeafe'
-                            : row.status === 'INDIVIDUAL_ISSUED' || row.status === 'BULK_ISSUED'
-                              ? '#dcfce7'
-                              : '#f3f4f6',
+                          : statusText === 'UPRAVUJE SA'
+                            ? '#ffedd5'
+                            : statusText === 'PRIPRAVENÝ'
+                              ? '#dbeafe'
+                              : row.status === 'INDIVIDUAL_ISSUED' || row.status === 'BULK_ISSUED'
+                                ? '#dcfce7'
+                                : '#f3f4f6',
                       color:
                         isRemovedFromGroup
                           ? '#991b1b'
-                          : isSelected
-                            ? '#1d4ed8'
-                            : row.status === 'INDIVIDUAL_ISSUED' || row.status === 'BULK_ISSUED'
-                              ? '#166534'
-                              : '#374151'
+                          : statusText === 'UPRAVUJE SA'
+                            ? '#9a3412'
+                            : statusText === 'PRIPRAVENÝ'
+                              ? '#1d4ed8'
+                              : row.status === 'INDIVIDUAL_ISSUED' || row.status === 'BULK_ISSUED'
+                                ? '#166534'
+                                : '#374151'
                     }}
                   >
-                    {itemStatusLabel(row, selected)}
+                    {statusText}
                   </span>
                 </div>
               </div>

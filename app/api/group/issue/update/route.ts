@@ -116,6 +116,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const selectedSet = new Set(selectedMembers.map((m: any) => m.user_id))
     const now = new Date().toISOString()
 
     const newStatus = myRole === 'POVERENY' ? 'WAITING' : 'READY'
@@ -140,17 +141,17 @@ export async function POST(req: NextRequest) {
 
     const { data: currentItems, error: currentItemsError } = await supabaseServer
       .from('hromadny_vydaj_polozky')
-      .select('id, user_id, status')
+      .select('id, user_id, status, remove_reason')
       .eq('hromadny_vydaj_id', issue.id)
 
     if (currentItemsError) {
       return NextResponse.json({ error: currentItemsError.message }, { status: 500 })
     }
 
-    const selectedSet = new Set(selectedMembers.map((m: any) => m.user_id))
-
     const plannedToRemove = (currentItems || [])
-      .filter((item: any) => item.status === 'PLANNED' && !selectedSet.has(item.user_id))
+      .filter((item: any) => {
+        return item.status === 'PLANNED' && !selectedSet.has(item.user_id)
+      })
       .map((item: any) => item.id)
 
     if (plannedToRemove.length > 0) {
@@ -158,6 +159,9 @@ export async function POST(req: NextRequest) {
         .from('hromadny_vydaj_polozky')
         .update({
           status: 'REMOVED',
+          remove_reason: 'MANUAL',
+          removed_at: now,
+          removed_by: user.id,
           updated_at: now
         })
         .in('id', plannedToRemove)
@@ -167,14 +171,38 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const activeUserIds = new Set(
-      (currentItems || [])
-        .filter((item: any) => item.status !== 'REMOVED')
-        .map((item: any) => item.user_id)
+    const removedItemsToRestore = (currentItems || [])
+      .filter((item: any) => {
+        return (
+          item.status === 'REMOVED' &&
+          item.remove_reason !== 'REMOVED_FROM_GROUP' &&
+          selectedSet.has(item.user_id)
+        )
+      })
+
+    if (removedItemsToRestore.length > 0) {
+      const { error: restoreError } = await supabaseServer
+        .from('hromadny_vydaj_polozky')
+        .update({
+          status: 'PLANNED',
+          remove_reason: null,
+          removed_at: null,
+          removed_by: null,
+          updated_at: now
+        })
+        .in('id', removedItemsToRestore.map((item: any) => item.id))
+
+      if (restoreError) {
+        return NextResponse.json({ error: restoreError.message }, { status: 500 })
+      }
+    }
+
+    const existingUserIds = new Set(
+      (currentItems || []).map((item: any) => item.user_id)
     )
 
     const usersToAdd = selectedMembers.filter((member: any) => {
-      return !activeUserIds.has(member.user_id)
+      return !existingUserIds.has(member.user_id)
     })
 
     let selections: any[] = []
@@ -233,8 +261,8 @@ export async function POST(req: NextRequest) {
       validAfter: newValidAfter,
       message:
         newStatus === 'WAITING'
-          ? 'Zmeny prípravy boli uložené. Príprava začne platiť o 15 minút.'
-          : 'Zmeny prípravy boli uložené a sú aktívne.'
+          ? 'Úprava prípravy bola potvrdená. Príprava začne platiť o 15 minút.'
+          : 'Úprava prípravy bola potvrdená a je aktívna.'
     })
   } catch (err: any) {
     return NextResponse.json(
