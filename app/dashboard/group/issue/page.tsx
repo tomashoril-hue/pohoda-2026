@@ -70,9 +70,15 @@ export default async function GroupIssuePage() {
       priezvisko: memberUser?.priezvisko || '',
       email: memberUser?.email || '',
       telefon: memberUser?.telefon || '',
-      typStravy: memberUser?.typ_stravy || ''
+      typStravy: memberUser?.typ_stravy || '',
+      status: 'PLANNED',
+      removeReason: null
     }
   })
+
+  const memberRoleMap = new Map(
+    members.map((member: any) => [member.userId, member.role])
+  )
 
   const { data: activeIssuesData } = await supabaseServer
     .from('hromadne_vydaje')
@@ -95,22 +101,73 @@ export default async function GroupIssuePage() {
   if (activeIssueIds.length > 0) {
     const { data: itemsData } = await supabaseServer
       .from('hromadny_vydaj_polozky')
-      .select('id, hromadny_vydaj_id, user_id, status')
+      .select(`
+        id,
+        hromadny_vydaj_id,
+        user_id,
+        volba,
+        status,
+        source,
+        remove_reason,
+        removed_at
+      `)
       .in('hromadny_vydaj_id', activeIssueIds)
-      .neq('status', 'REMOVED')
 
-    activeIssueItems = itemsData || []
+    const rawItems = itemsData || []
+    const userIds = Array.from(new Set(rawItems.map((item: any) => item.user_id).filter(Boolean)))
+
+    let usersMap = new Map<string, any>()
+
+    if (userIds.length > 0) {
+      const { data: usersData } = await supabaseServer
+        .from('users')
+        .select('id, meno, priezvisko, email, telefon, typ_stravy')
+        .in('id', userIds)
+
+      usersMap = new Map((usersData || []).map((u: any) => [u.id, u]))
+    }
+
+    activeIssueItems = rawItems.map((item: any) => {
+      const itemUser = usersMap.get(item.user_id)
+      const fullName = `${itemUser?.meno || ''} ${itemUser?.priezvisko || ''}`.trim()
+
+      return {
+        id: item.id,
+        issueId: item.hromadny_vydaj_id,
+        userId: item.user_id,
+        fullName: fullName || itemUser?.email || 'Bez mena',
+        meno: itemUser?.meno || '',
+        priezvisko: itemUser?.priezvisko || '',
+        email: itemUser?.email || '',
+        telefon: itemUser?.telefon || '',
+        typStravy: item.volba || itemUser?.typ_stravy || '',
+        role: memberRoleMap.get(item.user_id) || 'MIMO SKUPINY',
+        status: item.status,
+        source: item.source,
+        removeReason: item.remove_reason,
+        removedAt: item.removed_at
+      }
+    })
   }
 
   const activeIssues = (activeIssuesData || []).map((issue: any) => {
     const issueItems = activeIssueItems.filter(
-      item => item.hromadny_vydaj_id === issue.id
+      item => item.issueId === issue.id
+    )
+
+    const activeItems = issueItems.filter(
+      item => item.status !== 'REMOVED'
+    )
+
+    const plannedItems = issueItems.filter(
+      item => item.status === 'PLANNED'
     )
 
     return {
       ...issue,
-      userIds: issueItems.map(item => item.user_id),
-      peopleCount: issueItems.length
+      userIds: plannedItems.map(item => item.userId),
+      peopleCount: activeItems.length,
+      items: issueItems
     }
   })
 

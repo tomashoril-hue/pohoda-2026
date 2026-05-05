@@ -68,6 +68,37 @@ function choiceLabel(value: string | null) {
   return 'NEZADANÉ'
 }
 
+function itemStatusLabel(item: any) {
+  if (item.status === 'PLANNED') return 'PRIPRAVENÝ'
+
+  if (item.status === 'REMOVED') {
+    if (item.removeReason === 'REMOVED_FROM_GROUP') return 'ODSTRÁNENÝ ZO SKUPINY'
+    if (item.removeReason === 'MOVED_TO_OTHER_GROUP') return 'PRESUNUTÝ DO INEJ SKUPINY'
+    return 'VYRADENÝ Z PRÍPRAVY'
+  }
+
+  if (item.status === 'INDIVIDUAL_ISSUED') return 'PREVZAL OSOBNE'
+  if (item.status === 'BULK_ISSUED') return 'PREVZATÉ HROMADNE'
+
+  return item.status || 'PRIPRAVENÝ'
+}
+
+function canSelectRow(item: any, currentIssue: any) {
+  if (!currentIssue) return true
+
+  if (item.status === 'PLANNED') return true
+
+  if (
+    item.status === 'REMOVED' &&
+    item.removeReason !== 'REMOVED_FROM_GROUP' &&
+    item.role !== 'MIMO SKUPINY'
+  ) {
+    return true
+  }
+
+  return false
+}
+
 export default function GroupIssueClient({
   group,
   myRole,
@@ -123,40 +154,63 @@ export default function GroupIssueClient({
   const isWaiting = currentIssue?.status === 'WAITING' && remainingMs > 0
   const isActive = currentIssue?.status === 'READY' || (currentIssue?.status === 'WAITING' && remainingMs <= 0)
 
-  const filteredMembers = useMemo(() => {
+  const rows = useMemo(() => {
+    if (currentIssue) {
+      return (currentIssue.items || []).map((item: any) => ({
+        ...item,
+        rowId: item.id || item.userId,
+        typStravy: item.typStravy || item.volba || '',
+        isFromIssue: true
+      }))
+    }
+
+    return members.map((member: any) => ({
+      ...member,
+      rowId: member.userId,
+      status: 'PLANNED',
+      removeReason: null,
+      isFromIssue: false
+    }))
+  }, [currentIssue, members])
+
+  const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
 
-    return members.filter(member => {
-      const memberChoice = String(member.typStravy || '').toUpperCase()
+    return rows.filter((row: any) => {
+      const rowChoice = String(row.typStravy || row.volba || '').toUpperCase()
 
       const matchesSearch =
         !q ||
-        String(member.fullName || '').toLowerCase().includes(q) ||
-        String(member.email || '').toLowerCase().includes(q) ||
-        String(member.telefon || '').toLowerCase().includes(q)
+        String(row.fullName || '').toLowerCase().includes(q) ||
+        String(row.email || '').toLowerCase().includes(q) ||
+        String(row.telefon || '').toLowerCase().includes(q)
 
       const matchesChoice =
         choiceFilter === 'ALL' ||
-        (choiceFilter === 'MASO' && memberChoice === 'MASO') ||
-        (choiceFilter === 'VEGE' && memberChoice === 'VEGE') ||
-        (choiceFilter === 'UNKNOWN' && memberChoice !== 'MASO' && memberChoice !== 'VEGE')
+        (choiceFilter === 'MASO' && rowChoice === 'MASO') ||
+        (choiceFilter === 'VEGE' && rowChoice === 'VEGE') ||
+        (choiceFilter === 'UNKNOWN' && rowChoice !== 'MASO' && rowChoice !== 'VEGE')
 
       return matchesSearch && matchesChoice
     })
-  }, [members, search, choiceFilter])
+  }, [rows, search, choiceFilter])
+
+  const selectableRows = filteredRows.filter((row: any) => canSelectRow(row, currentIssue))
 
   const allFilteredSelected =
-    filteredMembers.length > 0 &&
-    filteredMembers.every(member => selected.includes(member.userId))
+    selectableRows.length > 0 &&
+    selectableRows.every((row: any) => selected.includes(row.userId))
 
-  const selectedMembers = members.filter(member => selected.includes(member.userId))
+  const selectedRows = rows.filter((row: any) => selected.includes(row.userId))
 
-  const masoCount = members.filter(member => String(member.typStravy || '').toUpperCase() === 'MASO').length
-  const vegeCount = members.filter(member => String(member.typStravy || '').toUpperCase() === 'VEGE').length
-  const unknownCount = members.filter(member => {
-    const choice = String(member.typStravy || '').toUpperCase()
+  const masoCount = rows.filter((row: any) => String(row.typStravy || row.volba || '').toUpperCase() === 'MASO').length
+  const vegeCount = rows.filter((row: any) => String(row.typStravy || row.volba || '').toUpperCase() === 'VEGE').length
+  const unknownCount = rows.filter((row: any) => {
+    const choice = String(row.typStravy || row.volba || '').toUpperCase()
     return choice !== 'MASO' && choice !== 'VEGE'
   }).length
+
+  const removedCount = rows.filter((row: any) => row.status === 'REMOVED').length
 
   const loadIssueToEditor = (issue: any | null) => {
     if (!issue) {
@@ -225,13 +279,15 @@ export default function GroupIssueClient({
     setMessageType('')
   }
 
-  const toggleOne = (userId: string) => {
+  const toggleOne = (row: any) => {
+    if (!canSelectRow(row, currentIssue)) return
+
     markAsChanged()
 
     setSelected(prev =>
-      prev.includes(userId)
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId]
+      prev.includes(row.userId)
+        ? prev.filter(id => id !== row.userId)
+        : [...prev, row.userId]
     )
   }
 
@@ -240,21 +296,25 @@ export default function GroupIssueClient({
 
     if (allFilteredSelected) {
       setSelected(prev =>
-        prev.filter(id => !filteredMembers.some(member => member.userId === id))
+        prev.filter(id => !selectableRows.some((row: any) => row.userId === id))
       )
       return
     }
 
     setSelected(prev => {
       const next = new Set(prev)
-      filteredMembers.forEach(member => next.add(member.userId))
+      selectableRows.forEach((row: any) => next.add(row.userId))
       return Array.from(next)
     })
   }
 
   const selectAll = () => {
     markAsChanged()
-    setSelected(members.map(member => member.userId))
+    setSelected(
+      rows
+        .filter((row: any) => canSelectRow(row, currentIssue))
+        .map((row: any) => row.userId)
+    )
   }
 
   const clearSelected = () => {
@@ -623,8 +683,8 @@ export default function GroupIssueClient({
 
       <section style={styles.statsGrid}>
         <button type="button" style={styles.statCard} onClick={selectAll}>
-          <b>{members.length}</b>
-          <span>Členovia</span>
+          <b>{rows.length}</b>
+          <span>Osoby</span>
         </button>
 
         <button type="button" style={styles.statCard} onClick={() => setChoiceFilter('MASO')}>
@@ -643,9 +703,16 @@ export default function GroupIssueClient({
         </button>
 
         <button type="button" style={{ ...styles.statCard, ...styles.selectedStat }}>
-          <b>{selectedMembers.length}</b>
+          <b>{selectedRows.length}</b>
           <span>Vybraní</span>
         </button>
+
+        {currentIssue && (
+          <button type="button" style={{ ...styles.statCard, ...styles.removedStat }}>
+            <b>{removedCount}</b>
+            <span>Vyradení</span>
+          </button>
+        )}
       </section>
 
       <section style={styles.toolbar}>
@@ -745,32 +812,47 @@ export default function GroupIssueClient({
           <div>Osoba</div>
           <div>Jedlo</div>
           <div>Rola</div>
+          <div>Stav</div>
         </div>
 
-        {!filteredMembers.length ? (
+        {!filteredRows.length ? (
           <div style={styles.emptyState}>
-            Nenašli sa žiadni členovia.
+            Nenašli sa žiadne osoby.
           </div>
         ) : (
-          filteredMembers.map(member => {
-            const isSelected = selected.includes(member.userId)
-            const choice = String(member.typStravy || '').toUpperCase()
+          filteredRows.map((row: any) => {
+            const isSelected = selected.includes(row.userId)
+            const choice = String(row.typStravy || row.volba || '').toUpperCase()
+            const selectable = canSelectRow(row, currentIssue)
+            const isRemovedFromGroup =
+              row.status === 'REMOVED' && row.removeReason === 'REMOVED_FROM_GROUP'
 
             return (
               <div
-                key={member.userId}
+                key={row.rowId}
                 style={{
                   ...styles.row,
-                  background: isSelected ? '#ecfdf5' : '#fff',
-                  borderColor: isSelected ? '#22c55e' : '#e5e7eb'
+                  background: isRemovedFromGroup
+                    ? '#f3f4f6'
+                    : isSelected
+                      ? '#ecfdf5'
+                      : '#fff',
+                  borderColor: isRemovedFromGroup
+                    ? '#d1d5db'
+                    : isSelected
+                      ? '#22c55e'
+                      : '#e5e7eb',
+                  opacity: isRemovedFromGroup ? 0.72 : 1,
+                  cursor: selectable ? 'pointer' : 'not-allowed'
                 }}
-                onClick={() => toggleOne(member.userId)}
+                onClick={() => toggleOne(row)}
               >
                 <div style={styles.checkCell}>
                   <input
                     type="checkbox"
                     checked={isSelected}
-                    onChange={() => toggleOne(member.userId)}
+                    disabled={!selectable}
+                    onChange={() => toggleOne(row)}
                     onClick={e => e.stopPropagation()}
                     style={styles.checkbox}
                   />
@@ -778,12 +860,12 @@ export default function GroupIssueClient({
 
                 <div style={styles.personCell}>
                   <div style={styles.personName}>
-                    {member.fullName || 'Bez mena'}
+                    {row.fullName || 'Bez mena'}
                   </div>
 
                   <div style={styles.personMeta}>
-                    {member.email || '-'}
-                    {member.telefon ? ` · ${member.telefon}` : ''}
+                    {row.email || '-'}
+                    {row.telefon ? ` · ${row.telefon}` : ''}
                   </div>
                 </div>
 
@@ -811,7 +893,33 @@ export default function GroupIssueClient({
 
                 <div>
                   <span style={styles.roleBadge}>
-                    {member.role}
+                    {row.role || '-'}
+                  </span>
+                </div>
+
+                <div>
+                  <span
+                    style={{
+                      ...styles.statusBadge,
+                      background:
+                        row.status === 'PLANNED'
+                          ? '#dbeafe'
+                          : isRemovedFromGroup
+                            ? '#fee2e2'
+                            : row.status === 'REMOVED'
+                              ? '#f3f4f6'
+                              : '#dcfce7',
+                      color:
+                        row.status === 'PLANNED'
+                          ? '#1d4ed8'
+                          : isRemovedFromGroup
+                            ? '#991b1b'
+                            : row.status === 'REMOVED'
+                              ? '#374151'
+                              : '#166534'
+                    }}
+                  >
+                    {itemStatusLabel(row)}
                   </span>
                 </div>
               </div>
@@ -924,8 +1032,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   formGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-    gap: 8
+    gridTemplateColumns: '1fr',
+    gap: 10
   },
   field: {
     display: 'grid',
@@ -942,7 +1050,7 @@ const styles: Record<string, React.CSSProperties> = {
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
     borderRadius: 12,
-    padding: '10px 8px',
+    padding: '10px 10px',
     fontSize: 13,
     fontWeight: 800,
     background: '#fff',
@@ -1010,7 +1118,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   statsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))',
     gap: 8
   },
   statCard: {
@@ -1025,6 +1133,11 @@ const styles: Record<string, React.CSSProperties> = {
   selectedStat: {
     background: '#ecfdf5',
     borderColor: '#22c55e'
+  },
+  removedStat: {
+    background: '#fee2e2',
+    borderColor: '#fecaca',
+    color: '#991b1b'
   },
   toolbar: {
     background: '#fff',
@@ -1124,12 +1237,13 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#fff',
     border: '1px solid #e5e7eb',
     borderRadius: 16,
-    overflow: 'hidden',
+    overflowX: 'auto',
     boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
   },
   tableHeader: {
+    minWidth: 620,
     display: 'grid',
-    gridTemplateColumns: '32px minmax(0, 1fr) 82px 76px',
+    gridTemplateColumns: '32px minmax(0, 1fr) 82px 86px 150px',
     gap: 8,
     alignItems: 'center',
     padding: '9px 10px',
@@ -1141,13 +1255,13 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase'
   },
   row: {
+    minWidth: 620,
     display: 'grid',
-    gridTemplateColumns: '32px minmax(0, 1fr) 82px 76px',
+    gridTemplateColumns: '32px minmax(0, 1fr) 82px 86px 150px',
     gap: 8,
     alignItems: 'center',
     padding: '9px 10px',
-    borderBottom: '1px solid #e5e7eb',
-    cursor: 'pointer'
+    borderBottom: '1px solid #e5e7eb'
   },
   checkCell: {
     display: 'flex',
@@ -1192,7 +1306,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 10,
     fontWeight: 900,
     background: '#f3f4f6',
-    color: '#374151'
+    color: '#374151',
+    whiteSpace: 'nowrap'
+  },
+  statusBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    padding: '5px 8px',
+    fontSize: 10,
+    fontWeight: 950,
+    whiteSpace: 'nowrap'
   },
   emptyState: {
     padding: 18,
