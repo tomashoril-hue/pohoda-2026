@@ -108,6 +108,14 @@ export default async function DashboardPage() {
     .eq('user_id', user.id)
     .eq('datum', today)
 
+  const { data: menuItems } = await supabaseServer
+    .from('jedalny_listok')
+    .select('typ_jedla, varianta, nazov, popis')
+    .eq('datum', today)
+    .eq('aktivne', true)
+    .order('typ_jedla', { ascending: true })
+    .order('poradie', { ascending: true })
+
   const { data: issuedMeals } = await supabaseServer
     .from('vydaj_jedal')
     .select('typ_jedla, status, sposob, issued_at')
@@ -142,6 +150,28 @@ export default async function DashboardPage() {
     return (selections || []).find((item: any) => item.typ_jedla === typJedla)
   }
 
+  const getMenuText = (typJedla: string, volba: string | null | undefined) => {
+    const items = (menuItems || []).filter((item: any) => {
+      return item.typ_jedla === typJedla
+    })
+
+    if (!items.length) return 'Jedlo nie je zadané'
+
+    if (volba === 'MASO' || volba === 'VEGE') {
+      const selectedItem = items.find((item: any) => item.varianta === volba)
+
+      if (!selectedItem) return 'Jedlo nie je zadané'
+
+      return selectedItem.popis
+        ? `${selectedItem.nazov} – ${selectedItem.popis}`
+        : selectedItem.nazov
+    }
+
+    return items
+      .map((item: any) => `${item.varianta}: ${item.nazov}`)
+      .join(' / ')
+  }
+
   const getIssued = (typJedla: string) => {
     return (issuedMeals || []).find((item: any) => {
       return item.typ_jedla === typJedla && item.status === 'VYDANE'
@@ -162,18 +192,23 @@ export default async function DashboardPage() {
     })
   }
 
+  const obedSelection = getSelection('OBED')
+  const veceraSelection = getSelection('VECERA')
+
   const todayMeals = [
     {
       typJedla: 'OBED',
       entitlement: entitlementLabel(entitlement?.obed, hasEntitlementRow),
-      selection: getSelection('OBED'),
+      selection: obedSelection,
+      menuText: getMenuText('OBED', obedSelection?.volba),
       issued: getIssued('OBED'),
       bulk: getBulk('OBED')
     },
     {
       typJedla: 'VECERA',
       entitlement: entitlementLabel(entitlement?.vecera, hasEntitlementRow),
-      selection: getSelection('VECERA'),
+      selection: veceraSelection,
+      menuText: getMenuText('VECERA', veceraSelection?.volba),
       issued: getIssued('VECERA'),
       bulk: getBulk('VECERA')
     }
@@ -265,6 +300,11 @@ export default async function DashboardPage() {
                     <div style={styles.todayRow}>
                       <span>Výber</span>
                       <b>{choiceLabel(meal.selection?.volba)}</b>
+                    </div>
+
+                    <div style={styles.todayRowWide}>
+                      <span>Jedlo</span>
+                      <b>{meal.menuText}</b>
                     </div>
 
                     <div style={styles.todayRow}>
@@ -526,6 +566,13 @@ const styles: Record<string, React.CSSProperties> = {
     gridTemplateColumns: '1fr auto',
     gap: 10,
     alignItems: 'center',
+    borderTop: '2px solid #000',
+    paddingTop: 8,
+    fontSize: 14
+  },
+  todayRowWide: {
+    display: 'grid',
+    gap: 4,
     borderTop: '2px solid #000',
     paddingTop: 8,
     fontSize: 14
