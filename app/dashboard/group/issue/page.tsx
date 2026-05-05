@@ -141,7 +141,10 @@ export default async function GroupIssuePage() {
         email: itemUser?.email || '',
         telefon: itemUser?.telefon || '',
         typStravy: item.volba || itemUser?.typ_stravy || '',
-        role: memberRoleMap.get(item.user_id) || 'MIMO SKUPINY',
+        role:
+  item.status === 'REMOVED' && item.remove_reason === 'REMOVED_FROM_GROUP'
+    ? '-'
+    : memberRoleMap.get(item.user_id) || '-',
         status: item.status,
         source: item.source,
         removeReason: item.remove_reason,
