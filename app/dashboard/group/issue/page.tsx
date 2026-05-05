@@ -143,8 +143,8 @@ export default async function GroupIssuePage() {
         typStravy: item.volba || itemUser?.typ_stravy || '',
         role:
   item.status === 'REMOVED' && item.remove_reason === 'REMOVED_FROM_GROUP'
-    ? '-'
-    : memberRoleMap.get(item.user_id) || '-',
+    ? '—'
+: memberRoleMap.get(item.user_id) || '—',
         status: item.status,
         source: item.source,
         removeReason: item.remove_reason,
