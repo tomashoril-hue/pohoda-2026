@@ -74,13 +74,14 @@ function itemStatusLabel(item: any) {
   if (item.status === 'REMOVED') {
     if (item.removeReason === 'REMOVED_FROM_GROUP') return 'ODSTRÁNENÝ ZO SKUPINY'
     if (item.removeReason === 'MOVED_TO_OTHER_GROUP') return 'PRESUNUTÝ DO INEJ SKUPINY'
-    return 'VYRADENÝ Z PRÍPRAVY'
+
+    return '—'
   }
 
   if (item.status === 'INDIVIDUAL_ISSUED') return 'PREVZAL OSOBNE'
   if (item.status === 'BULK_ISSUED') return 'PREVZATÉ HROMADNE'
 
-  return item.status || 'PRIPRAVENÝ'
+  return item.status || '—'
 }
 
 function canSelectRow(item: any, currentIssue: any) {
@@ -91,7 +92,7 @@ function canSelectRow(item: any, currentIssue: any) {
   if (
     item.status === 'REMOVED' &&
     item.removeReason !== 'REMOVED_FROM_GROUP' &&
-    item.role !== 'MIMO SKUPINY'
+    item.role !== '-'
   ) {
     return true
   }
