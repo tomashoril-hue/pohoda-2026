@@ -94,7 +94,7 @@ function canSelectRow(item: any, currentIssue: any) {
     return false
   }
 
-  if (item.role === '-') return false
+  if (item.role === '—') return false
 
   return true
 }
@@ -201,7 +201,7 @@ export default function GroupIssueClient({
         row.status === 'BULK_ISSUED' ||
         row.removeReason === 'REMOVED_FROM_GROUP' ||
         row.removeReason === 'MOVED_TO_OTHER_GROUP' ||
-        row.role === '-'
+        row.role === '—'
 
       if (isSpecial) return 3
 
