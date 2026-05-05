@@ -665,14 +665,25 @@ export default function GroupIssueClient({
 
           <div style={styles.formGrid}>
             <label style={styles.field}>
-              <span>Dátum</span>
-              <input
-                type="date"
-                value={datum}
-                onChange={e => handleDateChange(e.target.value)}
-                style={styles.input}
-              />
-            </label>
+  <span>Dátum</span>
+
+  <div style={styles.datePickerBox}>
+    <span style={styles.datePickerText}>
+      {formatDate(datum)}
+    </span>
+
+    <span style={styles.datePickerIcon}>
+      ▾
+    </span>
+
+    <input
+      type="date"
+      value={datum}
+      onChange={e => handleDateChange(e.target.value)}
+      style={styles.hiddenDateInput}
+    />
+  </div>
+</label>
 
             <label style={styles.field}>
               <span>Jedlo</span>
@@ -1191,6 +1202,52 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#111827',
     overflow: 'hidden'
   },
+
+  datePickerBox: {
+  position: 'relative',
+  width: '100%',
+  maxWidth: '100%',
+  boxSizing: 'border-box',
+  border: '1px solid #d1d5db',
+  borderRadius: 12,
+  padding: '10px 38px 10px 10px',
+  fontSize: 13,
+  fontWeight: 800,
+  background: '#fff',
+  color: '#111827',
+  overflow: 'hidden',
+  minHeight: 42,
+  display: 'flex',
+  alignItems: 'center'
+},
+datePickerText: {
+  display: 'block',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap'
+},
+datePickerIcon: {
+  position: 'absolute',
+  right: 12,
+  top: '50%',
+  transform: 'translateY(-50%)',
+  fontSize: 16,
+  fontWeight: 900,
+  color: '#111827',
+  pointerEvents: 'none'
+},
+hiddenDateInput: {
+  position: 'absolute',
+  inset: 0,
+  width: '100%',
+  height: '100%',
+  opacity: 0,
+  border: 0,
+  padding: 0,
+  margin: 0,
+  cursor: 'pointer'
+},
   metaLine: {
     marginTop: 10,
     display: 'flex',
