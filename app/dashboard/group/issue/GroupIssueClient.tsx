@@ -68,36 +68,35 @@ function choiceLabel(value: string | null) {
   return 'NEZADANÉ'
 }
 
-function itemStatusLabel(item: any) {
-  if (item.status === 'PLANNED') return 'PRIPRAVENÝ'
+function itemStatusLabel(item: any, selectedIds: string[]) {
+  if (item.status === 'INDIVIDUAL_ISSUED') return 'PREVZAL OSOBNE'
+  if (item.status === 'BULK_ISSUED') return 'PREVZATÉ HROMADNE'
 
   if (item.status === 'REMOVED') {
     if (item.removeReason === 'REMOVED_FROM_GROUP') return 'ODSTRÁNENÝ ZO SKUPINY'
     if (item.removeReason === 'MOVED_TO_OTHER_GROUP') return 'PRESUNUTÝ DO INEJ SKUPINY'
 
-    return '—'
+    return 'NEPRIPRAVENÝ'
   }
 
-  if (item.status === 'INDIVIDUAL_ISSUED') return 'PREVZAL OSOBNE'
-  if (item.status === 'BULK_ISSUED') return 'PREVZATÉ HROMADNE'
+  if (selectedIds.includes(item.userId)) return 'PRIPRAVENÝ'
 
-  return item.status || '—'
+  return 'NEPRIPRAVENÝ'
 }
 
 function canSelectRow(item: any, currentIssue: any) {
   if (!currentIssue) return true
 
-  if (item.status === 'PLANNED') return true
+  if (item.status === 'INDIVIDUAL_ISSUED') return false
+  if (item.status === 'BULK_ISSUED') return false
 
-  if (
-    item.status === 'REMOVED' &&
-    item.removeReason !== 'REMOVED_FROM_GROUP' &&
-    item.role !== '-'
-  ) {
-    return true
+  if (item.status === 'REMOVED' && item.removeReason === 'REMOVED_FROM_GROUP') {
+    return false
   }
 
-  return false
+  if (item.role === '-') return false
+
+  return true
 }
 
 export default function GroupIssueClient({
@@ -175,26 +174,49 @@ export default function GroupIssueClient({
   }, [currentIssue, members])
 
   const filteredRows = useMemo(() => {
-    const q = search.trim().toLowerCase()
+  const q = search.trim().toLowerCase()
 
-    return rows.filter((row: any) => {
-      const rowChoice = String(row.typStravy || row.volba || '').toUpperCase()
+  const filtered = rows.filter((row: any) => {
+    const rowChoice = String(row.typStravy || row.volba || '').toUpperCase()
 
-      const matchesSearch =
-        !q ||
-        String(row.fullName || '').toLowerCase().includes(q) ||
-        String(row.email || '').toLowerCase().includes(q) ||
-        String(row.telefon || '').toLowerCase().includes(q)
+    const matchesSearch =
+      !q ||
+      String(row.fullName || '').toLowerCase().includes(q) ||
+      String(row.email || '').toLowerCase().includes(q) ||
+      String(row.telefon || '').toLowerCase().includes(q)
 
-      const matchesChoice =
-        choiceFilter === 'ALL' ||
-        (choiceFilter === 'MASO' && rowChoice === 'MASO') ||
-        (choiceFilter === 'VEGE' && rowChoice === 'VEGE') ||
-        (choiceFilter === 'UNKNOWN' && rowChoice !== 'MASO' && rowChoice !== 'VEGE')
+    const matchesChoice =
+      choiceFilter === 'ALL' ||
+      (choiceFilter === 'MASO' && rowChoice === 'MASO') ||
+      (choiceFilter === 'VEGE' && rowChoice === 'VEGE') ||
+      (choiceFilter === 'UNKNOWN' && rowChoice !== 'MASO' && rowChoice !== 'VEGE')
 
-      return matchesSearch && matchesChoice
-    })
-  }, [rows, search, choiceFilter])
+    return matchesSearch && matchesChoice
+  })
+
+  return filtered.sort((a: any, b: any) => {
+    const rank = (row: any) => {
+      const isSpecial =
+        row.status === 'INDIVIDUAL_ISSUED' ||
+        row.status === 'BULK_ISSUED' ||
+        row.removeReason === 'REMOVED_FROM_GROUP' ||
+        row.removeReason === 'MOVED_TO_OTHER_GROUP' ||
+        row.role === '-'
+
+      if (isSpecial) return 3
+
+      if (selected.includes(row.userId)) return 1
+
+      return 2
+    }
+
+    const rankDiff = rank(a) - rank(b)
+
+    if (rankDiff !== 0) return rankDiff
+
+    return String(a.fullName || '').localeCompare(String(b.fullName || ''), 'sk')
+  })
+}, [rows, search, choiceFilter, selected])
 
   const selectableRows = filteredRows.filter((row: any) => canSelectRow(row, currentIssue))
 
@@ -920,7 +942,7 @@ export default function GroupIssueClient({
                               : '#166534'
                     }}
                   >
-                    {itemStatusLabel(row)}
+                    {itemStatusLabel(row, selected)}
                   </span>
                 </div>
               </div>
