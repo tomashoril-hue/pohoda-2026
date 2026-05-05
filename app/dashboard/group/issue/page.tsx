@@ -3,6 +3,43 @@ import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
 import GroupIssueClient from './GroupIssueClient'
 
+function todayIsoDate() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function addDaysIso(days: number) {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function entitlementStatus(
+  entitlement: any,
+  typJedla: string
+): 'YES' | 'NO' | 'UNKNOWN' {
+  if (!entitlement) return 'UNKNOWN'
+
+  if (typJedla === 'OBED') {
+    return entitlement.obed ? 'YES' : 'NO'
+  }
+
+  if (typJedla === 'VECERA') {
+    return entitlement.vecera ? 'YES' : 'NO'
+  }
+
+  return 'UNKNOWN'
+}
+
 export default async function GroupIssuePage() {
   const user = await getCurrentUser()
 
@@ -36,6 +73,18 @@ export default async function GroupIssuePage() {
   const group = Array.isArray(membership.groups)
     ? membership.groups[0]
     : membership.groups
+
+  const { data: currentUserProfile } = await supabaseServer
+    .from('users')
+    .select('meno, priezvisko, email')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  const myName =
+    `${currentUserProfile?.meno || ''} ${currentUserProfile?.priezvisko || ''}`.trim() ||
+    currentUserProfile?.email ||
+    user.email ||
+    ''
 
   const { data: membersData } = await supabaseServer
     .from('group_members')
@@ -96,6 +145,64 @@ export default async function GroupIssuePage() {
 
   const activeIssueIds = (activeIssuesData || []).map((issue: any) => issue.id)
 
+  const groupUserIds = members.map((member: any) => member.userId).filter(Boolean)
+
+  const dateList = Array.from(
+    new Set([
+      todayIsoDate(),
+      addDaysIso(1),
+      addDaysIso(2),
+      addDaysIso(3),
+      addDaysIso(4),
+      addDaysIso(5),
+      addDaysIso(6),
+      addDaysIso(7),
+      ...(activeIssuesData || []).map((issue: any) => issue.datum)
+    ])
+  )
+
+  let entitlementRows: any[] = []
+
+  if (groupUserIds.length > 0 && dateList.length > 0) {
+    const { data: entitlementsData } = await supabaseServer
+      .from('user_food_entitlements')
+      .select('user_id, datum, obed, vecera')
+      .in('user_id', groupUserIds)
+      .in('datum', dateList)
+
+    entitlementRows = entitlementsData || []
+  }
+
+  const entitlementMap = new Map(
+    entitlementRows.map((row: any) => [
+      `${row.user_id}|${row.datum}`,
+      row
+    ])
+  )
+
+  const getEntitlement = (userId: string, datum: string, typJedla: string) => {
+    const row = entitlementMap.get(`${userId}|${datum}`)
+    return entitlementStatus(row, typJedla)
+  }
+
+  const membersWithEntitlements = members.map((member: any) => {
+    const entitlementsByDate: Record<string, any> = {}
+
+    dateList.forEach(date => {
+      const row = entitlementMap.get(`${member.userId}|${date}`)
+
+      entitlementsByDate[date] = {
+        OBED: entitlementStatus(row, 'OBED'),
+        VECERA: entitlementStatus(row, 'VECERA')
+      }
+    })
+
+    return {
+      ...member,
+      entitlementsByDate
+    }
+  })
+
   let activeIssueItems: any[] = []
 
   if (activeIssueIds.length > 0) {
@@ -127,8 +234,13 @@ export default async function GroupIssuePage() {
       usersMap = new Map((usersData || []).map((u: any) => [u.id, u]))
     }
 
+    const issueById = new Map(
+      (activeIssuesData || []).map((issue: any) => [issue.id, issue])
+    )
+
     activeIssueItems = rawItems.map((item: any) => {
       const itemUser = usersMap.get(item.user_id)
+      const issue: any = issueById.get(item.hromadny_vydaj_id)
       const fullName = `${itemUser?.meno || ''} ${itemUser?.priezvisko || ''}`.trim()
 
       return {
@@ -142,13 +254,16 @@ export default async function GroupIssuePage() {
         telefon: itemUser?.telefon || '',
         typStravy: item.volba || itemUser?.typ_stravy || '',
         role:
-  item.status === 'REMOVED' && item.remove_reason === 'REMOVED_FROM_GROUP'
-    ? '—'
-: memberRoleMap.get(item.user_id) || '—',
+          item.status === 'REMOVED' && item.remove_reason === 'REMOVED_FROM_GROUP'
+            ? '—'
+            : memberRoleMap.get(item.user_id) || '—',
         status: item.status,
         source: item.source,
         removeReason: item.remove_reason,
-        removedAt: item.removed_at
+        removedAt: item.removed_at,
+        entitlementStatus: issue
+          ? getEntitlement(item.user_id, issue.datum, issue.typ_jedla)
+          : 'UNKNOWN'
       }
     })
   }
@@ -166,10 +281,15 @@ export default async function GroupIssuePage() {
       item => item.status === 'PLANNED'
     )
 
+    const withoutEntitlementCount = plannedItems.filter(
+      item => item.entitlementStatus === 'NO' || item.entitlementStatus === 'UNKNOWN'
+    ).length
+
     return {
       ...issue,
       userIds: plannedItems.map(item => item.userId),
       peopleCount: activeItems.length,
+      withoutEntitlementCount,
       items: issueItems
     }
   })
@@ -182,7 +302,8 @@ export default async function GroupIssuePage() {
           name: group?.name || 'Skupina bez názvu'
         }}
         myRole={role}
-        members={members}
+        myName={myName}
+        members={membersWithEntitlements}
         activeIssues={activeIssues}
       />
     </main>

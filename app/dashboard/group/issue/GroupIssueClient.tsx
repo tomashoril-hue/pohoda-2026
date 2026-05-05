@@ -68,6 +68,12 @@ function choiceLabel(value: string | null) {
   return 'NEZADANÉ'
 }
 
+function entitlementLabel(value: string | null | undefined) {
+  if (value === 'YES') return 'ÁNO'
+  if (value === 'NO') return 'NIE'
+  return 'NEZNÁME'
+}
+
 function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: string[]) {
   if (item.status === 'INDIVIDUAL_ISSUED') return 'PREVZAL OSOBNE'
   if (item.status === 'BULK_ISSUED') return 'PREVZATÉ HROMADNE'
@@ -104,9 +110,17 @@ function canSelectRow(item: any, currentIssue: any) {
   return true
 }
 
+function getMemberEntitlement(member: any, datum: string, typJedla: string) {
+  const byDate = member?.entitlementsByDate || {}
+  const day = byDate[datum] || {}
+
+  return day?.[typJedla] || 'UNKNOWN'
+}
+
 export default function GroupIssueClient({
   group,
   myRole,
+  myName,
   members,
   activeIssues
 }: {
@@ -115,6 +129,7 @@ export default function GroupIssueClient({
     name: string
   }
   myRole: string
+  myName: string
   members: any[]
   activeIssues: any[]
 }) {
@@ -148,6 +163,9 @@ export default function GroupIssueClient({
   const currentIssue = selectedActiveIssue || matchingIssue || null
 
   const savedPreparedIds: string[] = currentIssue ? (currentIssue.userIds || []) : []
+
+  const currentDatum = currentIssue?.datum || datum
+  const currentTypJedla = currentIssue?.typ_jedla || typJedla
 
   const validAfterMs = currentIssue?.valid_after
     ? new Date(currentIssue.valid_after).getTime()
@@ -183,6 +201,9 @@ export default function GroupIssueClient({
             telefon: issueItem.telefon || member.telefon,
             typStravy: issueItem.typStravy || issueItem.volba || member.typStravy || '',
             role: member.role || issueItem.role || '—',
+            entitlementStatus:
+              issueItem.entitlementStatus ||
+              getMemberEntitlement(member, currentIssue.datum, currentIssue.typ_jedla),
             isFromIssue: true
           }
         }
@@ -193,6 +214,7 @@ export default function GroupIssueClient({
           status: 'NOT_PREPARED',
           removeReason: null,
           typStravy: member.typStravy || '',
+          entitlementStatus: getMemberEntitlement(member, currentIssue.datum, currentIssue.typ_jedla),
           isFromIssue: false
         }
       })
@@ -208,6 +230,7 @@ export default function GroupIssueClient({
           rowId: item.id || item.userId,
           typStravy: item.typStravy || item.volba || '',
           role: item.role || '—',
+          entitlementStatus: item.entitlementStatus || 'UNKNOWN',
           isFromIssue: true
         }))
       ]
@@ -218,9 +241,10 @@ export default function GroupIssueClient({
       rowId: member.userId,
       status: 'NOT_PREPARED',
       removeReason: null,
+      entitlementStatus: getMemberEntitlement(member, datum, typJedla),
       isFromIssue: false
     }))
-  }, [currentIssue, members])
+  }, [currentIssue, members, datum, typJedla])
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -295,6 +319,9 @@ export default function GroupIssueClient({
     const choice = String(row.typStravy || row.volba || '').toUpperCase()
     return choice !== 'MASO' && choice !== 'VEGE'
   }).length
+
+  const entitlementNoCount = rows.filter((row: any) => row.entitlementStatus === 'NO').length
+  const entitlementUnknownCount = rows.filter((row: any) => row.entitlementStatus === 'UNKNOWN').length
 
   const removedCount = rows.filter((row: any) => {
     return (
@@ -433,10 +460,20 @@ export default function GroupIssueClient({
       return
     }
 
+    const selectedRowsLocal = rows.filter((row: any) => selected.includes(row.userId))
+    const warningCount = selectedRowsLocal.filter((row: any) => {
+      return row.entitlementStatus === 'NO' || row.entitlementStatus === 'UNKNOWN'
+    }).length
+
+    const entitlementWarning =
+      warningCount > 0
+        ? `\n\nPozor: ${warningCount} vybraných osôb nemá potvrdený nárok alebo má nárok neznámy.`
+        : ''
+
     const confirmText =
       myRole === 'POVERENY'
-        ? `Potvrdiť prípravu hromadného výdaja pre ${selected.length} osôb? Príprava začne platiť o 15 minút.`
-        : `Potvrdiť prípravu hromadného výdaja pre ${selected.length} osôb?`
+        ? `Potvrdiť prípravu hromadného výdaja pre ${selected.length} osôb? Príprava začne platiť o 15 minút.${entitlementWarning}`
+        : `Potvrdiť prípravu hromadného výdaja pre ${selected.length} osôb?${entitlementWarning}`
 
     if (!confirm(confirmText)) return
 
@@ -497,10 +534,20 @@ export default function GroupIssueClient({
       return
     }
 
+    const selectedRowsLocal = rows.filter((row: any) => selected.includes(row.userId))
+    const warningCount = selectedRowsLocal.filter((row: any) => {
+      return row.entitlementStatus === 'NO' || row.entitlementStatus === 'UNKNOWN'
+    }).length
+
+    const entitlementWarning =
+      warningCount > 0
+        ? `\n\nPozor: ${warningCount} vybraných osôb nemá potvrdený nárok alebo má nárok neznámy.`
+        : ''
+
     const confirmText =
       myRole === 'POVERENY'
-        ? `Potvrdiť úpravu prípravy pre ${selected.length} osôb? Po úprave začne znovu plynúť 15 minút.`
-        : `Potvrdiť úpravu prípravy pre ${selected.length} osôb?`
+        ? `Potvrdiť úpravu prípravy pre ${selected.length} osôb? Po úprave začne znovu plynúť 15 minút.${entitlementWarning}`
+        : `Potvrdiť úpravu prípravy pre ${selected.length} osôb?${entitlementWarning}`
 
     if (!confirm(confirmText)) return
 
@@ -665,25 +712,25 @@ export default function GroupIssueClient({
 
           <div style={styles.formGrid}>
             <label style={styles.field}>
-  <span>Dátum</span>
+              <span>Dátum</span>
 
-  <div style={styles.datePickerBox}>
-    <span style={styles.datePickerText}>
-      {formatDate(datum)}
-    </span>
+              <div style={styles.datePickerBox}>
+                <span style={styles.datePickerText}>
+                  {formatDate(datum)}
+                </span>
 
-    <span style={styles.datePickerIcon}>
-      ▾
-    </span>
+                <span style={styles.datePickerIcon}>
+                  ▾
+                </span>
 
-    <input
-      type="date"
-      value={datum}
-      onChange={e => handleDateChange(e.target.value)}
-      style={styles.hiddenDateInput}
-    />
-  </div>
-</label>
+                <input
+                  type="date"
+                  value={datum}
+                  onChange={e => handleDateChange(e.target.value)}
+                  style={styles.hiddenDateInput}
+                />
+              </div>
+            </label>
 
             <label style={styles.field}>
               <span>Jedlo</span>
@@ -700,7 +747,7 @@ export default function GroupIssueClient({
 
           <div style={styles.metaLine}>
             <span>{group.name}</span>
-            <span>{myRole}</span>
+            <span>{myName ? `${myName} · ${myRole}` : myRole}</span>
           </div>
 
           {myRole === 'POVERENY' && (
@@ -774,6 +821,12 @@ export default function GroupIssueClient({
                       <span>{item.peopleCount || 0} osôb</span>
                     </div>
 
+                    {item.withoutEntitlementCount > 0 && (
+                      <div style={styles.activeIssueWarning}>
+                        Bez potvrdeného nároku: {item.withoutEntitlementCount}
+                      </div>
+                    )}
+
                     {item.valid_after && (
                       <div style={styles.activeIssueTime}>
                         Platné od: {formatDateTime(item.valid_after)}
@@ -845,6 +898,13 @@ export default function GroupIssueClient({
             <b>{selectedRows.length}</b>
             <span>Vybraní</span>
           </div>
+
+          {(entitlementNoCount > 0 || entitlementUnknownCount > 0) && (
+            <div style={styles.entitlementWarningCard}>
+              <b>{entitlementNoCount + entitlementUnknownCount}</b>
+              <span>Bez potvrdeného nároku</span>
+            </div>
+          )}
 
           {currentIssue && removedCount > 0 && (
             <div style={styles.removedCountCard}>
@@ -953,6 +1013,7 @@ export default function GroupIssueClient({
           <div>Jedlo</div>
           <div>Rola</div>
           <div>Stav</div>
+          <div>Nárok</div>
         </div>
 
         {!filteredRows.length ? (
@@ -965,6 +1026,7 @@ export default function GroupIssueClient({
             const choice = String(row.typStravy || row.volba || '').toUpperCase()
             const selectable = canSelectRow(row, currentIssue)
             const statusText = itemStatusLabel(row, selected, savedPreparedIds)
+            const entitlementText = entitlementLabel(row.entitlementStatus)
             const isRemovedFromGroup =
               row.status === 'REMOVED' && row.removeReason === 'REMOVED_FROM_GROUP'
 
@@ -1065,6 +1127,28 @@ export default function GroupIssueClient({
                     }}
                   >
                     {statusText}
+                  </span>
+                </div>
+
+                <div>
+                  <span
+                    style={{
+                      ...styles.entitlementBadge,
+                      background:
+                        row.entitlementStatus === 'YES'
+                          ? '#dcfce7'
+                          : row.entitlementStatus === 'NO'
+                            ? '#fee2e2'
+                            : '#ffedd5',
+                      color:
+                        row.entitlementStatus === 'YES'
+                          ? '#166534'
+                          : row.entitlementStatus === 'NO'
+                            ? '#991b1b'
+                            : '#9a3412'
+                    }}
+                  >
+                    {entitlementText}
                   </span>
                 </div>
               </div>
@@ -1176,19 +1260,26 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 900
   },
   formGrid: {
+    width: '100%',
+    maxWidth: '100%',
     display: 'grid',
-    gridTemplateColumns: '1fr',
-    gap: 10
+    gridTemplateColumns: 'minmax(0, 1fr)',
+    gap: 10,
+    overflow: 'hidden'
   },
   field: {
+    width: '100%',
+    maxWidth: '100%',
     display: 'grid',
     gap: 4,
     fontSize: 11,
     fontWeight: 900,
     color: '#6b7280',
-    minWidth: 0
+    minWidth: 0,
+    overflow: 'hidden'
   },
   input: {
+    display: 'block',
     width: '100%',
     minWidth: 0,
     maxWidth: '100%',
@@ -1200,62 +1291,65 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 800,
     background: '#fff',
     color: '#111827',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    WebkitAppearance: 'none',
+    appearance: 'none'
   },
-
   datePickerBox: {
-  position: 'relative',
-  width: '100%',
-  maxWidth: '100%',
-  boxSizing: 'border-box',
-  border: '1px solid #d1d5db',
-  borderRadius: 12,
-  padding: '10px 38px 10px 10px',
-  fontSize: 13,
-  fontWeight: 800,
-  background: '#fff',
-  color: '#111827',
-  overflow: 'hidden',
-  minHeight: 42,
-  display: 'flex',
-  alignItems: 'center'
-},
-datePickerText: {
-  display: 'block',
-  minWidth: 0,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap'
-},
-datePickerIcon: {
-  position: 'absolute',
-  right: 12,
-  top: '50%',
-  transform: 'translateY(-50%)',
-  fontSize: 16,
-  fontWeight: 900,
-  color: '#111827',
-  pointerEvents: 'none'
-},
-hiddenDateInput: {
-  position: 'absolute',
-  inset: 0,
-  width: '100%',
-  height: '100%',
-  opacity: 0,
-  border: 0,
-  padding: 0,
-  margin: 0,
-  cursor: 'pointer'
-},
+    position: 'relative',
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
+    border: '1px solid #d1d5db',
+    borderRadius: 12,
+    padding: '10px 38px 10px 10px',
+    fontSize: 13,
+    fontWeight: 800,
+    background: '#fff',
+    color: '#111827',
+    overflow: 'hidden',
+    minHeight: 42,
+    display: 'flex',
+    alignItems: 'center'
+  },
+  datePickerText: {
+    display: 'block',
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
+  },
+  datePickerIcon: {
+    position: 'absolute',
+    right: 12,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    fontSize: 16,
+    fontWeight: 900,
+    color: '#111827',
+    pointerEvents: 'none'
+  },
+  hiddenDateInput: {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    opacity: 0,
+    border: 0,
+    padding: 0,
+    margin: 0,
+    cursor: 'pointer'
+  },
   metaLine: {
     marginTop: 10,
     display: 'flex',
     justifyContent: 'space-between',
+    alignItems: 'center',
     gap: 8,
     fontSize: 12,
     fontWeight: 850,
-    color: '#374151'
+    color: '#374151',
+    flexWrap: 'wrap'
   },
   waitNotice: {
     marginTop: 9,
@@ -1307,6 +1401,11 @@ hiddenDateInput: {
     fontWeight: 800,
     color: '#9a3412'
   },
+  activeIssueWarning: {
+    fontSize: 11,
+    fontWeight: 900,
+    color: '#9a3412'
+  },
   statsPanel: {
     display: 'grid',
     gap: 8
@@ -1345,6 +1444,17 @@ hiddenDateInput: {
     padding: '10px 8px',
     textAlign: 'center',
     color: '#166534',
+    boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+    display: 'grid',
+    gap: 3
+  },
+  entitlementWarningCard: {
+    background: '#ffedd5',
+    border: '1px solid #fdba74',
+    borderRadius: 14,
+    padding: '10px 8px',
+    textAlign: 'center',
+    color: '#9a3412',
     boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
     display: 'grid',
     gap: 3
@@ -1462,9 +1572,9 @@ hiddenDateInput: {
     boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
   },
   tableHeader: {
-    minWidth: 620,
+    minWidth: 740,
     display: 'grid',
-    gridTemplateColumns: '32px minmax(0, 1fr) 82px 86px 150px',
+    gridTemplateColumns: '32px minmax(0, 1fr) 82px 86px 150px 92px',
     gap: 8,
     alignItems: 'center',
     padding: '9px 10px',
@@ -1476,9 +1586,9 @@ hiddenDateInput: {
     textTransform: 'uppercase'
   },
   row: {
-    minWidth: 620,
+    minWidth: 740,
     display: 'grid',
-    gridTemplateColumns: '32px minmax(0, 1fr) 82px 86px 150px',
+    gridTemplateColumns: '32px minmax(0, 1fr) 82px 86px 150px 92px',
     gap: 8,
     alignItems: 'center',
     padding: '9px 10px',
@@ -1531,6 +1641,16 @@ hiddenDateInput: {
     whiteSpace: 'nowrap'
   },
   statusBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    padding: '5px 8px',
+    fontSize: 10,
+    fontWeight: 950,
+    whiteSpace: 'nowrap'
+  },
+  entitlementBadge: {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
