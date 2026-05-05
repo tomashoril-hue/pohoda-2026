@@ -3,12 +3,69 @@ import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
 import DashboardInvites from './DashboardInvites'
 
+function todayIsoDate() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function formatDate(value: string) {
+  try {
+    return new Intl.DateTimeFormat('sk-SK', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    }).format(new Date(value))
+  } catch {
+    return value
+  }
+}
+
+function mealLabel(value: string) {
+  if (value === 'OBED') return 'OBED'
+  if (value === 'VECERA') return 'VEČERA'
+  return value
+}
+
+function choiceLabel(value: string | null | undefined) {
+  if (value === 'MASO') return 'MASO'
+  if (value === 'VEGE') return 'VEGE'
+  return 'NEZADANÉ'
+}
+
+function entitlementLabel(value: boolean | null | undefined, hasRow: boolean) {
+  if (!hasRow) return 'NEZNÁME'
+  return value ? 'ÁNO' : 'NIE'
+}
+
+function issuedLabel(status: string | null | undefined) {
+  if (status === 'VYDANE') return 'VYDANÉ'
+  if (status === 'STORNOVANE') return 'STORNOVANÉ'
+  return 'NEVYDANÉ'
+}
+
+function bulkLabel(value: any) {
+  if (!value) return 'NIE'
+
+  if (value.status === 'PLANNED') return 'PRIPRAVENÝ'
+  if (value.status === 'REMOVED') return 'VYRADENÝ'
+  if (value.status === 'INDIVIDUAL_ISSUED') return 'PREVZAL OSOBNE'
+  if (value.status === 'BULK_ISSUED') return 'VYDANÉ HROMADNE'
+
+  return value.status || 'NIE'
+}
+
 export default async function DashboardPage() {
   const user = await getCurrentUser()
 
   if (!user) {
     redirect('/')
   }
+
+  const today = todayIsoDate()
 
   const { data: memberships } = await supabaseServer
     .from('group_members')
@@ -38,8 +95,89 @@ export default async function DashboardPage() {
     .eq('status', 'PENDING')
     .order('created_at', { ascending: false })
 
+  const { data: entitlement } = await supabaseServer
+    .from('user_food_entitlements')
+    .select('datum, obed, vecera')
+    .eq('user_id', user.id)
+    .eq('datum', today)
+    .maybeSingle()
+
+  const { data: selections } = await supabaseServer
+    .from('vyber_jedal')
+    .select('typ_jedla, volba')
+    .eq('user_id', user.id)
+    .eq('datum', today)
+
+  const { data: issuedMeals } = await supabaseServer
+    .from('vydaj_jedal')
+    .select('typ_jedla, status, sposob, issued_at')
+    .eq('user_id', user.id)
+    .eq('datum', today)
+    .order('issued_at', { ascending: false })
+
+  const { data: bulkItems } = await supabaseServer
+    .from('hromadny_vydaj_polozky')
+    .select(`
+      id,
+      status,
+      hromadne_vydaje (
+        id,
+        datum,
+        typ_jedla,
+        status,
+        group_id,
+        groups (
+          name
+        )
+      )
+    `)
+    .eq('user_id', user.id)
+    .in('status', ['PLANNED', 'REMOVED', 'INDIVIDUAL_ISSUED', 'BULK_ISSUED'])
+
   const hasMembership = !!memberships && memberships.length > 0
   const hasPendingInvites = !!pendingInvites && pendingInvites.length > 0
+  const hasEntitlementRow = !!entitlement
+
+  const getSelection = (typJedla: string) => {
+    return (selections || []).find((item: any) => item.typ_jedla === typJedla)
+  }
+
+  const getIssued = (typJedla: string) => {
+    return (issuedMeals || []).find((item: any) => {
+      return item.typ_jedla === typJedla && item.status === 'VYDANE'
+    })
+  }
+
+  const getBulk = (typJedla: string) => {
+    return (bulkItems || []).find((item: any) => {
+      const issue = Array.isArray(item.hromadne_vydaje)
+        ? item.hromadne_vydaje[0]
+        : item.hromadne_vydaje
+
+      return (
+        issue?.datum === today &&
+        issue?.typ_jedla === typJedla &&
+        (issue?.status === 'READY' || issue?.status === 'WAITING')
+      )
+    })
+  }
+
+  const todayMeals = [
+    {
+      typJedla: 'OBED',
+      entitlement: entitlementLabel(entitlement?.obed, hasEntitlementRow),
+      selection: getSelection('OBED'),
+      issued: getIssued('OBED'),
+      bulk: getBulk('OBED')
+    },
+    {
+      typJedla: 'VECERA',
+      entitlement: entitlementLabel(entitlement?.vecera, hasEntitlementRow),
+      selection: getSelection('VECERA'),
+      issued: getIssued('VECERA'),
+      bulk: getBulk('VECERA')
+    }
+  ]
 
   return (
     <main style={styles.page}>
@@ -66,10 +204,87 @@ export default async function DashboardPage() {
         </div>
 
         <div style={styles.infoBox}>
-          <p><b>E-mail:</b> {user.email}</p>
+          <p><b>E-mail:</b> {user.email || '-'}</p>
           <p><b>QR kód:</b> {user.qr_code || '-'}</p>
           <p><b>Typ stravy:</b> {user.typ_stravy || user.typStravy || '-'}</p>
         </div>
+
+        <section style={styles.todayBox}>
+          <div style={styles.todayHeader}>
+            <div>
+              <div style={styles.todaySmall}>Dnes</div>
+              <h2 style={styles.todayTitle}>Dnešná strava</h2>
+            </div>
+
+            <div style={styles.todayDate}>
+              {formatDate(today)}
+            </div>
+          </div>
+
+          <div style={styles.todayGrid}>
+            {todayMeals.map(meal => {
+              const bulkIssue = meal.bulk
+              const issue = bulkIssue
+                ? Array.isArray(bulkIssue.hromadne_vydaje)
+                  ? bulkIssue.hromadne_vydaje[0]
+                  : bulkIssue.hromadne_vydaje
+                : null
+
+              const group = issue?.groups
+                ? Array.isArray(issue.groups)
+                  ? issue.groups[0]
+                  : issue.groups
+                : null
+
+              const entitlementIsYes = meal.entitlement === 'ÁNO'
+              const entitlementIsNo = meal.entitlement === 'NIE'
+              const issuedText = issuedLabel(meal.issued?.status)
+
+              return (
+                <div key={meal.typJedla} style={styles.todayMealCard}>
+                  <div style={styles.todayMealTop}>
+                    <h3 style={styles.todayMealTitle}>
+                      {mealLabel(meal.typJedla)}
+                    </h3>
+
+                    <span
+                      style={{
+                        ...styles.entitlementBadge,
+                        background: entitlementIsYes
+                          ? '#56db3f'
+                          : entitlementIsNo
+                            ? '#f25be6'
+                            : '#fff3bf'
+                      }}
+                    >
+                      Nárok {meal.entitlement}
+                    </span>
+                  </div>
+
+                  <div style={styles.todayRows}>
+                    <div style={styles.todayRow}>
+                      <span>Výber</span>
+                      <b>{choiceLabel(meal.selection?.volba)}</b>
+                    </div>
+
+                    <div style={styles.todayRow}>
+                      <span>Hromadný výdaj</span>
+                      <b>
+                        {bulkLabel(bulkIssue)}
+                        {group?.name ? ` · ${group.name}` : ''}
+                      </b>
+                    </div>
+
+                    <div style={styles.todayRow}>
+                      <span>Výdaj</span>
+                      <b>{issuedText}</b>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
 
         <div style={styles.menuGrid}>
           <a href="/menu" style={styles.menuButton}>Výber stravy</a>
@@ -102,9 +317,8 @@ export default async function DashboardPage() {
                   const group = Array.isArray(m.groups) ? m.groups[0] : m.groups
                   const role = String(m.role || '').toUpperCase()
 
-                  // Dočasne podporujeme aj OWNER, kým premigrujeme databázu.
-                  // Pridať cez QR do skupiny môže po novom iba MANAGER.
                   const canAddByQr = role === 'MANAGER' || role === 'OWNER'
+                  const canOpenIssue = role === 'MANAGER' || role === 'POVERENY' || role === 'OWNER'
 
                   return (
                     <div key={m.group_id} style={styles.groupCard}>
@@ -122,6 +336,12 @@ export default async function DashboardPage() {
                         <a href="/dashboard/group" style={styles.smallButton}>
                           Detail
                         </a>
+
+                        {canOpenIssue && (
+                          <a href="/dashboard/group/issue" style={styles.smallButtonPink}>
+                            Hromadný výdaj
+                          </a>
+                        )}
 
                         {canAddByQr && (
                           <a
@@ -232,6 +452,83 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 18,
     fontSize: 18,
     fontWeight: 700
+  },
+  todayBox: {
+    marginTop: 24,
+    background: '#fff',
+    border: '3px solid #000',
+    borderRadius: 24,
+    padding: 18
+  },
+  todayHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 12,
+    alignItems: 'center',
+    marginBottom: 14,
+    flexWrap: 'wrap'
+  },
+  todaySmall: {
+    fontSize: 13,
+    fontWeight: 900,
+    opacity: 0.65
+  },
+  todayTitle: {
+    margin: 0,
+    fontSize: 28,
+    fontWeight: 950
+  },
+  todayDate: {
+    background: '#000',
+    color: '#fff',
+    borderRadius: 999,
+    padding: '8px 12px',
+    fontSize: 13,
+    fontWeight: 900
+  },
+  todayGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gap: 12
+  },
+  todayMealCard: {
+    border: '3px solid #000',
+    borderRadius: 20,
+    padding: 14,
+    background: '#f8f8f8'
+  },
+  todayMealTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 10,
+    alignItems: 'center',
+    marginBottom: 12
+  },
+  todayMealTitle: {
+    margin: 0,
+    fontSize: 22,
+    fontWeight: 950
+  },
+  entitlementBadge: {
+    border: '3px solid #000',
+    borderRadius: 999,
+    padding: '6px 10px',
+    fontSize: 12,
+    fontWeight: 950,
+    whiteSpace: 'nowrap'
+  },
+  todayRows: {
+    display: 'grid',
+    gap: 8
+  },
+  todayRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr auto',
+    gap: 10,
+    alignItems: 'center',
+    borderTop: '2px solid #000',
+    paddingTop: 8,
+    fontSize: 14
   },
   menuGrid: {
     marginTop: 28,
