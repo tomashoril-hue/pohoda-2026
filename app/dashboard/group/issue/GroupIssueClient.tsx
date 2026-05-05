@@ -174,49 +174,57 @@ export default function GroupIssueClient({
   }, [currentIssue, members])
 
   const filteredRows = useMemo(() => {
-  const q = search.trim().toLowerCase()
+    const q = search.trim().toLowerCase()
 
-  const filtered = rows.filter((row: any) => {
-    const rowChoice = String(row.typStravy || row.volba || '').toUpperCase()
+    const filtered = rows.filter((row: any) => {
+      const rowChoice = String(row.typStravy || row.volba || '').toUpperCase()
 
-    const matchesSearch =
-      !q ||
-      String(row.fullName || '').toLowerCase().includes(q) ||
-      String(row.email || '').toLowerCase().includes(q) ||
-      String(row.telefon || '').toLowerCase().includes(q)
+      const matchesSearch =
+        !q ||
+        String(row.fullName || '').toLowerCase().includes(q) ||
+        String(row.email || '').toLowerCase().includes(q) ||
+        String(row.telefon || '').toLowerCase().includes(q)
 
-    const matchesChoice =
-      choiceFilter === 'ALL' ||
-      (choiceFilter === 'MASO' && rowChoice === 'MASO') ||
-      (choiceFilter === 'VEGE' && rowChoice === 'VEGE') ||
-      (choiceFilter === 'UNKNOWN' && rowChoice !== 'MASO' && rowChoice !== 'VEGE')
+      const matchesChoice =
+        choiceFilter === 'ALL' ||
+        (choiceFilter === 'MASO' && rowChoice === 'MASO') ||
+        (choiceFilter === 'VEGE' && rowChoice === 'VEGE') ||
+        (choiceFilter === 'UNKNOWN' && rowChoice !== 'MASO' && rowChoice !== 'VEGE')
 
-    return matchesSearch && matchesChoice
-  })
+      return matchesSearch && matchesChoice
+    })
 
-  return filtered.sort((a: any, b: any) => {
-    const rank = (row: any) => {
-      const isSpecial =
-        row.status === 'INDIVIDUAL_ISSUED' ||
-        row.status === 'BULK_ISSUED' ||
-        row.removeReason === 'REMOVED_FROM_GROUP' ||
-        row.removeReason === 'MOVED_TO_OTHER_GROUP' ||
-        row.role === '—'
+    return filtered.sort((a: any, b: any) => {
+      const specialRank = (row: any) => {
+        const isSpecial =
+          row.status === 'INDIVIDUAL_ISSUED' ||
+          row.status === 'BULK_ISSUED' ||
+          row.removeReason === 'REMOVED_FROM_GROUP' ||
+          row.removeReason === 'MOVED_TO_OTHER_GROUP' ||
+          row.role === '—'
 
-      if (isSpecial) return 3
+        return isSpecial ? 2 : 1
+      }
 
-      if (selected.includes(row.userId)) return 1
+      const roleRank = (row: any) => {
+        const role = String(row.role || '').toUpperCase()
 
-      return 2
-    }
+        if (role === 'MANAGER') return 1
+        if (role === 'POVERENY') return 2
+        if (role === 'MEMBER') return 3
 
-    const rankDiff = rank(a) - rank(b)
+        return 9
+      }
 
-    if (rankDiff !== 0) return rankDiff
+      const specialDiff = specialRank(a) - specialRank(b)
+      if (specialDiff !== 0) return specialDiff
 
-    return String(a.fullName || '').localeCompare(String(b.fullName || ''), 'sk')
-  })
-}, [rows, search, choiceFilter, selected])
+      const roleDiff = roleRank(a) - roleRank(b)
+      if (roleDiff !== 0) return roleDiff
+
+      return String(a.fullName || '').localeCompare(String(b.fullName || ''), 'sk')
+    })
+  }, [rows, search, choiceFilter])
 
   const selectableRows = filteredRows.filter((row: any) => canSelectRow(row, currentIssue))
 
@@ -226,14 +234,29 @@ export default function GroupIssueClient({
 
   const selectedRows = rows.filter((row: any) => selected.includes(row.userId))
 
-  const masoCount = rows.filter((row: any) => String(row.typStravy || row.volba || '').toUpperCase() === 'MASO').length
-  const vegeCount = rows.filter((row: any) => String(row.typStravy || row.volba || '').toUpperCase() === 'VEGE').length
+  const masoCount = rows.filter((row: any) => {
+    return String(row.typStravy || row.volba || '').toUpperCase() === 'MASO'
+  }).length
+
+  const vegeCount = rows.filter((row: any) => {
+    return String(row.typStravy || row.volba || '').toUpperCase() === 'VEGE'
+  }).length
+
   const unknownCount = rows.filter((row: any) => {
     const choice = String(row.typStravy || row.volba || '').toUpperCase()
     return choice !== 'MASO' && choice !== 'VEGE'
   }).length
 
-  const removedCount = rows.filter((row: any) => row.status === 'REMOVED').length
+  const removedCount = rows.filter((row: any) => {
+    return (
+      row.status === 'REMOVED' ||
+      row.status === 'INDIVIDUAL_ISSUED' ||
+      row.status === 'BULK_ISSUED' ||
+      row.removeReason === 'REMOVED_FROM_GROUP' ||
+      row.removeReason === 'MOVED_TO_OTHER_GROUP' ||
+      row.role === '—'
+    )
+  }).length
 
   const loadIssueToEditor = (issue: any | null) => {
     if (!issue) {
@@ -704,38 +727,72 @@ export default function GroupIssueClient({
         </div>
       </section>
 
-      <section style={styles.statsGrid}>
-        <button type="button" style={styles.statCard} onClick={selectAll}>
-          <b>{rows.length}</b>
-          <span>Osoby</span>
-        </button>
-
-        <button type="button" style={styles.statCard} onClick={() => setChoiceFilter('MASO')}>
-          <b>{masoCount}</b>
-          <span>MASO</span>
-        </button>
-
-        <button type="button" style={styles.statCard} onClick={() => setChoiceFilter('VEGE')}>
-          <b>{vegeCount}</b>
-          <span>VEGE</span>
-        </button>
-
-        <button type="button" style={styles.statCard} onClick={() => setChoiceFilter('UNKNOWN')}>
-          <b>{unknownCount}</b>
-          <span>Nezadané</span>
-        </button>
-
-        <button type="button" style={{ ...styles.statCard, ...styles.selectedStat }}>
-          <b>{selectedRows.length}</b>
-          <span>Vybraní</span>
-        </button>
-
-        {currentIssue && (
-          <button type="button" style={{ ...styles.statCard, ...styles.removedStat }}>
-            <b>{removedCount}</b>
-            <span>Vyradení</span>
+      <section style={styles.statsPanel}>
+        <div style={styles.filterRow}>
+          <button
+            type="button"
+            style={{
+              ...styles.filterButton,
+              ...(choiceFilter === 'ALL' ? styles.filterButtonActive : {})
+            }}
+            onClick={() => setChoiceFilter('ALL')}
+          >
+            <b>{rows.length}</b>
+            <span>Všetci</span>
           </button>
-        )}
+
+          <button
+            type="button"
+            style={{
+              ...styles.filterButton,
+              ...(choiceFilter === 'MASO' ? styles.filterButtonActive : {})
+            }}
+            onClick={() => setChoiceFilter('MASO')}
+          >
+            <b>{masoCount}</b>
+            <span>MASO</span>
+          </button>
+
+          <button
+            type="button"
+            style={{
+              ...styles.filterButton,
+              ...(choiceFilter === 'VEGE' ? styles.filterButtonActive : {})
+            }}
+            onClick={() => setChoiceFilter('VEGE')}
+          >
+            <b>{vegeCount}</b>
+            <span>VEGE</span>
+          </button>
+
+          {unknownCount > 0 && (
+            <button
+              type="button"
+              style={{
+                ...styles.filterButton,
+                ...(choiceFilter === 'UNKNOWN' ? styles.filterButtonActive : {})
+              }}
+              onClick={() => setChoiceFilter('UNKNOWN')}
+            >
+              <b>{unknownCount}</b>
+              <span>Nezadané</span>
+            </button>
+          )}
+        </div>
+
+        <div style={styles.statusCountRow}>
+          <div style={styles.selectedCountCard}>
+            <b>{selectedRows.length}</b>
+            <span>Vybraní</span>
+          </div>
+
+          {currentIssue && removedCount > 0 && (
+            <div style={styles.removedCountCard}>
+              <b>{removedCount}</b>
+              <span>Vyradení</span>
+            </div>
+          )}
+        </div>
       </section>
 
       <section style={styles.toolbar}>
@@ -916,7 +973,7 @@ export default function GroupIssueClient({
 
                 <div>
                   <span style={styles.roleBadge}>
-                    {row.role || '-'}
+                    {row.role || '—'}
                   </span>
                 </div>
 
@@ -925,21 +982,21 @@ export default function GroupIssueClient({
                     style={{
                       ...styles.statusBadge,
                       background:
-                        row.status === 'PLANNED'
-                          ? '#dbeafe'
-                          : isRemovedFromGroup
-                            ? '#fee2e2'
-                            : row.status === 'REMOVED'
-                              ? '#f3f4f6'
-                              : '#dcfce7',
+                        isRemovedFromGroup
+                          ? '#fee2e2'
+                          : isSelected
+                            ? '#dbeafe'
+                            : row.status === 'INDIVIDUAL_ISSUED' || row.status === 'BULK_ISSUED'
+                              ? '#dcfce7'
+                              : '#f3f4f6',
                       color:
-                        row.status === 'PLANNED'
-                          ? '#1d4ed8'
-                          : isRemovedFromGroup
-                            ? '#991b1b'
-                            : row.status === 'REMOVED'
-                              ? '#374151'
-                              : '#166534'
+                        isRemovedFromGroup
+                          ? '#991b1b'
+                          : isSelected
+                            ? '#1d4ed8'
+                            : row.status === 'INDIVIDUAL_ISSUED' || row.status === 'BULK_ISSUED'
+                              ? '#166534'
+                              : '#374151'
                     }}
                   >
                     {itemStatusLabel(row, selected)}
@@ -1139,28 +1196,58 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 800,
     color: '#9a3412'
   },
-  statsGrid: {
+  statsPanel: {
+    display: 'grid',
+    gap: 8
+  },
+  filterRow: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))',
     gap: 8
   },
-  statCard: {
+  filterButton: {
     background: '#fff',
     border: '1px solid #e5e7eb',
     borderRadius: 14,
     padding: '9px 6px',
     textAlign: 'center',
     color: '#111827',
-    boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+    boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+    display: 'grid',
+    gap: 3,
+    cursor: 'pointer'
   },
-  selectedStat: {
+  filterButtonActive: {
+    background: '#eff6ff',
+    borderColor: '#93c5fd',
+    color: '#1d4ed8'
+  },
+  statusCountRow: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+    gap: 8
+  },
+  selectedCountCard: {
     background: '#ecfdf5',
-    borderColor: '#22c55e'
+    border: '1px solid #22c55e',
+    borderRadius: 14,
+    padding: '10px 8px',
+    textAlign: 'center',
+    color: '#166534',
+    boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+    display: 'grid',
+    gap: 3
   },
-  removedStat: {
+  removedCountCard: {
     background: '#fee2e2',
-    borderColor: '#fecaca',
-    color: '#991b1b'
+    border: '1px solid #fecaca',
+    borderRadius: 14,
+    padding: '10px 8px',
+    textAlign: 'center',
+    color: '#991b1b',
+    boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+    display: 'grid',
+    gap: 3
   },
   toolbar: {
     background: '#fff',
