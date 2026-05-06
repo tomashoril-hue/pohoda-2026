@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 
 function todayIsoDate() {
@@ -75,6 +75,8 @@ function entitlementLabel(value: string | null | undefined) {
 }
 
 function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: string[]) {
+  if (item.removeReason === 'IN_OTHER_ISSUE') return 'V INOM VÝDAJI'
+
   if (item.status === 'INDIVIDUAL_ISSUED') return 'PREVZAL OSOBNE'
   if (item.status === 'BULK_ISSUED') return 'PREVZATÉ HROMADNE'
 
@@ -98,6 +100,7 @@ function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: str
 function canSelectRow(item: any, currentIssue: any) {
   if (!currentIssue) return true
 
+  if (item.removeReason === 'IN_OTHER_ISSUE') return false
   if (item.status === 'INDIVIDUAL_ISSUED') return false
   if (item.status === 'BULK_ISSUED') return false
 
@@ -142,6 +145,7 @@ export default function GroupIssueClient({
   activeIssues: any[]
 }) {
   const router = useRouter()
+  const qrInputRef = useRef<HTMLInputElement | null>(null)
 
   const [datum, setDatum] = useState(todayIsoDate())
   const [typJedla, setTypJedla] = useState('OBED')
@@ -154,6 +158,12 @@ export default function GroupIssueClient({
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
   const [now, setNow] = useState(Date.now())
 
+  const [qrOpen, setQrOpen] = useState(false)
+  const [qrValue, setQrValue] = useState('')
+  const [qrLoading, setQrLoading] = useState(false)
+  const [qrMessage, setQrMessage] = useState('')
+  const [qrAddedRows, setQrAddedRows] = useState<any[]>([])
+
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(Date.now())
@@ -161,6 +171,16 @@ export default function GroupIssueClient({
 
     return () => clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    if (!qrOpen) return
+
+    const timer = setTimeout(() => {
+      qrInputRef.current?.focus()
+    }, 80)
+
+    return () => clearTimeout(timer)
+  }, [qrOpen])
 
   const selectedActiveIssue = activeIssues.find(issue => issue.id === selectedIssueId) || null
 
@@ -185,6 +205,18 @@ export default function GroupIssueClient({
   const isActive = currentIssue?.status === 'READY' || (currentIssue?.status === 'WAITING' && remainingMs <= 0)
 
   const rows = useMemo(() => {
+    const normalizeExtraRows = (existingUserIds: Set<string>) => {
+      return qrAddedRows
+        .filter((row: any) => !existingUserIds.has(row.userId))
+        .map((row: any) => ({
+          ...row,
+          rowId: row.rowId || `qr-${row.userId}`,
+          typStravy: row.typStravy || row.volba || '',
+          addedByQr: true,
+          isFromIssue: !!currentIssue
+        }))
+    }
+
     if (currentIssue) {
       const issueItems = currentIssue.items || []
 
@@ -228,7 +260,7 @@ export default function GroupIssueClient({
         return !members.some((member: any) => member.userId === item.userId)
       })
 
-      return [
+      const baseRows = [
         ...mergedRows,
         ...removedOrSpecialItems.map((item: any) => ({
           ...item,
@@ -239,9 +271,16 @@ export default function GroupIssueClient({
           isFromIssue: true
         }))
       ]
+
+      const existingUserIds = new Set(baseRows.map((row: any) => row.userId))
+
+      return [
+        ...baseRows,
+        ...normalizeExtraRows(existingUserIds)
+      ]
     }
 
-    return members.map((member: any) => ({
+    const baseRows = members.map((member: any) => ({
       ...member,
       rowId: member.userId,
       status: 'NOT_PREPARED',
@@ -249,7 +288,14 @@ export default function GroupIssueClient({
       entitlementStatus: getMemberEntitlement(member, datum, typJedla),
       isFromIssue: false
     }))
-  }, [currentIssue, members, datum, typJedla])
+
+    const existingUserIds = new Set(baseRows.map((row: any) => row.userId))
+
+    return [
+      ...baseRows,
+      ...normalizeExtraRows(existingUserIds)
+    ]
+  }, [currentIssue, members, datum, typJedla, qrAddedRows])
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -279,6 +325,7 @@ export default function GroupIssueClient({
           row.status === 'BULK_ISSUED' ||
           row.removeReason === 'REMOVED_FROM_GROUP' ||
           row.removeReason === 'MOVED_TO_OTHER_GROUP' ||
+          row.removeReason === 'IN_OTHER_ISSUE' ||
           row.role === '—'
 
         return isSpecial ? 2 : 1
@@ -337,6 +384,7 @@ export default function GroupIssueClient({
       row.status === 'BULK_ISSUED' ||
       row.removeReason === 'REMOVED_FROM_GROUP' ||
       row.removeReason === 'MOVED_TO_OTHER_GROUP' ||
+      row.removeReason === 'IN_OTHER_ISSUE' ||
       row.role === '—'
     )
   }).length
@@ -352,15 +400,7 @@ export default function GroupIssueClient({
       : messageType === 'ok'
         ? 'ZMENY ULOŽENÉ'
         : 'ULOŽENÉ'
-    : hasUnsavedChanges
-      ? 'NEULOŽENÉ'
-      : 'NEULOŽENÉ'
-
-  const saveStatusDescription = currentIssue
-    ? hasUnsavedChanges
-      ? 'Výber bol zmenený, ale ešte nie je potvrdený.'
-      : 'Príprava je uložená v databáze.'
-    : 'Nová príprava ešte nie je potvrdená.'
+    : 'NEULOŽENÉ'
 
   const saveStatusColor = hasSavedIssue && !hasUnsavedChanges
     ? '#dcfce7'
@@ -375,6 +415,8 @@ export default function GroupIssueClient({
     : '#9a3412'
 
   const loadIssueToEditor = (issue: any | null) => {
+    setQrAddedRows([])
+
     if (!issue) {
       setSelectedIssueId(null)
       setSelected(members.map(member => member.userId))
@@ -391,6 +433,7 @@ export default function GroupIssueClient({
     setDatum(value)
     setMessage('')
     setMessageType('')
+    setQrAddedRows([])
 
     const issue = activeIssues.find(item => {
       return item.datum === value && item.typ_jedla === typJedla
@@ -409,6 +452,7 @@ export default function GroupIssueClient({
     setTypJedla(value)
     setMessage('')
     setMessageType('')
+    setQrAddedRows([])
 
     const issue = activeIssues.find(item => {
       return item.datum === datum && item.typ_jedla === value
@@ -434,6 +478,7 @@ export default function GroupIssueClient({
     setSelected(members.map(member => member.userId))
     setMessage('')
     setMessageType('')
+    setQrAddedRows([])
   }
 
   const markAsChanged = () => {
@@ -482,6 +527,112 @@ export default function GroupIssueClient({
   const clearSelected = () => {
     markAsChanged()
     setSelected([])
+  }
+
+  const openQrModal = () => {
+    setQrValue('')
+    setQrMessage('')
+    setQrOpen(true)
+  }
+
+  const closeQrModal = () => {
+    if (qrLoading) return
+
+    setQrOpen(false)
+    setQrValue('')
+    setQrMessage('')
+  }
+
+  const submitExpressQr = async (manualValue?: string) => {
+    const cleanQr = String(manualValue ?? qrValue).trim()
+
+    if (!cleanQr) {
+      setQrMessage('Načítajte QR kód.')
+      return
+    }
+
+    setQrLoading(true)
+    setQrMessage('')
+
+    try {
+      const res = await fetch('/api/group/issue/express-qr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId: group.id,
+          issueId: currentIssue?.id || '',
+          datum,
+          typJedla,
+          qrCode: cleanQr
+        })
+      })
+
+      const text = await res.text()
+      let json: any = {}
+
+      try {
+        json = text ? JSON.parse(text) : {}
+      } catch {
+        setQrMessage('Server vrátil neplatnú odpoveď.')
+        return
+      }
+
+      if (!res.ok || json.error) {
+        setQrMessage(json.error || 'QR sa nepodarilo spracovať.')
+        return
+      }
+
+      const member = json.member
+
+      if (!member?.userId) {
+        setQrMessage('Server nevrátil používateľa.')
+        return
+      }
+
+      const row = {
+        ...member,
+        rowId: `qr-${member.userId}`,
+        typStravy: member.typStravy || member.volba || '',
+        addedByQr: true,
+        isFromIssue: !!currentIssue
+      }
+
+      setQrAddedRows(prev => {
+        const filtered = prev.filter((item: any) => item.userId !== member.userId)
+        return [...filtered, row]
+      })
+
+      if (json.status === 'IN_OTHER_ISSUE') {
+        setSelected(prev => prev.filter(id => id !== member.userId))
+      } else {
+        setSelected(prev => {
+          if (prev.includes(member.userId)) return prev
+          return [...prev, member.userId]
+        })
+      }
+
+      setMessage(json.message || 'Používateľ bol pridaný cez QR.')
+      setMessageType(json.status === 'IN_OTHER_ISSUE' ? 'error' : 'ok')
+
+      setQrOpen(false)
+      setQrValue('')
+      setQrMessage('')
+
+      if (currentIssue?.id) {
+        router.refresh()
+      }
+    } catch (err: any) {
+      setQrMessage('Chyba spojenia so serverom: ' + err.message)
+    } finally {
+      setQrLoading(false)
+    }
+  }
+
+  const handleQrKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      submitExpressQr()
+    }
   }
 
   const confirmPreparation = async () => {
@@ -549,6 +700,7 @@ export default function GroupIssueClient({
 
       setMessage(json.message || 'Príprava hromadného výdaja bola potvrdená.')
       setMessageType('ok')
+      setQrAddedRows([])
       router.refresh()
     } catch (err: any) {
       setMessage('Chyba spojenia so serverom: ' + err.message)
@@ -622,6 +774,7 @@ export default function GroupIssueClient({
 
       setMessage(json.message || 'Úprava prípravy bola potvrdená.')
       setMessageType('ok')
+      setQrAddedRows([])
       router.refresh()
     } catch (err: any) {
       setMessage('Chyba spojenia so serverom: ' + err.message)
@@ -675,6 +828,7 @@ export default function GroupIssueClient({
       setMessageType('ok')
       setSelectedIssueId(null)
       setSelected(members.map(member => member.userId))
+      setQrAddedRows([])
       router.refresh()
     } catch (err: any) {
       setMessage('Chyba spojenia so serverom: ' + err.message)
@@ -877,7 +1031,7 @@ export default function GroupIssueClient({
                     </div>
 
                     <div style={styles.activeIssueCounts}>
-                      <small>Všetci {plannedItems.length}</small>
+                      <small>SPOLU {plannedItems.length}</small>
                       <small>MASO {activeMasoCount}</small>
                       <small>VEGE {activeVegeCount}</small>
                       <small>Diéta {activeDietCount}</small>
@@ -885,7 +1039,7 @@ export default function GroupIssueClient({
 
                     {item.withoutEntitlementCount > 0 && (
                       <div style={styles.activeIssueWarning}>
-                        Bez potvrdeného nároku: {item.withoutEntitlementCount}
+                        Bez nároku: {item.withoutEntitlementCount}
                       </div>
                     )}
 
@@ -916,9 +1070,8 @@ export default function GroupIssueClient({
             }}
             onClick={() => setChoiceFilter('ALL')}
           >
-            <b>{selectedRows.length}</b>
-            <span>Všetci</span>
-            <small>z {allRowsCount}</small>
+            <b>{selectedRows.length}/{allRowsCount}</b>
+            <span>SPOLU</span>
           </button>
 
           <button
@@ -970,20 +1123,19 @@ export default function GroupIssueClient({
             }}
           >
             <b>{saveStatusLabel}</b>
-            <span>{saveStatusDescription}</span>
           </div>
 
           {(entitlementNoCount > 0 || entitlementUnknownCount > 0) && (
             <div style={styles.entitlementWarningCard}>
               <b>{entitlementNoCount + entitlementUnknownCount}</b>
-              <span>Bez potvrdeného nároku</span>
+              <span>BEZ NÁROKU</span>
             </div>
           )}
 
           {currentIssue && removedCount > 0 && (
             <div style={styles.removedCountCard}>
               <b>{removedCount}</b>
-              <span>Vyradení</span>
+              <span>VYRADENÝCH</span>
             </div>
           )}
         </div>
@@ -1025,6 +1177,14 @@ export default function GroupIssueClient({
         </div>
 
         <div style={styles.actionRight}>
+          <button
+            type="button"
+            style={styles.qrButton}
+            onClick={openQrModal}
+          >
+            Cez QR
+          </button>
+
           {currentIssue ? (
             <>
               <button
@@ -1103,23 +1263,30 @@ export default function GroupIssueClient({
             const entitlementText = entitlementLabel(row.entitlementStatus)
             const isRemovedFromGroup =
               row.status === 'REMOVED' && row.removeReason === 'REMOVED_FROM_GROUP'
+            const isOtherIssue = row.removeReason === 'IN_OTHER_ISSUE'
+
+            const isInactiveRow =
+              isRemovedFromGroup ||
+              isOtherIssue ||
+              row.status === 'INDIVIDUAL_ISSUED' ||
+              row.status === 'BULK_ISSUED'
 
             return (
               <div
                 key={row.rowId}
                 style={{
                   ...styles.row,
-                  background: isRemovedFromGroup
-                    ? '#f3f4f6'
+                  background: isInactiveRow
+                    ? '#e5e7eb'
                     : isSelected
                       ? '#ecfdf5'
                       : '#fff',
-                  borderColor: isRemovedFromGroup
-                    ? '#d1d5db'
+                  borderColor: isInactiveRow
+                    ? '#9ca3af'
                     : isSelected
                       ? '#22c55e'
                       : '#e5e7eb',
-                  opacity: isRemovedFromGroup ? 0.72 : 1,
+                  opacity: isInactiveRow ? 0.58 : 1,
                   cursor: selectable ? 'pointer' : 'not-allowed'
                 }}
                 onClick={() => toggleOne(row)}
@@ -1144,6 +1311,12 @@ export default function GroupIssueClient({
                     {row.email || '-'}
                     {row.telefon ? ` · ${row.telefon}` : ''}
                   </div>
+
+                  {row.addedByQr && (
+                    <div style={styles.qrBadge}>
+                      CEZ QR
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -1179,25 +1352,29 @@ export default function GroupIssueClient({
                     style={{
                       ...styles.statusBadge,
                       background:
-                        isRemovedFromGroup
-                          ? '#fee2e2'
-                          : statusText === 'UPRAVUJE SA'
-                            ? '#ffedd5'
-                            : statusText === 'PRIPRAVENÝ'
-                              ? '#dbeafe'
-                              : row.status === 'INDIVIDUAL_ISSUED' || row.status === 'BULK_ISSUED'
-                                ? '#dcfce7'
-                                : '#f3f4f6',
+                        isOtherIssue
+                          ? '#e5e7eb'
+                          : isRemovedFromGroup
+                            ? '#fee2e2'
+                            : statusText === 'UPRAVUJE SA'
+                              ? '#ffedd5'
+                              : statusText === 'PRIPRAVENÝ'
+                                ? '#dbeafe'
+                                : row.status === 'INDIVIDUAL_ISSUED' || row.status === 'BULK_ISSUED'
+                                  ? '#dcfce7'
+                                  : '#f3f4f6',
                       color:
-                        isRemovedFromGroup
-                          ? '#991b1b'
-                          : statusText === 'UPRAVUJE SA'
-                            ? '#9a3412'
-                            : statusText === 'PRIPRAVENÝ'
-                              ? '#1d4ed8'
-                              : row.status === 'INDIVIDUAL_ISSUED' || row.status === 'BULK_ISSUED'
-                                ? '#166534'
-                                : '#374151'
+                        isOtherIssue
+                          ? '#374151'
+                          : isRemovedFromGroup
+                            ? '#991b1b'
+                            : statusText === 'UPRAVUJE SA'
+                              ? '#9a3412'
+                              : statusText === 'PRIPRAVENÝ'
+                                ? '#1d4ed8'
+                                : row.status === 'INDIVIDUAL_ISSUED' || row.status === 'BULK_ISSUED'
+                                  ? '#166534'
+                                  : '#374151'
                     }}
                   >
                     {statusText}
@@ -1230,6 +1407,69 @@ export default function GroupIssueClient({
           })
         )}
       </section>
+
+      {qrOpen && (
+        <div style={styles.modalOverlay} onClick={closeQrModal}>
+          <div style={styles.qrModal} onClick={event => event.stopPropagation()}>
+            <div style={styles.qrModalHeader}>
+              <div>
+                <b>Expres QR</b>
+                <span>Načítajte QR kód osoby</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeQrModal}
+                style={styles.qrCloseButton}
+                disabled={qrLoading}
+              >
+                ×
+              </button>
+            </div>
+
+            <input
+              ref={qrInputRef}
+              value={qrValue}
+              onChange={event => setQrValue(event.target.value)}
+              onKeyDown={handleQrKeyDown}
+              placeholder="Naskenujte QR..."
+              style={styles.qrInput}
+              disabled={qrLoading}
+              autoComplete="off"
+              inputMode="text"
+            />
+
+            {qrMessage && (
+              <div style={styles.qrMessage}>
+                {qrMessage}
+              </div>
+            )}
+
+            <div style={styles.qrModalActions}>
+              <button
+                type="button"
+                style={styles.lightButton}
+                onClick={closeQrModal}
+                disabled={qrLoading}
+              >
+                Zrušiť
+              </button>
+
+              <button
+                type="button"
+                style={{
+                  ...styles.confirmButton,
+                  opacity: qrLoading ? 0.6 : 1
+                }}
+                onClick={() => submitExpressQr()}
+                disabled={qrLoading}
+              >
+                {qrLoading ? 'Načítavam...' : 'Pridať'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <section style={styles.bottomSpace} />
     </div>
@@ -1626,6 +1866,15 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     fontWeight: 900
   },
+  qrButton: {
+    background: '#dbeafe',
+    color: '#1d4ed8',
+    border: '1px solid #93c5fd',
+    borderRadius: 12,
+    padding: '10px 12px',
+    fontSize: 13,
+    fontWeight: 950
+  },
   confirmButton: {
     background: '#22c55e',
     color: '#052e16',
@@ -1705,6 +1954,16 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#6b7280',
     overflowWrap: 'anywhere'
   },
+  qrBadge: {
+    display: 'inline-flex',
+    marginTop: 4,
+    borderRadius: 999,
+    padding: '3px 7px',
+    fontSize: 9,
+    fontWeight: 950,
+    background: '#dbeafe',
+    color: '#1d4ed8'
+  },
   choiceBadge: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -1753,6 +2012,68 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 800,
     color: '#6b7280',
     textAlign: 'center'
+  },
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(17, 24, 39, 0.55)',
+    zIndex: 50,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16
+  },
+  qrModal: {
+    width: '100%',
+    maxWidth: 360,
+    background: '#fff',
+    borderRadius: 18,
+    padding: 14,
+    boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
+    display: 'grid',
+    gap: 12
+  },
+  qrModalHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 10,
+    alignItems: 'flex-start'
+  },
+  qrCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    border: '1px solid #e5e7eb',
+    background: '#f3f4f6',
+    color: '#111827',
+    fontSize: 22,
+    fontWeight: 900,
+    lineHeight: 1
+  },
+  qrInput: {
+    width: '100%',
+    boxSizing: 'border-box',
+    border: '1px solid #d1d5db',
+    borderRadius: 14,
+    padding: '13px 12px',
+    fontSize: 16,
+    fontWeight: 850,
+    outline: 'none'
+  },
+  qrMessage: {
+    background: '#fee2e2',
+    color: '#991b1b',
+    border: '1px solid #fecaca',
+    borderRadius: 12,
+    padding: 10,
+    fontSize: 12,
+    fontWeight: 850
+  },
+  qrModalActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 8,
+    flexWrap: 'wrap'
   },
   bottomSpace: {
     height: 20

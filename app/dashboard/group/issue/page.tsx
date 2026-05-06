@@ -244,27 +244,28 @@ export default async function GroupIssuePage() {
       const fullName = `${itemUser?.meno || ''} ${itemUser?.priezvisko || ''}`.trim()
 
       return {
-        id: item.id,
-        issueId: item.hromadny_vydaj_id,
-        userId: item.user_id,
-        fullName: fullName || itemUser?.email || 'Bez mena',
-        meno: itemUser?.meno || '',
-        priezvisko: itemUser?.priezvisko || '',
-        email: itemUser?.email || '',
-        telefon: itemUser?.telefon || '',
-        typStravy: item.volba || itemUser?.typ_stravy || '',
-        role:
-          item.status === 'REMOVED' && item.remove_reason === 'REMOVED_FROM_GROUP'
-            ? '—'
-            : memberRoleMap.get(item.user_id) || '—',
-        status: item.status,
-        source: item.source,
-        removeReason: item.remove_reason,
-        removedAt: item.removed_at,
-        entitlementStatus: issue
-          ? getEntitlement(item.user_id, issue.datum, issue.typ_jedla)
-          : 'UNKNOWN'
-      }
+  id: item.id,
+  issueId: item.hromadny_vydaj_id,
+  userId: item.user_id,
+  fullName: fullName || itemUser?.email || 'Bez mena',
+  meno: itemUser?.meno || '',
+  priezvisko: itemUser?.priezvisko || '',
+  email: itemUser?.email || '',
+  telefon: itemUser?.telefon || '',
+  typStravy: item.volba || itemUser?.typ_stravy || '',
+  role:
+    item.status === 'REMOVED' && item.remove_reason === 'REMOVED_FROM_GROUP'
+      ? '—'
+      : memberRoleMap.get(item.user_id) || '—',
+  status: item.status,
+  source: item.source,
+  addedByQr: item.source === 'QR_EXTRA',
+  removeReason: item.remove_reason,
+  removedAt: item.removed_at,
+  entitlementStatus: issue
+    ? getEntitlement(item.user_id, issue.datum, issue.typ_jedla)
+    : 'UNKNOWN'
+}
     })
   }
 
