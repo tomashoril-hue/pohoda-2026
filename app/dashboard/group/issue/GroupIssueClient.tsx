@@ -98,8 +98,6 @@ function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: str
 }
 
 function canSelectRow(item: any, currentIssue: any) {
-  if (!currentIssue) return true
-
   if (item.removeReason === 'IN_OTHER_ISSUE') return false
   if (item.status === 'INDIVIDUAL_ISSUED') return false
   if (item.status === 'BULK_ISSUED') return false
@@ -145,7 +143,14 @@ export default function GroupIssueClient({
   activeIssues: any[]
 }) {
   const router = useRouter()
+
   const qrInputRef = useRef<HTMLInputElement | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const detectorRef = useRef<any>(null)
+  const scanLoopRef = useRef<number | null>(null)
+  const qrBusyRef = useRef(false)
+  const lastScanRef = useRef('')
 
   const [datum, setDatum] = useState(todayIsoDate())
   const [typJedla, setTypJedla] = useState('OBED')
@@ -162,6 +167,9 @@ export default function GroupIssueClient({
   const [qrValue, setQrValue] = useState('')
   const [qrLoading, setQrLoading] = useState(false)
   const [qrMessage, setQrMessage] = useState('')
+  const [qrMessageType, setQrMessageType] = useState<'ok' | 'error' | ''>('')
+  const [cameraStatus, setCameraStatus] = useState('Spúšťam kameru...')
+  const [cameraReady, setCameraReady] = useState(false)
   const [qrAddedRows, setQrAddedRows] = useState<any[]>([])
 
   useEffect(() => {
@@ -172,14 +180,118 @@ export default function GroupIssueClient({
     return () => clearInterval(timer)
   }, [])
 
+  const stopCamera = () => {
+    if (scanLoopRef.current) {
+      cancelAnimationFrame(scanLoopRef.current)
+      scanLoopRef.current = null
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current = null
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+
+    setCameraReady(false)
+  }
+
+  const startCamera = async () => {
+    setCameraReady(false)
+    setCameraStatus('Spúšťam kameru...')
+
+    try {
+      const win = window as any
+
+      if (!win.BarcodeDetector) {
+        setCameraStatus('Tento prehliadač nepodporuje skenovanie kamerou. Použite manuálne pole nižšie.')
+        setTimeout(() => qrInputRef.current?.focus(), 100)
+        return
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraStatus('Kamera nie je dostupná. Použite manuálne pole nižšie.')
+        setTimeout(() => qrInputRef.current?.focus(), 100)
+        return
+      }
+
+      detectorRef.current = new win.BarcodeDetector({
+        formats: ['qr_code']
+      })
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' }
+        },
+        audio: false
+      })
+
+      streamRef.current = stream
+
+      if (!videoRef.current) return
+
+      videoRef.current.srcObject = stream
+      await videoRef.current.play()
+
+      setCameraReady(true)
+      setCameraStatus('Kamera je pripravená. Namierte na QR kód.')
+
+      const scan = async () => {
+        if (!qrOpen || !videoRef.current || !detectorRef.current) return
+
+        try {
+          const codes = await detectorRef.current.detect(videoRef.current)
+
+          if (codes && codes.length > 0) {
+            const rawValue = String(codes[0]?.rawValue || '').trim()
+
+            if (rawValue && rawValue !== lastScanRef.current && !qrBusyRef.current) {
+              lastScanRef.current = rawValue
+              await submitExpressQr(rawValue, true)
+
+              setTimeout(() => {
+                lastScanRef.current = ''
+              }, 1600)
+            }
+          }
+        } catch {
+          // kamera môže občas vrátiť prázdny frame, ignorujeme
+        }
+
+        scanLoopRef.current = requestAnimationFrame(scan)
+      }
+
+      scanLoopRef.current = requestAnimationFrame(scan)
+    } catch (err: any) {
+      setCameraStatus('Kameru sa nepodarilo spustiť. Povoľte kameru alebo použite manuálne pole.')
+      setQrMessage(err?.message || '')
+      setQrMessageType('error')
+      setTimeout(() => qrInputRef.current?.focus(), 100)
+    }
+  }
+
   useEffect(() => {
-    if (!qrOpen) return
+    if (!qrOpen) {
+      stopCamera()
+      return
+    }
+
+    setQrValue('')
+    setQrMessage('')
+    setQrMessageType('')
+    startCamera()
 
     const timer = setTimeout(() => {
       qrInputRef.current?.focus()
-    }, 80)
+    }, 250)
 
-    return () => clearTimeout(timer)
+    return () => {
+      clearTimeout(timer)
+      stopCamera()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qrOpen])
 
   const selectedActiveIssue = activeIssues.find(issue => issue.id === selectedIssueId) || null
@@ -378,15 +490,7 @@ export default function GroupIssueClient({
   const entitlementUnknownCount = rows.filter((row: any) => row.entitlementStatus === 'UNKNOWN').length
 
   const removedCount = rows.filter((row: any) => {
-    return (
-      row.status === 'REMOVED' ||
-      row.status === 'INDIVIDUAL_ISSUED' ||
-      row.status === 'BULK_ISSUED' ||
-      row.removeReason === 'REMOVED_FROM_GROUP' ||
-      row.removeReason === 'MOVED_TO_OTHER_GROUP' ||
-      row.removeReason === 'IN_OTHER_ISSUE' ||
-      row.role === '—'
-    )
+    return !canSelectRow(row, currentIssue)
   }).length
 
   const hasSavedIssue = !!currentIssue
@@ -532,6 +636,7 @@ export default function GroupIssueClient({
   const openQrModal = () => {
     setQrValue('')
     setQrMessage('')
+    setQrMessageType('')
     setQrOpen(true)
   }
 
@@ -541,18 +646,25 @@ export default function GroupIssueClient({
     setQrOpen(false)
     setQrValue('')
     setQrMessage('')
+    setQrMessageType('')
+    stopCamera()
   }
 
-  const submitExpressQr = async (manualValue?: string) => {
+  const submitExpressQr = async (manualValue?: string, fromCamera = false) => {
     const cleanQr = String(manualValue ?? qrValue).trim()
 
     if (!cleanQr) {
       setQrMessage('Načítajte QR kód.')
+      setQrMessageType('error')
       return
     }
 
+    if (qrBusyRef.current) return
+
+    qrBusyRef.current = true
     setQrLoading(true)
     setQrMessage('')
+    setQrMessageType('')
 
     try {
       const res = await fetch('/api/group/issue/express-qr', {
@@ -574,11 +686,13 @@ export default function GroupIssueClient({
         json = text ? JSON.parse(text) : {}
       } catch {
         setQrMessage('Server vrátil neplatnú odpoveď.')
+        setQrMessageType('error')
         return
       }
 
       if (!res.ok || json.error) {
         setQrMessage(json.error || 'QR sa nepodarilo spracovať.')
+        setQrMessageType('error')
         return
       }
 
@@ -586,6 +700,7 @@ export default function GroupIssueClient({
 
       if (!member?.userId) {
         setQrMessage('Server nevrátil používateľa.')
+        setQrMessageType('error')
         return
       }
 
@@ -604,27 +719,37 @@ export default function GroupIssueClient({
 
       if (json.status === 'IN_OTHER_ISSUE') {
         setSelected(prev => prev.filter(id => id !== member.userId))
+        setQrMessage(`V inom výdaji: ${member.fullName || member.email || cleanQr}`)
+        setQrMessageType('error')
+        setMessage(`Používateľ je už v inom hromadnom výdaji: ${member.fullName || member.email || cleanQr}`)
+        setMessageType('error')
       } else {
         setSelected(prev => {
           if (prev.includes(member.userId)) return prev
           return [...prev, member.userId]
         })
+
+        setQrMessage(`Pridaný: ${member.fullName || member.email || cleanQr}`)
+        setQrMessageType('ok')
+        setMessage(`Pridaný cez QR: ${member.fullName || member.email || cleanQr}`)
+        setMessageType('ok')
       }
 
-      setMessage(json.message || 'Používateľ bol pridaný cez QR.')
-      setMessageType(json.status === 'IN_OTHER_ISSUE' ? 'error' : 'ok')
-
-      setQrOpen(false)
       setQrValue('')
-      setQrMessage('')
+
+      if (!fromCamera) {
+        setTimeout(() => qrInputRef.current?.focus(), 60)
+      }
 
       if (currentIssue?.id) {
         router.refresh()
       }
     } catch (err: any) {
       setQrMessage('Chyba spojenia so serverom: ' + err.message)
+      setQrMessageType('error')
     } finally {
       setQrLoading(false)
+      qrBusyRef.current = false
     }
   }
 
@@ -1261,15 +1386,7 @@ export default function GroupIssueClient({
             const selectable = canSelectRow(row, currentIssue)
             const statusText = itemStatusLabel(row, selected, savedPreparedIds)
             const entitlementText = entitlementLabel(row.entitlementStatus)
-            const isRemovedFromGroup =
-              row.status === 'REMOVED' && row.removeReason === 'REMOVED_FROM_GROUP'
-            const isOtherIssue = row.removeReason === 'IN_OTHER_ISSUE'
-
-            const isInactiveRow =
-              isRemovedFromGroup ||
-              isOtherIssue ||
-              row.status === 'INDIVIDUAL_ISSUED' ||
-              row.status === 'BULK_ISSUED'
+            const isInactiveRow = !selectable
 
             return (
               <div
@@ -1351,30 +1468,20 @@ export default function GroupIssueClient({
                   <span
                     style={{
                       ...styles.statusBadge,
-                      background:
-                        isOtherIssue
-                          ? '#e5e7eb'
-                          : isRemovedFromGroup
-                            ? '#fee2e2'
-                            : statusText === 'UPRAVUJE SA'
-                              ? '#ffedd5'
-                              : statusText === 'PRIPRAVENÝ'
-                                ? '#dbeafe'
-                                : row.status === 'INDIVIDUAL_ISSUED' || row.status === 'BULK_ISSUED'
-                                  ? '#dcfce7'
-                                  : '#f3f4f6',
-                      color:
-                        isOtherIssue
-                          ? '#374151'
-                          : isRemovedFromGroup
-                            ? '#991b1b'
-                            : statusText === 'UPRAVUJE SA'
-                              ? '#9a3412'
-                              : statusText === 'PRIPRAVENÝ'
-                                ? '#1d4ed8'
-                                : row.status === 'INDIVIDUAL_ISSUED' || row.status === 'BULK_ISSUED'
-                                  ? '#166534'
-                                  : '#374151'
+                      background: isInactiveRow
+                        ? '#d1d5db'
+                        : statusText === 'UPRAVUJE SA'
+                          ? '#ffedd5'
+                          : statusText === 'PRIPRAVENÝ'
+                            ? '#dbeafe'
+                            : '#f3f4f6',
+                      color: isInactiveRow
+                        ? '#374151'
+                        : statusText === 'UPRAVUJE SA'
+                          ? '#9a3412'
+                          : statusText === 'PRIPRAVENÝ'
+                            ? '#1d4ed8'
+                            : '#374151'
                     }}
                   >
                     {statusText}
@@ -1414,7 +1521,7 @@ export default function GroupIssueClient({
             <div style={styles.qrModalHeader}>
               <div>
                 <b>Expres QR</b>
-                <span>Načítajte QR kód osoby</span>
+                <span>Skenujte QR kódy postupne. Okno zatvoríte krížikom.</span>
               </div>
 
               <button
@@ -1427,46 +1534,70 @@ export default function GroupIssueClient({
               </button>
             </div>
 
-            <input
-              ref={qrInputRef}
-              value={qrValue}
-              onChange={event => setQrValue(event.target.value)}
-              onKeyDown={handleQrKeyDown}
-              placeholder="Naskenujte QR..."
-              style={styles.qrInput}
-              disabled={qrLoading}
-              autoComplete="off"
-              inputMode="text"
-            />
+            <div style={styles.cameraBox}>
+              <video
+                ref={videoRef}
+                style={styles.cameraVideo}
+                playsInline
+                muted
+                autoPlay
+              />
+
+              {!cameraReady && (
+                <div style={styles.cameraOverlay}>
+                  {cameraStatus}
+                </div>
+              )}
+            </div>
+
+            <div style={styles.cameraStatus}>
+              {cameraStatus}
+            </div>
+
+            <div style={styles.manualQrBox}>
+              <label style={styles.manualQrLabel}>
+                Manuálne načítanie / scanner
+              </label>
+
+              <div style={styles.manualQrRow}>
+                <input
+                  ref={qrInputRef}
+                  value={qrValue}
+                  onChange={event => setQrValue(event.target.value)}
+                  onKeyDown={handleQrKeyDown}
+                  placeholder="Naskenujte alebo vložte QR..."
+                  style={styles.qrInput}
+                  disabled={qrLoading}
+                  autoComplete="off"
+                  inputMode="text"
+                />
+
+                <button
+                  type="button"
+                  style={{
+                    ...styles.confirmButton,
+                    opacity: qrLoading ? 0.6 : 1
+                  }}
+                  onClick={() => submitExpressQr()}
+                  disabled={qrLoading}
+                >
+                  {qrLoading ? '...' : 'Pridať'}
+                </button>
+              </div>
+            </div>
 
             {qrMessage && (
-              <div style={styles.qrMessage}>
+              <div
+                style={{
+                  ...styles.qrMessage,
+                  background: qrMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                  color: qrMessageType === 'ok' ? '#166534' : '#991b1b',
+                  borderColor: qrMessageType === 'ok' ? '#86efac' : '#fecaca'
+                }}
+              >
                 {qrMessage}
               </div>
             )}
-
-            <div style={styles.qrModalActions}>
-              <button
-                type="button"
-                style={styles.lightButton}
-                onClick={closeQrModal}
-                disabled={qrLoading}
-              >
-                Zrušiť
-              </button>
-
-              <button
-                type="button"
-                style={{
-                  ...styles.confirmButton,
-                  opacity: qrLoading ? 0.6 : 1
-                }}
-                onClick={() => submitExpressQr()}
-                disabled={qrLoading}
-              >
-                {qrLoading ? 'Načítavam...' : 'Pridať'}
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -2025,7 +2156,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   qrModal: {
     width: '100%',
-    maxWidth: 360,
+    maxWidth: 420,
     background: '#fff',
     borderRadius: 18,
     padding: 14,
@@ -2050,6 +2181,51 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 900,
     lineHeight: 1
   },
+  cameraBox: {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: '1 / 1',
+    background: '#111827',
+    borderRadius: 16,
+    overflow: 'hidden'
+  },
+  cameraVideo: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover'
+  },
+  cameraOverlay: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textAlign: 'center',
+    padding: 16,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 900,
+    background: 'rgba(17,24,39,0.55)'
+  },
+  cameraStatus: {
+    fontSize: 12,
+    fontWeight: 850,
+    color: '#374151'
+  },
+  manualQrBox: {
+    display: 'grid',
+    gap: 6
+  },
+  manualQrLabel: {
+    fontSize: 11,
+    fontWeight: 950,
+    color: '#6b7280'
+  },
+  manualQrRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 8
+  },
   qrInput: {
     width: '100%',
     boxSizing: 'border-box',
@@ -2061,19 +2237,11 @@ const styles: Record<string, React.CSSProperties> = {
     outline: 'none'
   },
   qrMessage: {
-    background: '#fee2e2',
-    color: '#991b1b',
-    border: '1px solid #fecaca',
+    border: '1px solid',
     borderRadius: 12,
     padding: 10,
     fontSize: 12,
     fontWeight: 850
-  },
-  qrModalActions: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: 8,
-    flexWrap: 'wrap'
   },
   bottomSpace: {
     height: 20

@@ -270,7 +270,7 @@ export async function POST(req: NextRequest) {
             remove_reason: null,
             removed_at: null,
             removed_by: null,
-            source: 'QR',
+            source: 'QR_EXTRA',
             updated_at: now
           })
           .eq('id', existingItem.id)
@@ -284,7 +284,7 @@ export async function POST(req: NextRequest) {
           .insert({
             hromadny_vydaj_id: issueId,
             user_id: targetUserId,
-            source: 'QR',
+            source: 'QR_EXTRA',
             volba,
             status: 'PLANNED',
             added_by: user.id,
