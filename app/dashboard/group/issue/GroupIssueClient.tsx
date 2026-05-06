@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { useMemo, useState, useEffect, useRef, type KeyboardEvent } from 'react'
 import { useRouter } from 'next/navigation'
+import { BrowserQRCodeReader } from '@zxing/browser'
 
 function todayIsoDate() {
   const now = new Date()
@@ -97,12 +98,16 @@ function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: str
   return 'NEPRIPRAVENÝ'
 }
 
-function canSelectRow(item: any, currentIssue: any) {
+function canSelectRow(item: any, _currentIssue: any) {
   if (item.removeReason === 'IN_OTHER_ISSUE') return false
   if (item.status === 'INDIVIDUAL_ISSUED') return false
   if (item.status === 'BULK_ISSUED') return false
 
   if (item.status === 'REMOVED' && item.removeReason === 'REMOVED_FROM_GROUP') {
+    return false
+  }
+
+  if (item.status === 'REMOVED' && item.removeReason === 'MOVED_TO_OTHER_GROUP') {
     return false
   }
 
@@ -146,11 +151,12 @@ export default function GroupIssueClient({
 
   const qrInputRef = useRef<HTMLInputElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const detectorRef = useRef<any>(null)
-  const scanLoopRef = useRef<number | null>(null)
+  const readerRef = useRef<BrowserQRCodeReader | null>(null)
+  const controlsRef = useRef<any>(null)
+  const cancelledRef = useRef(false)
   const qrBusyRef = useRef(false)
   const lastScanRef = useRef('')
+  const lastScanTimeRef = useRef(0)
 
   const [datum, setDatum] = useState(todayIsoDate())
   const [typJedla, setTypJedla] = useState('OBED')
@@ -181,15 +187,18 @@ export default function GroupIssueClient({
   }, [])
 
   const stopCamera = () => {
-    if (scanLoopRef.current) {
-      cancelAnimationFrame(scanLoopRef.current)
-      scanLoopRef.current = null
+    cancelledRef.current = true
+
+    try {
+      if (controlsRef.current) {
+        controlsRef.current.stop()
+        controlsRef.current = null
+      }
+    } catch {
+      // ignorujeme
     }
 
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
-      streamRef.current = null
-    }
+    readerRef.current = null
 
     if (videoRef.current) {
       videoRef.current.srcObject = null
@@ -201,74 +210,59 @@ export default function GroupIssueClient({
   const startCamera = async () => {
     setCameraReady(false)
     setCameraStatus('Spúšťam kameru...')
+    cancelledRef.current = false
 
     try {
-      const win = window as any
-
-      if (!win.BarcodeDetector) {
-        setCameraStatus('Tento prehliadač nepodporuje skenovanie kamerou. Použite manuálne pole nižšie.')
-        setTimeout(() => qrInputRef.current?.focus(), 100)
+      if (!videoRef.current) {
+        setCameraStatus('Video prvok nie je pripravený.')
         return
       }
 
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraStatus('Kamera nie je dostupná. Použite manuálne pole nižšie.')
-        setTimeout(() => qrInputRef.current?.focus(), 100)
-        return
-      }
+      const reader = new BrowserQRCodeReader()
+      readerRef.current = reader
 
-      detectorRef.current = new win.BarcodeDetector({
-        formats: ['qr_code']
-      })
+      const controls = await reader.decodeFromVideoDevice(
+        undefined,
+        videoRef.current,
+        async (result) => {
+          if (cancelledRef.current) return
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' }
-        },
-        audio: false
-      })
+          const text = String(result?.getText?.() || '').trim()
 
-      streamRef.current = stream
+          if (!text) return
 
-      if (!videoRef.current) return
+          const nowMs = Date.now()
 
-      videoRef.current.srcObject = stream
-      await videoRef.current.play()
+          if (
+            lastScanRef.current === text &&
+            nowMs - lastScanTimeRef.current < 2500
+          ) {
+            return
+          }
+
+          if (qrBusyRef.current) return
+
+          lastScanRef.current = text
+          lastScanTimeRef.current = nowMs
+
+          await submitExpressQr(text, true)
+        }
+      )
+
+      controlsRef.current = controls
 
       setCameraReady(true)
-      setCameraStatus('Kamera je pripravená. Namierte na QR kód.')
-
-      const scan = async () => {
-        if (!qrOpen || !videoRef.current || !detectorRef.current) return
-
-        try {
-          const codes = await detectorRef.current.detect(videoRef.current)
-
-          if (codes && codes.length > 0) {
-            const rawValue = String(codes[0]?.rawValue || '').trim()
-
-            if (rawValue && rawValue !== lastScanRef.current && !qrBusyRef.current) {
-              lastScanRef.current = rawValue
-              await submitExpressQr(rawValue, true)
-
-              setTimeout(() => {
-                lastScanRef.current = ''
-              }, 1600)
-            }
-          }
-        } catch {
-          // kamera môže občas vrátiť prázdny frame, ignorujeme
-        }
-
-        scanLoopRef.current = requestAnimationFrame(scan)
-      }
-
-      scanLoopRef.current = requestAnimationFrame(scan)
+      setCameraStatus('Kamera je zapnutá. Skenujte QR kódy postupne.')
     } catch (err: any) {
-      setCameraStatus('Kameru sa nepodarilo spustiť. Povoľte kameru alebo použite manuálne pole.')
-      setQrMessage(err?.message || '')
-      setQrMessageType('error')
-      setTimeout(() => qrInputRef.current?.focus(), 100)
+      setCameraReady(false)
+      setCameraStatus(
+        err?.message ||
+          'Kamera sa nepodarila zapnúť. Skontrolujte povolenie kamery alebo použite manuálne pole.'
+      )
+
+      setTimeout(() => {
+        qrInputRef.current?.focus()
+      }, 100)
     }
   }
 
@@ -753,7 +747,7 @@ export default function GroupIssueClient({
     }
   }
 
-  const handleQrKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleQrKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       event.preventDefault()
       submitExpressQr()
@@ -1543,6 +1537,13 @@ export default function GroupIssueClient({
                 autoPlay
               />
 
+              <div
+                style={{
+                  ...styles.cameraFrame,
+                  borderColor: cameraReady ? '#22c55e' : '#f97316'
+                }}
+              />
+
               {!cameraReady && (
                 <div style={styles.cameraOverlay}>
                   {cameraStatus}
@@ -1550,7 +1551,12 @@ export default function GroupIssueClient({
               )}
             </div>
 
-            <div style={styles.cameraStatus}>
+            <div
+              style={{
+                ...styles.cameraStatus,
+                color: cameraReady ? '#166534' : '#9a3412'
+              }}
+            >
               {cameraStatus}
             </div>
 
@@ -2194,6 +2200,14 @@ const styles: Record<string, React.CSSProperties> = {
     height: '100%',
     objectFit: 'cover'
   },
+  cameraFrame: {
+    position: 'absolute',
+    inset: 28,
+    border: '4px solid',
+    borderRadius: 18,
+    pointerEvents: 'none',
+    boxShadow: '0 0 0 999px rgba(0,0,0,0.22)'
+  },
   cameraOverlay: {
     position: 'absolute',
     inset: 0,
@@ -2209,8 +2223,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   cameraStatus: {
     fontSize: 12,
-    fontWeight: 850,
-    color: '#374151'
+    fontWeight: 850
   },
   manualQrBox: {
     display: 'grid',
