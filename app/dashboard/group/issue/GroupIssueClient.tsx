@@ -111,8 +111,6 @@ function canSelectRow(item: any, _currentIssue: any) {
     return false
   }
 
-  if (item.role === '—') return false
-
   return true
 }
 
@@ -129,6 +127,10 @@ function sameStringSet(a: string[], b: string[]) {
   const setA = new Set(a)
 
   return b.every(item => setA.has(item))
+}
+
+function isQrExtra(row: any) {
+  return row?.addedByQr || row?.source === 'QR_EXTRA'
 }
 
 export default function GroupIssueClient({
@@ -186,6 +188,39 @@ export default function GroupIssueClient({
     return () => clearInterval(timer)
   }, [])
 
+  const playBeep = (type: 'ok' | 'error') => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+      const ctx = new AudioContextClass()
+      const oscillator = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      oscillator.type = 'sine'
+      oscillator.frequency.value = type === 'ok' ? 880 : 220
+      gain.gain.value = 0.18
+
+      oscillator.connect(gain)
+      gain.connect(ctx.destination)
+
+      oscillator.start()
+
+      setTimeout(() => {
+        oscillator.stop()
+        ctx.close()
+      }, type === 'ok' ? 120 : 220)
+    } catch {
+      // zvuk nie je dostupný
+    }
+
+    try {
+      if (navigator.vibrate) {
+        navigator.vibrate(type === 'ok' ? 80 : [80, 60, 80])
+      }
+    } catch {
+      // vibrácia nie je dostupná
+    }
+  }
+
   const stopCamera = () => {
     cancelledRef.current = true
 
@@ -235,7 +270,7 @@ export default function GroupIssueClient({
 
           if (
             lastScanRef.current === text &&
-            nowMs - lastScanTimeRef.current < 2500
+            nowMs - lastScanTimeRef.current < 1800
           ) {
             return
           }
@@ -311,6 +346,33 @@ export default function GroupIssueClient({
   const isActive = currentIssue?.status === 'READY' || (currentIssue?.status === 'WAITING' && remainingMs <= 0)
 
   const rows = useMemo(() => {
+    const qrRowByUserId = new Map(
+      qrAddedRows.map((row: any) => [row.userId, row])
+    )
+
+    const applyQrOverride = (baseRow: any) => {
+      const qrRow: any = qrRowByUserId.get(baseRow.userId)
+
+      if (!qrRow) return baseRow
+
+      return {
+        ...baseRow,
+        ...qrRow,
+        rowId: baseRow.rowId || qrRow.rowId || baseRow.userId,
+        userId: baseRow.userId,
+        fullName: qrRow.fullName || baseRow.fullName,
+        email: qrRow.email || baseRow.email,
+        telefon: qrRow.telefon || baseRow.telefon,
+        typStravy: qrRow.typStravy || qrRow.volba || baseRow.typStravy || '',
+        status: qrRow.status || 'PLANNED',
+        removeReason: qrRow.removeReason ?? null,
+        source: 'QR_EXTRA',
+        addedByQr: true,
+        role: qrRow.role || baseRow.role || '—',
+        entitlementStatus: qrRow.entitlementStatus || baseRow.entitlementStatus || 'UNKNOWN'
+      }
+    }
+
     const normalizeExtraRows = (existingUserIds: Set<string>) => {
       return qrAddedRows
         .filter((row: any) => !existingUserIds.has(row.userId))
@@ -318,7 +380,9 @@ export default function GroupIssueClient({
           ...row,
           rowId: row.rowId || `qr-${row.userId}`,
           typStravy: row.typStravy || row.volba || '',
+          source: 'QR_EXTRA',
           addedByQr: true,
+          role: row.role || '—',
           isFromIssue: !!currentIssue
         }))
     }
@@ -334,7 +398,7 @@ export default function GroupIssueClient({
         const issueItem: any = issueItemByUserId.get(member.userId)
 
         if (issueItem) {
-          return {
+          return applyQrOverride({
             ...member,
             ...issueItem,
             rowId: issueItem.id || member.userId,
@@ -344,22 +408,26 @@ export default function GroupIssueClient({
             telefon: issueItem.telefon || member.telefon,
             typStravy: issueItem.typStravy || issueItem.volba || member.typStravy || '',
             role: member.role || issueItem.role || '—',
+            source: issueItem.source || 'GROUP',
+            addedByQr: issueItem.addedByQr || issueItem.source === 'QR_EXTRA',
             entitlementStatus:
               issueItem.entitlementStatus ||
               getMemberEntitlement(member, currentIssue.datum, currentIssue.typ_jedla),
             isFromIssue: true
-          }
+          })
         }
 
-        return {
+        return applyQrOverride({
           ...member,
           rowId: member.userId,
           status: 'NOT_PREPARED',
           removeReason: null,
           typStravy: member.typStravy || '',
+          source: 'GROUP',
+          addedByQr: false,
           entitlementStatus: getMemberEntitlement(member, currentIssue.datum, currentIssue.typ_jedla),
           isFromIssue: false
-        }
+        })
       })
 
       const removedOrSpecialItems = issueItems.filter((item: any) => {
@@ -368,11 +436,13 @@ export default function GroupIssueClient({
 
       const baseRows = [
         ...mergedRows,
-        ...removedOrSpecialItems.map((item: any) => ({
+        ...removedOrSpecialItems.map((item: any) => applyQrOverride({
           ...item,
           rowId: item.id || item.userId,
           typStravy: item.typStravy || item.volba || '',
           role: item.role || '—',
+          source: item.source || 'GROUP',
+          addedByQr: item.addedByQr || item.source === 'QR_EXTRA',
           entitlementStatus: item.entitlementStatus || 'UNKNOWN',
           isFromIssue: true
         }))
@@ -386,11 +456,13 @@ export default function GroupIssueClient({
       ]
     }
 
-    const baseRows = members.map((member: any) => ({
+    const baseRows = members.map((member: any) => applyQrOverride({
       ...member,
       rowId: member.userId,
       status: 'NOT_PREPARED',
       removeReason: null,
+      source: 'GROUP',
+      addedByQr: false,
       entitlementStatus: getMemberEntitlement(member, datum, typJedla),
       isFromIssue: false
     }))
@@ -431,8 +503,7 @@ export default function GroupIssueClient({
           row.status === 'BULK_ISSUED' ||
           row.removeReason === 'REMOVED_FROM_GROUP' ||
           row.removeReason === 'MOVED_TO_OTHER_GROUP' ||
-          row.removeReason === 'IN_OTHER_ISSUE' ||
-          row.role === '—'
+          row.removeReason === 'IN_OTHER_ISSUE'
 
         return isSpecial ? 2 : 1
       }
@@ -511,6 +582,13 @@ export default function GroupIssueClient({
   const saveStatusTextColor = hasSavedIssue && !hasUnsavedChanges
     ? '#166534'
     : '#9a3412'
+
+  const getSelectedQrExtraUserIds = () => {
+    return rows
+      .filter((row: any) => selected.includes(row.userId))
+      .filter((row: any) => isQrExtra(row))
+      .map((row: any) => row.userId)
+  }
 
   const loadIssueToEditor = (issue: any | null) => {
     setQrAddedRows([])
@@ -648,6 +726,7 @@ export default function GroupIssueClient({
     const cleanQr = String(manualValue ?? qrValue).trim()
 
     if (!cleanQr) {
+      playBeep('error')
       setQrMessage('Načítajte QR kód.')
       setQrMessageType('error')
       return
@@ -679,12 +758,14 @@ export default function GroupIssueClient({
       try {
         json = text ? JSON.parse(text) : {}
       } catch {
+        playBeep('error')
         setQrMessage('Server vrátil neplatnú odpoveď.')
         setQrMessageType('error')
         return
       }
 
       if (!res.ok || json.error) {
+        playBeep('error')
         setQrMessage(json.error || 'QR sa nepodarilo spracovať.')
         setQrMessageType('error')
         return
@@ -693,16 +774,54 @@ export default function GroupIssueClient({
       const member = json.member
 
       if (!member?.userId) {
+        playBeep('error')
         setQrMessage('Server nevrátil používateľa.')
         setQrMessageType('error')
         return
       }
 
+      const existingRow = rows.find((row: any) => row.userId === member.userId)
+      const alreadySelected = selected.includes(member.userId)
+
+      if (alreadySelected && json.status !== 'ALREADY_ISSUED' && json.status !== 'IN_OTHER_ISSUE') {
+        playBeep('error')
+        setQrMessage(`Už je pridaný: ${member.fullName || member.email || cleanQr}`)
+        setQrMessageType('error')
+        setMessage(`Už je pridaný: ${member.fullName || member.email || cleanQr}`)
+        setMessageType('error')
+        setQrValue('')
+
+        if (!fromCamera) {
+          setTimeout(() => qrInputRef.current?.focus(), 60)
+        }
+
+        return
+      }
+
+      if (json.status === 'EXISTS') {
+        playBeep('error')
+        setQrMessage(`Už je pridaný: ${member.fullName || member.email || cleanQr}`)
+        setQrMessageType('error')
+        setMessage(`Už je pridaný: ${member.fullName || member.email || cleanQr}`)
+        setMessageType('error')
+        setQrValue('')
+
+        if (!fromCamera) {
+          setTimeout(() => qrInputRef.current?.focus(), 60)
+        }
+
+        return
+      }
+
       const row = {
         ...member,
-        rowId: `qr-${member.userId}`,
-        typStravy: member.typStravy || member.volba || '',
+        rowId: existingRow?.rowId || `qr-${member.userId}`,
+        typStravy: member.typStravy || member.volba || existingRow?.typStravy || '',
+        source: 'QR_EXTRA',
         addedByQr: true,
+        role: member.role || existingRow?.role || '—',
+        status: member.status || 'PLANNED',
+        removeReason: member.removeReason ?? null,
         isFromIssue: !!currentIssue
       }
 
@@ -712,12 +831,21 @@ export default function GroupIssueClient({
       })
 
       if (json.status === 'IN_OTHER_ISSUE') {
+        playBeep('error')
         setSelected(prev => prev.filter(id => id !== member.userId))
         setQrMessage(`V inom výdaji: ${member.fullName || member.email || cleanQr}`)
         setQrMessageType('error')
         setMessage(`Používateľ je už v inom hromadnom výdaji: ${member.fullName || member.email || cleanQr}`)
         setMessageType('error')
+      } else if (json.status === 'ALREADY_ISSUED') {
+        playBeep('error')
+        setSelected(prev => prev.filter(id => id !== member.userId))
+        setQrMessage(json.message || `Už vydané: ${member.fullName || member.email || cleanQr}`)
+        setQrMessageType('error')
+        setMessage(json.message || `Už vydané: ${member.fullName || member.email || cleanQr}`)
+        setMessageType('error')
       } else {
+        playBeep('ok')
         setSelected(prev => {
           if (prev.includes(member.userId)) return prev
           return [...prev, member.userId]
@@ -739,6 +867,7 @@ export default function GroupIssueClient({
         router.refresh()
       }
     } catch (err: any) {
+      playBeep('error')
       setQrMessage('Chyba spojenia so serverom: ' + err.message)
       setQrMessageType('error')
     } finally {
@@ -794,13 +923,11 @@ export default function GroupIssueClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-  datum,
-  typJedla,
-  userIds: selected,
-  qrExtraUserIds: qrAddedRows
-    .filter((row: any) => selected.includes(row.userId))
-    .map((row: any) => row.userId)
-})
+          datum,
+          typJedla,
+          userIds: selected,
+          qrExtraUserIds: getSelectedQrExtraUserIds()
+        })
       })
 
       const text = await res.text()
@@ -872,12 +999,10 @@ export default function GroupIssueClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-  issueId: currentIssue.id,
-  userIds: selected,
-  qrExtraUserIds: qrAddedRows
-    .filter((row: any) => selected.includes(row.userId))
-    .map((row: any) => row.userId)
-})
+          issueId: currentIssue.id,
+          userIds: selected,
+          qrExtraUserIds: getSelectedQrExtraUserIds()
+        })
       })
 
       const text = await res.text()
@@ -1367,14 +1492,14 @@ export default function GroupIssueClient({
 
       <section style={styles.tableCard}>
         <div style={styles.tableHeader}>
-  <div></div>
-  <div>Osoba</div>
-  <div>Jedlo</div>
-  <div>Rola</div>
-  <div>Stav</div>
-  <div>Pridal</div>
-  <div>Nárok</div>
-</div>
+          <div></div>
+          <div>Osoba</div>
+          <div>Jedlo</div>
+          <div>Rola</div>
+          <div>Stav</div>
+          <div>Pridal</div>
+          <div>Nárok</div>
+        </div>
 
         {!filteredRows.length ? (
           <div style={styles.emptyState}>
@@ -1388,6 +1513,7 @@ export default function GroupIssueClient({
             const statusText = itemStatusLabel(row, selected, savedPreparedIds)
             const entitlementText = entitlementLabel(row.entitlementStatus)
             const isInactiveRow = !selectable
+            const rowIsQrExtra = isQrExtra(row)
 
             return (
               <div
@@ -1429,12 +1555,6 @@ export default function GroupIssueClient({
                     {row.email || '-'}
                     {row.telefon ? ` · ${row.telefon}` : ''}
                   </div>
-
-                  {row.addedByQr && (
-                    <div style={styles.qrBadge}>
-                      CEZ QR
-                    </div>
-                  )}
                 </div>
 
                 <div>
@@ -1461,7 +1581,7 @@ export default function GroupIssueClient({
 
                 <div>
                   <span style={styles.roleBadge}>
-                    {row.addedByQr || row.source === 'QR_EXTRA' ? '—' : row.role || '—'}
+                    {rowIsQrExtra ? '—' : row.role || '—'}
                   </span>
                 </div>
 
@@ -1488,11 +1608,13 @@ export default function GroupIssueClient({
                     {statusText}
                   </span>
                 </div>
-<div>
-  <span style={styles.sourceBadge}>
-    {row.addedByQr || row.source === 'QR_EXTRA' ? 'QR scan' : 'SKUPINA'}
-  </span>
-</div>
+
+                <div>
+                  <span style={styles.sourceBadge}>
+                    {rowIsQrExtra ? 'QR scan' : 'SKUPINA'}
+                  </span>
+                </div>
+
                 <div>
                   <span
                     style={{
@@ -2070,7 +2192,7 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase'
   },
   row: {
-    minWidth: 740,
+    minWidth: 820,
     display: 'grid',
     gridTemplateColumns: '32px minmax(0, 1fr) 82px 86px 150px 82px 92px',
     gap: 8,
@@ -2101,16 +2223,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     color: '#6b7280',
     overflowWrap: 'anywhere'
-  },
-  qrBadge: {
-    display: 'inline-flex',
-    marginTop: 4,
-    borderRadius: 999,
-    padding: '3px 7px',
-    fontSize: 9,
-    fontWeight: 950,
-    background: '#dbeafe',
-    color: '#1d4ed8'
   },
   choiceBadge: {
     display: 'inline-flex',
@@ -2143,6 +2255,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 10,
     fontWeight: 950,
     whiteSpace: 'nowrap'
+  },
+  sourceBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    padding: '5px 8px',
+    fontSize: 10,
+    fontWeight: 950,
+    whiteSpace: 'nowrap',
+    background: '#eef2ff',
+    color: '#3730a3'
   },
   entitlementBadge: {
     display: 'inline-flex',
@@ -2269,20 +2393,5 @@ const styles: Record<string, React.CSSProperties> = {
   },
   bottomSpace: {
     height: 20
-  },
-
-  sourceBadge: {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  borderRadius: 999,
-  padding: '5px 8px',
-  fontSize: 10,
-  fontWeight: 950,
-  whiteSpace: 'nowrap',
-  background: '#eef2ff',
-  color: '#3730a3'
-},
-
-  
+  }
 }
