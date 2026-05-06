@@ -117,6 +117,14 @@ function getMemberEntitlement(member: any, datum: string, typJedla: string) {
   return day?.[typJedla] || 'UNKNOWN'
 }
 
+function sameStringSet(a: string[], b: string[]) {
+  if (a.length !== b.length) return false
+
+  const setA = new Set(a)
+
+  return b.every(item => setA.has(item))
+}
+
 export default function GroupIssueClient({
   group,
   myRole,
@@ -163,9 +171,6 @@ export default function GroupIssueClient({
   const currentIssue = selectedActiveIssue || matchingIssue || null
 
   const savedPreparedIds: string[] = currentIssue ? (currentIssue.userIds || []) : []
-
-  const currentDatum = currentIssue?.datum || datum
-  const currentTypJedla = currentIssue?.typ_jedla || typJedla
 
   const validAfterMs = currentIssue?.valid_after
     ? new Date(currentIssue.valid_after).getTime()
@@ -307,18 +312,20 @@ export default function GroupIssueClient({
 
   const selectedRows = rows.filter((row: any) => selected.includes(row.userId))
 
-  const masoCount = rows.filter((row: any) => {
+  const selectedMasoCount = selectedRows.filter((row: any) => {
     return String(row.typStravy || row.volba || '').toUpperCase() === 'MASO'
   }).length
 
-  const vegeCount = rows.filter((row: any) => {
+  const selectedVegeCount = selectedRows.filter((row: any) => {
     return String(row.typStravy || row.volba || '').toUpperCase() === 'VEGE'
   }).length
 
-  const unknownCount = rows.filter((row: any) => {
+  const selectedDietCount = selectedRows.filter((row: any) => {
     const choice = String(row.typStravy || row.volba || '').toUpperCase()
     return choice !== 'MASO' && choice !== 'VEGE'
   }).length
+
+  const allRowsCount = rows.length
 
   const entitlementNoCount = rows.filter((row: any) => row.entitlementStatus === 'NO').length
   const entitlementUnknownCount = rows.filter((row: any) => row.entitlementStatus === 'UNKNOWN').length
@@ -333,6 +340,39 @@ export default function GroupIssueClient({
       row.role === '—'
     )
   }).length
+
+  const hasSavedIssue = !!currentIssue
+  const hasUnsavedChanges = currentIssue
+    ? !sameStringSet(selected, savedPreparedIds)
+    : selected.length > 0
+
+  const saveStatusLabel = currentIssue
+    ? hasUnsavedChanges
+      ? 'ZMENY NEULOŽENÉ'
+      : messageType === 'ok'
+        ? 'ZMENY ULOŽENÉ'
+        : 'ULOŽENÉ'
+    : hasUnsavedChanges
+      ? 'NEULOŽENÉ'
+      : 'NEULOŽENÉ'
+
+  const saveStatusDescription = currentIssue
+    ? hasUnsavedChanges
+      ? 'Výber bol zmenený, ale ešte nie je potvrdený.'
+      : 'Príprava je uložená v databáze.'
+    : 'Nová príprava ešte nie je potvrdená.'
+
+  const saveStatusColor = hasSavedIssue && !hasUnsavedChanges
+    ? '#dcfce7'
+    : '#ffedd5'
+
+  const saveStatusBorder = hasSavedIssue && !hasUnsavedChanges
+    ? '#22c55e'
+    : '#fdba74'
+
+  const saveStatusTextColor = hasSavedIssue && !hasUnsavedChanges
+    ? '#166534'
+    : '#9a3412'
 
   const loadIssueToEditor = (issue: any | null) => {
     if (!issue) {
@@ -800,6 +840,21 @@ export default function GroupIssueClient({
               {activeIssues.map((item: any) => {
                 const active = currentIssue?.id === item.id
 
+                const plannedItems = (item.items || []).filter((row: any) => row.status === 'PLANNED')
+
+                const activeMasoCount = plannedItems.filter((row: any) => {
+                  return String(row.typStravy || row.volba || '').toUpperCase() === 'MASO'
+                }).length
+
+                const activeVegeCount = plannedItems.filter((row: any) => {
+                  return String(row.typStravy || row.volba || '').toUpperCase() === 'VEGE'
+                }).length
+
+                const activeDietCount = plannedItems.filter((row: any) => {
+                  const choice = String(row.typStravy || row.volba || '').toUpperCase()
+                  return choice !== 'MASO' && choice !== 'VEGE'
+                }).length
+
                 return (
                   <button
                     type="button"
@@ -819,6 +874,13 @@ export default function GroupIssueClient({
                     <div style={styles.activeIssueBottom}>
                       <span>{statusLabel(item.status)}</span>
                       <span>{item.peopleCount || 0} osôb</span>
+                    </div>
+
+                    <div style={styles.activeIssueCounts}>
+                      <small>Všetci {plannedItems.length}</small>
+                      <small>MASO {activeMasoCount}</small>
+                      <small>VEGE {activeVegeCount}</small>
+                      <small>Diéta {activeDietCount}</small>
                     </div>
 
                     {item.withoutEntitlementCount > 0 && (
@@ -841,6 +903,10 @@ export default function GroupIssueClient({
       </section>
 
       <section style={styles.statsPanel}>
+        <div style={styles.statsCaption}>
+          Aktuálny návrh prípravy
+        </div>
+
         <div style={styles.filterRow}>
           <button
             type="button"
@@ -850,8 +916,9 @@ export default function GroupIssueClient({
             }}
             onClick={() => setChoiceFilter('ALL')}
           >
-            <b>{rows.length}</b>
+            <b>{selectedRows.length}</b>
             <span>Všetci</span>
+            <small>z {allRowsCount}</small>
           </button>
 
           <button
@@ -862,7 +929,7 @@ export default function GroupIssueClient({
             }}
             onClick={() => setChoiceFilter('MASO')}
           >
-            <b>{masoCount}</b>
+            <b>{selectedMasoCount}</b>
             <span>MASO</span>
           </button>
 
@@ -874,11 +941,11 @@ export default function GroupIssueClient({
             }}
             onClick={() => setChoiceFilter('VEGE')}
           >
-            <b>{vegeCount}</b>
+            <b>{selectedVegeCount}</b>
             <span>VEGE</span>
           </button>
 
-          {unknownCount > 0 && (
+          {selectedDietCount > 0 && (
             <button
               type="button"
               style={{
@@ -887,16 +954,23 @@ export default function GroupIssueClient({
               }}
               onClick={() => setChoiceFilter('UNKNOWN')}
             >
-              <b>{unknownCount}</b>
-              <span>Nezadané</span>
+              <b>{selectedDietCount}</b>
+              <span>Diéta</span>
             </button>
           )}
         </div>
 
         <div style={styles.statusCountRow}>
-          <div style={styles.selectedCountCard}>
-            <b>{selectedRows.length}</b>
-            <span>Vybraní</span>
+          <div
+            style={{
+              ...styles.saveStatusCard,
+              background: saveStatusColor,
+              borderColor: saveStatusBorder,
+              color: saveStatusTextColor
+            }}
+          >
+            <b>{saveStatusLabel}</b>
+            <span>{saveStatusDescription}</span>
           </div>
 
           {(entitlementNoCount > 0 || entitlementUnknownCount > 0) && (
@@ -1396,6 +1470,14 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 800,
     color: '#6b7280'
   },
+  activeIssueCounts: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
+    fontSize: 10,
+    fontWeight: 900,
+    color: '#374151'
+  },
   activeIssueTime: {
     fontSize: 11,
     fontWeight: 800,
@@ -1409,6 +1491,13 @@ const styles: Record<string, React.CSSProperties> = {
   statsPanel: {
     display: 'grid',
     gap: 8
+  },
+  statsCaption: {
+    fontSize: 12,
+    fontWeight: 950,
+    color: '#374151',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3
   },
   filterRow: {
     display: 'grid',
@@ -1424,7 +1513,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#111827',
     boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
     display: 'grid',
-    gap: 3,
+    gap: 2,
     cursor: 'pointer'
   },
   filterButtonActive: {
@@ -1437,13 +1526,11 @@ const styles: Record<string, React.CSSProperties> = {
     gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
     gap: 8
   },
-  selectedCountCard: {
-    background: '#ecfdf5',
-    border: '1px solid #22c55e',
+  saveStatusCard: {
+    border: '1px solid',
     borderRadius: 14,
     padding: '10px 8px',
     textAlign: 'center',
-    color: '#166534',
     boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
     display: 'grid',
     gap: 3
