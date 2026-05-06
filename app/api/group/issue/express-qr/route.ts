@@ -29,6 +29,7 @@ function issuedStatusToItemStatus(row: any) {
   if (!row) return null
 
   if (row.sposob === 'HROMADNE') return 'BULK_ISSUED'
+
   return 'INDIVIDUAL_ISSUED'
 }
 
@@ -73,12 +74,18 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     if (membershipError) {
-      return NextResponse.json({ error: membershipError.message }, { status: 500 })
+      return NextResponse.json(
+        { error: membershipError.message },
+        { status: 500 }
+      )
     }
 
     const myRole = String(myMembership?.role || '').toUpperCase()
 
-    if (!myMembership || (myRole !== 'MANAGER' && myRole !== 'POVERENY' && myRole !== 'OWNER')) {
+    if (
+      !myMembership ||
+      (myRole !== 'MANAGER' && myRole !== 'POVERENY' && myRole !== 'OWNER')
+    ) {
       return NextResponse.json(
         { error: 'Nemáš oprávnenie použiť Expres QR pre túto skupinu.' },
         { status: 403 }
@@ -93,7 +100,10 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     if (qrError) {
-      return NextResponse.json({ error: qrError.message }, { status: 500 })
+      return NextResponse.json(
+        { error: qrError.message },
+        { status: 500 }
+      )
     }
 
     if (!qrRow) {
@@ -112,7 +122,10 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     if (profileError) {
-      return NextResponse.json({ error: profileError.message }, { status: 500 })
+      return NextResponse.json(
+        { error: profileError.message },
+        { status: 500 }
+      )
     }
 
     if (!profile) {
@@ -174,7 +187,10 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     if (issuedError) {
-      return NextResponse.json({ error: issuedError.message }, { status: 500 })
+      return NextResponse.json(
+        { error: issuedError.message },
+        { status: 500 }
+      )
     }
 
     if (issuedMeal) {
@@ -211,7 +227,10 @@ export async function POST(req: NextRequest) {
       .eq('status', 'PLANNED')
 
     if (otherItemsError) {
-      return NextResponse.json({ error: otherItemsError.message }, { status: 500 })
+      return NextResponse.json(
+        { error: otherItemsError.message },
+        { status: 500 }
+      )
     }
 
     const conflictItem = (otherItems || []).find((item: any) => {
@@ -250,7 +269,10 @@ export async function POST(req: NextRequest) {
         .maybeSingle()
 
       if (issueError) {
-        return NextResponse.json({ error: issueError.message }, { status: 500 })
+        return NextResponse.json(
+          { error: issueError.message },
+          { status: 500 }
+        )
       }
 
       if (!issue || issue.group_id !== groupId) {
@@ -267,67 +289,62 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      const { data: existingItem } = await supabaseServer
+      const { data: existingItem, error: existingItemError } = await supabaseServer
         .from('hromadny_vydaj_polozky')
         .select('id, status, remove_reason, source')
         .eq('hromadny_vydaj_id', issueId)
         .eq('user_id', targetUserId)
         .maybeSingle()
 
-      if (existingItem && existingItem.status === 'PLANNED') {
+      if (existingItemError) {
+        return NextResponse.json(
+          { error: existingItemError.message },
+          { status: 500 }
+        )
+      }
+
+      if (existingItem) {
+        const existingItemSafe: any = existingItem
+
         return NextResponse.json({
           ok: true,
           status: 'EXISTS',
           message: 'Používateľ už je v tejto príprave.',
           member: {
             ...baseMember,
-            status: 'PLANNED',
-            removeReason: null,
-            addedByQr: existingItem.source === 'QR_EXTRA',
-            source: existingItem.source
+            status: existingItemSafe.status,
+            removeReason: existingItemSafe.remove_reason,
+            addedByQr: existingItemSafe.source === 'QR_EXTRA',
+            source: existingItemSafe.source
           }
         })
       }
 
       const now = new Date().toISOString()
+
       const newIssueStatus = myRole === 'POVERENY' ? 'WAITING' : 'READY'
       const newValidAfter =
         myRole === 'POVERENY'
           ? new Date(Date.now() + 15 * 60 * 1000).toISOString()
           : null
 
-      if (existingItem) {
-        const { error: updateItemError } = await supabaseServer
-          .from('hromadny_vydaj_polozky')
-          .update({
-            status: 'PLANNED',
-            remove_reason: null,
-            removed_at: null,
-            removed_by: null,
-            source: 'QR_EXTRA',
-            updated_at: now
-          })
-          .eq('id', existingItem.id)
+      const { error: insertItemError } = await supabaseServer
+        .from('hromadny_vydaj_polozky')
+        .insert({
+          hromadny_vydaj_id: issueId,
+          user_id: targetUserId,
+          source: 'QR_EXTRA',
+          volba,
+          status: 'PLANNED',
+          added_by: user.id,
+          updated_at: now
+        })
 
-        if (updateItemError) {
-          return NextResponse.json({ error: updateItemError.message }, { status: 500 })
-        }
-      } else {
-        const { error: insertItemError } = await supabaseServer
-          .from('hromadny_vydaj_polozky')
-          .insert({
-            hromadny_vydaj_id: issueId,
-            user_id: targetUserId,
-            source: 'QR_EXTRA',
-            volba,
-            status: 'PLANNED',
-            added_by: user.id,
-            updated_at: now
-          })
-
-        if (insertItemError) {
-          return NextResponse.json({ error: insertItemError.message }, { status: 500 })
-        }
+      if (insertItemError) {
+        return NextResponse.json(
+          { error: insertItemError.message },
+          { status: 500 }
+        )
       }
 
       const { error: updateIssueError } = await supabaseServer
@@ -341,7 +358,10 @@ export async function POST(req: NextRequest) {
         .eq('id', issueId)
 
       if (updateIssueError) {
-        return NextResponse.json({ error: updateIssueError.message }, { status: 500 })
+        return NextResponse.json(
+          { error: updateIssueError.message },
+          { status: 500 }
+        )
       }
     }
 

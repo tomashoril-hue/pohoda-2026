@@ -800,18 +800,23 @@ export default function GroupIssueClient({
 
       if (json.status === 'EXISTS') {
         playBeep('error')
-        setQrMessage(`Už je pridaný: ${member.fullName || member.email || cleanQr}`)
+
+        const name = member.fullName || member.email || cleanQr
+
+        setQrMessage(`Už je v príprave: ${name}`)
         setQrMessageType('error')
-        setMessage(`Už je pridaný: ${member.fullName || member.email || cleanQr}`)
+
+        setMessage(`Už je v príprave: ${name}`)
         setMessageType('error')
+
         setQrValue('')
 
         if (!fromCamera) {
-          setTimeout(() => qrInputRef.current?.focus(), 60)
-        }
+        setTimeout(() => qrInputRef.current?.focus(), 60)
+      }
 
         return
-      }
+}
 
       const row = {
         ...member,
