@@ -25,6 +25,13 @@ function entitlementStatus(entitlement: any, typJedla: string) {
   return 'UNKNOWN'
 }
 
+function issuedStatusToItemStatus(row: any) {
+  if (!row) return null
+
+  if (row.sposob === 'HROMADNE') return 'BULK_ISSUED'
+  return 'INDIVIDUAL_ISSUED'
+}
+
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser()
@@ -98,10 +105,6 @@ export async function POST(req: NextRequest) {
 
     const targetUserId = qrRow.user_id
 
-    if (targetUserId === user.id) {
-      // toto nezakazujeme, manager môže byť aj členom skupiny
-    }
-
     const { data: profile, error: profileError } = await supabaseServer
       .from('users')
       .select('id, meno, priezvisko, email, telefon, typ_stravy')
@@ -119,31 +122,75 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { data: existingMembership } = await supabaseServer
+    const { data: membershipInThisGroup } = await supabaseServer
       .from('group_members')
-      .select('id, group_id, role')
+      .select('id, role')
+      .eq('group_id', groupId)
       .eq('user_id', targetUserId)
       .maybeSingle()
 
-    if (existingMembership && existingMembership.group_id !== groupId) {
-      return NextResponse.json(
-        { error: 'Používateľ je už členom inej skupiny.' },
-        { status: 400 }
-      )
+    const fullName = `${profile.meno || ''} ${profile.priezvisko || ''}`.trim()
+
+    const { data: selection } = await supabaseServer
+      .from('vyber_jedal')
+      .select('volba')
+      .eq('user_id', targetUserId)
+      .eq('datum', datum)
+      .eq('typ_jedla', typJedla)
+      .maybeSingle()
+
+    const { data: entitlement } = await supabaseServer
+      .from('user_food_entitlements')
+      .select('obed, vecera')
+      .eq('user_id', targetUserId)
+      .eq('datum', datum)
+      .maybeSingle()
+
+    const volba =
+      normalizeChoice(selection?.volba) ||
+      normalizeChoice(profile.typ_stravy)
+
+    const baseMember = {
+      userId: targetUserId,
+      fullName: fullName || profile.email || qrCode,
+      meno: profile.meno || '',
+      priezvisko: profile.priezvisko || '',
+      email: profile.email || '',
+      telefon: profile.telefon || '',
+      typStravy: volba || '',
+      role: membershipInThisGroup?.role || '—',
+      entitlementStatus: entitlementStatus(entitlement, typJedla),
+      addedByQr: true,
+      source: 'QR_EXTRA'
     }
 
-    if (!existingMembership) {
-      const { error: addMemberError } = await supabaseServer
-        .from('group_members')
-        .insert({
-          group_id: groupId,
-          user_id: targetUserId,
-          role: 'MEMBER'
-        })
+    const { data: issuedMeal, error: issuedError } = await supabaseServer
+      .from('vydaj_jedal')
+      .select('id, sposob, status')
+      .eq('user_id', targetUserId)
+      .eq('datum', datum)
+      .eq('typ_jedla', typJedla)
+      .eq('status', 'VYDANE')
+      .maybeSingle()
 
-      if (addMemberError) {
-        return NextResponse.json({ error: addMemberError.message }, { status: 500 })
-      }
+    if (issuedError) {
+      return NextResponse.json({ error: issuedError.message }, { status: 500 })
+    }
+
+    if (issuedMeal) {
+      return NextResponse.json({
+        ok: true,
+        status: 'ALREADY_ISSUED',
+        message:
+          issuedMeal.sposob === 'HROMADNE'
+            ? 'Používateľ už má jedlo vydané hromadne.'
+            : 'Používateľ už prevzal jedlo osobne.',
+        member: {
+          ...baseMember,
+          status: issuedStatusToItemStatus(issuedMeal),
+          removeReason: null
+        }
+      })
     }
 
     const { data: otherItems, error: otherItemsError } = await supabaseServer
@@ -175,46 +222,12 @@ export async function POST(req: NextRequest) {
       if (!issue) return false
 
       return (
-        issue.group_id !== groupId &&
         issue.datum === datum &&
         issue.typ_jedla === typJedla &&
+        issue.group_id !== groupId &&
         (issue.status === 'READY' || issue.status === 'WAITING')
       )
     })
-
-    const fullName = `${profile.meno || ''} ${profile.priezvisko || ''}`.trim()
-
-    const { data: selection } = await supabaseServer
-      .from('vyber_jedal')
-      .select('volba')
-      .eq('user_id', targetUserId)
-      .eq('datum', datum)
-      .eq('typ_jedla', typJedla)
-      .maybeSingle()
-
-    const { data: entitlement } = await supabaseServer
-      .from('user_food_entitlements')
-      .select('obed, vecera')
-      .eq('user_id', targetUserId)
-      .eq('datum', datum)
-      .maybeSingle()
-
-    const volba =
-      normalizeChoice(selection?.volba) ||
-      normalizeChoice(profile.typ_stravy)
-
-    const baseMember = {
-      userId: targetUserId,
-      fullName: fullName || profile.email || qrCode,
-      meno: profile.meno || '',
-      priezvisko: profile.priezvisko || '',
-      email: profile.email || '',
-      telefon: profile.telefon || '',
-      typStravy: volba || '',
-      role: existingMembership?.role || 'MEMBER',
-      entitlementStatus: entitlementStatus(entitlement, typJedla),
-      addedByQr: true
-    }
 
     if (conflictItem) {
       return NextResponse.json({
@@ -224,8 +237,7 @@ export async function POST(req: NextRequest) {
         member: {
           ...baseMember,
           status: 'REMOVED',
-          removeReason: 'IN_OTHER_ISSUE',
-          role: '—'
+          removeReason: 'IN_OTHER_ISSUE'
         }
       })
     }
@@ -248,12 +260,34 @@ export async function POST(req: NextRequest) {
         )
       }
 
+      if (issue.datum !== datum || issue.typ_jedla !== typJedla) {
+        return NextResponse.json(
+          { error: 'QR sa pridáva do iného dátumu alebo typu jedla.' },
+          { status: 400 }
+        )
+      }
+
       const { data: existingItem } = await supabaseServer
         .from('hromadny_vydaj_polozky')
-        .select('id, status, remove_reason')
+        .select('id, status, remove_reason, source')
         .eq('hromadny_vydaj_id', issueId)
         .eq('user_id', targetUserId)
         .maybeSingle()
+
+      if (existingItem && existingItem.status === 'PLANNED') {
+        return NextResponse.json({
+          ok: true,
+          status: 'EXISTS',
+          message: 'Používateľ už je v tejto príprave.',
+          member: {
+            ...baseMember,
+            status: 'PLANNED',
+            removeReason: null,
+            addedByQr: existingItem.source === 'QR_EXTRA',
+            source: existingItem.source
+          }
+        })
+      }
 
       const now = new Date().toISOString()
       const newIssueStatus = myRole === 'POVERENY' ? 'WAITING' : 'READY'

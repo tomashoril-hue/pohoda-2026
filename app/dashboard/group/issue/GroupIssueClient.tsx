@@ -794,10 +794,13 @@ export default function GroupIssueClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          datum,
-          typJedla,
-          userIds: selected
-        })
+  datum,
+  typJedla,
+  userIds: selected,
+  qrExtraUserIds: qrAddedRows
+    .filter((row: any) => selected.includes(row.userId))
+    .map((row: any) => row.userId)
+})
       })
 
       const text = await res.text()
@@ -869,9 +872,12 @@ export default function GroupIssueClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          issueId: currentIssue.id,
-          userIds: selected
-        })
+  issueId: currentIssue.id,
+  userIds: selected,
+  qrExtraUserIds: qrAddedRows
+    .filter((row: any) => selected.includes(row.userId))
+    .map((row: any) => row.userId)
+})
       })
 
       const text = await res.text()
@@ -1361,13 +1367,14 @@ export default function GroupIssueClient({
 
       <section style={styles.tableCard}>
         <div style={styles.tableHeader}>
-          <div></div>
-          <div>Osoba</div>
-          <div>Jedlo</div>
-          <div>Rola</div>
-          <div>Stav</div>
-          <div>Nárok</div>
-        </div>
+  <div></div>
+  <div>Osoba</div>
+  <div>Jedlo</div>
+  <div>Rola</div>
+  <div>Stav</div>
+  <div>Pridal</div>
+  <div>Nárok</div>
+</div>
 
         {!filteredRows.length ? (
           <div style={styles.emptyState}>
@@ -1454,7 +1461,7 @@ export default function GroupIssueClient({
 
                 <div>
                   <span style={styles.roleBadge}>
-                    {row.role || '—'}
+                    {row.addedByQr || row.source === 'QR_EXTRA' ? '—' : row.role || '—'}
                   </span>
                 </div>
 
@@ -1481,7 +1488,11 @@ export default function GroupIssueClient({
                     {statusText}
                   </span>
                 </div>
-
+<div>
+  <span style={styles.sourceBadge}>
+    {row.addedByQr || row.source === 'QR_EXTRA' ? 'QR scan' : 'SKUPINA'}
+  </span>
+</div>
                 <div>
                   <span
                     style={{
@@ -2045,9 +2056,9 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
   },
   tableHeader: {
-    minWidth: 740,
+    minWidth: 820,
     display: 'grid',
-    gridTemplateColumns: '32px minmax(0, 1fr) 82px 86px 150px 92px',
+    gridTemplateColumns: '32px minmax(0, 1fr) 82px 86px 150px 82px 92px',
     gap: 8,
     alignItems: 'center',
     padding: '9px 10px',
@@ -2061,7 +2072,7 @@ const styles: Record<string, React.CSSProperties> = {
   row: {
     minWidth: 740,
     display: 'grid',
-    gridTemplateColumns: '32px minmax(0, 1fr) 82px 86px 150px 92px',
+    gridTemplateColumns: '32px minmax(0, 1fr) 82px 86px 150px 82px 92px',
     gap: 8,
     alignItems: 'center',
     padding: '9px 10px',
@@ -2258,5 +2269,20 @@ const styles: Record<string, React.CSSProperties> = {
   },
   bottomSpace: {
     height: 20
-  }
+  },
+
+  sourceBadge: {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: 999,
+  padding: '5px 8px',
+  fontSize: 10,
+  fontWeight: 950,
+  whiteSpace: 'nowrap',
+  background: '#eef2ff',
+  color: '#3730a3'
+},
+
+  
 }

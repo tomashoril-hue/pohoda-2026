@@ -11,6 +11,13 @@ function normalizeChoice(value: any) {
   return null
 }
 
+function issuedStatusToItemStatus(row: any) {
+  if (!row) return null
+
+  if (row.sposob === 'HROMADNE') return 'BULK_ISSUED'
+  return 'INDIVIDUAL_ISSUED'
+}
+
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser()
@@ -23,9 +30,15 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
+
     const issueId = String(body.issueId || '').trim()
+
     const selectedUserIds: string[] = Array.isArray(body.userIds)
-      ? body.userIds.map((id: any) => String(id)).filter(Boolean)
+      ? Array.from(new Set(body.userIds.map((id: any) => String(id)).filter(Boolean)))
+      : []
+
+    const qrExtraUserIds: string[] = Array.isArray(body.qrExtraUserIds)
+      ? Array.from(new Set(body.qrExtraUserIds.map((id: any) => String(id)).filter(Boolean)))
       : []
 
     if (!issueId) {
@@ -109,14 +122,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: selectedMembersError.message }, { status: 500 })
     }
 
-    if (!selectedMembers || selectedMembers.length === 0) {
+    const groupMemberIds = new Set((selectedMembers || []).map((m: any) => m.user_id))
+
+    const selectedQrExtraUserIds = selectedUserIds.filter((id: string) => {
+      return qrExtraUserIds.includes(id) && !groupMemberIds.has(id)
+    })
+
+    const selectedGroupMembers = (selectedMembers || []).filter((member: any) => {
+      return selectedUserIds.includes(member.user_id) && !selectedQrExtraUserIds.includes(member.user_id)
+    })
+
+    if (!selectedGroupMembers.length && !selectedQrExtraUserIds.length) {
       return NextResponse.json(
-        { error: 'Vybrané osoby nepatria do vašej skupiny.' },
+        { error: 'Vybrané osoby nepatria do vašej skupiny alebo neboli pridané cez QR.' },
         { status: 400 }
       )
     }
 
-    const selectedSet = new Set(selectedMembers.map((m: any) => m.user_id))
+    const allSelectedUserIds = Array.from(
+      new Set([
+        ...selectedGroupMembers.map((m: any) => m.user_id),
+        ...selectedQrExtraUserIds
+      ])
+    )
+
+    const selectedSet = new Set(allSelectedUserIds)
+
     const now = new Date().toISOString()
 
     const newStatus = myRole === 'POVERENY' ? 'WAITING' : 'READY'
@@ -141,14 +172,73 @@ export async function POST(req: NextRequest) {
 
     const { data: currentItems, error: currentItemsError } = await supabaseServer
       .from('hromadny_vydaj_polozky')
-      .select('id, user_id, status, remove_reason')
+      .select('id, user_id, status, remove_reason, source')
       .eq('hromadny_vydaj_id', issue.id)
 
     if (currentItemsError) {
       return NextResponse.json({ error: currentItemsError.message }, { status: 500 })
     }
 
-    const plannedToRemove = (currentItems || [])
+    const currentItemsSafe = currentItems || []
+
+    const { data: issuedMeals, error: issuedError } = await supabaseServer
+      .from('vydaj_jedal')
+      .select('user_id, sposob, status')
+      .eq('datum', issue.datum)
+      .eq('typ_jedla', issue.typ_jedla)
+      .eq('status', 'VYDANE')
+      .in('user_id', allSelectedUserIds)
+
+    if (issuedError) {
+      return NextResponse.json({ error: issuedError.message }, { status: 500 })
+    }
+
+    const issuedMap = new Map(
+      (issuedMeals || []).map((row: any) => [row.user_id, row])
+    )
+
+    const { data: otherItems, error: otherItemsError } = await supabaseServer
+      .from('hromadny_vydaj_polozky')
+      .select(`
+        id,
+        user_id,
+        status,
+        hromadny_vydaj_id,
+        hromadne_vydaje (
+          id,
+          group_id,
+          datum,
+          typ_jedla,
+          status
+        )
+      `)
+      .eq('status', 'PLANNED')
+      .in('user_id', allSelectedUserIds)
+
+    if (otherItemsError) {
+      return NextResponse.json({ error: otherItemsError.message }, { status: 500 })
+    }
+
+    const conflictUserIds = new Set<string>()
+
+    ;(otherItems || []).forEach((item: any) => {
+      const otherIssue = Array.isArray(item.hromadne_vydaje)
+        ? item.hromadne_vydaje[0]
+        : item.hromadne_vydaje
+
+      if (
+        otherIssue &&
+        otherIssue.id !== issue.id &&
+        otherIssue.group_id !== issue.group_id &&
+        otherIssue.datum === issue.datum &&
+        otherIssue.typ_jedla === issue.typ_jedla &&
+        (otherIssue.status === 'READY' || otherIssue.status === 'WAITING')
+      ) {
+        conflictUserIds.add(item.user_id)
+      }
+    })
+
+    const plannedToRemove = currentItemsSafe
       .filter((item: any) => {
         return item.status === 'PLANNED' && !selectedSet.has(item.user_id)
       })
@@ -171,49 +261,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const removedItemsToRestore = (currentItems || [])
-      .filter((item: any) => {
-        return (
-          item.status === 'REMOVED' &&
-          item.remove_reason !== 'REMOVED_FROM_GROUP' &&
-          selectedSet.has(item.user_id)
-        )
-      })
-
-    if (removedItemsToRestore.length > 0) {
-      const { error: restoreError } = await supabaseServer
-        .from('hromadny_vydaj_polozky')
-        .update({
-          status: 'PLANNED',
-          remove_reason: null,
-          removed_at: null,
-          removed_by: null,
-          updated_at: now
-        })
-        .in('id', removedItemsToRestore.map((item: any) => item.id))
-
-      if (restoreError) {
-        return NextResponse.json({ error: restoreError.message }, { status: 500 })
-      }
-    }
-
-    const existingUserIds = new Set(
-      (currentItems || []).map((item: any) => item.user_id)
+    const existingItemByUserId = new Map(
+      currentItemsSafe.map((item: any) => [item.user_id, item])
     )
 
-    const usersToAdd = selectedMembers.filter((member: any) => {
-      return !existingUserIds.has(member.user_id)
-    })
+    const existingUserIds = new Set(
+      currentItemsSafe.map((item: any) => item.user_id)
+    )
 
     let selections: any[] = []
 
-    if (usersToAdd.length > 0) {
+    if (allSelectedUserIds.length > 0) {
       const { data: selectionsData, error: selectionsError } = await supabaseServer
         .from('vyber_jedal')
         .select('user_id, volba')
         .eq('datum', issue.datum)
         .eq('typ_jedla', issue.typ_jedla)
-        .in('user_id', usersToAdd.map((m: any) => m.user_id))
+        .in('user_id', allSelectedUserIds)
 
       if (selectionsError) {
         return NextResponse.json({ error: selectionsError.message }, { status: 500 })
@@ -226,7 +290,62 @@ export async function POST(req: NextRequest) {
       selections.map((s: any) => [s.user_id, normalizeChoice(s.volba)])
     )
 
-    const newItems = usersToAdd.map((member: any) => {
+    const { data: qrUsersData, error: qrUsersError } = await supabaseServer
+      .from('users')
+      .select('id, typ_stravy')
+      .in('id', selectedQrExtraUserIds.length ? selectedQrExtraUserIds : ['00000000-0000-0000-0000-000000000000'])
+
+    if (qrUsersError) {
+      return NextResponse.json({ error: qrUsersError.message }, { status: 500 })
+    }
+
+    const qrUsersMap = new Map((qrUsersData || []).map((u: any) => [u.id, u]))
+
+    const rowsToRestoreOrBlock = allSelectedUserIds
+      .filter((userId: string) => existingUserIds.has(userId))
+      .map((userId: string) => {
+        const existingItem: any = existingItemByUserId.get(userId)
+        const issuedMeal = issuedMap.get(userId)
+        const conflict = conflictUserIds.has(userId)
+        const shouldBeQrExtra = selectedQrExtraUserIds.includes(userId)
+
+        return {
+          existingItem,
+          update: {
+            status: issuedMeal
+              ? issuedStatusToItemStatus(issuedMeal)
+              : conflict
+                ? 'REMOVED'
+                : 'PLANNED',
+            remove_reason: conflict ? 'IN_OTHER_ISSUE' : null,
+            removed_at: conflict ? now : null,
+            removed_by: conflict ? user.id : null,
+            source: shouldBeQrExtra ? 'QR_EXTRA' : existingItem.source || 'GROUP',
+            updated_at: now
+          }
+        }
+      })
+
+    for (const item of rowsToRestoreOrBlock) {
+      const { error: updateItemError } = await supabaseServer
+        .from('hromadny_vydaj_polozky')
+        .update(item.update)
+        .eq('id', item.existingItem.id)
+
+      if (updateItemError) {
+        return NextResponse.json({ error: updateItemError.message }, { status: 500 })
+      }
+    }
+
+    const usersToAddGroup = selectedGroupMembers.filter((member: any) => {
+      return !existingUserIds.has(member.user_id)
+    })
+
+    const usersToAddQr = selectedQrExtraUserIds.filter((userId: string) => {
+      return !existingUserIds.has(userId)
+    })
+
+    const newGroupItems = usersToAddGroup.map((member: any) => {
       const memberUser = Array.isArray(member.users)
         ? member.users[0]
         : member.users
@@ -234,16 +353,54 @@ export async function POST(req: NextRequest) {
       const selectedChoice = selectionMap.get(member.user_id)
       const defaultChoice = normalizeChoice(memberUser?.typ_stravy)
 
+      const issuedMeal = issuedMap.get(member.user_id)
+      const conflict = conflictUserIds.has(member.user_id)
+
       return {
         hromadny_vydaj_id: issue.id,
         user_id: member.user_id,
         source: 'GROUP',
         volba: selectedChoice || defaultChoice,
-        status: 'PLANNED',
+        status: issuedMeal
+          ? issuedStatusToItemStatus(issuedMeal)
+          : conflict
+            ? 'REMOVED'
+            : 'PLANNED',
+        remove_reason: conflict ? 'IN_OTHER_ISSUE' : null,
+        removed_at: conflict ? now : null,
+        removed_by: conflict ? user.id : null,
         added_by: user.id,
         updated_at: now
       }
     })
+
+    const newQrItems = usersToAddQr.map((userId: string) => {
+      const qrUser = qrUsersMap.get(userId)
+      const selectedChoice = selectionMap.get(userId)
+      const defaultChoice = normalizeChoice(qrUser?.typ_stravy)
+
+      const issuedMeal = issuedMap.get(userId)
+      const conflict = conflictUserIds.has(userId)
+
+      return {
+        hromadny_vydaj_id: issue.id,
+        user_id: userId,
+        source: 'QR_EXTRA',
+        volba: selectedChoice || defaultChoice,
+        status: issuedMeal
+          ? issuedStatusToItemStatus(issuedMeal)
+          : conflict
+            ? 'REMOVED'
+            : 'PLANNED',
+        remove_reason: conflict ? 'IN_OTHER_ISSUE' : null,
+        removed_at: conflict ? now : null,
+        removed_by: conflict ? user.id : null,
+        added_by: user.id,
+        updated_at: now
+      }
+    })
+
+    const newItems = [...newGroupItems, ...newQrItems]
 
     if (newItems.length > 0) {
       const { error: insertError } = await supabaseServer
@@ -255,14 +412,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const blockedCount =
+      rowsToRestoreOrBlock.filter((item: any) => item.update.status !== 'PLANNED').length +
+      newItems.filter((item: any) => item.status !== 'PLANNED').length
+
     return NextResponse.json({
       ok: true,
       status: newStatus,
       validAfter: newValidAfter,
+      blockedCount,
       message:
         newStatus === 'WAITING'
-          ? 'Úprava prípravy bola potvrdená. Príprava začne platiť o 15 minút.'
-          : 'Úprava prípravy bola potvrdená a je aktívna.'
+          ? `Úprava prípravy bola potvrdená. Príprava začne platiť o 15 minút.${blockedCount ? ` Vyradených/nevydateľných: ${blockedCount}.` : ''}`
+          : `Úprava prípravy bola potvrdená a je aktívna.${blockedCount ? ` Vyradených/nevydateľných: ${blockedCount}.` : ''}`
     })
   } catch (err: any) {
     return NextResponse.json(
