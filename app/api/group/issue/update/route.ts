@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
 
+    const groupId = String(body.groupId || '').trim()
     const issueId = String(body.issueId || '').trim()
 
     const selectedUserIds: string[] = Array.isArray(body.userIds)
@@ -40,6 +41,13 @@ export async function POST(req: NextRequest) {
     const qrExtraUserIds: string[] = Array.isArray(body.qrExtraUserIds)
       ? Array.from(new Set(body.qrExtraUserIds.map((id: any) => String(id)).filter(Boolean)))
       : []
+
+    if (!groupId) {
+      return NextResponse.json(
+        { error: 'Chýba skupina.' },
+        { status: 400 }
+      )
+    }
 
     if (!issueId) {
       return NextResponse.json(
@@ -59,6 +67,7 @@ export async function POST(req: NextRequest) {
       .from('hromadne_vydaje')
       .select('id, group_id, datum, typ_jedla, status')
       .eq('id', issueId)
+      .eq('group_id', groupId)
       .maybeSingle()
 
     if (issueError) {
@@ -67,7 +76,7 @@ export async function POST(req: NextRequest) {
 
     if (!issue) {
       return NextResponse.json(
-        { error: 'Príprava hromadného výdaja sa nenašla.' },
+        { error: 'Príprava hromadného výdaja sa nenašla alebo nepatrí do tejto skupiny.' },
         { status: 404 }
       )
     }
@@ -82,7 +91,7 @@ export async function POST(req: NextRequest) {
     const { data: membership, error: membershipError } = await supabaseServer
       .from('group_members')
       .select('role')
-      .eq('group_id', issue.group_id)
+      .eq('group_id', groupId)
       .eq('user_id', user.id)
       .maybeSingle()
 
@@ -99,7 +108,7 @@ export async function POST(req: NextRequest) {
 
     const myRole = String(membership.role || '').toUpperCase()
 
-    if (myRole !== 'MANAGER' && myRole !== 'POVERENY') {
+    if (myRole !== 'MANAGER' && myRole !== 'POVERENY' && myRole !== 'OWNER') {
       return NextResponse.json(
         { error: 'Nemáte oprávnenie upraviť prípravu hromadného výdaja.' },
         { status: 403 }
@@ -115,7 +124,7 @@ export async function POST(req: NextRequest) {
           typ_stravy
         )
       `)
-      .eq('group_id', issue.group_id)
+      .eq('group_id', groupId)
       .in('user_id', selectedUserIds)
 
     if (selectedMembersError) {
@@ -134,7 +143,7 @@ export async function POST(req: NextRequest) {
 
     if (!selectedGroupMembers.length && !selectedQrExtraUserIds.length) {
       return NextResponse.json(
-        { error: 'Vybrané osoby nepatria do vašej skupiny alebo neboli pridané cez QR.' },
+        { error: 'Vybrané osoby nepatria do tejto skupiny alebo neboli pridané cez QR.' },
         { status: 400 }
       )
     }
@@ -165,6 +174,7 @@ export async function POST(req: NextRequest) {
         updated_at: now
       })
       .eq('id', issue.id)
+      .eq('group_id', groupId)
 
     if (updateIssueError) {
       return NextResponse.json({ error: updateIssueError.message }, { status: 500 })
@@ -220,6 +230,7 @@ export async function POST(req: NextRequest) {
     }
 
     const conflictUserIds = new Set<string>()
+    const movedFromOtherIssueItemIds = new Set<string>()
 
     ;(otherItems || []).forEach((item: any) => {
       const otherIssue = Array.isArray(item.hromadne_vydaje)
@@ -229,14 +240,38 @@ export async function POST(req: NextRequest) {
       if (
         otherIssue &&
         otherIssue.id !== issue.id &&
-        otherIssue.group_id !== issue.group_id &&
+        otherIssue.group_id !== groupId &&
         otherIssue.datum === issue.datum &&
         otherIssue.typ_jedla === issue.typ_jedla &&
         (otherIssue.status === 'READY' || otherIssue.status === 'WAITING')
       ) {
-        conflictUserIds.add(item.user_id)
+        if (selectedQrExtraUserIds.includes(item.user_id)) {
+          movedFromOtherIssueItemIds.add(item.id)
+        } else {
+          conflictUserIds.add(item.user_id)
+        }
       }
     })
+
+    if (movedFromOtherIssueItemIds.size > 0) {
+      const { error: moveOldItemsError } = await supabaseServer
+        .from('hromadny_vydaj_polozky')
+        .update({
+          status: 'REMOVED',
+          remove_reason: 'MOVED_TO_OTHER_ISSUE',
+          removed_at: now,
+          removed_by: user.id,
+          updated_at: now
+        })
+        .in('id', Array.from(movedFromOtherIssueItemIds))
+
+      if (moveOldItemsError) {
+        return NextResponse.json(
+          { error: moveOldItemsError.message },
+          { status: 500 }
+        )
+      }
+    }
 
     const plannedToRemove = currentItemsSafe
       .filter((item: any) => {
@@ -293,7 +328,12 @@ export async function POST(req: NextRequest) {
     const { data: qrUsersData, error: qrUsersError } = await supabaseServer
       .from('users')
       .select('id, typ_stravy')
-      .in('id', selectedQrExtraUserIds.length ? selectedQrExtraUserIds : ['00000000-0000-0000-0000-000000000000'])
+      .in(
+        'id',
+        selectedQrExtraUserIds.length
+          ? selectedQrExtraUserIds
+          : ['00000000-0000-0000-0000-000000000000']
+      )
 
     if (qrUsersError) {
       return NextResponse.json({ error: qrUsersError.message }, { status: 500 })
@@ -416,15 +456,18 @@ export async function POST(req: NextRequest) {
       rowsToRestoreOrBlock.filter((item: any) => item.update.status !== 'PLANNED').length +
       newItems.filter((item: any) => item.status !== 'PLANNED').length
 
+    const movedCount = movedFromOtherIssueItemIds.size
+
     return NextResponse.json({
       ok: true,
       status: newStatus,
       validAfter: newValidAfter,
       blockedCount,
+      movedCount,
       message:
         newStatus === 'WAITING'
-          ? `Úprava prípravy bola potvrdená. Príprava začne platiť o 15 minút.${blockedCount ? ` Vyradených/nevydateľných: ${blockedCount}.` : ''}`
-          : `Úprava prípravy bola potvrdená a je aktívna.${blockedCount ? ` Vyradených/nevydateľných: ${blockedCount}.` : ''}`
+          ? `Úprava prípravy bola potvrdená. Príprava začne platiť o 15 minút.${movedCount ? ` Presunutých cez QR: ${movedCount}.` : ''}${blockedCount ? ` Vyradených/nevydateľných: ${blockedCount}.` : ''}`
+          : `Úprava prípravy bola potvrdená a je aktívna.${movedCount ? ` Presunutých cez QR: ${movedCount}.` : ''}${blockedCount ? ` Vyradených/nevydateľných: ${blockedCount}.` : ''}`
     })
   } catch (err: any) {
     return NextResponse.json(

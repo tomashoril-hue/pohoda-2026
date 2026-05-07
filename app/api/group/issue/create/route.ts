@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
 
+    const groupId = String(body.groupId || '').trim()
     const datum = normalizeDate(body.datum)
     const typJedla = normalizeMealType(body.typJedla)
 
@@ -58,6 +59,13 @@ export async function POST(req: NextRequest) {
     const qrExtraUserIds: string[] = Array.isArray(body.qrExtraUserIds)
       ? Array.from(new Set(body.qrExtraUserIds.map((id: any) => String(id)).filter(Boolean)))
       : []
+
+    if (!groupId) {
+      return NextResponse.json(
+        { error: 'Chýba skupina.' },
+        { status: 400 }
+      )
+    }
 
     if (!datum || !typJedla) {
       return NextResponse.json(
@@ -76,6 +84,7 @@ export async function POST(req: NextRequest) {
     const { data: membership, error: membershipError } = await supabaseServer
       .from('group_members')
       .select('group_id, role')
+      .eq('group_id', groupId)
       .eq('user_id', user.id)
       .maybeSingle()
 
@@ -88,13 +97,16 @@ export async function POST(req: NextRequest) {
 
     if (!membership) {
       return NextResponse.json(
-        { error: 'Nie ste členom žiadnej skupiny.' },
-        { status: 400 }
+        { error: 'Nie ste členom tejto skupiny.' },
+        { status: 403 }
       )
     }
 
     const myRole = String(membership.role || '').toUpperCase()
-    const canCreateIssue = myRole === 'MANAGER' || myRole === 'POVERENY'
+    const canCreateIssue =
+      myRole === 'MANAGER' ||
+      myRole === 'POVERENY' ||
+      myRole === 'OWNER'
 
     if (!canCreateIssue) {
       return NextResponse.json(
@@ -106,7 +118,7 @@ export async function POST(req: NextRequest) {
     const { data: existingIssue, error: existingError } = await supabaseServer
       .from('hromadne_vydaje')
       .select('id, status, valid_after')
-      .eq('group_id', membership.group_id)
+      .eq('group_id', groupId)
       .eq('datum', datum)
       .eq('typ_jedla', typJedla)
       .in('status', ['READY', 'WAITING'])
@@ -138,7 +150,7 @@ export async function POST(req: NextRequest) {
           typ_stravy
         )
       `)
-      .eq('group_id', membership.group_id)
+      .eq('group_id', groupId)
       .in('user_id', selectedUserIds)
 
     if (selectedMembersError) {
@@ -160,7 +172,7 @@ export async function POST(req: NextRequest) {
 
     if (!selectedGroupMembers.length && !selectedQrExtraUserIds.length) {
       return NextResponse.json(
-        { error: 'Vybrané osoby nepatria do vašej skupiny alebo neboli pridané cez QR.' },
+        { error: 'Vybrané osoby nepatria do tejto skupiny alebo neboli pridané cez QR.' },
         { status: 400 }
       )
     }
@@ -194,6 +206,7 @@ export async function POST(req: NextRequest) {
         id,
         user_id,
         status,
+        hromadny_vydaj_id,
         hromadne_vydaje (
           id,
           group_id,
@@ -210,27 +223,37 @@ export async function POST(req: NextRequest) {
     }
 
     const conflictUserIds = new Set<string>()
+    const movedFromOtherIssueItemIds = new Set<string>()
 
     ;(otherItems || []).forEach((item: any) => {
-      const issue = Array.isArray(item.hromadne_vydaje)
+      const otherIssue = Array.isArray(item.hromadne_vydaje)
         ? item.hromadne_vydaje[0]
         : item.hromadne_vydaje
 
       if (
-        issue &&
-        issue.group_id !== membership.group_id &&
-        issue.datum === datum &&
-        issue.typ_jedla === typJedla &&
-        (issue.status === 'READY' || issue.status === 'WAITING')
+        otherIssue &&
+        otherIssue.group_id !== groupId &&
+        otherIssue.datum === datum &&
+        otherIssue.typ_jedla === typJedla &&
+        (otherIssue.status === 'READY' || otherIssue.status === 'WAITING')
       ) {
-        conflictUserIds.add(item.user_id)
+        if (selectedQrExtraUserIds.includes(item.user_id)) {
+          movedFromOtherIssueItemIds.add(item.id)
+        } else {
+          conflictUserIds.add(item.user_id)
+        }
       }
     })
 
     const { data: qrUsersData, error: qrUsersError } = await supabaseServer
       .from('users')
       .select('id, typ_stravy')
-      .in('id', selectedQrExtraUserIds.length ? selectedQrExtraUserIds : ['00000000-0000-0000-0000-000000000000'])
+      .in(
+        'id',
+        selectedQrExtraUserIds.length
+          ? selectedQrExtraUserIds
+          : ['00000000-0000-0000-0000-000000000000']
+      )
 
     if (qrUsersError) {
       return NextResponse.json({ error: qrUsersError.message }, { status: 500 })
@@ -238,7 +261,7 @@ export async function POST(req: NextRequest) {
 
     const qrUsersMap = new Map((qrUsersData || []).map((u: any) => [u.id, u]))
 
-    const issueStatus = myRole === 'MANAGER' ? 'READY' : 'WAITING'
+    const issueStatus = myRole === 'POVERENY' ? 'WAITING' : 'READY'
     const validAfter =
       myRole === 'POVERENY'
         ? new Date(Date.now() + 15 * 60 * 1000).toISOString()
@@ -249,7 +272,7 @@ export async function POST(req: NextRequest) {
     const { data: issue, error: issueError } = await supabaseServer
       .from('hromadne_vydaje')
       .insert({
-        group_id: membership.group_id,
+        group_id: groupId,
         datum,
         typ_jedla: typJedla,
         created_by: user.id,
@@ -267,6 +290,31 @@ export async function POST(req: NextRequest) {
         { error: issueError?.message || 'Prípravu hromadného výdaja sa nepodarilo vytvoriť.' },
         { status: 500 }
       )
+    }
+
+    if (movedFromOtherIssueItemIds.size > 0) {
+      const { error: moveOldItemsError } = await supabaseServer
+        .from('hromadny_vydaj_polozky')
+        .update({
+          status: 'REMOVED',
+          remove_reason: 'MOVED_TO_OTHER_ISSUE',
+          removed_at: now,
+          removed_by: user.id,
+          updated_at: now
+        })
+        .in('id', Array.from(movedFromOtherIssueItemIds))
+
+      if (moveOldItemsError) {
+        await supabaseServer
+          .from('hromadne_vydaje')
+          .delete()
+          .eq('id', issue.id)
+
+        return NextResponse.json(
+          { error: moveOldItemsError.message },
+          { status: 500 }
+        )
+      }
     }
 
     let selections: any[] = []
@@ -372,6 +420,7 @@ export async function POST(req: NextRequest) {
     }
 
     const blockedCount = items.filter((item: any) => item.status !== 'PLANNED').length
+    const movedCount = movedFromOtherIssueItemIds.size
 
     return NextResponse.json({
       ok: true,
@@ -380,10 +429,11 @@ export async function POST(req: NextRequest) {
       validAfter: issue.valid_after,
       itemsCount: items.length,
       blockedCount,
+      movedCount,
       message:
         issue.status === 'WAITING'
-          ? `Príprava hromadného výdaja bola potvrdená a začne platiť o 15 minút.${blockedCount ? ` Vyradených/nevydateľných: ${blockedCount}.` : ''}`
-          : `Príprava hromadného výdaja bola potvrdená a je okamžite aktívna.${blockedCount ? ` Vyradených/nevydateľných: ${blockedCount}.` : ''}`
+          ? `Príprava hromadného výdaja bola potvrdená a začne platiť o 15 minút.${movedCount ? ` Presunutých cez QR: ${movedCount}.` : ''}${blockedCount ? ` Vyradených/nevydateľných: ${blockedCount}.` : ''}`
+          : `Príprava hromadného výdaja bola potvrdená a je okamžite aktívna.${movedCount ? ` Presunutých cez QR: ${movedCount}.` : ''}${blockedCount ? ` Vyradených/nevydateľných: ${blockedCount}.` : ''}`
     })
   } catch (err: any) {
     return NextResponse.json(

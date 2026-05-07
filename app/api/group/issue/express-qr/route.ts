@@ -249,15 +249,23 @@ export async function POST(req: NextRequest) {
       )
     })
 
+    /*
+      Dôležité:
+      Tu už NEBLOKUJEME QR_EXTRA, ak je používateľ v inom výdaji.
+      QR má byť silnejší dôkaz, že človek je fyzicky pri obsluhe.
+      Preto ho vrátime ako ADDED_WITH_MOVE.
+      Samotné zneplatnenie starej prípravy sa spraví až pri create/update route.
+    */
     if (conflictItem) {
       return NextResponse.json({
         ok: true,
-        status: 'IN_OTHER_ISSUE',
-        message: 'Používateľ je už v inom hromadnom výdaji.',
+        status: 'ADDED_WITH_MOVE',
+        message: 'Používateľ bude po potvrdení presunutý z inej prípravy sem.',
         member: {
           ...baseMember,
-          status: 'REMOVED',
-          removeReason: 'IN_OTHER_ISSUE'
+          status: 'PLANNED',
+          removeReason: null,
+          transferFromOtherIssue: true
         }
       })
     }

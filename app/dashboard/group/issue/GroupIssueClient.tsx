@@ -80,19 +80,24 @@ function isQrExtra(row: any) {
 
 function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: string[]) {
   if (item.removeReason === 'IN_OTHER_ISSUE') return 'V INOM VÝDAJI'
-  if (item.status === 'INDIVIDUAL_ISSUED') return 'PREVZAL OSOBNE'
-  if (item.status === 'BULK_ISSUED') return 'PREVZATÉ HROMADNE'
+
+  if (item.status === 'INDIVIDUAL_ISSUED') return 'PREVZAL'
+  if (item.status === 'BULK_ISSUED') return 'VYDANÉ'
 
   if (item.status === 'REMOVED' && item.removeReason === 'REMOVED_FROM_GROUP') {
-    return 'ODSTRÁNENÝ ZO SKUPINY'
+    return 'ODSTRÁNENÝ'
   }
 
   if (item.status === 'REMOVED' && item.removeReason === 'MOVED_TO_OTHER_GROUP') {
-    return 'PRESUNUTÝ DO INEJ SKUPINY'
+    return 'PRESUNUTÝ'
+  }
+
+  if (item.status === 'REMOVED' && item.removeReason === 'MOVED_TO_OTHER_ISSUE') {
+    return 'PRESUNUTÝ'
   }
 
   if (item.status === 'REMOVED' && item.removeReason === 'MANUAL') {
-    return 'VYRADENÝ Z PRÍPRAVY'
+    return 'VYRADENÝ'
   }
 
   const wasPrepared = savedPreparedIds.includes(item.userId)
@@ -111,6 +116,7 @@ function canSelectRow(item: any, _currentIssue: any) {
 
   if (item.status === 'REMOVED' && item.removeReason === 'REMOVED_FROM_GROUP') return false
   if (item.status === 'REMOVED' && item.removeReason === 'MOVED_TO_OTHER_GROUP') return false
+  if (item.status === 'REMOVED' && item.removeReason === 'MOVED_TO_OTHER_ISSUE') return false
   if (item.status === 'REMOVED' && item.removeReason === 'MANUAL') return false
 
   return true
@@ -146,6 +152,14 @@ export default function GroupIssueClient({
 }) {
   const router = useRouter()
 
+  const initialDate = todayIsoDate()
+  const initialMeal = 'OBED'
+
+  const initialIssue =
+    activeIssues.find((issue: any) => {
+      return issue.datum === initialDate && issue.typ_jedla === initialMeal
+    }) || null
+
   const qrInputRef = useRef<HTMLInputElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const readerRef = useRef<BrowserQRCodeReader | null>(null)
@@ -156,12 +170,16 @@ export default function GroupIssueClient({
   const lastScanTimeRef = useRef(0)
   const audioCtxRef = useRef<AudioContext | null>(null)
 
-  const [datum, setDatum] = useState(todayIsoDate())
-  const [typJedla, setTypJedla] = useState('OBED')
+  const [datum, setDatum] = useState(initialDate)
+  const [typJedla, setTypJedla] = useState(initialMeal)
   const [search, setSearch] = useState('')
   const [choiceFilter, setChoiceFilter] = useState<'ALL' | 'MASO' | 'VEGE' | 'UNKNOWN'>('ALL')
-  const [selected, setSelected] = useState<string[]>(members.map(member => member.userId))
-  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string[]>(
+    initialIssue ? initialIssue.userIds || [] : members.map(member => member.userId)
+  )
+  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(
+    initialIssue ? initialIssue.id : null
+  )
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
@@ -373,7 +391,8 @@ export default function GroupIssueClient({
         source: 'QR_EXTRA',
         addedByQr: true,
         role: '—',
-        entitlementStatus: qrRow.entitlementStatus || baseRow.entitlementStatus || 'UNKNOWN'
+        entitlementStatus: qrRow.entitlementStatus || baseRow.entitlementStatus || 'UNKNOWN',
+        transferFromOtherIssue: !!qrRow.transferFromOtherIssue
       }
     }
 
@@ -388,7 +407,8 @@ export default function GroupIssueClient({
           source: 'QR_EXTRA',
           addedByQr: true,
           role: '—',
-          isFromIssue: !!currentIssue
+          isFromIssue: !!currentIssue,
+          transferFromOtherIssue: !!row.transferFromOtherIssue
         }))
     }
 
@@ -512,6 +532,7 @@ export default function GroupIssueClient({
           row.status === 'BULK_ISSUED' ||
           row.removeReason === 'REMOVED_FROM_GROUP' ||
           row.removeReason === 'MOVED_TO_OTHER_GROUP' ||
+          row.removeReason === 'MOVED_TO_OTHER_ISSUE' ||
           row.removeReason === 'IN_OTHER_ISSUE' ||
           row.removeReason === 'MANUAL'
 
@@ -843,6 +864,7 @@ export default function GroupIssueClient({
         role: '—',
         status: member.status || 'PLANNED',
         removeReason: member.removeReason ?? null,
+        transferFromOtherIssue: !!member.transferFromOtherIssue,
         isFromIssue: !!currentIssue
       }
 
@@ -851,20 +873,24 @@ export default function GroupIssueClient({
         return [...filtered, row]
       })
 
-      if (json.status === 'IN_OTHER_ISSUE') {
-        playBeep('error')
-        setSelected(prev => prev.filter(id => id !== member.userId))
-        setQrMessage(`V inom výdaji: ${member.fullName || member.email || cleanQr}`)
-        setQrMessageType('error')
-        setMessage(`Používateľ je už v inom hromadnom výdaji: ${member.fullName || member.email || cleanQr}`)
-        setMessageType('error')
-      } else if (json.status === 'ALREADY_ISSUED') {
+      if (json.status === 'ALREADY_ISSUED') {
         playBeep('error')
         setSelected(prev => prev.filter(id => id !== member.userId))
         setQrMessage(json.message || `Už vydané: ${member.fullName || member.email || cleanQr}`)
         setQrMessageType('error')
         setMessage(json.message || `Už vydané: ${member.fullName || member.email || cleanQr}`)
         setMessageType('error')
+      } else if (json.status === 'ADDED_WITH_MOVE') {
+        playBeep('ok')
+        setSelected(prev => {
+          if (prev.includes(member.userId)) return prev
+          return [...prev, member.userId]
+        })
+
+        setQrMessage(`Presunutý cez QR: ${member.fullName || member.email || cleanQr}`)
+        setQrMessageType('ok')
+        setMessage(`Presunutý cez QR do tejto prípravy: ${member.fullName || member.email || cleanQr}`)
+        setMessageType('ok')
       } else {
         playBeep('ok')
         setSelected(prev => {
@@ -940,6 +966,7 @@ export default function GroupIssueClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          groupId: group.id,
           datum,
           typJedla,
           userIds: selected,
@@ -1016,6 +1043,7 @@ export default function GroupIssueClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          groupId: group.id,
           issueId: currentIssue.id,
           userIds: selected,
           qrExtraUserIds: getSelectedQrExtraUserIds()
@@ -1121,8 +1149,8 @@ export default function GroupIssueClient({
           <h1 style={styles.title}>Príprava výdaja</h1>
         </div>
 
-        <a href="/dashboard/group" style={styles.closeButton}>
-          Späť
+        <a href="/dashboard/groups" style={styles.closeButton}>
+          Skupiny
         </a>
       </header>
 
