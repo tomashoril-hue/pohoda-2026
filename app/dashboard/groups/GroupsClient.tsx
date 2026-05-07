@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { CSSProperties } from 'react'
 
@@ -47,6 +46,11 @@ export default function GroupsClient({
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createName, setCreateName] = useState('')
+  const [createLoading, setCreateLoading] = useState(false)
+  const [createMessage, setCreateMessage] = useState('')
+  const [createMessageType, setCreateMessageType] = useState<'ok' | 'error' | ''>('')
 
   const sourceGroup = groups.find(group => group.id === sourceGroupId) || null
   const targetGroup = groups.find(group => group.id === targetGroupId) || null
@@ -204,22 +208,73 @@ export default function GroupsClient({
     }
   }
 
+  const createGroup = async () => {
+    setCreateMessage('')
+    setCreateMessageType('')
+
+    if (!createName.trim()) {
+      setCreateMessage('Zadaj názov skupiny.')
+      setCreateMessageType('error')
+      return
+    }
+
+    setCreateLoading(true)
+
+    try {
+      const res = await fetch('/api/group/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: createName.trim() })
+      })
+
+      const text = await res.text()
+      let json: { error?: string; group?: { id?: string } } = {}
+
+      try {
+        json = text ? JSON.parse(text) : {}
+      } catch {
+        setCreateMessage('Server vrátil neplatnú odpoveď.')
+        setCreateMessageType('error')
+        return
+      }
+
+      if (!res.ok || json.error) {
+        setCreateMessage(json.error || 'Skupinu sa nepodarilo vytvoriť.')
+        setCreateMessageType('error')
+        return
+      }
+
+      setCreateMessage('Skupina bola vytvorená.')
+      setCreateMessageType('ok')
+      setCreateName('')
+
+      if (json.group?.id) {
+        router.push(`/dashboard/groups/${json.group.id}`)
+        return
+      }
+
+      router.refresh()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setCreateMessage('Chyba spojenia so serverom: ' + message)
+      setCreateMessageType('error')
+    } finally {
+      setCreateLoading(false)
+    }
+  }
+
   return (
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <div style={styles.breadcrumb}>Dashboard / Skupiny</div>
-          <h1 style={styles.title}>Moje skupiny</h1>
+          <div style={styles.breadcrumb}>Prehľad / Skupiny</div>
+          <h1 style={styles.title}>Správa skupín</h1>
           <p style={styles.subtitle}>
-            Prehľad skupín, rýchly výdaj a presun členov.
+            Prehľad skupín, výdaj, členovia a presun medzi skupinami.
           </p>
         </div>
 
         <div style={styles.headerActions}>
-          <Link href="/dashboard/groups/create" style={styles.greenButton}>
-            Vytvoriť skupinu
-          </Link>
-
           {manageableGroups.length >= 2 && (
             <button
               type="button"
@@ -231,7 +286,7 @@ export default function GroupsClient({
           )}
 
           <a href="/dashboard" style={styles.darkButton}>
-            Dashboard
+            Späť na prehľad
           </a>
         </div>
       </header>
@@ -256,6 +311,86 @@ export default function GroupsClient({
           <b>{manageableGroups.length}</b>
           <span>Správa</span>
         </div>
+      </section>
+
+      <section style={styles.createSection}>
+        {!createOpen ? (
+          <button
+            type="button"
+            style={styles.fullCreateButton}
+            onClick={() => {
+              setCreateOpen(true)
+              setCreateMessage('')
+              setCreateMessageType('')
+            }}
+          >
+            Vytvoriť novú skupinu
+          </button>
+        ) : (
+          <div style={styles.createPanel}>
+            <div style={styles.createHeader}>
+              <div>
+                <b>Nová skupina</b>
+                <span>Založ skupinu a potom pridaj členov cez pozvánku alebo QR.</span>
+              </div>
+
+              <button
+                type="button"
+                style={styles.closeButton}
+                onClick={() => {
+                  if (createLoading) return
+                  setCreateOpen(false)
+                  setCreateName('')
+                  setCreateMessage('')
+                  setCreateMessageType('')
+                }}
+                disabled={createLoading}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={styles.createGrid}>
+              <input
+                value={createName}
+                onChange={event => setCreateName(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') {
+                    createGroup()
+                  }
+                }}
+                placeholder="Názov skupiny"
+                style={styles.searchInput}
+                disabled={createLoading}
+              />
+
+              <button
+                type="button"
+                style={{
+                  ...styles.greenButton,
+                  opacity: createLoading ? 0.6 : 1
+                }}
+                onClick={createGroup}
+                disabled={createLoading}
+              >
+                {createLoading ? 'Vytváram...' : 'Vytvoriť'}
+              </button>
+            </div>
+
+            {createMessage && (
+              <div
+                style={{
+                  ...styles.message,
+                  background: createMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                  color: createMessageType === 'ok' ? '#166534' : '#991b1b',
+                  borderColor: createMessageType === 'ok' ? '#86efac' : '#fecaca'
+                }}
+              >
+                {createMessage}
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       {groups.length === 0 ? (
@@ -515,6 +650,43 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     flexWrap: 'wrap',
     justifyContent: 'flex-end'
+  },
+  createSection: {
+    display: 'grid',
+    gap: 10
+  },
+  fullCreateButton: {
+    width: '100%',
+    background: '#111827',
+    color: '#fff',
+    border: 0,
+    borderRadius: 14,
+    padding: '13px 14px',
+    fontSize: 14,
+    fontWeight: 950,
+    cursor: 'pointer',
+    boxShadow: '0 6px 20px rgba(0,0,0,0.05)'
+  },
+  createPanel: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 16,
+    padding: 12,
+    display: 'grid',
+    gap: 10,
+    boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
+  },
+  createHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 10
+  },
+  createGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 8,
+    alignItems: 'center'
   },
   summaryGrid: {
     display: 'grid',

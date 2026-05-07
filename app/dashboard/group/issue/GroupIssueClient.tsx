@@ -341,7 +341,6 @@ export default function GroupIssueClient({
       clearTimeout(timer)
       stopCamera()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qrOpen])
 
   const selectedActiveIssue = activeIssues.find(issue => issue.id === selectedIssueId) || null
