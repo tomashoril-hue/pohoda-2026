@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
 export default function AcceptGroupInvitePage() {
@@ -69,9 +70,9 @@ function AcceptGroupInviteContent() {
 
         <p style={styles.status}>{status}</p>
 
-        <a href="/dashboard/group" style={styles.buttonLink}>
+        <Link href="/dashboard/groups" style={styles.buttonLink}>
           Prejsť na moju skupinu
-        </a>
+        </Link>
       </section>
     </main>
   )

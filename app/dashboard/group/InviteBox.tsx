@@ -1,8 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 
-export default function InviteBox() {
+export default function InviteBox({
+  groupId
+}: {
+  groupId?: string
+}) {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
@@ -21,7 +27,7 @@ export default function InviteBox() {
       const res = await fetch('/api/group/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() })
+        body: JSON.stringify({ email: email.trim(), groupId })
       })
 
       const text = await res.text()
@@ -30,7 +36,7 @@ export default function InviteBox() {
 
       try {
         json = text ? JSON.parse(text) : {}
-      } catch (e) {
+      } catch {
         console.error('API nevrátilo JSON:', text)
         setMessage('Server vrátil neplatnú odpoveď. Pozri terminál vo VS Code.')
         return
@@ -43,6 +49,7 @@ export default function InviteBox() {
 
       setMessage(json.message || 'Pozvánka bola vytvorená.')
       setEmail('')
+      router.refresh()
     } catch (err: any) {
       setMessage('Chyba spojenia so serverom: ' + err.message)
     } finally {

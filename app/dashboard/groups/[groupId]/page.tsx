@@ -1,6 +1,18 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
+import InviteBox from '../../group/InviteBox'
+import LeaveGroupButton from '../../group/LeaveGroupButton'
+import MembersManager from '../../group/MembersManager'
+import SentInvites from '../../group/SentInvites'
+
+type SentInvite = {
+  id: string
+  email: string
+  status: string
+  created_at: string
+}
 
 export default async function GroupDetailPage({
   params
@@ -43,6 +55,11 @@ export default async function GroupDetailPage({
     myRole === 'MANAGER' ||
     myRole === 'OWNER'
 
+  const canInvite =
+    myRole === 'MANAGER' ||
+    myRole === 'POVERENY' ||
+    myRole === 'OWNER'
+
   const canIssue =
     myRole === 'MANAGER' ||
     myRole === 'POVERENY' ||
@@ -68,24 +85,25 @@ export default async function GroupDetailPage({
     .eq('group_id', groupId)
     .order('created_at', { ascending: true })
 
-  const members = (membersData || []).map((member: any) => {
-    const memberUser = Array.isArray(member.users)
-      ? member.users[0]
-      : member.users
+  let sentInvites: SentInvite[] = []
 
-    const fullName = `${memberUser?.meno || ''} ${memberUser?.priezvisko || ''}`.trim()
+  if (canInvite) {
+    const { data: invitesData } = await supabaseServer
+      .from('group_invites')
+      .select(`
+        id,
+        email,
+        status,
+        created_at
+      `)
+      .eq('group_id', groupId)
+      .eq('status', 'PENDING')
+      .order('created_at', { ascending: false })
 
-    return {
-      id: member.id,
-      userId: member.user_id,
-      role: String(member.role || '').toUpperCase(),
-      fullName: fullName || memberUser?.email || 'Bez mena',
-      email: memberUser?.email || '',
-      telefon: memberUser?.telefon || '',
-      typStravy: memberUser?.typ_stravy || '',
-      qrCode: memberUser?.qr_code || ''
-    }
-  })
+    sentInvites = invitesData || []
+  }
+
+  const members = membersData || []
 
   return (
     <main style={styles.page}>
@@ -93,51 +111,55 @@ export default async function GroupDetailPage({
         <div>
           <div style={styles.breadcrumb}>Dashboard / Skupiny / Detail</div>
           <h1 style={styles.title}>{group?.name || 'Skupina bez názvu'}</h1>
+          <p style={styles.subtitle}>
+            Správa členov, pozvánok a výdaja pre túto skupinu.
+          </p>
         </div>
 
-        <a href="/dashboard/groups" style={styles.backButton}>
+        <Link href="/dashboard/groups" style={styles.darkButton}>
           Skupiny
-        </a>
+        </Link>
       </header>
 
-      <section style={styles.modeBar}>
-        <div style={styles.modeMain}>
-          <b>Detail skupiny</b>
-          <span>Tvoja rola: {myRole}</span>
+      <section style={styles.summaryBar}>
+        <div>
+          <span style={styles.label}>Tvoja rola</span>
+          <b>{myRole}</b>
         </div>
 
-        <div style={styles.modeStatus}>
-          <strong>{members.length}</strong>
-          <small>členov</small>
+        <div>
+          <span style={styles.label}>Členovia</span>
+          <b>{members.length}</b>
         </div>
       </section>
 
       <section style={styles.actionBar}>
-        <div style={styles.actionLeft}>
-          {canIssue && (
-            <a
-              href={`/dashboard/groups/${groupId}/issue`}
-              style={styles.greenButton}
-            >
-              Hromadný výdaj
-            </a>
-          )}
+        {canIssue && (
+          <a
+            href={`/dashboard/groups/${groupId}/issue`}
+            style={styles.greenButton}
+          >
+            Hromadný výdaj
+          </a>
+        )}
 
-          {canManage && (
-            <>
-              <a
-                href={`/dashboard/groups/${groupId}/add-by-qr`}
-                style={styles.blueButton}
-              >
-                Pridať cez QR
-              </a>
+        {canManage && (
+          <a
+            href={`/dashboard/groups/${groupId}/add-by-qr`}
+            style={styles.blueButton}
+          >
+            Pridať cez QR
+          </a>
+        )}
 
-              <button type="button" style={styles.lightButton}>
-                Presun členov
-              </button>
-            </>
-          )}
-        </div>
+        {canManage && (
+          <Link
+            href="/dashboard/groups"
+            style={styles.lightButton}
+          >
+            Presun členov
+          </Link>
+        )}
       </section>
 
       {membersError && (
@@ -146,64 +168,27 @@ export default async function GroupDetailPage({
         </section>
       )}
 
-      <section style={styles.tableCard}>
-        <div style={styles.tableHeader}>
-          <div>Osoba</div>
-          <div>Jedlo</div>
-          <div>Rola</div>
-          <div>QR</div>
-        </div>
+      <MembersManager
+        members={members}
+        myRole={myRole}
+        myUserId={user.id}
+      />
 
-        {!members.length ? (
-          <div style={styles.emptyState}>
-            V tejto skupine zatiaľ nie sú členovia.
-          </div>
-        ) : (
-          members.map((member: any) => (
-            <div key={member.id} style={styles.row}>
-              <div style={styles.personCell}>
-                <div style={styles.personName}>{member.fullName}</div>
-                <div style={styles.personMeta}>
-                  {member.email || '-'}
-                  {member.telefon ? ` · ${member.telefon}` : ''}
-                </div>
-              </div>
+      {canInvite && (
+        <>
+          <InviteBox groupId={groupId} />
+          <SentInvites invites={sentInvites} />
+        </>
+      )}
 
-              <div>
-                <span
-                  style={{
-                    ...styles.choiceBadge,
-                    background:
-                      member.typStravy === 'MASO'
-                        ? '#111827'
-                        : member.typStravy === 'VEGE'
-                          ? '#dcfce7'
-                          : '#fef3c7',
-                    color:
-                      member.typStravy === 'MASO'
-                        ? '#fff'
-                        : member.typStravy === 'VEGE'
-                          ? '#166534'
-                          : '#92400e'
-                  }}
-                >
-                  {member.typStravy || 'NEZADANÉ'}
-                </span>
-              </div>
+      <LeaveGroupButton groupId={groupId} redirectTo="/dashboard/groups" />
 
-              <div>
-                <span style={styles.roleBadge}>{member.role}</span>
-              </div>
-
-              <div>
-                <span style={styles.qrBadge}>
-                  {member.qrCode || '—'}
-                </span>
-              </div>
-            </div>
-          ))
-        )}
-      </section>
+      {!canManage && myRole === 'MEMBER' && (
+        <section style={styles.notice}>
+          Ako člen skupiny môžeš vidieť svoju skupinu a opustiť ju. Správu
+          členov, pozvánky a hromadný výdaj rieši poverená osoba alebo manažér.
+        </section>
+      )}
     </main>
   )
 }
@@ -215,6 +200,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 12,
     display: 'grid',
     gap: 12,
+    alignContent: 'start',
     fontFamily: 'Arial, Helvetica, sans-serif',
     color: '#111827'
   },
@@ -241,39 +227,28 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.1,
     fontWeight: 950
   },
-  backButton: {
-    background: '#111827',
-    color: '#fff',
-    borderRadius: 12,
-    padding: '9px 11px',
-    textDecoration: 'none',
+  subtitle: {
+    margin: '5px 0 0 0',
     fontSize: 13,
-    fontWeight: 900,
-    whiteSpace: 'nowrap'
+    fontWeight: 750,
+    color: '#6b7280'
   },
-  modeBar: {
-    background: '#eff6ff',
-    border: '1px solid #bfdbfe',
+  summaryBar: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
     borderRadius: 16,
     padding: 12,
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) auto',
-    gap: 10,
-    alignItems: 'center'
+    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+    gap: 10
   },
-  modeMain: {
-    minWidth: 0,
-    display: 'grid',
-    gap: 5
-  },
-  modeStatus: {
-    background: '#111827',
-    color: '#fff',
-    borderRadius: 12,
-    padding: '8px 10px',
-    display: 'grid',
-    justifyItems: 'center',
-    minWidth: 82
+  label: {
+    display: 'block',
+    marginBottom: 4,
+    fontSize: 11,
+    fontWeight: 900,
+    color: '#6b7280',
+    textTransform: 'uppercase'
   },
   actionBar: {
     background: '#fff',
@@ -281,14 +256,19 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 16,
     padding: 10,
     display: 'flex',
-    justifyContent: 'space-between',
     gap: 8,
     flexWrap: 'wrap'
   },
-  actionLeft: {
-    display: 'flex',
-    gap: 7,
-    flexWrap: 'wrap'
+  darkButton: {
+    background: '#111827',
+    color: '#fff',
+    border: 0,
+    borderRadius: 12,
+    padding: '10px 12px',
+    fontSize: 13,
+    fontWeight: 950,
+    textDecoration: 'none',
+    whiteSpace: 'nowrap'
   },
   greenButton: {
     background: '#22c55e',
@@ -317,7 +297,8 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     padding: '10px 12px',
     fontSize: 13,
-    fontWeight: 950
+    fontWeight: 950,
+    textDecoration: 'none'
   },
   errorBox: {
     background: '#fee2e2',
@@ -328,91 +309,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 850
   },
-  tableCard: {
+  notice: {
     background: '#fff',
     border: '1px solid #e5e7eb',
     borderRadius: 16,
-    overflowX: 'auto',
-    boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
-  },
-  tableHeader: {
-    minWidth: 720,
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) 90px 100px 100px',
-    gap: 8,
-    alignItems: 'center',
-    padding: '9px 10px',
-    background: '#f9fafb',
-    borderBottom: '1px solid #e5e7eb',
-    fontSize: 10,
-    fontWeight: 950,
-    color: '#6b7280',
-    textTransform: 'uppercase'
-  },
-  row: {
-    minWidth: 720,
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) 90px 100px 100px',
-    gap: 8,
-    alignItems: 'center',
-    padding: '9px 10px',
-    borderBottom: '1px solid #e5e7eb'
-  },
-  personCell: {
-    minWidth: 0
-  },
-  personName: {
-    fontSize: 14,
-    fontWeight: 900,
-    lineHeight: 1.2,
-    overflowWrap: 'anywhere'
-  },
-  personMeta: {
-    marginTop: 2,
-    fontSize: 11,
-    fontWeight: 700,
-    color: '#6b7280',
-    overflowWrap: 'anywhere'
-  },
-  choiceBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 62,
-    borderRadius: 999,
-    padding: '5px 7px',
-    fontSize: 10,
-    fontWeight: 950
-  },
-  roleBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 999,
-    padding: '5px 7px',
-    fontSize: 10,
-    fontWeight: 900,
-    background: '#f3f4f6',
-    color: '#374151',
-    whiteSpace: 'nowrap'
-  },
-  qrBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 999,
-    padding: '5px 7px',
-    fontSize: 10,
-    fontWeight: 900,
-    background: '#eef2ff',
-    color: '#3730a3',
-    whiteSpace: 'nowrap'
-  },
-  emptyState: {
-    padding: 18,
+    padding: 12,
     fontSize: 13,
-    fontWeight: 800,
-    color: '#6b7280',
-    textAlign: 'center'
+    fontWeight: 850,
+    color: '#374151'
   }
 }

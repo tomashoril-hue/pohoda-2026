@@ -23,16 +23,30 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const { data: invite, error: inviteError } = await supabaseServer
+      .from('group_invites')
+      .select('id, group_id, status')
+      .eq('id', inviteId)
+      .maybeSingle()
+
+    if (inviteError || !invite) {
+      return NextResponse.json(
+        { error: 'Pozvánka sa nenašla.' },
+        { status: 404 }
+      )
+    }
+
     const { data: membership } = await supabaseServer
       .from('group_members')
       .select('group_id, role')
+      .eq('group_id', invite.group_id)
       .eq('user_id', user.id)
       .maybeSingle()
 
     if (!membership) {
       return NextResponse.json(
-        { error: 'Nie ste v skupine.' },
-        { status: 400 }
+        { error: 'Táto pozvánka nepatrí do vašej skupiny.' },
+        { status: 403 }
       )
     }
 
@@ -48,26 +62,6 @@ export async function POST(req: NextRequest) {
     if (!canCancelInvite) {
       return NextResponse.json(
         { error: 'Nemáte oprávnenie zrušiť pozvánku.' },
-        { status: 403 }
-      )
-    }
-
-    const { data: invite, error: inviteError } = await supabaseServer
-      .from('group_invites')
-      .select('id, group_id, status')
-      .eq('id', inviteId)
-      .maybeSingle()
-
-    if (inviteError || !invite) {
-      return NextResponse.json(
-        { error: 'Pozvánka sa nenašla.' },
-        { status: 404 }
-      )
-    }
-
-    if (invite.group_id !== membership.group_id) {
-      return NextResponse.json(
-        { error: 'Táto pozvánka nepatrí do vašej skupiny.' },
         { status: 403 }
       )
     }

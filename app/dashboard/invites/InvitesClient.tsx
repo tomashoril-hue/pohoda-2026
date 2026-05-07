@@ -35,7 +35,7 @@ export default function InvitesClient({ invites = [] }: { invites?: any[] }) {
       }
 
       if (action === 'ACCEPT') {
-        router.push('/dashboard/group')
+        router.push('/dashboard/groups')
         return
       }
 

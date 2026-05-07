@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
 import DashboardInvites from './DashboardInvites'
@@ -329,7 +330,7 @@ export default async function DashboardPage() {
         <div style={styles.menuGrid}>
           <a href="/menu" style={styles.menuButton}>Výber stravy</a>
           <a href="/dashboard/qr" style={styles.menuButton}>Môj QR kód</a>
-          <a href="/dashboard/group/create" style={styles.menuButtonPink}>Vytvoriť skupinu</a>
+          <Link href="/dashboard/groups" style={styles.menuButtonPink}>Skupiny</Link>
           <a href="/admin/menu" style={styles.menuButtonGreen}>Admin menu</a>
         </div>
 
@@ -373,19 +374,19 @@ export default async function DashboardPage() {
                       </div>
 
                       <div style={styles.groupActions}>
-                        <a href="/dashboard/group" style={styles.smallButton}>
+                        <a href={`/dashboard/groups/${m.group_id}`} style={styles.smallButton}>
                           Detail
                         </a>
 
                         {canOpenIssue && (
-                          <a href="/dashboard/group/issue" style={styles.smallButtonPink}>
+                          <a href={`/dashboard/groups/${m.group_id}/issue`} style={styles.smallButtonPink}>
                             Hromadný výdaj
                           </a>
                         )}
 
                         {canAddByQr && (
                           <a
-                            href={`/groups/${m.group_id}/add-by-qr`}
+                            href={`/dashboard/groups/${m.group_id}/add-by-qr`}
                             style={styles.smallButtonGreen}
                           >
                             Pridať cez QR

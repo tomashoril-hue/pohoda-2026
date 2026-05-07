@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export default async function AcceptGroupInvitePage({
@@ -133,11 +134,11 @@ export default async function AcceptGroupInvitePage({
         </div>
 
         <div style={styles.buttons}>
-          <a href="/dashboard" style={styles.link}>
+          <Link href="/dashboard/groups" style={styles.link}>
             <button style={styles.primaryButton}>
               Pokračovať do aplikácie
             </button>
-          </a>
+          </Link>
 
           <a href="/login" style={styles.link}>
             <button style={styles.secondaryButton}>

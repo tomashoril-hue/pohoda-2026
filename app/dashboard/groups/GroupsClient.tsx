@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { CSSProperties } from 'react'
 
@@ -215,6 +216,10 @@ export default function GroupsClient({
         </div>
 
         <div style={styles.headerActions}>
+          <Link href="/dashboard/groups/create" style={styles.greenButton}>
+            Vytvoriť skupinu
+          </Link>
+
           {manageableGroups.length >= 2 && (
             <button
               type="button"

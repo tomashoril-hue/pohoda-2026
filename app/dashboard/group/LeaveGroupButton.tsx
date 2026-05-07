@@ -3,7 +3,13 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-export default function LeaveGroupButton() {
+export default function LeaveGroupButton({
+  groupId,
+  redirectTo
+}: {
+  groupId?: string
+  redirectTo?: string
+}) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
@@ -19,7 +25,9 @@ export default function LeaveGroupButton() {
 
     try {
       const res = await fetch('/api/group/leave', {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId })
       })
 
       const text = await res.text()
@@ -34,6 +42,11 @@ export default function LeaveGroupButton() {
 
       if (!res.ok || json.error) {
         setMessage(json.error || 'Nepodarilo sa opustiť skupinu.')
+        return
+      }
+
+      if (redirectTo) {
+        router.push(redirectTo)
         return
       }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 export default function CreateGroupPage() {
@@ -41,7 +42,7 @@ export default function CreateGroupPage() {
         return
       }
 
-      router.push('/dashboard/group')
+      router.push('/dashboard/groups')
     } catch (err: any) {
       setError('Chyba spojenia so serverom: ' + err.message)
     } finally {
@@ -86,9 +87,9 @@ export default function CreateGroupPage() {
           {loading ? 'Vytváram...' : 'Vytvoriť skupinu'}
         </button>
 
-        <a href="/dashboard/group" style={styles.back}>
-          Späť na skupinu
-        </a>
+        <Link href="/dashboard/groups" style={styles.back}>
+          Späť na skupiny
+        </Link>
       </section>
     </main>
   )

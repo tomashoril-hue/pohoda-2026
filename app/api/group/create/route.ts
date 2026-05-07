@@ -21,26 +21,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Zadajte názov skupiny.' }, { status: 400 })
     }
 
-    const { data: existingMember, error: existingError } = await supabaseServer
-      .from('group_members')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    if (existingError) {
-      return NextResponse.json(
-        { error: 'Chyba pri kontrole členstva: ' + existingError.message },
-        { status: 500 }
-      )
-    }
-
-    if (existingMember) {
-      return NextResponse.json(
-        { error: 'Už ste členom skupiny.' },
-        { status: 400 }
-      )
-    }
-
     const { data: group, error: groupError } = await supabaseServer
       .from('groups')
       .insert({

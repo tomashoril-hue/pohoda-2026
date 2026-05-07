@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const email = String(body.email || '').trim().toLowerCase()
+    const requestedGroupId = String(body.groupId || body.group_id || '').trim()
 
     if (!email) {
       return NextResponse.json({ error: 'Zadajte e-mail.' }, { status: 400 })
@@ -25,11 +26,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Nemôžete pozvať sám seba.' }, { status: 400 })
     }
 
-    const { data: membership } = await supabaseServer
+    let membershipQuery = supabaseServer
       .from('group_members')
       .select('group_id, role')
       .eq('user_id', user.id)
-      .maybeSingle()
+
+    if (requestedGroupId) {
+      membershipQuery = membershipQuery.eq('group_id', requestedGroupId)
+    }
+
+    const { data: membership } = await membershipQuery.maybeSingle()
 
     if (!membership) {
       return NextResponse.json({ error: 'Nie ste v skupine.' }, { status: 400 })
@@ -137,7 +143,7 @@ export async function POST(req: NextRequest) {
         ? `https://${process.env.VERCEL_URL}`
         : 'http://localhost:3000')
 
-    const inviteLink = `${baseUrl}/dashboard/group/accept?token=${token}`
+    const inviteLink = `${baseUrl}/dashboard/groups/accept?token=${token}`
 
     const emailResult = await resend.emails.send({
       from: 'POHODA Strava <noreply@pohodapass.sk>',

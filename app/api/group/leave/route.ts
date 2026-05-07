@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser()
 
@@ -10,11 +10,26 @@ export async function POST() {
       return NextResponse.json({ error: 'Nie ste prihlásený.' }, { status: 401 })
     }
 
-    const { data: membership } = await supabaseServer
+    let body: Record<string, unknown> = {}
+
+    try {
+      body = await req.json()
+    } catch {
+      body = {}
+    }
+
+    const requestedGroupId = String(body.groupId || body.group_id || '').trim()
+
+    let membershipQuery = supabaseServer
       .from('group_members')
       .select('id, group_id, role')
       .eq('user_id', user.id)
-      .maybeSingle()
+
+    if (requestedGroupId) {
+      membershipQuery = membershipQuery.eq('group_id', requestedGroupId)
+    }
+
+    const { data: membership } = await membershipQuery.maybeSingle()
 
     if (!membership) {
       return NextResponse.json(
