@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { BrowserQRCodeReader } from '@zxing/browser'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { CSSProperties } from 'react'
@@ -12,8 +13,6 @@ type Member = {
   fullName: string
   email: string
   telefon: string
-  typStravy: string
-  qrCode: string
   isMe: boolean
 }
 
@@ -37,6 +36,15 @@ type Props = {
   canIssue: boolean
 }
 
+type QrHistoryItem = {
+  key: string
+  status: 'ADDED' | 'EXISTS' | 'ERROR'
+  message: string
+  name?: string
+  email?: string
+  time: string
+}
+
 export default function GroupDetailClient({
   group,
   myRole,
@@ -47,6 +55,15 @@ export default function GroupDetailClient({
   canIssue
 }: Props) {
   const router = useRouter()
+  const qrInputRef = useRef<HTMLInputElement | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const controlsRef = useRef<{ stop: () => void } | null>(null)
+  const cancelledRef = useRef(false)
+  const qrBusyRef = useRef(false)
+  const lastScanTextRef = useRef('')
+  const lastScanTimeRef = useRef(0)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<string[]>([])
   const [bulkRole, setBulkRole] = useState('MEMBER')
@@ -57,6 +74,14 @@ export default function GroupDetailClient({
   const [inviteLoading, setInviteLoading] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [cancelInviteId, setCancelInviteId] = useState('')
+  const [qrOpen, setQrOpen] = useState(false)
+  const [qrValue, setQrValue] = useState('')
+  const [qrLoading, setQrLoading] = useState(false)
+  const [qrMessage, setQrMessage] = useState('')
+  const [qrMessageType, setQrMessageType] = useState<'ok' | 'error' | ''>('')
+  const [cameraStatus, setCameraStatus] = useState('Spúšťam kameru...')
+  const [cameraReady, setCameraReady] = useState(false)
+  const [qrHistory, setQrHistory] = useState<QrHistoryItem[]>([])
 
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -69,8 +94,7 @@ export default function GroupDetailClient({
           member.fullName.toLowerCase().includes(q) ||
           member.email.toLowerCase().includes(q) ||
           member.telefon.toLowerCase().includes(q) ||
-          member.role.toLowerCase().includes(q) ||
-          member.qrCode.toLowerCase().includes(q)
+          member.role.toLowerCase().includes(q)
         )
       })
       .sort((a, b) => a.fullName.localeCompare(b.fullName, 'sk'))
@@ -260,6 +284,242 @@ export default function GroupDetailClient({
     }
   }
 
+  const nowLabel = () => {
+    return new Date().toLocaleTimeString('sk-SK', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+  }
+
+  const addQrHistory = (item: Omit<QrHistoryItem, 'key' | 'time'>) => {
+    setQrHistory(prev => [
+      {
+        ...item,
+        key: `${Date.now()}-${prev.length}`,
+        time: nowLabel()
+      },
+      ...prev
+    ].slice(0, 12))
+  }
+
+  const playBeep = (type: 'ok' | 'error') => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as typeof window & {
+        webkitAudioContext?: typeof AudioContext
+      }).webkitAudioContext
+
+      if (!AudioContextClass) return
+
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        audioCtxRef.current = new AudioContextClass()
+      }
+
+      const ctx = audioCtxRef.current
+      const oscillator = ctx.createOscillator()
+      const gain = ctx.createGain()
+      const duration = type === 'ok' ? 0.22 : 0.34
+
+      oscillator.type = 'sine'
+      oscillator.frequency.value = type === 'ok' ? 920 : 240
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.22, ctx.currentTime + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration)
+      oscillator.connect(gain)
+      gain.connect(ctx.destination)
+      oscillator.start(ctx.currentTime)
+      oscillator.stop(ctx.currentTime + duration + 0.02)
+    } catch {
+      // Zvuk nemusí byť dostupný na každom zariadení.
+    }
+
+    try {
+      navigator.vibrate?.(type === 'ok' ? 80 : [80, 70, 80])
+    } catch {
+      // Vibrácie sú voliteľné.
+    }
+  }
+
+  const stopCamera = () => {
+    cancelledRef.current = true
+
+    try {
+      controlsRef.current?.stop()
+    } catch {
+      // Ignorujeme vypnutie už zastavenej kamery.
+    }
+
+    controlsRef.current = null
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+
+    setCameraReady(false)
+  }
+
+  const submitGroupQr = async (manualValue?: string, fromCamera = false) => {
+    const cleanQr = String(manualValue ?? qrValue).trim()
+
+    if (!cleanQr || qrBusyRef.current) return
+
+    const nowMs = Date.now()
+
+    if (
+      fromCamera &&
+      lastScanTextRef.current === cleanQr &&
+      nowMs - lastScanTimeRef.current < 2500
+    ) {
+      return
+    }
+
+    lastScanTextRef.current = cleanQr
+    lastScanTimeRef.current = nowMs
+    qrBusyRef.current = true
+    setQrLoading(true)
+    setQrMessage('')
+    setQrMessageType('')
+
+    try {
+      const res = await fetch('/api/groups/add-member-by-qr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          group_id: group.id,
+          qr_code: cleanQr
+        })
+      })
+
+      const result: {
+        error?: string
+        message?: string
+        status?: 'ADDED' | 'EXISTS'
+        member?: {
+          fullName?: string
+          email?: string
+        }
+      } = await res.json()
+
+      if (!res.ok || result.error) {
+        const errorMessage = result.error || 'Člena sa nepodarilo pridať.'
+        playBeep('error')
+        setQrMessage(errorMessage)
+        setQrMessageType('error')
+        addQrHistory({
+          status: 'ERROR',
+          message: errorMessage
+        })
+        return
+      }
+
+      const successMessage = result.message || 'Člen bol pridaný do skupiny.'
+      playBeep('ok')
+      setQrValue('')
+      setQrMessage(successMessage)
+      setQrMessageType('ok')
+      addQrHistory({
+        status: result.status === 'EXISTS' ? 'EXISTS' : 'ADDED',
+        message: successMessage,
+        name: result.member?.fullName,
+        email: result.member?.email
+      })
+      router.refresh()
+    } catch (err) {
+      const text = err instanceof Error ? err.message : String(err)
+      playBeep('error')
+      setQrMessage('Chyba spojenia so serverom: ' + text)
+      setQrMessageType('error')
+      addQrHistory({
+        status: 'ERROR',
+        message: 'Chyba spojenia so serverom.'
+      })
+    } finally {
+      qrBusyRef.current = false
+      setQrLoading(false)
+
+      setTimeout(() => {
+        qrInputRef.current?.focus()
+      }, 50)
+    }
+  }
+
+  const startCamera = async () => {
+    setCameraReady(false)
+    setCameraStatus('Spúšťam kameru...')
+    cancelledRef.current = false
+
+    try {
+      if (!videoRef.current) {
+        setCameraStatus('Video prvok nie je pripravený.')
+        return
+      }
+
+      const reader = new BrowserQRCodeReader()
+
+      const controls = await reader.decodeFromVideoDevice(
+        undefined,
+        videoRef.current,
+        async result => {
+          if (cancelledRef.current) return
+
+          const text = String(result?.getText?.() || '').trim()
+          if (!text) return
+
+          await submitGroupQr(text, true)
+        }
+      )
+
+      controlsRef.current = controls
+      setCameraReady(true)
+      setCameraStatus('Kamera je zapnutá. Skenuj QR kódy postupne.')
+    } catch (err) {
+      const text = err instanceof Error ? err.message : 'Kameru sa nepodarilo zapnúť.'
+      setCameraReady(false)
+      setCameraStatus(text)
+
+      setTimeout(() => {
+        qrInputRef.current?.focus()
+      }, 100)
+    }
+  }
+
+  const closeQrModal = () => {
+    if (qrLoading) return
+
+    setQrOpen(false)
+    setQrValue('')
+    setQrMessage('')
+    setQrMessageType('')
+    stopCamera()
+  }
+
+  const handleQrKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      submitGroupQr()
+    }
+  }
+
+  useEffect(() => {
+    if (!qrOpen) {
+      stopCamera()
+      return
+    }
+
+    setQrValue('')
+    setQrMessage('')
+    setQrMessageType('')
+    startCamera()
+
+    const timer = setTimeout(() => {
+      qrInputRef.current?.focus()
+    }, 250)
+
+    return () => {
+      clearTimeout(timer)
+      stopCamera()
+    }
+  }, [qrOpen])
+
   return (
     <main style={styles.screen}>
       <header style={styles.mobileHeader}>
@@ -295,9 +555,9 @@ export default function GroupDetailClient({
           )}
 
           {canManage && (
-            <Link href={`/dashboard/groups/${group.id}/add-by-qr`} style={styles.qrButton}>
+            <button type="button" onClick={() => setQrOpen(true)} style={styles.qrButton}>
               Pridať cez QR
-            </Link>
+            </button>
           )}
 
           {canManage && (
@@ -352,7 +612,7 @@ export default function GroupDetailClient({
           <input
             value={search}
             onChange={event => setSearch(event.target.value)}
-            placeholder="Hľadať podľa mena, e-mailu, telefónu alebo QR..."
+            placeholder="Hľadať podľa mena, e-mailu, telefónu alebo roly..."
             style={styles.searchInput}
           />
 
@@ -434,9 +694,7 @@ export default function GroupDetailClient({
         <div style={styles.tableHeader}>
           <div />
           <div>Osoba</div>
-          <div>Jedlo</div>
           <div>Rola</div>
-          <div>QR</div>
           <div>Akcie</div>
         </div>
 
@@ -467,28 +725,6 @@ export default function GroupDetailClient({
               </div>
 
               <div>
-                <span
-                  style={{
-                    ...styles.choiceBadge,
-                    background:
-                      member.typStravy === 'MASO'
-                        ? '#111827'
-                        : member.typStravy === 'VEGE'
-                          ? '#dcfce7'
-                          : '#fef3c7',
-                    color:
-                      member.typStravy === 'MASO'
-                        ? '#fff'
-                        : member.typStravy === 'VEGE'
-                          ? '#166534'
-                          : '#92400e'
-                  }}
-                >
-                  {member.typStravy || 'NEZADANÉ'}
-                </span>
-              </div>
-
-              <div>
                 {canManage && !member.isMe ? (
                   <select
                     value={member.role}
@@ -503,10 +739,6 @@ export default function GroupDetailClient({
                 ) : (
                   <span style={styles.roleBadge}>{member.role}</span>
                 )}
-              </div>
-
-              <div>
-                <span style={styles.sourceBadge}>{member.qrCode || '-'}</span>
               </div>
 
               <div>
@@ -561,6 +793,137 @@ export default function GroupDetailClient({
           Ako člen skupiny môžeš vidieť členov a opustiť skupinu. Správu členov,
           pozvánky a hromadný výdaj rieši poverená osoba alebo manažér.
         </section>
+      )}
+
+      {qrOpen && (
+        <div style={styles.modalOverlay} onClick={closeQrModal}>
+          <div style={styles.qrModal} onClick={event => event.stopPropagation()}>
+            <div style={styles.qrModalHeader}>
+              <div>
+                <b>Pridať cez QR</b>
+                <span>Skenuj QR kódy postupne. Člen sa pridá hneď po úspešnom načítaní.</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeQrModal}
+                style={styles.qrCloseButton}
+                disabled={qrLoading}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={styles.cameraBox}>
+              <video
+                ref={videoRef}
+                style={styles.cameraVideo}
+                playsInline
+                muted
+                autoPlay
+              />
+
+              <div
+                style={{
+                  ...styles.cameraFrame,
+                  borderColor: cameraReady ? '#22c55e' : '#f97316'
+                }}
+              />
+
+              {!cameraReady && (
+                <div style={styles.cameraOverlay}>
+                  {cameraStatus}
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{
+                ...styles.cameraStatus,
+                color: cameraReady ? '#166534' : '#9a3412'
+              }}
+            >
+              {cameraStatus}
+            </div>
+
+            <div style={styles.manualQrBox}>
+              <label style={styles.manualQrLabel}>Manuálne načítanie / scanner</label>
+
+              <div style={styles.manualQrRow}>
+                <input
+                  ref={qrInputRef}
+                  value={qrValue}
+                  onChange={event => setQrValue(event.target.value)}
+                  onKeyDown={handleQrKeyDown}
+                  placeholder="Naskenuj alebo vlož QR..."
+                  style={styles.qrInput}
+                  disabled={qrLoading}
+                  autoComplete="off"
+                  inputMode="text"
+                />
+
+                <button
+                  type="button"
+                  style={{
+                    ...styles.confirmButton,
+                    opacity: qrLoading ? 0.6 : 1
+                  }}
+                  onClick={() => submitGroupQr()}
+                  disabled={qrLoading}
+                >
+                  {qrLoading ? '...' : 'Pridať'}
+                </button>
+              </div>
+            </div>
+
+            {qrMessage && (
+              <div
+                style={{
+                  ...styles.message,
+                  background: qrMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                  color: qrMessageType === 'ok' ? '#166534' : '#991b1b',
+                  borderColor: qrMessageType === 'ok' ? '#86efac' : '#fecaca'
+                }}
+              >
+                {qrMessage}
+              </div>
+            )}
+
+            <div style={styles.qrHistoryBox}>
+              <div style={styles.panelTitle}>Posledné skeny</div>
+
+              {qrHistory.length === 0 ? (
+                <div style={styles.emptyState}>Zatiaľ nebol načítaný žiadny člen.</div>
+              ) : (
+                qrHistory.map(item => (
+                  <div
+                    key={item.key}
+                    style={{
+                      ...styles.qrHistoryItem,
+                      background:
+                        item.status === 'ADDED'
+                          ? '#dcfce7'
+                          : item.status === 'EXISTS'
+                            ? '#eff6ff'
+                            : '#fee2e2',
+                      color:
+                        item.status === 'ERROR'
+                          ? '#991b1b'
+                          : item.status === 'EXISTS'
+                            ? '#1d4ed8'
+                            : '#166534'
+                    }}
+                  >
+                    <b>{item.message}</b>
+                    {item.name && <span>{item.name}</span>}
+                    {item.email && <span>{item.email}</span>}
+                    <small>{item.time}</small>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </main>
   )
@@ -696,7 +1059,7 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid #d1d5db',
     borderRadius: 12,
     padding: '10px 12px',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 700,
     outline: 'none'
   },
@@ -719,7 +1082,7 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid #d1d5db',
     borderRadius: 12,
     padding: '10px 10px',
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: 800,
     background: '#fff',
     color: '#111827'
@@ -729,7 +1092,7 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid #d1d5db',
     borderRadius: 999,
     padding: '6px 7px',
-    fontSize: 10,
+    fontSize: 16,
     fontWeight: 900,
     background: '#fff',
     color: '#111827'
@@ -793,9 +1156,9 @@ const styles: Record<string, CSSProperties> = {
     boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
   },
   tableHeader: {
-    minWidth: 860,
+    minWidth: 650,
     display: 'grid',
-    gridTemplateColumns: '32px minmax(0, 1fr) 92px 130px 120px 100px',
+    gridTemplateColumns: '32px minmax(0, 1fr) 130px 100px',
     gap: 8,
     alignItems: 'center',
     padding: '9px 10px',
@@ -807,9 +1170,9 @@ const styles: Record<string, CSSProperties> = {
     textTransform: 'uppercase'
   },
   row: {
-    minWidth: 860,
+    minWidth: 650,
     display: 'grid',
-    gridTemplateColumns: '32px minmax(0, 1fr) 92px 130px 120px 100px',
+    gridTemplateColumns: '32px minmax(0, 1fr) 130px 100px',
     gap: 8,
     alignItems: 'center',
     padding: '9px 10px',
@@ -892,5 +1255,119 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: 'space-between',
     gap: 10,
     alignItems: 'center'
+  },
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(17, 24, 39, 0.55)',
+    zIndex: 60,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16
+  },
+  qrModal: {
+    width: '100%',
+    maxWidth: 460,
+    maxHeight: '90vh',
+    overflow: 'auto',
+    background: '#fff',
+    borderRadius: 18,
+    padding: 14,
+    boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
+    display: 'grid',
+    gap: 12
+  },
+  qrModalHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 10,
+    alignItems: 'flex-start'
+  },
+  qrCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    border: '1px solid #e5e7eb',
+    background: '#f3f4f6',
+    color: '#111827',
+    fontSize: 22,
+    fontWeight: 900,
+    lineHeight: 1,
+    cursor: 'pointer'
+  },
+  cameraBox: {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: '1 / 1',
+    background: '#111827',
+    borderRadius: 16,
+    overflow: 'hidden'
+  },
+  cameraVideo: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover'
+  },
+  cameraFrame: {
+    position: 'absolute',
+    inset: 28,
+    border: '4px solid',
+    borderRadius: 18,
+    pointerEvents: 'none',
+    boxShadow: '0 0 0 999px rgba(0,0,0,0.22)'
+  },
+  cameraOverlay: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textAlign: 'center',
+    padding: 16,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 900,
+    background: 'rgba(17,24,39,0.55)'
+  },
+  cameraStatus: {
+    fontSize: 12,
+    fontWeight: 850
+  },
+  manualQrBox: {
+    display: 'grid',
+    gap: 6
+  },
+  manualQrLabel: {
+    fontSize: 11,
+    fontWeight: 950,
+    color: '#6b7280'
+  },
+  manualQrRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 8
+  },
+  qrInput: {
+    width: '100%',
+    boxSizing: 'border-box',
+    border: '1px solid #d1d5db',
+    borderRadius: 14,
+    padding: '13px 12px',
+    fontSize: 16,
+    fontWeight: 850,
+    outline: 'none'
+  },
+  qrHistoryBox: {
+    display: 'grid',
+    gap: 7
+  },
+  qrHistoryItem: {
+    borderRadius: 12,
+    padding: 10,
+    display: 'grid',
+    gap: 2,
+    fontSize: 12,
+    fontWeight: 850
   }
 }

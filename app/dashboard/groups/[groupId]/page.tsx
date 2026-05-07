@@ -62,9 +62,7 @@ export default async function GroupDetailPage({
         meno,
         priezvisko,
         email,
-        telefon,
-        typ_stravy,
-        qr_code
+        telefon
       )
     `)
     .eq('group_id', groupId)
@@ -84,8 +82,6 @@ export default async function GroupDetailPage({
       fullName: fullName || memberUser?.email || 'Bez mena',
       email: memberUser?.email || '',
       telefon: memberUser?.telefon || '',
-      typStravy: memberUser?.typ_stravy || '',
-      qrCode: memberUser?.qr_code || '',
       isMe: member.user_id === user.id
     }
   })

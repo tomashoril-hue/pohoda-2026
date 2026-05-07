@@ -21,8 +21,6 @@ type MemberItem = {
   fullName: string
   email: string
   telefon: string
-  typStravy: string
-  qrCode: string
 }
 
 export default function GroupsClient({
@@ -70,8 +68,7 @@ export default function GroupsClient({
         return (
           member.fullName.toLowerCase().includes(q) ||
           member.email.toLowerCase().includes(q) ||
-          member.telefon.toLowerCase().includes(q) ||
-          member.qrCode.toLowerCase().includes(q)
+          member.telefon.toLowerCase().includes(q)
         )
       })
       .sort((a, b) => a.fullName.localeCompare(b.fullName, 'sk'))
@@ -247,12 +244,7 @@ export default function GroupsClient({
       setCreateMessage('Skupina bola vytvorená.')
       setCreateMessageType('ok')
       setCreateName('')
-
-      if (json.group?.id) {
-        router.push(`/dashboard/groups/${json.group.id}`)
-        return
-      }
-
+      setCreateOpen(false)
       router.refresh()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -560,7 +552,7 @@ export default function GroupsClient({
                       </div>
 
                       <span style={styles.choiceBadge}>
-                        {member.typStravy || '—'}
+                        {member.role || 'MEMBER'}
                       </span>
                     </button>
                   )
@@ -893,7 +885,7 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid #d1d5db',
     borderRadius: 12,
     padding: '11px 10px',
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: 850,
     background: '#fff',
     color: '#111827'
@@ -909,7 +901,7 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid #d1d5db',
     borderRadius: 12,
     padding: '11px 12px',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 800,
     outline: 'none'
   },

@@ -28,9 +28,7 @@ export default async function GroupsPage() {
         meno,
         priezvisko,
         email,
-        telefon,
-        typ_stravy,
-        qr_code
+        telefon
       )
     `)
     .order('created_at', { ascending: true })
@@ -102,9 +100,7 @@ export default async function GroupsPage() {
       role: String(membership.role || '').toUpperCase(),
       fullName: fullName || memberUser?.email || 'Bez mena',
       email: memberUser?.email || '',
-      telefon: memberUser?.telefon || '',
-      typStravy: memberUser?.typ_stravy || '',
-      qrCode: memberUser?.qr_code || ''
+      telefon: memberUser?.telefon || ''
     }
   })
 

@@ -241,7 +241,6 @@ export default async function DashboardPage() {
 
         <div style={styles.infoBox}>
           <p><b>E-mail:</b> {user.email || '-'}</p>
-          <p><b>QR kód:</b> {user.qr_code || '-'}</p>
           <p><b>Typ stravy:</b> {user.typ_stravy || user.typStravy || '-'}</p>
         </div>
 
@@ -358,7 +357,6 @@ export default async function DashboardPage() {
                   const group = Array.isArray(m.groups) ? m.groups[0] : m.groups
                   const role = String(m.role || '').toUpperCase()
 
-                  const canAddByQr = role === 'MANAGER' || role === 'OWNER'
                   const canOpenIssue = role === 'MANAGER' || role === 'POVERENY' || role === 'OWNER'
 
                   return (
@@ -381,15 +379,6 @@ export default async function DashboardPage() {
                         {canOpenIssue && (
                           <a href={`/dashboard/groups/${m.group_id}/issue`} style={styles.smallButtonPink}>
                             Hromadný výdaj
-                          </a>
-                        )}
-
-                        {canAddByQr && (
-                          <a
-                            href={`/dashboard/groups/${m.group_id}/add-by-qr`}
-                            style={styles.smallButtonGreen}
-                          >
-                            Pridať cez QR
                           </a>
                         )}
                       </div>
