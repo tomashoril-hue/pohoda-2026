@@ -43,11 +43,9 @@ export async function POST(req: NextRequest) {
 
     const myRole = String(membership.role || '').toUpperCase()
 
-    // Dočasne povoľujeme aj OWNER, kým spravíme migráciu databázy.
-    // Nový model: MANAGER a POVERENY môžu pozývať.
+    // OWNER nechávame dočasne pre staré dáta. Nový model: skupinu spravuje MANAGER.
     const canInvite =
       myRole === 'MANAGER' ||
-      myRole === 'POVERENY' ||
       myRole === 'OWNER'
 
     if (!canInvite) {
@@ -89,6 +87,7 @@ export async function POST(req: NextRequest) {
           name
         )
       `)
+      .eq('group_id', membership.group_id)
       .eq('user_id', invitedUser.id)
       .maybeSingle()
 

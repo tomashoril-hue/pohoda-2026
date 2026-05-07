@@ -58,12 +58,13 @@ export async function POST(req: NextRequest) {
     const { data: existingMember } = await supabaseServer
       .from('group_members')
       .select('id')
+      .eq('group_id', invite.group_id)
       .eq('user_id', user.id)
       .maybeSingle()
 
     if (existingMember) {
       return NextResponse.json(
-        { error: 'Už ste členom skupiny.' },
+        { error: 'Už ste členom tejto skupiny.' },
         { status: 400 }
       )
     }

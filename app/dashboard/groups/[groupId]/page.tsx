@@ -47,7 +47,7 @@ export default async function GroupDetailPage({
     : myMembership.groups
 
   const canManage = myRole === 'MANAGER' || myRole === 'OWNER'
-  const canInvite = myRole === 'MANAGER' || myRole === 'POVERENY' || myRole === 'OWNER'
+  const canInvite = myRole === 'MANAGER' || myRole === 'OWNER'
   const canIssue = myRole === 'MANAGER' || myRole === 'POVERENY' || myRole === 'OWNER'
 
   const { data: membersData } = await supabaseServer

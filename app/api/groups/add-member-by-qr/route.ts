@@ -88,32 +88,6 @@ export async function POST(req: Request) {
       ? `${profile.meno || ''} ${profile.priezvisko || ''}`.trim()
       : ''
 
-    const { data: otherMembership } = await supabaseServer
-      .from('group_members')
-      .select(`
-        id,
-        group_id,
-        groups (
-          name
-        )
-      `)
-      .eq('user_id', qrUser.user_id)
-      .neq('group_id', group_id)
-      .maybeSingle()
-
-    if (otherMembership) {
-      const existingGroup = Array.isArray(otherMembership.groups)
-        ? otherMembership.groups[0]
-        : otherMembership.groups
-
-      return NextResponse.json(
-        {
-          error: `Tento používateľ už je členom inej skupiny${existingGroup?.name ? `: ${existingGroup.name}` : '.'}`
-        },
-        { status: 400 }
-      )
-    }
-
     const { data: existing } = await supabaseServer
       .from('group_members')
       .select('id')

@@ -37,7 +37,7 @@ export default async function IssueDetailPage({
     .maybeSingle()
 
   if (issueError || !issue) {
-    redirect('/dashboard/group/issue')
+    redirect('/dashboard/groups')
   }
 
   const { data: membership } = await supabaseServer
@@ -76,7 +76,7 @@ export default async function IssueDetailPage({
     .order('created_at', { ascending: true })
 
   if (itemsError) {
-    redirect('/dashboard/group/issue')
+    redirect(`/dashboard/groups/${issue.group_id}/issue`)
   }
 
   const userIds = Array.from(
@@ -154,7 +154,7 @@ export default async function IssueDetailPage({
           myRole={myRole}
         />
 
-        <a href="/dashboard/group/issue" style={styles.back}>
+        <a href={`/dashboard/groups/${issue.group_id}/issue`} style={styles.back}>
           Späť na hromadný výdaj
         </a>
       </section>

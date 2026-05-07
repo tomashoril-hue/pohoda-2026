@@ -15,19 +15,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Chýba token pozvánky.' }, { status: 400 })
     }
 
-    const { data: existingMember } = await supabaseServer
-      .from('group_members')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    if (existingMember) {
-      return NextResponse.json(
-        { error: 'Už ste členom skupiny.' },
-        { status: 400 }
-      )
-    }
-
     const { data: invite, error: inviteError } = await supabaseServer
       .from('group_invites')
       .select('id, group_id, email, status')
@@ -38,6 +25,20 @@ export async function GET(req: NextRequest) {
     if (inviteError || !invite) {
       return NextResponse.json(
         { error: 'Pozvánka je neplatná alebo už bola použitá.' },
+        { status: 400 }
+      )
+    }
+
+    const { data: existingMember } = await supabaseServer
+      .from('group_members')
+      .select('id')
+      .eq('group_id', invite.group_id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (existingMember) {
+      return NextResponse.json(
+        { error: 'Už ste členom tejto skupiny.' },
         { status: 400 }
       )
     }

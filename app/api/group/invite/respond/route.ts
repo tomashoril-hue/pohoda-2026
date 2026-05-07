@@ -80,12 +80,13 @@ export async function POST(req: NextRequest) {
     const { data: existingMembership } = await supabaseServer
       .from('group_members')
       .select('id')
+      .eq('group_id', invite.group_id)
       .eq('user_id', user.id)
       .maybeSingle()
 
     if (existingMembership) {
       return NextResponse.json(
-        { error: 'Už ste členom nejakej skupiny.' },
+        { error: 'Už ste členom tejto skupiny.' },
         { status: 400 }
       )
     }
@@ -112,16 +113,6 @@ export async function POST(req: NextRequest) {
         accepted_at: new Date().toISOString()
       })
       .eq('id', invite.id)
-
-    await supabaseServer
-      .from('group_invites')
-      .update({
-        status: 'CANCELLED',
-        cancelled_at: new Date().toISOString()
-      })
-      .eq('email', String(user.email).toLowerCase())
-      .eq('status', 'PENDING')
-      .neq('id', invite.id)
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {

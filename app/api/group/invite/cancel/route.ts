@@ -52,11 +52,9 @@ export async function POST(req: NextRequest) {
 
     const myRole = String(membership.role || '').toUpperCase()
 
-    // Dočasne povoľujeme aj OWNER, kým spravíme migráciu databázy.
-    // Nový model: MANAGER a POVERENY môžu rušiť pozvánky.
+    // OWNER nechávame dočasne pre staré dáta. Nový model: skupinu spravuje MANAGER.
     const canCancelInvite =
       myRole === 'MANAGER' ||
-      myRole === 'POVERENY' ||
       myRole === 'OWNER'
 
     if (!canCancelInvite) {
