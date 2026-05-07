@@ -9,7 +9,6 @@ function todayIsoDate() {
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
   const day = String(now.getDate()).padStart(2, '0')
-
   return `${year}-${month}-${day}`
 }
 
@@ -81,7 +80,6 @@ function isQrExtra(row: any) {
 
 function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: string[]) {
   if (item.removeReason === 'IN_OTHER_ISSUE') return 'V INOM VÝDAJI'
-
   if (item.status === 'INDIVIDUAL_ISSUED') return 'PREVZAL OSOBNE'
   if (item.status === 'BULK_ISSUED') return 'PREVZATÉ HROMADNE'
 
@@ -111,17 +109,9 @@ function canSelectRow(item: any, _currentIssue: any) {
   if (item.status === 'INDIVIDUAL_ISSUED') return false
   if (item.status === 'BULK_ISSUED') return false
 
-  if (item.status === 'REMOVED' && item.removeReason === 'REMOVED_FROM_GROUP') {
-    return false
-  }
-
-  if (item.status === 'REMOVED' && item.removeReason === 'MOVED_TO_OTHER_GROUP') {
-    return false
-  }
-
-  if (item.status === 'REMOVED' && item.removeReason === 'MANUAL') {
-    return false
-  }
+  if (item.status === 'REMOVED' && item.removeReason === 'REMOVED_FROM_GROUP') return false
+  if (item.status === 'REMOVED' && item.removeReason === 'MOVED_TO_OTHER_GROUP') return false
+  if (item.status === 'REMOVED' && item.removeReason === 'MANUAL') return false
 
   return true
 }
@@ -129,15 +119,12 @@ function canSelectRow(item: any, _currentIssue: any) {
 function getMemberEntitlement(member: any, datum: string, typJedla: string) {
   const byDate = member?.entitlementsByDate || {}
   const day = byDate[datum] || {}
-
   return day?.[typJedla] || 'UNKNOWN'
 }
 
 function sameStringSet(a: string[], b: string[]) {
   if (a.length !== b.length) return false
-
   const setA = new Set(a)
-
   return b.every(item => setA.has(item))
 }
 
@@ -165,7 +152,6 @@ export default function GroupIssueClient({
   const controlsRef = useRef<any>(null)
   const cancelledRef = useRef(false)
   const qrBusyRef = useRef(false)
-  const qrNeedsRefreshRef = useRef(false)
   const lastScanTextRef = useRef('')
   const lastScanTimeRef = useRef(0)
   const audioCtxRef = useRef<AudioContext | null>(null)
@@ -213,15 +199,17 @@ export default function GroupIssueClient({
       oscillator.type = 'sine'
       oscillator.frequency.value = type === 'ok' ? 920 : 240
 
+      const duration = type === 'ok' ? 0.22 : 0.34
+
       gain.gain.setValueAtTime(0.0001, ctx.currentTime)
       gain.gain.exponentialRampToValueAtTime(0.22, ctx.currentTime + 0.02)
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + (type === 'ok' ? 0.22 : 0.34))
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration)
 
       oscillator.connect(gain)
       gain.connect(ctx.destination)
 
       oscillator.start(ctx.currentTime)
-      oscillator.stop(ctx.currentTime + (type === 'ok' ? 0.24 : 0.36))
+      oscillator.stop(ctx.currentTime + duration + 0.02)
     } catch {
       // zvuk nie je dostupný
     }
@@ -281,9 +269,7 @@ export default function GroupIssueClient({
 
           const nowMs = Date.now()
 
-          if (nowMs - lastScanTimeRef.current < 1000) {
-            return
-          }
+          if (nowMs - lastScanTimeRef.current < 1000) return
 
           if (
             lastScanTextRef.current === text &&
@@ -386,7 +372,7 @@ export default function GroupIssueClient({
         removeReason: qrRow.removeReason ?? null,
         source: 'QR_EXTRA',
         addedByQr: true,
-        role: qrRow.role || baseRow.role || '—',
+        role: '—',
         entitlementStatus: qrRow.entitlementStatus || baseRow.entitlementStatus || 'UNKNOWN'
       }
     }
@@ -401,7 +387,7 @@ export default function GroupIssueClient({
           qrCode: row.qrCode || '',
           source: 'QR_EXTRA',
           addedByQr: true,
-          role: row.role || '—',
+          role: '—',
           isFromIssue: !!currentIssue
         }))
     }
@@ -730,7 +716,6 @@ export default function GroupIssueClient({
   }
 
   const openQrModal = () => {
-    qrNeedsRefreshRef.current = false
     setQrValue('')
     setQrMessage('')
     setQrMessageType('')
@@ -745,11 +730,6 @@ export default function GroupIssueClient({
     setQrMessage('')
     setQrMessageType('')
     stopCamera()
-
-    if (qrNeedsRefreshRef.current) {
-      qrNeedsRefreshRef.current = false
-      router.refresh()
-    }
   }
 
   const submitExpressQr = async (manualValue?: string, fromCamera = false) => {
@@ -798,7 +778,7 @@ export default function GroupIssueClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           groupId: group.id,
-          issueId: currentIssue?.id || '',
+          issueId: '',
           datum,
           typJedla,
           qrCode: cleanQr
@@ -860,7 +840,7 @@ export default function GroupIssueClient({
         qrCode: member.qrCode || cleanQr,
         source: 'QR_EXTRA',
         addedByQr: true,
-        role: member.role || existingRow?.role || '—',
+        role: '—',
         status: member.status || 'PLANNED',
         removeReason: member.removeReason ?? null,
         isFromIssue: !!currentIssue
@@ -899,10 +879,6 @@ export default function GroupIssueClient({
       }
 
       setQrValue('')
-
-      if (json.status === 'ADDED' && currentIssue?.id) {
-        qrNeedsRefreshRef.current = true
-      }
 
       if (!fromCamera) {
         setTimeout(() => qrInputRef.current?.focus(), 60)
@@ -1267,24 +1243,17 @@ export default function GroupIssueClient({
           <div style={styles.panelHeaderRow}>
             <div style={styles.panelTitle}>Aktívne prípravy</div>
 
-            <button
-              type="button"
-              style={styles.tinyButton}
-              onClick={startNewPreparation}
-            >
+            <button type="button" style={styles.tinyButton} onClick={startNewPreparation}>
               Nová
             </button>
           </div>
 
           {!activeIssues.length ? (
-            <div style={styles.emptySmall}>
-              Žiadna aktívna príprava.
-            </div>
+            <div style={styles.emptySmall}>Žiadna aktívna príprava.</div>
           ) : (
             <div style={styles.activeList}>
               {activeIssues.map((item: any) => {
                 const active = currentIssue?.id === item.id
-
                 const plannedItems = (item.items || []).filter((row: any) => row.status === 'PLANNED')
 
                 const activeMasoCount = plannedItems.filter((row: any) => {
@@ -1348,9 +1317,7 @@ export default function GroupIssueClient({
       </section>
 
       <section style={styles.statsPanel}>
-        <div style={styles.statsCaption}>
-          Aktuálny návrh prípravy
-        </div>
+        <div style={styles.statsCaption}>Aktuálny návrh prípravy</div>
 
         <div style={styles.filterRow}>
           <button
@@ -1468,11 +1435,7 @@ export default function GroupIssueClient({
         </div>
 
         <div style={styles.actionRight}>
-          <button
-            type="button"
-            style={styles.qrButton}
-            onClick={openQrModal}
-          >
+          <button type="button" style={styles.qrButton} onClick={openQrModal}>
             Cez QR
           </button>
 
@@ -1543,9 +1506,7 @@ export default function GroupIssueClient({
         </div>
 
         {!filteredRows.length ? (
-          <div style={styles.emptyState}>
-            Nenašli sa žiadne osoby.
-          </div>
+          <div style={styles.emptyState}>Nenašli sa žiadne osoby.</div>
         ) : (
           filteredRows.map((row: any) => {
             const isSelected = selected.includes(row.userId)
@@ -1588,9 +1549,7 @@ export default function GroupIssueClient({
                 </div>
 
                 <div style={styles.personCell}>
-                  <div style={styles.personName}>
-                    {row.fullName || 'Bez mena'}
-                  </div>
+                  <div style={styles.personName}>{row.fullName || 'Bez mena'}</div>
 
                   <div style={styles.personMeta}>
                     {row.email || '-'}
@@ -1689,7 +1648,7 @@ export default function GroupIssueClient({
             <div style={styles.qrModalHeader}>
               <div>
                 <b>Expres QR</b>
-                <span>Skenujte QR kódy postupne. Po zatvorení sa zoznam obnoví.</span>
+                <span>Skenujte QR kódy postupne. Uloží sa až po potvrdení úpravy.</span>
               </div>
 
               <button
@@ -1735,9 +1694,7 @@ export default function GroupIssueClient({
             </div>
 
             <div style={styles.manualQrBox}>
-              <label style={styles.manualQrLabel}>
-                Manuálne načítanie / scanner
-              </label>
+              <label style={styles.manualQrLabel}>Manuálne načítanie / scanner</label>
 
               <div style={styles.manualQrRow}>
                 <input
