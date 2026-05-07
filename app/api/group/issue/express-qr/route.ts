@@ -249,6 +249,131 @@ export async function POST(req: NextRequest) {
       )
     })
 
+    if (conflictItem && issueId) {
+      const { data: issue, error: issueError } = await supabaseServer
+        .from('hromadne_vydaje')
+        .select('id, group_id, datum, typ_jedla, status')
+        .eq('id', issueId)
+        .maybeSingle()
+
+      if (issueError) {
+        return NextResponse.json(
+          { error: issueError.message },
+          { status: 500 }
+        )
+      }
+
+      if (!issue || issue.group_id !== groupId) {
+        return NextResponse.json(
+          { error: 'Príprava sa nenašla alebo nepatrí do tejto skupiny.' },
+          { status: 404 }
+        )
+      }
+
+      if (issue.datum !== datum || issue.typ_jedla !== typJedla) {
+        return NextResponse.json(
+          { error: 'QR sa pridáva do iného dátumu alebo typu jedla.' },
+          { status: 400 }
+        )
+      }
+
+      const { data: existingItem, error: existingItemError } = await supabaseServer
+        .from('hromadny_vydaj_polozky')
+        .select('id, status, remove_reason, source')
+        .eq('hromadny_vydaj_id', issueId)
+        .eq('user_id', targetUserId)
+        .maybeSingle()
+
+      if (existingItemError) {
+        return NextResponse.json(
+          { error: existingItemError.message },
+          { status: 500 }
+        )
+      }
+
+      const now = new Date().toISOString()
+
+      const { error: moveOldItemError } = await supabaseServer
+        .from('hromadny_vydaj_polozky')
+        .update({
+          status: 'REMOVED',
+          remove_reason: 'MOVED_TO_OTHER_ISSUE',
+          removed_at: now,
+          removed_by: user.id,
+          updated_at: now
+        })
+        .eq('id', conflictItem.id)
+
+      if (moveOldItemError) {
+        return NextResponse.json(
+          { error: moveOldItemError.message },
+          { status: 500 }
+        )
+      }
+
+      const newIssueStatus = myRole === 'POVERENY' ? 'WAITING' : 'READY'
+      const newValidAfter =
+        myRole === 'POVERENY'
+          ? new Date(Date.now() + 15 * 60 * 1000).toISOString()
+          : null
+
+      if (!existingItem) {
+        const { error: insertItemError } = await supabaseServer
+          .from('hromadny_vydaj_polozky')
+          .insert({
+            hromadny_vydaj_id: issueId,
+            user_id: targetUserId,
+            source: 'QR_EXTRA',
+            volba,
+            status: 'PLANNED',
+            added_by: user.id,
+            updated_at: now
+          })
+
+        if (insertItemError) {
+          return NextResponse.json(
+            { error: insertItemError.message },
+            { status: 500 }
+          )
+        }
+      }
+
+      const { error: updateIssueError } = await supabaseServer
+        .from('hromadne_vydaje')
+        .update({
+          status: newIssueStatus,
+          valid_after: newValidAfter,
+          last_changed_at: now,
+          updated_at: now
+        })
+        .eq('id', issueId)
+
+      if (updateIssueError) {
+        return NextResponse.json(
+          { error: updateIssueError.message },
+          { status: 500 }
+        )
+      }
+
+      const existingItemSafe: any = existingItem
+
+      return NextResponse.json({
+        ok: true,
+        status: 'ADDED_WITH_MOVE',
+        message: existingItemSafe
+          ? 'Používateľ už je v tejto príprave. Pôvodná príprava bola deaktivovaná.'
+          : 'Používateľ bol presunutý z inej prípravy sem.',
+        member: {
+          ...baseMember,
+          status: existingItemSafe?.status || 'PLANNED',
+          removeReason: existingItemSafe?.remove_reason || null,
+          addedByQr: true,
+          source: existingItemSafe?.source || 'QR_EXTRA',
+          transferFromOtherIssue: true
+        }
+      })
+    }
+
     /*
       Dôležité:
       Tu už NEBLOKUJEME QR_EXTRA, ak je používateľ v inom výdaji.

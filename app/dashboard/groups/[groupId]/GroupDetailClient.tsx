@@ -73,6 +73,7 @@ export default function GroupDetailClient({
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
   const [leaving, setLeaving] = useState(false)
+  const [deletingGroup, setDeletingGroup] = useState(false)
   const [cancelInviteId, setCancelInviteId] = useState('')
   const [qrOpen, setQrOpen] = useState(false)
   const [qrValue, setQrValue] = useState('')
@@ -281,6 +282,48 @@ export default function GroupDetailClient({
       setStatus('Chyba spojenia so serverom: ' + text, 'error')
     } finally {
       setLeaving(false)
+    }
+  }
+
+  const deleteGroup = async () => {
+    const confirmed = confirm(
+      `Naozaj zrušiť skupinu "${group.name}"?\n\nZrušia sa aktívne prípravy tejto skupiny, pozvánky a členstvá. Túto akciu nevrátiš späť.`
+    )
+
+    if (!confirmed) return
+
+    setDeletingGroup(true)
+    setMessage('')
+    setMessageType('')
+
+    try {
+      const res = await fetch('/api/group/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId: group.id })
+      })
+
+      const text = await res.text()
+      let json: { error?: string; message?: string } = {}
+
+      try {
+        json = text ? JSON.parse(text) : {}
+      } catch {
+        setStatus('Server vrátil neplatnú odpoveď.', 'error')
+        return
+      }
+
+      if (!res.ok || json.error) {
+        setStatus(json.error || 'Skupinu sa nepodarilo zrušiť.', 'error')
+        return
+      }
+
+      router.push('/dashboard/groups')
+    } catch (err) {
+      const text = err instanceof Error ? err.message : String(err)
+      setStatus('Chyba spojenia so serverom: ' + text, 'error')
+    } finally {
+      setDeletingGroup(false)
     }
   }
 
@@ -560,24 +603,35 @@ export default function GroupDetailClient({
             </button>
           )}
 
-          {canManage && (
-            <Link href="/dashboard/groups" style={styles.lightButton}>
-              Presun členov
-            </Link>
-          )}
         </div>
 
-        <button
-          type="button"
-          style={{
-            ...styles.cancelButton,
-            opacity: leaving ? 0.6 : 1
-          }}
-          onClick={leaveGroup}
-          disabled={leaving}
-        >
-          {leaving ? 'Odchádzam...' : 'Opustiť skupinu'}
-        </button>
+        <div style={styles.dangerActions}>
+          {canManage && (
+            <button
+              type="button"
+              style={{
+                ...styles.deleteButton,
+                opacity: deletingGroup ? 0.6 : 1
+              }}
+              onClick={deleteGroup}
+              disabled={deletingGroup || leaving}
+            >
+              {deletingGroup ? 'Ruším...' : 'Zrušiť skupinu'}
+            </button>
+          )}
+
+          <button
+            type="button"
+            style={{
+              ...styles.cancelButton,
+              opacity: leaving ? 0.6 : 1
+            }}
+            onClick={leaveGroup}
+            disabled={leaving || deletingGroup}
+          >
+            {leaving ? 'Odchádzam...' : 'Opustiť skupinu'}
+          </button>
+        </div>
       </section>
 
       {message && (
@@ -1018,6 +1072,12 @@ const styles: Record<string, CSSProperties> = {
     gap: 7,
     flexWrap: 'wrap'
   },
+  dangerActions: {
+    display: 'flex',
+    gap: 7,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end'
+  },
   topGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
@@ -1134,6 +1194,16 @@ const styles: Record<string, CSSProperties> = {
     background: '#fee2e2',
     color: '#991b1b',
     border: '1px solid #fecaca',
+    borderRadius: 12,
+    padding: '10px 12px',
+    fontSize: 13,
+    fontWeight: 950,
+    cursor: 'pointer'
+  },
+  deleteButton: {
+    background: '#7f1d1d',
+    color: '#fff',
+    border: '1px solid #991b1b',
     borderRadius: 12,
     padding: '10px 12px',
     fontSize: 13,

@@ -131,10 +131,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: selectedMembersError.message }, { status: 500 })
     }
 
-    const groupMemberIds = new Set((selectedMembers || []).map((m: any) => m.user_id))
-
     const selectedQrExtraUserIds = selectedUserIds.filter((id: string) => {
-      return qrExtraUserIds.includes(id) && !groupMemberIds.has(id)
+      return qrExtraUserIds.includes(id)
     })
 
     const selectedGroupMembers = (selectedMembers || []).filter((member: any) => {

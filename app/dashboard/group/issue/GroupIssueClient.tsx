@@ -93,12 +93,18 @@ function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: str
   }
 
   if (item.status === 'REMOVED' && item.removeReason === 'MOVED_TO_OTHER_ISSUE') {
-    return 'PRESUNUTÝ'
+    return 'PRESUN DO INÉHO VÝDAJA'
   }
 
   if (item.status === 'REMOVED' && item.removeReason === 'MANUAL') {
     return 'VYRADENÝ'
   }
+
+  if (item.status === 'REMOVED' && item.removeReason === 'GROUP_CANCELLED') {
+    return 'SKUPINA ZRUŠENÁ'
+  }
+
+  if (item.transferFromOtherIssue) return 'PRESUN CEZ QR'
 
   const wasPrepared = savedPreparedIds.includes(item.userId)
   const isSelectedNow = selectedIds.includes(item.userId)
@@ -107,6 +113,38 @@ function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: str
   if (wasPrepared) return 'PRIPRAVENÝ'
 
   return 'NEPRIPRAVENÝ'
+}
+
+function itemStatusNote(item: any) {
+  if (item.transferFromOtherIssue) {
+    return 'QR presun deaktivuje pôvodnú aktívnu prípravu.'
+  }
+
+  if (item.removeReason === 'IN_OTHER_ISSUE') {
+    return 'Osoba je aktívna v inej skupine pre rovnaký dátum a jedlo.'
+  }
+
+  if (item.removeReason === 'MOVED_TO_OTHER_ISSUE') {
+    return 'Osoba bola cez QR presunutá do inej prípravy.'
+  }
+
+  if (item.removeReason === 'MOVED_TO_OTHER_GROUP') {
+    return 'Osoba bola presunutá do inej skupiny.'
+  }
+
+  if (item.removeReason === 'REMOVED_FROM_GROUP') {
+    return 'Osoba už nie je členom tejto skupiny.'
+  }
+
+  if (item.removeReason === 'GROUP_CANCELLED') {
+    return 'Položka bola vyradená pri zrušení skupiny.'
+  }
+
+  if (item.removeReason === 'MANUAL') {
+    return 'Osoba bola vyradená ručne.'
+  }
+
+  return ''
 }
 
 function canSelectRow(item: any, _currentIssue: any) {
@@ -118,6 +156,7 @@ function canSelectRow(item: any, _currentIssue: any) {
   if (item.status === 'REMOVED' && item.removeReason === 'MOVED_TO_OTHER_GROUP') return false
   if (item.status === 'REMOVED' && item.removeReason === 'MOVED_TO_OTHER_ISSUE') return false
   if (item.status === 'REMOVED' && item.removeReason === 'MANUAL') return false
+  if (item.status === 'REMOVED' && item.removeReason === 'GROUP_CANCELLED') return false
 
   return true
 }
@@ -533,7 +572,8 @@ export default function GroupIssueClient({
           row.removeReason === 'MOVED_TO_OTHER_GROUP' ||
           row.removeReason === 'MOVED_TO_OTHER_ISSUE' ||
           row.removeReason === 'IN_OTHER_ISSUE' ||
-          row.removeReason === 'MANUAL'
+          row.removeReason === 'MANUAL' ||
+          row.removeReason === 'GROUP_CANCELLED'
 
         return isSpecial ? 2 : 1
       }
@@ -1540,6 +1580,7 @@ export default function GroupIssueClient({
             const choice = String(row.typStravy || row.volba || '').toUpperCase()
             const selectable = canSelectRow(row, currentIssue)
             const statusText = itemStatusLabel(row, selected, savedPreparedIds)
+            const statusNote = itemStatusNote(row)
             const entitlementText = entitlementLabel(row.entitlementStatus)
             const isInactiveRow = !selectable
             const rowIsQrExtra = isQrExtra(row)
@@ -1582,6 +1623,12 @@ export default function GroupIssueClient({
                     {row.email || '-'}
                     {row.telefon ? ` · ${row.telefon}` : ''}
                   </div>
+
+                  {statusNote && (
+                    <div style={styles.personNote}>
+                      {statusNote}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -2249,6 +2296,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontWeight: 700,
     color: '#6b7280',
+    overflowWrap: 'anywhere'
+  },
+  personNote: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: 850,
+    color: '#92400e',
     overflowWrap: 'anywhere'
   },
   choiceBadge: {
