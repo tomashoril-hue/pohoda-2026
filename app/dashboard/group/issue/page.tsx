@@ -98,7 +98,8 @@ export default async function GroupIssuePage() {
         priezvisko,
         email,
         telefon,
-        typ_stravy
+        typ_stravy,
+        qr_code
       )
     `)
     .eq('group_id', membership.group_id)
@@ -120,6 +121,7 @@ export default async function GroupIssuePage() {
       email: memberUser?.email || '',
       telefon: memberUser?.telefon || '',
       typStravy: memberUser?.typ_stravy || '',
+      qrCode: memberUser?.qr_code || '',
       status: 'PLANNED',
       removeReason: null
     }
@@ -127,6 +129,10 @@ export default async function GroupIssuePage() {
 
   const memberRoleMap = new Map(
     members.map((member: any) => [member.userId, member.role])
+  )
+
+  const memberIdSet = new Set(
+    members.map((member: any) => member.userId)
   )
 
   const { data: activeIssuesData } = await supabaseServer
@@ -228,7 +234,7 @@ export default async function GroupIssuePage() {
     if (userIds.length > 0) {
       const { data: usersData } = await supabaseServer
         .from('users')
-        .select('id, meno, priezvisko, email, telefon, typ_stravy')
+        .select('id, meno, priezvisko, email, telefon, typ_stravy, qr_code')
         .in('id', userIds)
 
       usersMap = new Map((usersData || []).map((u: any) => [u.id, u]))
@@ -243,29 +249,41 @@ export default async function GroupIssuePage() {
       const issue: any = issueById.get(item.hromadny_vydaj_id)
       const fullName = `${itemUser?.meno || ''} ${itemUser?.priezvisko || ''}`.trim()
 
+      const isStillInGroup = memberIdSet.has(item.user_id)
+      const isGroupSource = item.source === 'GROUP'
+      const shouldShowRemovedFromGroup =
+        isGroupSource &&
+        !isStillInGroup &&
+        item.status === 'PLANNED'
+
       return {
-  id: item.id,
-  issueId: item.hromadny_vydaj_id,
-  userId: item.user_id,
-  fullName: fullName || itemUser?.email || 'Bez mena',
-  meno: itemUser?.meno || '',
-  priezvisko: itemUser?.priezvisko || '',
-  email: itemUser?.email || '',
-  telefon: itemUser?.telefon || '',
-  typStravy: item.volba || itemUser?.typ_stravy || '',
-  role:
-    item.status === 'REMOVED' && item.remove_reason === 'REMOVED_FROM_GROUP'
-      ? '—'
-      : memberRoleMap.get(item.user_id) || '—',
-  status: item.status,
-  source: item.source,
-  addedByQr: item.source === 'QR_EXTRA',
-  removeReason: item.remove_reason,
-  removedAt: item.removed_at,
-  entitlementStatus: issue
-    ? getEntitlement(item.user_id, issue.datum, issue.typ_jedla)
-    : 'UNKNOWN'
-}
+        id: item.id,
+        issueId: item.hromadny_vydaj_id,
+        userId: item.user_id,
+        fullName: fullName || itemUser?.email || 'Bez mena',
+        meno: itemUser?.meno || '',
+        priezvisko: itemUser?.priezvisko || '',
+        email: itemUser?.email || '',
+        telefon: itemUser?.telefon || '',
+        typStravy: item.volba || itemUser?.typ_stravy || '',
+        qrCode: itemUser?.qr_code || '',
+        role:
+          shouldShowRemovedFromGroup
+            ? '—'
+            : item.source === 'QR_EXTRA'
+              ? '—'
+              : memberRoleMap.get(item.user_id) || '—',
+        status: shouldShowRemovedFromGroup ? 'REMOVED' : item.status,
+        source: item.source,
+        addedByQr: item.source === 'QR_EXTRA',
+        removeReason: shouldShowRemovedFromGroup
+          ? 'REMOVED_FROM_GROUP'
+          : item.remove_reason,
+        removedAt: item.removed_at,
+        entitlementStatus: issue
+          ? getEntitlement(item.user_id, issue.datum, issue.typ_jedla)
+          : 'UNKNOWN'
+      }
     })
   }
 

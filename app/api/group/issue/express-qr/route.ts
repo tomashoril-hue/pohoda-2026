@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
 
     const { data: profile, error: profileError } = await supabaseServer
       .from('users')
-      .select('id, meno, priezvisko, email, telefon, typ_stravy')
+      .select('id, meno, priezvisko, email, telefon, typ_stravy, qr_code')
       .eq('id', targetUserId)
       .maybeSingle()
 
@@ -171,6 +171,7 @@ export async function POST(req: NextRequest) {
       email: profile.email || '',
       telefon: profile.telefon || '',
       typStravy: volba || '',
+      qrCode: profile.qr_code || qrCode,
       role: membershipInThisGroup?.role || '—',
       entitlementStatus: entitlementStatus(entitlement, typJedla),
       addedByQr: true,

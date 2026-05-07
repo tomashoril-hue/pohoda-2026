@@ -75,6 +75,10 @@ function entitlementLabel(value: string | null | undefined) {
   return 'NEZNÁME'
 }
 
+function isQrExtra(row: any) {
+  return row?.addedByQr || row?.source === 'QR_EXTRA'
+}
+
 function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: string[]) {
   if (item.removeReason === 'IN_OTHER_ISSUE') return 'V INOM VÝDAJI'
 
@@ -87,6 +91,10 @@ function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: str
 
   if (item.status === 'REMOVED' && item.removeReason === 'MOVED_TO_OTHER_GROUP') {
     return 'PRESUNUTÝ DO INEJ SKUPINY'
+  }
+
+  if (item.status === 'REMOVED' && item.removeReason === 'MANUAL') {
+    return 'VYRADENÝ Z PRÍPRAVY'
   }
 
   const wasPrepared = savedPreparedIds.includes(item.userId)
@@ -111,6 +119,10 @@ function canSelectRow(item: any, _currentIssue: any) {
     return false
   }
 
+  if (item.status === 'REMOVED' && item.removeReason === 'MANUAL') {
+    return false
+  }
+
   return true
 }
 
@@ -127,10 +139,6 @@ function sameStringSet(a: string[], b: string[]) {
   const setA = new Set(a)
 
   return b.every(item => setA.has(item))
-}
-
-function isQrExtra(row: any) {
-  return row?.addedByQr || row?.source === 'QR_EXTRA'
 }
 
 export default function GroupIssueClient({
@@ -157,8 +165,10 @@ export default function GroupIssueClient({
   const controlsRef = useRef<any>(null)
   const cancelledRef = useRef(false)
   const qrBusyRef = useRef(false)
-  const lastScanRef = useRef('')
+  const qrNeedsRefreshRef = useRef(false)
+  const lastScanTextRef = useRef('')
   const lastScanTimeRef = useRef(0)
+  const audioCtxRef = useRef<AudioContext | null>(null)
 
   const [datum, setDatum] = useState(todayIsoDate())
   const [typJedla, setTypJedla] = useState('OBED')
@@ -191,30 +201,34 @@ export default function GroupIssueClient({
   const playBeep = (type: 'ok' | 'error') => {
     try {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
-      const ctx = new AudioContextClass()
+
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        audioCtxRef.current = new AudioContextClass()
+      }
+
+      const ctx = audioCtxRef.current
       const oscillator = ctx.createOscillator()
       const gain = ctx.createGain()
 
       oscillator.type = 'sine'
-      oscillator.frequency.value = type === 'ok' ? 880 : 220
-      gain.gain.value = 0.18
+      oscillator.frequency.value = type === 'ok' ? 920 : 240
+
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.22, ctx.currentTime + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + (type === 'ok' ? 0.22 : 0.34))
 
       oscillator.connect(gain)
       gain.connect(ctx.destination)
 
-      oscillator.start()
-
-      setTimeout(() => {
-        oscillator.stop()
-        ctx.close()
-      }, type === 'ok' ? 120 : 220)
+      oscillator.start(ctx.currentTime)
+      oscillator.stop(ctx.currentTime + (type === 'ok' ? 0.24 : 0.36))
     } catch {
       // zvuk nie je dostupný
     }
 
     try {
       if (navigator.vibrate) {
-        navigator.vibrate(type === 'ok' ? 80 : [80, 60, 80])
+        navigator.vibrate(type === 'ok' ? 80 : [80, 70, 80])
       }
     } catch {
       // vibrácia nie je dostupná
@@ -263,21 +277,24 @@ export default function GroupIssueClient({
           if (cancelledRef.current) return
 
           const text = String(result?.getText?.() || '').trim()
-
           if (!text) return
 
           const nowMs = Date.now()
 
+          if (nowMs - lastScanTimeRef.current < 1000) {
+            return
+          }
+
           if (
-            lastScanRef.current === text &&
-            nowMs - lastScanTimeRef.current < 1800
+            lastScanTextRef.current === text &&
+            nowMs - lastScanTimeRef.current < 2500
           ) {
             return
           }
 
           if (qrBusyRef.current) return
 
-          lastScanRef.current = text
+          lastScanTextRef.current = text
           lastScanTimeRef.current = nowMs
 
           await submitExpressQr(text, true)
@@ -364,6 +381,7 @@ export default function GroupIssueClient({
         email: qrRow.email || baseRow.email,
         telefon: qrRow.telefon || baseRow.telefon,
         typStravy: qrRow.typStravy || qrRow.volba || baseRow.typStravy || '',
+        qrCode: qrRow.qrCode || baseRow.qrCode || '',
         status: qrRow.status || 'PLANNED',
         removeReason: qrRow.removeReason ?? null,
         source: 'QR_EXTRA',
@@ -380,6 +398,7 @@ export default function GroupIssueClient({
           ...row,
           rowId: row.rowId || `qr-${row.userId}`,
           typStravy: row.typStravy || row.volba || '',
+          qrCode: row.qrCode || '',
           source: 'QR_EXTRA',
           addedByQr: true,
           role: row.role || '—',
@@ -407,7 +426,8 @@ export default function GroupIssueClient({
             email: issueItem.email || member.email,
             telefon: issueItem.telefon || member.telefon,
             typStravy: issueItem.typStravy || issueItem.volba || member.typStravy || '',
-            role: member.role || issueItem.role || '—',
+            qrCode: issueItem.qrCode || member.qrCode || '',
+            role: issueItem.source === 'QR_EXTRA' ? '—' : member.role || issueItem.role || '—',
             source: issueItem.source || 'GROUP',
             addedByQr: issueItem.addedByQr || issueItem.source === 'QR_EXTRA',
             entitlementStatus:
@@ -423,6 +443,7 @@ export default function GroupIssueClient({
           status: 'NOT_PREPARED',
           removeReason: null,
           typStravy: member.typStravy || '',
+          qrCode: member.qrCode || '',
           source: 'GROUP',
           addedByQr: false,
           entitlementStatus: getMemberEntitlement(member, currentIssue.datum, currentIssue.typ_jedla),
@@ -440,7 +461,8 @@ export default function GroupIssueClient({
           ...item,
           rowId: item.id || item.userId,
           typStravy: item.typStravy || item.volba || '',
-          role: item.role || '—',
+          qrCode: item.qrCode || '',
+          role: item.source === 'QR_EXTRA' ? '—' : item.role || '—',
           source: item.source || 'GROUP',
           addedByQr: item.addedByQr || item.source === 'QR_EXTRA',
           entitlementStatus: item.entitlementStatus || 'UNKNOWN',
@@ -463,6 +485,7 @@ export default function GroupIssueClient({
       removeReason: null,
       source: 'GROUP',
       addedByQr: false,
+      qrCode: member.qrCode || '',
       entitlementStatus: getMemberEntitlement(member, datum, typJedla),
       isFromIssue: false
     }))
@@ -503,7 +526,8 @@ export default function GroupIssueClient({
           row.status === 'BULK_ISSUED' ||
           row.removeReason === 'REMOVED_FROM_GROUP' ||
           row.removeReason === 'MOVED_TO_OTHER_GROUP' ||
-          row.removeReason === 'IN_OTHER_ISSUE'
+          row.removeReason === 'IN_OTHER_ISSUE' ||
+          row.removeReason === 'MANUAL'
 
         return isSpecial ? 2 : 1
       }
@@ -706,6 +730,7 @@ export default function GroupIssueClient({
   }
 
   const openQrModal = () => {
+    qrNeedsRefreshRef.current = false
     setQrValue('')
     setQrMessage('')
     setQrMessageType('')
@@ -720,6 +745,11 @@ export default function GroupIssueClient({
     setQrMessage('')
     setQrMessageType('')
     stopCamera()
+
+    if (qrNeedsRefreshRef.current) {
+      qrNeedsRefreshRef.current = false
+      router.refresh()
+    }
   }
 
   const submitExpressQr = async (manualValue?: string, fromCamera = false) => {
@@ -729,6 +759,29 @@ export default function GroupIssueClient({
       playBeep('error')
       setQrMessage('Načítajte QR kód.')
       setQrMessageType('error')
+      return
+    }
+
+    const localExistingRow = rows.find((row: any) => {
+      const rowQr = String(row.qrCode || row.qr_code || '').trim()
+      return rowQr && rowQr === cleanQr
+    })
+
+    if (localExistingRow) {
+      playBeep('error')
+
+      const name = localExistingRow.fullName || localExistingRow.email || cleanQr
+
+      setQrMessage(`Už je v príprave: ${name}`)
+      setQrMessageType('error')
+      setMessage(`Už je v príprave: ${name}`)
+      setMessageType('error')
+      setQrValue('')
+
+      if (!fromCamera) {
+        setTimeout(() => qrInputRef.current?.focus(), 60)
+      }
+
       return
     }
 
@@ -780,14 +833,14 @@ export default function GroupIssueClient({
         return
       }
 
-      const existingRow = rows.find((row: any) => row.userId === member.userId)
-      const alreadySelected = selected.includes(member.userId)
-
-      if (alreadySelected && json.status !== 'ALREADY_ISSUED' && json.status !== 'IN_OTHER_ISSUE') {
+      if (json.status === 'EXISTS') {
         playBeep('error')
-        setQrMessage(`Už je pridaný: ${member.fullName || member.email || cleanQr}`)
+
+        const name = member.fullName || member.email || cleanQr
+
+        setQrMessage(`Už je v príprave: ${name}`)
         setQrMessageType('error')
-        setMessage(`Už je pridaný: ${member.fullName || member.email || cleanQr}`)
+        setMessage(`Už je v príprave: ${name}`)
         setMessageType('error')
         setQrValue('')
 
@@ -798,30 +851,13 @@ export default function GroupIssueClient({
         return
       }
 
-      if (json.status === 'EXISTS') {
-        playBeep('error')
-
-        const name = member.fullName || member.email || cleanQr
-
-        setQrMessage(`Už je v príprave: ${name}`)
-        setQrMessageType('error')
-
-        setMessage(`Už je v príprave: ${name}`)
-        setMessageType('error')
-
-        setQrValue('')
-
-        if (!fromCamera) {
-        setTimeout(() => qrInputRef.current?.focus(), 60)
-      }
-
-        return
-}
+      const existingRow = rows.find((row: any) => row.userId === member.userId)
 
       const row = {
         ...member,
         rowId: existingRow?.rowId || `qr-${member.userId}`,
         typStravy: member.typStravy || member.volba || existingRow?.typStravy || '',
+        qrCode: member.qrCode || cleanQr,
         source: 'QR_EXTRA',
         addedByQr: true,
         role: member.role || existingRow?.role || '—',
@@ -864,12 +900,12 @@ export default function GroupIssueClient({
 
       setQrValue('')
 
-      if (!fromCamera) {
-        setTimeout(() => qrInputRef.current?.focus(), 60)
+      if (json.status === 'ADDED' && currentIssue?.id) {
+        qrNeedsRefreshRef.current = true
       }
 
-      if (currentIssue?.id) {
-        router.refresh()
+      if (!fromCamera) {
+        setTimeout(() => qrInputRef.current?.focus(), 60)
       }
     } catch (err: any) {
       playBeep('error')
@@ -1653,7 +1689,7 @@ export default function GroupIssueClient({
             <div style={styles.qrModalHeader}>
               <div>
                 <b>Expres QR</b>
-                <span>Skenujte QR kódy postupne. Okno zatvoríte krížikom.</span>
+                <span>Skenujte QR kódy postupne. Po zatvorení sa zoznam obnoví.</span>
               </div>
 
               <button
@@ -2048,6 +2084,8 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center',
     boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
     display: 'grid',
+    justifyItems: 'center',
+    alignItems: 'center',
     gap: 3
   },
   entitlementWarningCard: {
