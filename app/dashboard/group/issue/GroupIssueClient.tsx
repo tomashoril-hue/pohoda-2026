@@ -241,6 +241,7 @@ export default function GroupIssueClient({
     initialIssue ? initialIssue.id : null
   )
   const [savedSelectedOverride, setSavedSelectedOverride] = useState<string[] | null>(null)
+  const [cancelledIssueIds, setCancelledIssueIds] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
@@ -404,9 +405,13 @@ export default function GroupIssueClient({
     }
   }, [qrOpen])
 
-  const selectedActiveIssue = activeIssues.find(issue => issue.id === selectedIssueId) || null
+  const visibleActiveIssues = activeIssues.filter((issue: any) => {
+    return !cancelledIssueIds.includes(issue.id)
+  })
 
-  const matchingIssue = activeIssues.find(issue => {
+  const selectedActiveIssue = visibleActiveIssues.find(issue => issue.id === selectedIssueId) || null
+
+  const matchingIssue = visibleActiveIssues.find(issue => {
     return issue.datum === datum && issue.typ_jedla === typJedla
   }) || null
 
@@ -697,6 +702,8 @@ export default function GroupIssueClient({
     ? '#166534'
     : '#9a3412'
 
+  const qrBlockedByActiveIssue = !!currentIssue
+
   const getSelectedQrExtraUserIds = () => {
     return rows
       .filter((row: any) => selected.includes(row.userId))
@@ -727,7 +734,7 @@ export default function GroupIssueClient({
     setQrAddedRows([])
     setSavedSelectedOverride(null)
 
-    const issue = activeIssues.find(item => {
+    const issue = visibleActiveIssues.find(item => {
       return item.datum === value && item.typ_jedla === typJedla
     }) || null
 
@@ -747,7 +754,7 @@ export default function GroupIssueClient({
     setQrAddedRows([])
     setSavedSelectedOverride(null)
 
-    const issue = activeIssues.find(item => {
+    const issue = visibleActiveIssues.find(item => {
       return item.datum === datum && item.typ_jedla === value
     }) || null
 
@@ -824,6 +831,12 @@ export default function GroupIssueClient({
   }
 
   const openQrModal = () => {
+    if (currentIssue) {
+      setMessage('Najprv zruš prípravu. Potom môžeš pridať osobu cez QR do nového návrhu.')
+      setMessageType('error')
+      return
+    }
+
     setQrValue('')
     setQrMessage('')
     setQrMessageType('')
@@ -1256,8 +1269,9 @@ export default function GroupIssueClient({
 
       setMessage(json.message || 'Príprava bola zrušená.')
       setMessageType('ok')
+      setCancelledIssueIds(prev => Array.from(new Set([...prev, currentIssue.id])))
       setSelectedIssueId(null)
-      setSelected(members.map(member => member.userId))
+      setSavedSelectedOverride(null)
       setQrAddedRows([])
       router.refresh()
     } catch (err: any) {
@@ -1411,11 +1425,11 @@ export default function GroupIssueClient({
             </button>
           </div>
 
-          {!activeIssues.length ? (
+          {!visibleActiveIssues.length ? (
             <div style={styles.emptySmall}>Žiadna aktívna príprava.</div>
           ) : (
             <div style={styles.activeList}>
-              {activeIssues.map((item: any) => {
+              {visibleActiveIssues.map((item: any) => {
                 const active = currentIssue?.id === item.id
                 const plannedItems = (item.items || []).filter((row: any) => row.status === 'PLANNED')
 
@@ -1605,7 +1619,14 @@ export default function GroupIssueClient({
         </div>
 
         <div style={styles.actionRight}>
-          <button type="button" style={styles.qrButton} onClick={openQrModal}>
+          <button
+            type="button"
+            style={{
+              ...styles.qrButton,
+              ...(qrBlockedByActiveIssue ? styles.disabledButton : {})
+            }}
+            onClick={openQrModal}
+          >
             Cez QR
           </button>
 
@@ -2332,6 +2353,11 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '10px 12px',
     fontSize: 13,
     fontWeight: 950
+  },
+  disabledButton: {
+    opacity: 0.45,
+    filter: 'grayscale(1)',
+    cursor: 'not-allowed'
   },
   confirmButton: {
     background: '#22c55e',
