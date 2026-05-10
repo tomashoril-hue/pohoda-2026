@@ -122,7 +122,7 @@ function itemStatusNote(item: any) {
 
   if (item.removeReason === 'IN_OTHER_ISSUE') {
     if (item.otherIssue?.groupName) {
-      return `Osoba je už v aktívnej príprave skupiny ${item.otherIssue.groupName} pre rovnaký dátum a jedlo. Bežne ju tu nepridávaj, použi iba QR presun pri fyzickom výdaji.`
+      return `Osoba je už v aktívnej príprave skupiny ${item.otherIssue.groupName} pre rovnaký dátum a jedlo.`
     }
 
     return 'Osoba je aktívna v inej skupine pre rovnaký dátum a jedlo.'
