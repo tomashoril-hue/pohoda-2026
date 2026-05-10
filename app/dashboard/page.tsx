@@ -146,6 +146,10 @@ export default async function DashboardPage() {
   const hasMembership = !!memberships && memberships.length > 0
   const hasPendingInvites = !!pendingInvites && pendingInvites.length > 0
   const hasEntitlementRow = !!entitlement
+  const canOpenPersonalista = (memberships || []).some((membership: any) => {
+    const role = String(membership.role || '').toUpperCase()
+    return role === 'MANAGER' || role === 'OWNER'
+  })
 
   const getSelection = (typJedla: string) => {
     return (selections || []).find((item: any) => item.typ_jedla === typJedla)
@@ -330,6 +334,9 @@ export default async function DashboardPage() {
           <a href="/menu" style={styles.menuButton}>Výber stravy</a>
           <a href="/dashboard/qr" style={styles.menuButton}>Môj QR kód</a>
           <Link href="/dashboard/groups" style={styles.menuButtonPink}>Skupiny</Link>
+          {canOpenPersonalista && (
+            <Link href="/dashboard/personalista" style={styles.menuButtonGreen}>Personalista</Link>
+          )}
           <a href="/admin/menu" style={styles.menuButtonGreen}>Admin menu</a>
         </div>
 
