@@ -3,28 +3,8 @@ begin;
 create extension if not exists pgcrypto;
 
 alter table public.users
-  alter column email drop not null;
-
-alter table public.users
-  add column if not exists active boolean not null default true,
-  add column if not exists registration_source text not null default 'PUBLIC',
   add column if not exists manual_created_by uuid references public.users(id) on delete set null,
-  add column if not exists personal_note text,
-  add column if not exists updated_at timestamptz not null default now();
-
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'users_registration_source_check'
-      and conrelid = 'public.users'::regclass
-  ) then
-    alter table public.users
-      add constraint users_registration_source_check
-      check (registration_source in ('PUBLIC', 'MANUAL', 'BULK_IMPORT', 'GOOGLE_SHEETS'));
-  end if;
-end $$;
+  add column if not exists personal_note text;
 
 create table if not exists public.app_user_roles (
   id uuid primary key default gen_random_uuid(),
@@ -108,7 +88,7 @@ begin
 end $$;
 
 alter table public.user_food_entitlements
-  add column if not exists source text not null default 'MANUAL',
+  add column if not exists source text not null default 'PERSONALISTA',
   add column if not exists created_by uuid references public.users(id) on delete set null,
   add column if not exists updated_by uuid references public.users(id) on delete set null,
   add column if not exists created_at timestamptz not null default now(),
@@ -124,7 +104,7 @@ begin
   ) then
     alter table public.user_food_entitlements
       add constraint user_food_entitlements_source_check
-      check (source in ('MANUAL', 'BULK_IMPORT', 'GOOGLE_SHEETS', 'PUBLIC_DEFAULT'));
+      check (source in ('ADMIN', 'PERSONALISTA', 'IMPORT', 'SYSTEM'));
   end if;
 end $$;
 
