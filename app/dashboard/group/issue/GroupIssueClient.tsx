@@ -226,6 +226,7 @@ export default function GroupIssueClient({
   const controlsRef = useRef<any>(null)
   const cancelledRef = useRef(false)
   const qrBusyRef = useRef(false)
+  const activeListTouchStartYRef = useRef<number | null>(null)
   const lastScanTextRef = useRef('')
   const lastScanTimeRef = useRef(0)
   const audioCtxRef = useRef<AudioContext | null>(null)
@@ -242,6 +243,7 @@ export default function GroupIssueClient({
   )
   const [savedSelectedOverride, setSavedSelectedOverride] = useState<string[] | null>(null)
   const [cancelledIssueIds, setCancelledIssueIds] = useState<string[]>([])
+  const [activeIssueOffset, setActiveIssueOffset] = useState(0)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
@@ -408,6 +410,23 @@ export default function GroupIssueClient({
   const visibleActiveIssues = activeIssues.filter((issue: any) => {
     return !cancelledIssueIds.includes(issue.id)
   })
+
+  const activeIssuePageSize = 2
+  const maxActiveIssueOffset = Math.max(0, visibleActiveIssues.length - activeIssuePageSize)
+  const safeActiveIssueOffset = Math.min(activeIssueOffset, maxActiveIssueOffset)
+  const visibleActiveIssueWindow = visibleActiveIssues.slice(
+    safeActiveIssueOffset,
+    safeActiveIssueOffset + activeIssuePageSize
+  )
+  const canMoveActiveIssuesUp = safeActiveIssueOffset > 0
+  const canMoveActiveIssuesDown = safeActiveIssueOffset < maxActiveIssueOffset
+
+  const moveActiveIssues = (direction: 'up' | 'down') => {
+    setActiveIssueOffset(prev => {
+      const next = direction === 'up' ? prev - 1 : prev + 1
+      return Math.max(0, Math.min(maxActiveIssueOffset, next))
+    })
+  }
 
   const selectedActiveIssue = visibleActiveIssues.find(issue => issue.id === selectedIssueId) || null
 
@@ -771,6 +790,26 @@ export default function GroupIssueClient({
     loadIssueToEditor(issue)
     setMessage('')
     setMessageType('')
+  }
+
+  const handleActiveListTouchEnd = (clientY: number) => {
+    const startY = activeListTouchStartYRef.current
+    activeListTouchStartYRef.current = null
+
+    if (startY === null) return
+
+    const diff = clientY - startY
+
+    if (Math.abs(diff) < 35) return
+
+    if (diff < 0 && canMoveActiveIssuesDown) {
+      moveActiveIssues('down')
+      return
+    }
+
+    if (diff > 0 && canMoveActiveIssuesUp) {
+      moveActiveIssues('up')
+    }
   }
 
   const startNewPreparation = () => {
@@ -1420,16 +1459,54 @@ export default function GroupIssueClient({
           <div style={styles.panelHeaderRow}>
             <div style={styles.panelTitle}>Aktívne prípravy</div>
 
-            <button type="button" style={styles.tinyButton} onClick={startNewPreparation}>
-              Nová
-            </button>
+            <div style={styles.activeHeaderActions}>
+              {visibleActiveIssues.length > activeIssuePageSize && (
+                <>
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.navButton,
+                      opacity: canMoveActiveIssuesUp ? 1 : 0.35
+                    }}
+                    onClick={() => moveActiveIssues('up')}
+                    disabled={!canMoveActiveIssuesUp}
+                  >
+                    ▲
+                  </button>
+
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.navButton,
+                      opacity: canMoveActiveIssuesDown ? 1 : 0.35
+                    }}
+                    onClick={() => moveActiveIssues('down')}
+                    disabled={!canMoveActiveIssuesDown}
+                  >
+                    ▼
+                  </button>
+                </>
+              )}
+
+              <button type="button" style={styles.tinyButton} onClick={startNewPreparation}>
+                Nová
+              </button>
+            </div>
           </div>
 
           {!visibleActiveIssues.length ? (
             <div style={styles.emptySmall}>Žiadna aktívna príprava.</div>
           ) : (
-            <div style={styles.activeList}>
-              {visibleActiveIssues.map((item: any) => {
+            <div
+              style={styles.activeList}
+              onTouchStart={event => {
+                activeListTouchStartYRef.current = event.touches[0]?.clientY ?? null
+              }}
+              onTouchEnd={event => {
+                handleActiveListTouchEnd(event.changedTouches[0]?.clientY ?? 0)
+              }}
+            >
+              {visibleActiveIssueWindow.map((item: any) => {
                 const active = currentIssue?.id === item.id
                 const plannedItems = (item.items || []).filter((row: any) => row.status === 'PLANNED')
 
@@ -1471,7 +1548,7 @@ export default function GroupIssueClient({
                       <small>SPOLU {plannedItems.length}</small>
                       <small>MASO {activeMasoCount}</small>
                       <small>VEGE {activeVegeCount}</small>
-                      <small>Diéta {activeDietCount}</small>
+                      <small>DIÉTA {activeDietCount}</small>
                     </div>
 
                     {item.withoutEntitlementCount > 0 && (
@@ -1543,7 +1620,7 @@ export default function GroupIssueClient({
               onClick={() => setChoiceFilter('UNKNOWN')}
             >
               <b>{selectedDietCount}</b>
-              <span>Diéta</span>
+              <span>DIÉTA</span>
             </button>
           )}
         </div>
@@ -2150,7 +2227,25 @@ const styles: Record<string, React.CSSProperties> = {
   },
   activeList: {
     display: 'grid',
-    gap: 7
+    gap: 7,
+    touchAction: 'pan-y'
+  },
+  activeHeaderActions: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6
+  },
+  navButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    border: '1px solid #e5e7eb',
+    background: '#f3f4f6',
+    color: '#111827',
+    fontSize: 12,
+    fontWeight: 950,
+    cursor: 'pointer'
   },
   activeIssue: {
     width: '100%',
