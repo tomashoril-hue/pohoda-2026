@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
@@ -41,17 +40,13 @@ function dateRange(from: string, to: string) {
   return dates
 }
 
-function createQrCode() {
-  return `POHODA2026-${randomUUID().replace(/-/g, '').slice(0, 20).toUpperCase()}`
-}
-
 export async function POST(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser()
 
     if (!currentUser) {
       return NextResponse.json(
-        { error: 'Nie si prihlásený.' },
+        { error: 'Nie si prihlaseny.' },
         { status: 401 }
       )
     }
@@ -67,14 +62,14 @@ export async function POST(req: NextRequest) {
     const validTo = normalizeText(body.validTo)
     const obed = !!body.obed
     const vecera = !!body.vecera
-    const createQr = body.createQr !== false
+    const assignQr = body.assignQr !== false
     const groupIds = Array.isArray(body.groupIds)
       ? Array.from(new Set(body.groupIds.map((id: any) => normalizeText(id)).filter(Boolean)))
       : []
 
     if (!meno || !priezvisko) {
       return NextResponse.json(
-        { error: 'Meno a priezvisko sú povinné.' },
+        { error: 'Meno a priezvisko su povinne.' },
         { status: 400 }
       )
     }
@@ -88,21 +83,21 @@ export async function POST(req: NextRequest) {
 
     if (!groupIds.length) {
       return NextResponse.json(
-        { error: 'Vyber aspoň jednu skupinu.' },
+        { error: 'Vyber aspon jednu skupinu.' },
         { status: 400 }
       )
     }
 
     if (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom) {
       return NextResponse.json(
-        { error: 'Zadaj platné obdobie práce.' },
+        { error: 'Zadaj platne obdobie prace.' },
         { status: 400 }
       )
     }
 
     if (!obed && !vecera) {
       return NextResponse.json(
-        { error: 'Vyber aspoň jeden nárok na stravu.' },
+        { error: 'Vyber aspon jeden narok na stravu.' },
         { status: 400 }
       )
     }
@@ -111,7 +106,7 @@ export async function POST(req: NextRequest) {
 
     if (dates.length > 120) {
       return NextResponse.json(
-        { error: 'Obdobie môže mať najviac 120 dní.' },
+        { error: 'Obdobie moze mat najviac 120 dni.' },
         { status: 400 }
       )
     }
@@ -148,7 +143,7 @@ export async function POST(req: NextRequest) {
 
     if (!selectedGroups || selectedGroups.length !== groupIds.length) {
       return NextResponse.json(
-        { error: 'Niektorá zo skupín neexistuje.' },
+        { error: 'Niektora zo skupin neexistuje.' },
         { status: 400 }
       )
     }
@@ -180,7 +175,7 @@ export async function POST(req: NextRequest) {
 
       if (!hasAllPermissions) {
         return NextResponse.json(
-          { error: 'Na vytvorenie osoby musíš byť MANAGER alebo OWNER vo vybraných skupinách.' },
+          { error: 'Na vytvorenie osoby musis byt MANAGER alebo OWNER vo vybranych skupinach.' },
           { status: 403 }
         )
       }
@@ -202,16 +197,15 @@ export async function POST(req: NextRequest) {
 
       if (existingEmail) {
         return NextResponse.json(
-          { error: 'Používateľ s týmto emailom už existuje.' },
+          { error: 'Pouzivatel s tymto emailom uz existuje.' },
           { status: 409 }
         )
       }
     }
 
-    const qrCode = createQr ? createQrCode() : null
     const now = new Date().toISOString()
-
-    let createdQrTokenId: string | null = null
+    let assignedQrTokenId: string | null = null
+    let assignedQrCode: string | null = null
 
     const { data: newUser, error: userError } = await supabaseServer
       .from('users')
@@ -221,7 +215,7 @@ export async function POST(req: NextRequest) {
         email,
         telefon,
         typ_stravy: typStravy,
-        qr_code: qrCode,
+        qr_code: null,
         zdroj: 'PERSONALISTA',
         aktivny: 'ANO',
         manual_created_by: currentUser.id,
@@ -232,17 +226,30 @@ export async function POST(req: NextRequest) {
 
     if (userError || !newUser) {
       return NextResponse.json(
-        { error: userError?.message || 'Osobu sa nepodarilo vytvoriť.' },
+        { error: userError?.message || 'Osobu sa nepodarilo vytvorit.' },
         { status: 500 }
       )
     }
 
     const rollbackUser = async () => {
-      if (createdQrTokenId) {
+      await supabaseServer
+        .from('user_qr_codes')
+        .delete()
+        .eq('user_id', newUser.id)
+
+      if (assignedQrTokenId) {
         await supabaseServer
           .from('personnel_qr_tokens')
-          .delete()
-          .eq('id', createdQrTokenId)
+          .update({
+            user_id: null,
+            status: 'BLANK',
+            active: true,
+            assigned_at: null,
+            assigned_by: null,
+            updated_at: new Date().toISOString(),
+            note: null
+          })
+          .eq('id', assignedQrTokenId)
       }
 
       await supabaseServer
@@ -310,41 +317,91 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (qrCode) {
-      const { data: qrToken, error: qrTokenError } = await supabaseServer
+    if (assignQr) {
+      const { data: freeQrToken, error: freeQrError } = await supabaseServer
         .from('personnel_qr_tokens')
-        .insert({
-          qr_code: qrCode,
+        .select('id, qr_code')
+        .eq('active', true)
+        .eq('status', 'BLANK')
+        .is('user_id', null)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+      if (freeQrError) {
+        await rollbackUser()
+
+        return NextResponse.json(
+          { error: freeQrError.message },
+          { status: 500 }
+        )
+      }
+
+      if (!freeQrToken) {
+        await rollbackUser()
+
+        return NextResponse.json(
+          { error: 'Nie je dostupny ziadny volny nepriradeny QR kod.' },
+          { status: 409 }
+        )
+      }
+
+      const { data: assignedQrToken, error: assignQrError } = await supabaseServer
+        .from('personnel_qr_tokens')
+        .update({
           user_id: newUser.id,
           status: 'ASSIGNED',
           active: true,
           assigned_at: now,
           assigned_by: currentUser.id,
-          note: 'Vytvorené pri ručnom založení osoby.'
+          updated_at: now,
+          note: 'Priradene pri rucnom zalozeni osoby.'
         })
-        .select('id')
+        .eq('id', freeQrToken.id)
+        .eq('active', true)
+        .eq('status', 'BLANK')
+        .is('user_id', null)
+        .select('id, qr_code')
         .single()
 
-      if (qrTokenError || !qrToken) {
+      if (assignQrError || !assignedQrToken) {
         await rollbackUser()
 
         return NextResponse.json(
-          { error: qrTokenError?.message || 'QR token sa nepodarilo vytvoriť.' },
+          { error: assignQrError?.message || 'Volny QR kod sa nepodarilo priradit.' },
           { status: 500 }
         )
       }
 
-      createdQrTokenId = qrToken.id
+      assignedQrTokenId = assignedQrToken.id
+      assignedQrCode = assignedQrToken.qr_code
+
+      const { error: updateUserQrError } = await supabaseServer
+        .from('users')
+        .update({
+          qr_code: assignedQrCode,
+          updated_at: now
+        })
+        .eq('id', newUser.id)
+
+      if (updateUserQrError) {
+        await rollbackUser()
+
+        return NextResponse.json(
+          { error: updateUserQrError.message },
+          { status: 500 }
+        )
+      }
 
       const { error: userQrError } = await supabaseServer
         .from('user_qr_codes')
         .insert({
           user_id: newUser.id,
-          qr_code: qrCode,
+          qr_code: assignedQrCode,
           active: true,
-          personnel_qr_token_id: qrToken.id,
+          personnel_qr_token_id: assignedQrToken.id,
           assigned_by: currentUser.id,
-          note: 'Vytvorené pri ručnom založení osoby.'
+          note: 'Priradene z volnych QR kodov pri rucnom zalozeni osoby.'
         })
 
       if (userQrError) {
@@ -377,20 +434,20 @@ export async function POST(req: NextRequest) {
           valid_to: validTo,
           obed,
           vecera,
-          qr_created: !!qrCode
+          qr_assigned: !!assignedQrCode
         }
       })
 
     return NextResponse.json({
       ok: true,
       user: newUser,
-      qrCreated: !!qrCode,
+      qrAssigned: !!assignedQrCode,
       entitlementDays: dates.length,
-      message: 'Osoba bola vytvorená.'
+      message: 'Osoba bola vytvorena.'
     })
   } catch (err: any) {
     return NextResponse.json(
-      { error: err?.message || 'Neznáma chyba servera.' },
+      { error: err?.message || 'Neznama chyba servera.' },
       { status: 500 }
     )
   }

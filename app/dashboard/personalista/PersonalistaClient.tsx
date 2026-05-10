@@ -92,7 +92,7 @@ export default function PersonalistaClient({
     validTo: isoDateOffset(0),
     obed: true,
     vecera: false,
-    createQr: true
+    assignQr: true
   })
 
   const selectedPerson = people.find(person => person.id === selectedPersonId) || people[0] || null
@@ -177,7 +177,7 @@ export default function PersonalistaClient({
       validTo: isoDateOffset(0),
       obed: true,
       vecera: false,
-      createQr: true
+      assignQr: true
     })
   }
 
@@ -455,7 +455,7 @@ export default function PersonalistaClient({
             </div>
 
             <div style={styles.optionBox}>
-              <div style={styles.optionTitle}>Nárok</div>
+              <div style={styles.optionTitle}>Nárok a identifikácia</div>
 
               <div style={styles.checkList}>
                 <label style={styles.checkRow}>
@@ -483,12 +483,12 @@ export default function PersonalistaClient({
                 <label style={styles.checkRow}>
                   <input
                     type="checkbox"
-                    checked={createForm.createQr}
-                    onChange={event => updateCreateForm('createQr', event.target.checked)}
+                    checked={createForm.assignQr}
+                    onChange={event => updateCreateForm('assignQr', event.target.checked)}
                     disabled={createLoading}
                     style={styles.checkbox}
                   />
-                  <span>Vytvoriť QR</span>
+                  <span>Priradiť voľný QR</span>
                 </label>
               </div>
             </div>
