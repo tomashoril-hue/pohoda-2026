@@ -216,6 +216,118 @@ export default async function GroupIssuePage({
     }
   })
 
+  let otherIssueRows: any[] = []
+
+  if (groupUserIds.length > 0) {
+    const { data: otherItemsData } = await supabaseServer
+      .from('hromadny_vydaj_polozky')
+      .select(`
+        id,
+        user_id,
+        hromadny_vydaj_id,
+        hromadne_vydaje (
+          id,
+          group_id,
+          datum,
+          typ_jedla,
+          status
+        )
+      `)
+      .eq('status', 'PLANNED')
+      .in('user_id', groupUserIds)
+
+    otherIssueRows = (otherItemsData || []).filter((item: any) => {
+      const issue = Array.isArray(item.hromadne_vydaje)
+        ? item.hromadne_vydaje[0]
+        : item.hromadne_vydaje
+
+      return (
+        issue &&
+        issue.group_id !== groupId &&
+        (issue.status === 'READY' || issue.status === 'WAITING')
+      )
+    })
+  }
+
+  const otherIssueGroupIds = Array.from(
+    new Set(
+      otherIssueRows
+        .map((item: any) => {
+          const issue = Array.isArray(item.hromadne_vydaje)
+            ? item.hromadne_vydaje[0]
+            : item.hromadne_vydaje
+
+          return issue?.group_id
+        })
+        .filter(Boolean)
+    )
+  )
+
+  let otherGroupNameMap = new Map<string, string>()
+
+  if (otherIssueGroupIds.length > 0) {
+    const { data: otherGroupsData } = await supabaseServer
+      .from('groups')
+      .select('id, name')
+      .in('id', otherIssueGroupIds)
+
+    otherGroupNameMap = new Map(
+      (otherGroupsData || []).map((groupItem: any) => [
+        groupItem.id,
+        groupItem.name || 'Iná skupina'
+      ])
+    )
+  }
+
+  const conflictMap = new Map<string, any>()
+
+  otherIssueRows.forEach((item: any) => {
+    const issue = Array.isArray(item.hromadne_vydaje)
+      ? item.hromadne_vydaje[0]
+      : item.hromadne_vydaje
+
+    if (!issue) return
+
+    const key = `${item.user_id}|${issue.datum}|${issue.typ_jedla}`
+
+    if (conflictMap.has(key)) return
+
+    conflictMap.set(key, {
+      issueId: issue.id,
+      groupId: issue.group_id,
+      groupName: otherGroupNameMap.get(issue.group_id) || 'Iná skupina',
+      datum: issue.datum,
+      typJedla: issue.typ_jedla,
+      status: issue.status
+    })
+  })
+
+  const membersWithAvailability = membersWithEntitlements.map((member: any) => {
+    const conflictsByDate: Record<string, any> = {}
+    const conflictsByKey: Record<string, any> = {}
+
+    conflictMap.forEach((conflict, key) => {
+      const [userId, date, meal] = key.split('|')
+
+      if (userId === member.userId) {
+        conflictsByKey[`${date}|${meal}`] = conflict
+      }
+    })
+
+    dateList.forEach(date => {
+      conflictsByDate[date] = {
+        OBED: conflictMap.get(`${member.userId}|${date}|OBED`) || null,
+        VECERA: conflictMap.get(`${member.userId}|${date}|VECERA`) || null
+      }
+    })
+
+    return {
+      ...member,
+      conflictsByDate,
+      conflictsByKey
+    }
+  })
+
   let activeIssueItems: any[] = []
 
   if (activeIssueIds.length > 0) {
@@ -329,7 +441,7 @@ export default async function GroupIssuePage({
         }}
         myRole={role}
         myName={myName}
-        members={membersWithEntitlements}
+        members={membersWithAvailability}
         activeIssues={activeIssues}
       />
     </main>

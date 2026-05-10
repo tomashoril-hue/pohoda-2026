@@ -121,6 +121,10 @@ function itemStatusNote(item: any) {
   }
 
   if (item.removeReason === 'IN_OTHER_ISSUE') {
+    if (item.otherIssue?.groupName) {
+      return `Osoba je už v aktívnej príprave skupiny ${item.otherIssue.groupName} pre rovnaký dátum a jedlo. Bežne ju tu nepridávaj, použi iba QR presun pri fyzickom výdaji.`
+    }
+
     return 'Osoba je aktívna v inej skupine pre rovnaký dátum a jedlo.'
   }
 
@@ -167,6 +171,17 @@ function getMemberEntitlement(member: any, datum: string, typJedla: string) {
   return day?.[typJedla] || 'UNKNOWN'
 }
 
+function getMemberConflict(member: any, datum: string, typJedla: string) {
+  const byKey = member?.conflictsByKey || {}
+  const keyed = byKey[`${datum}|${typJedla}`]
+
+  if (keyed) return keyed
+
+  const byDate = member?.conflictsByDate || {}
+  const day = byDate[datum] || {}
+  return day?.[typJedla] || null
+}
+
 function sameStringSet(a: string[], b: string[]) {
   if (a.length !== b.length) return false
   const setA = new Set(a)
@@ -199,6 +214,12 @@ export default function GroupIssueClient({
       return issue.datum === initialDate && issue.typ_jedla === initialMeal
     }) || null
 
+  const availableMemberIdsFor = (targetDate: string, targetMeal: string) => {
+    return members
+      .filter((member: any) => !getMemberConflict(member, targetDate, targetMeal))
+      .map((member: any) => member.userId)
+  }
+
   const qrInputRef = useRef<HTMLInputElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const readerRef = useRef<BrowserQRCodeReader | null>(null)
@@ -214,7 +235,7 @@ export default function GroupIssueClient({
   const [search, setSearch] = useState('')
   const [choiceFilter, setChoiceFilter] = useState<'ALL' | 'MASO' | 'VEGE' | 'UNKNOWN'>('ALL')
   const [selected, setSelected] = useState<string[]>(
-    initialIssue ? initialIssue.userIds || [] : members.map(member => member.userId)
+    initialIssue ? initialIssue.userIds || [] : availableMemberIdsFor(initialDate, initialMeal)
   )
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(
     initialIssue ? initialIssue.id : null
@@ -404,6 +425,23 @@ export default function GroupIssueClient({
   const isWaiting = currentIssue?.status === 'WAITING' && remainingMs > 0
   const isActive = currentIssue?.status === 'READY' || (currentIssue?.status === 'WAITING' && remainingMs <= 0)
 
+  const applyOtherIssueConflict = (row: any, targetDate: string, targetMeal: string) => {
+    if (isQrExtra(row)) return row
+
+    if (row.isFromIssue && row.status === 'PLANNED') return row
+
+    const conflict = getMemberConflict(row, targetDate, targetMeal)
+
+    if (!conflict) return row
+
+    return {
+      ...row,
+      status: 'REMOVED',
+      removeReason: 'IN_OTHER_ISSUE',
+      otherIssue: conflict
+    }
+  }
+
   const rows = useMemo(() => {
     const qrRowByUserId = new Map(
       qrAddedRows.map((row: any) => [row.userId, row])
@@ -481,7 +519,7 @@ export default function GroupIssueClient({
           })
         }
 
-        return applyQrOverride({
+        return applyOtherIssueConflict(applyQrOverride({
           ...member,
           rowId: member.userId,
           status: 'NOT_PREPARED',
@@ -492,7 +530,7 @@ export default function GroupIssueClient({
           addedByQr: false,
           entitlementStatus: getMemberEntitlement(member, currentIssue.datum, currentIssue.typ_jedla),
           isFromIssue: false
-        })
+        }), currentIssue.datum, currentIssue.typ_jedla)
       })
 
       const removedOrSpecialItems = issueItems.filter((item: any) => {
@@ -522,17 +560,19 @@ export default function GroupIssueClient({
       ]
     }
 
-    const baseRows = members.map((member: any) => applyQrOverride({
-      ...member,
-      rowId: member.userId,
-      status: 'NOT_PREPARED',
-      removeReason: null,
-      source: 'GROUP',
-      addedByQr: false,
-      qrCode: member.qrCode || '',
-      entitlementStatus: getMemberEntitlement(member, datum, typJedla),
-      isFromIssue: false
-    }))
+    const baseRows = members.map((member: any) => {
+      return applyOtherIssueConflict(applyQrOverride({
+        ...member,
+        rowId: member.userId,
+        status: 'NOT_PREPARED',
+        removeReason: null,
+        source: 'GROUP',
+        addedByQr: false,
+        qrCode: member.qrCode || '',
+        entitlementStatus: getMemberEntitlement(member, datum, typJedla),
+        isFromIssue: false
+      }), datum, typJedla)
+    })
 
     const existingUserIds = new Set(baseRows.map((row: any) => row.userId))
 
@@ -623,6 +663,7 @@ export default function GroupIssueClient({
 
   const entitlementNoCount = rows.filter((row: any) => row.entitlementStatus === 'NO').length
   const entitlementUnknownCount = rows.filter((row: any) => row.entitlementStatus === 'UNKNOWN').length
+  const conflictCount = rows.filter((row: any) => row.removeReason === 'IN_OTHER_ISSUE').length
 
   const removedCount = rows.filter((row: any) => {
     return !canSelectRow(row, currentIssue)
@@ -665,7 +706,7 @@ export default function GroupIssueClient({
 
     if (!issue) {
       setSelectedIssueId(null)
-      setSelected(members.map(member => member.userId))
+      setSelected(availableMemberIdsFor(datum, typJedla))
       return
     }
 
@@ -690,7 +731,7 @@ export default function GroupIssueClient({
       setSelected(issue.userIds || [])
     } else {
       setSelectedIssueId(null)
-      setSelected(members.map(member => member.userId))
+      setSelected(availableMemberIdsFor(value, typJedla))
     }
   }
 
@@ -709,7 +750,7 @@ export default function GroupIssueClient({
       setSelected(issue.userIds || [])
     } else {
       setSelectedIssueId(null)
-      setSelected(members.map(member => member.userId))
+      setSelected(availableMemberIdsFor(datum, value))
     }
   }
 
@@ -721,7 +762,7 @@ export default function GroupIssueClient({
 
   const startNewPreparation = () => {
     setSelectedIssueId(null)
-    setSelected(members.map(member => member.userId))
+    setSelected(availableMemberIdsFor(datum, typJedla))
     setMessage('')
     setMessageType('')
     setQrAddedRows([])
@@ -1457,9 +1498,16 @@ export default function GroupIssueClient({
             </div>
           )}
 
-          {currentIssue && removedCount > 0 && (
+          {conflictCount > 0 && (
+            <div style={styles.conflictWarningCard}>
+              <b>{conflictCount}</b>
+              <span>V INOM VÝDAJI</span>
+            </div>
+          )}
+
+          {currentIssue && removedCount > conflictCount && (
             <div style={styles.removedCountCard}>
-              <b>{removedCount}</b>
+              <b>{removedCount - conflictCount}</b>
               <span>VYRADENÝCH</span>
             </div>
           )}
@@ -2133,6 +2181,17 @@ const styles: Record<string, React.CSSProperties> = {
   removedCountCard: {
     background: '#fee2e2',
     border: '1px solid #fecaca',
+    borderRadius: 14,
+    padding: '10px 8px',
+    textAlign: 'center',
+    color: '#991b1b',
+    boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+    display: 'grid',
+    gap: 3
+  },
+  conflictWarningCard: {
+    background: '#fee2e2',
+    border: '1px solid #fca5a5',
     borderRadius: 14,
     padding: '10px 8px',
     textAlign: 'center',
