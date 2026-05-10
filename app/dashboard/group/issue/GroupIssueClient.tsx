@@ -848,7 +848,10 @@ export default function GroupIssueClient({
       return rowQr && rowQr === cleanQr
     })
 
-    if (localExistingRow) {
+    const canOverrideByQr =
+      localExistingRow?.removeReason === 'IN_OTHER_ISSUE'
+
+    if (localExistingRow && !canOverrideByQr) {
       playBeep('error')
 
       const name = localExistingRow.fullName || localExistingRow.email || cleanQr
