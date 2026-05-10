@@ -240,6 +240,7 @@ export default function GroupIssueClient({
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(
     initialIssue ? initialIssue.id : null
   )
+  const [savedSelectedOverride, setSavedSelectedOverride] = useState<string[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
@@ -411,7 +412,9 @@ export default function GroupIssueClient({
 
   const currentIssue = selectedActiveIssue || matchingIssue || null
 
-  const savedPreparedIds: string[] = currentIssue ? (currentIssue.userIds || []) : []
+  const savedPreparedIds: string[] = currentIssue
+    ? savedSelectedOverride || currentIssue.userIds || []
+    : []
 
   const validAfterMs = currentIssue?.valid_after
     ? new Date(currentIssue.valid_after).getTime()
@@ -703,6 +706,7 @@ export default function GroupIssueClient({
 
   const loadIssueToEditor = (issue: any | null) => {
     setQrAddedRows([])
+    setSavedSelectedOverride(null)
 
     if (!issue) {
       setSelectedIssueId(null)
@@ -721,6 +725,7 @@ export default function GroupIssueClient({
     setMessage('')
     setMessageType('')
     setQrAddedRows([])
+    setSavedSelectedOverride(null)
 
     const issue = activeIssues.find(item => {
       return item.datum === value && item.typ_jedla === typJedla
@@ -740,6 +745,7 @@ export default function GroupIssueClient({
     setMessage('')
     setMessageType('')
     setQrAddedRows([])
+    setSavedSelectedOverride(null)
 
     const issue = activeIssues.find(item => {
       return item.datum === datum && item.typ_jedla === value
@@ -766,6 +772,7 @@ export default function GroupIssueClient({
     setMessage('')
     setMessageType('')
     setQrAddedRows([])
+    setSavedSelectedOverride(null)
   }
 
   const markAsChanged = () => {
@@ -852,6 +859,49 @@ export default function GroupIssueClient({
       localExistingRow?.removeReason === 'IN_OTHER_ISSUE'
 
     if (localExistingRow && !canOverrideByQr) {
+      const alreadySelected = selected.includes(localExistingRow.userId)
+
+      if (canSelectRow(localExistingRow, currentIssue) && !alreadySelected) {
+        const name = localExistingRow.fullName || localExistingRow.email || cleanQr
+
+        setQrAddedRows(prev => {
+          const filtered = prev.filter((item: any) => item.userId !== localExistingRow.userId)
+
+          return [
+            ...filtered,
+            {
+              ...localExistingRow,
+              rowId: localExistingRow.rowId || `qr-${localExistingRow.userId}`,
+              source: 'QR_EXTRA',
+              addedByQr: true,
+              role: '—',
+              status: 'PLANNED',
+              removeReason: null,
+              transferFromOtherIssue: false,
+              isFromIssue: !!currentIssue
+            }
+          ]
+        })
+
+        setSelected(prev => {
+          if (prev.includes(localExistingRow.userId)) return prev
+          return [...prev, localExistingRow.userId]
+        })
+
+        playBeep('ok')
+        setQrMessage(`Pridaný cez QR: ${name}`)
+        setQrMessageType('ok')
+        setMessage(`Pridaný cez QR: ${name}`)
+        setMessageType('ok')
+        setQrValue('')
+
+        if (!fromCamera) {
+          setTimeout(() => qrInputRef.current?.focus(), 60)
+        }
+
+        return
+      }
+
       playBeep('error')
 
       const name = localExistingRow.fullName || localExistingRow.email || cleanQr
@@ -1076,6 +1126,7 @@ export default function GroupIssueClient({
 
       setMessage(json.message || 'Príprava hromadného výdaja bola potvrdená.')
       setMessageType('ok')
+      setSavedSelectedOverride([...selected])
       setQrAddedRows([])
       router.refresh()
     } catch (err: any) {
@@ -1152,6 +1203,7 @@ export default function GroupIssueClient({
 
       setMessage(json.message || 'Úprava prípravy bola potvrdená.')
       setMessageType('ok')
+      setSavedSelectedOverride([...selected])
       setQrAddedRows([])
       router.refresh()
     } catch (err: any) {
@@ -1563,12 +1615,12 @@ export default function GroupIssueClient({
                 type="button"
                 style={{
                   ...styles.confirmButton,
-                  opacity: loading || selected.length === 0 ? 0.55 : 1
+                  opacity: loading || selected.length === 0 || !hasUnsavedChanges ? 0.55 : 1
                 }}
-                disabled={loading || selected.length === 0}
+                disabled={loading || selected.length === 0 || !hasUnsavedChanges}
                 onClick={updatePreparation}
               >
-                {loading ? 'Ukladám...' : 'Potvrdiť úpravu'}
+                {loading ? 'Ukladám...' : hasUnsavedChanges ? 'Potvrdiť úpravu' : 'Uložené'}
               </button>
 
               <button
