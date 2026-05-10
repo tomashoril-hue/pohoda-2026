@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import type { CSSProperties } from 'react'
 
 type GroupItem = {
@@ -45,6 +46,17 @@ function rolePriority(person: PersonItem) {
   return 3
 }
 
+function isoDateOffset(days: number) {
+  const date = new Date()
+  date.setDate(date.getDate() + days)
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
 export default function PersonalistaClient({
   people,
   groups,
@@ -58,11 +70,30 @@ export default function PersonalistaClient({
   toDate: string
   canManage: boolean
 }) {
+  const router = useRouter()
+
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState('ALL')
   const [foodFilter, setFoodFilter] = useState('ALL')
   const [qrFilter, setQrFilter] = useState('ALL')
   const [selectedPersonId, setSelectedPersonId] = useState(people[0]?.id || '')
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createLoading, setCreateLoading] = useState(false)
+  const [createMessage, setCreateMessage] = useState('')
+  const [createMessageType, setCreateMessageType] = useState<'ok' | 'error' | ''>('')
+  const [createForm, setCreateForm] = useState({
+    meno: '',
+    priezvisko: '',
+    email: '',
+    telefon: '',
+    typStravy: 'MASO',
+    groupIds: groups[0]?.id ? [groups[0].id] : [],
+    validFrom: isoDateOffset(0),
+    validTo: isoDateOffset(0),
+    obed: true,
+    vecera: false,
+    createQr: true
+  })
 
   const selectedPerson = people.find(person => person.id === selectedPersonId) || people[0] || null
 
@@ -113,6 +144,95 @@ export default function PersonalistaClient({
       totalClaims
     }
   }, [people])
+
+  const updateCreateForm = (key: string, value: any) => {
+    setCreateForm(prev => ({
+      ...prev,
+      [key]: value
+    }))
+  }
+
+  const toggleCreateGroup = (groupId: string) => {
+    setCreateForm(prev => {
+      const hasGroup = prev.groupIds.includes(groupId)
+
+      return {
+        ...prev,
+        groupIds: hasGroup
+          ? prev.groupIds.filter(id => id !== groupId)
+          : [...prev.groupIds, groupId]
+      }
+    })
+  }
+
+  const resetCreateForm = () => {
+    setCreateForm({
+      meno: '',
+      priezvisko: '',
+      email: '',
+      telefon: '',
+      typStravy: 'MASO',
+      groupIds: groups[0]?.id ? [groups[0].id] : [],
+      validFrom: isoDateOffset(0),
+      validTo: isoDateOffset(0),
+      obed: true,
+      vecera: false,
+      createQr: true
+    })
+  }
+
+  const createPerson = async () => {
+    setCreateMessage('')
+    setCreateMessageType('')
+
+    if (!canManage) {
+      setCreateMessage('Nemáš oprávnenie vytvárať osoby.')
+      setCreateMessageType('error')
+      return
+    }
+
+    setCreateLoading(true)
+
+    try {
+      const res = await fetch('/api/personalista/people/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createForm)
+      })
+
+      const text = await res.text()
+      let json: any = {}
+
+      try {
+        json = text ? JSON.parse(text) : {}
+      } catch {
+        setCreateMessage('Server vrátil neplatnú odpoveď.')
+        setCreateMessageType('error')
+        return
+      }
+
+      if (!res.ok || json.error) {
+        setCreateMessage(json.error || 'Osobu sa nepodarilo vytvoriť.')
+        setCreateMessageType('error')
+        return
+      }
+
+      setCreateMessage(json.message || 'Osoba bola vytvorená.')
+      setCreateMessageType('ok')
+      resetCreateForm()
+
+      setTimeout(() => {
+        setCreateOpen(false)
+        router.refresh()
+      }, 650)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setCreateMessage('Chyba spojenia so serverom: ' + message)
+      setCreateMessageType('error')
+    } finally {
+      setCreateLoading(false)
+    }
+  }
 
   return (
     <main style={styles.page}>
@@ -170,7 +290,20 @@ export default function PersonalistaClient({
       </section>
 
       <section style={styles.actionPanel}>
-        <button type="button" style={styles.primaryAction} disabled>
+        <button
+          type="button"
+          style={{
+            ...styles.primaryAction,
+            opacity: canManage ? 1 : 0.55,
+            cursor: canManage ? 'pointer' : 'not-allowed'
+          }}
+          disabled={!canManage}
+          onClick={() => {
+            setCreateOpen(prev => !prev)
+            setCreateMessage('')
+            setCreateMessageType('')
+          }}
+        >
           Ručne pridať človeka
         </button>
 
@@ -194,6 +327,210 @@ export default function PersonalistaClient({
           QR/NFC párovanie
         </button>
       </section>
+
+      {createOpen && (
+        <section style={styles.createPanel}>
+          <div style={styles.createHeader}>
+            <div>
+              <b>Ručné vytvorenie osoby</b>
+              <span>Email je voliteľný. Nárok sa vytvorí pre každý deň vo vybranom období.</span>
+            </div>
+
+            <button
+              type="button"
+              style={styles.closeButton}
+              disabled={createLoading}
+              onClick={() => {
+                setCreateOpen(false)
+                setCreateMessage('')
+                setCreateMessageType('')
+              }}
+            >
+              ×
+            </button>
+          </div>
+
+          <div style={styles.createGrid}>
+            <label style={styles.field}>
+              <span>Meno</span>
+              <input
+                value={createForm.meno}
+                onChange={event => updateCreateForm('meno', event.target.value)}
+                style={styles.input}
+                disabled={createLoading}
+                autoComplete="off"
+              />
+            </label>
+
+            <label style={styles.field}>
+              <span>Priezvisko</span>
+              <input
+                value={createForm.priezvisko}
+                onChange={event => updateCreateForm('priezvisko', event.target.value)}
+                style={styles.input}
+                disabled={createLoading}
+                autoComplete="off"
+              />
+            </label>
+
+            <label style={styles.field}>
+              <span>Email</span>
+              <input
+                value={createForm.email}
+                onChange={event => updateCreateForm('email', event.target.value)}
+                style={styles.input}
+                disabled={createLoading}
+                autoComplete="off"
+                inputMode="email"
+              />
+            </label>
+
+            <label style={styles.field}>
+              <span>Telefón</span>
+              <input
+                value={createForm.telefon}
+                onChange={event => updateCreateForm('telefon', event.target.value)}
+                style={styles.input}
+                disabled={createLoading}
+                autoComplete="off"
+                inputMode="tel"
+              />
+            </label>
+
+            <label style={styles.field}>
+              <span>Typ stravy</span>
+              <select
+                value={createForm.typStravy}
+                onChange={event => updateCreateForm('typStravy', event.target.value)}
+                style={styles.input}
+                disabled={createLoading}
+              >
+                <option value="MASO">MASO</option>
+                <option value="VEGE">VEGE</option>
+                <option value="DIETA">DIÉTA</option>
+              </select>
+            </label>
+
+            <label style={styles.field}>
+              <span>Od</span>
+              <input
+                type="date"
+                value={createForm.validFrom}
+                onChange={event => updateCreateForm('validFrom', event.target.value)}
+                style={styles.input}
+                disabled={createLoading}
+              />
+            </label>
+
+            <label style={styles.field}>
+              <span>Do</span>
+              <input
+                type="date"
+                value={createForm.validTo}
+                onChange={event => updateCreateForm('validTo', event.target.value)}
+                style={styles.input}
+                disabled={createLoading}
+              />
+            </label>
+          </div>
+
+          <div style={styles.createOptionsGrid}>
+            <div style={styles.optionBox}>
+              <div style={styles.optionTitle}>Skupiny</div>
+
+              <div style={styles.checkList}>
+                {groups.map(group => (
+                  <label key={group.id} style={styles.checkRow}>
+                    <input
+                      type="checkbox"
+                      checked={createForm.groupIds.includes(group.id)}
+                      onChange={() => toggleCreateGroup(group.id)}
+                      disabled={createLoading}
+                      style={styles.checkbox}
+                    />
+                    <span>{group.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div style={styles.optionBox}>
+              <div style={styles.optionTitle}>Nárok</div>
+
+              <div style={styles.checkList}>
+                <label style={styles.checkRow}>
+                  <input
+                    type="checkbox"
+                    checked={createForm.obed}
+                    onChange={event => updateCreateForm('obed', event.target.checked)}
+                    disabled={createLoading}
+                    style={styles.checkbox}
+                  />
+                  <span>Obed</span>
+                </label>
+
+                <label style={styles.checkRow}>
+                  <input
+                    type="checkbox"
+                    checked={createForm.vecera}
+                    onChange={event => updateCreateForm('vecera', event.target.checked)}
+                    disabled={createLoading}
+                    style={styles.checkbox}
+                  />
+                  <span>Večera</span>
+                </label>
+
+                <label style={styles.checkRow}>
+                  <input
+                    type="checkbox"
+                    checked={createForm.createQr}
+                    onChange={event => updateCreateForm('createQr', event.target.checked)}
+                    disabled={createLoading}
+                    style={styles.checkbox}
+                  />
+                  <span>Vytvoriť QR</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.createFooter}>
+            <button
+              type="button"
+              style={styles.lightButton}
+              disabled={createLoading}
+              onClick={resetCreateForm}
+            >
+              Vyčistiť
+            </button>
+
+            <button
+              type="button"
+              style={{
+                ...styles.confirmButton,
+                opacity: createLoading ? 0.6 : 1
+              }}
+              disabled={createLoading}
+              onClick={createPerson}
+            >
+              {createLoading ? 'Ukladám...' : 'Vytvoriť osobu'}
+            </button>
+          </div>
+
+          {createMessage && (
+            <div
+              style={{
+                ...styles.message,
+                background: createMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                color: createMessageType === 'ok' ? '#166534' : '#991b1b',
+                borderColor: createMessageType === 'ok' ? '#86efac' : '#fecaca'
+              }}
+            >
+              {createMessage}
+            </div>
+          )}
+        </section>
+      )}
 
       <section style={styles.layoutGrid}>
         <div style={styles.leftColumn}>
@@ -727,8 +1064,120 @@ const styles: Record<string, CSSProperties> = {
     padding: '11px 12px',
     fontSize: 13,
     fontWeight: 950,
-    cursor: 'not-allowed',
-    opacity: 0.55
+    cursor: 'pointer'
+  },
+  createPanel: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 18,
+    padding: 12,
+    display: 'grid',
+    gap: 12,
+    boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
+  },
+  createHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 10
+  },
+  createGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 190px), 1fr))',
+    gap: 10
+  },
+  createOptionsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))',
+    gap: 10
+  },
+  optionBox: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 14,
+    padding: 10,
+    display: 'grid',
+    gap: 8,
+    background: '#f9fafb'
+  },
+  optionTitle: {
+    fontSize: 12,
+    fontWeight: 950,
+    color: '#374151',
+    textTransform: 'uppercase'
+  },
+  checkList: {
+    display: 'grid',
+    gap: 7,
+    maxHeight: 170,
+    overflow: 'auto'
+  },
+  checkRow: {
+    display: 'grid',
+    gridTemplateColumns: '22px minmax(0, 1fr)',
+    gap: 8,
+    alignItems: 'center',
+    fontSize: 13,
+    fontWeight: 850,
+    color: '#111827'
+  },
+  checkbox: {
+    width: 18,
+    height: 18
+  },
+  createFooter: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 8,
+    flexWrap: 'wrap'
+  },
+  field: {
+    display: 'grid',
+    gap: 5,
+    fontSize: 11,
+    fontWeight: 950,
+    color: '#6b7280'
+  },
+  input: {
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
+    border: '1px solid #d1d5db',
+    borderRadius: 12,
+    padding: '11px 10px',
+    fontSize: 16,
+    fontWeight: 800,
+    background: '#fff',
+    color: '#111827',
+    outline: 'none'
+  },
+  closeButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    border: '1px solid #e5e7eb',
+    background: '#f3f4f6',
+    color: '#111827',
+    fontSize: 22,
+    fontWeight: 900,
+    lineHeight: 1,
+    cursor: 'pointer'
+  },
+  confirmButton: {
+    background: '#22c55e',
+    color: '#052e16',
+    border: '1px solid #16a34a',
+    borderRadius: 12,
+    padding: '10px 12px',
+    fontSize: 13,
+    fontWeight: 950,
+    cursor: 'pointer'
+  },
+  message: {
+    border: '1px solid',
+    borderRadius: 12,
+    padding: 10,
+    fontSize: 12,
+    fontWeight: 850
   },
   actionButton: {
     background: '#f3f4f6',

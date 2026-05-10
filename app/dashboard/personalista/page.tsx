@@ -60,6 +60,17 @@ export default async function PersonalistaPage() {
 
   const allMemberships = memberships || []
 
+  const { data: globalRoles } = await supabaseServer
+    .from('app_user_roles')
+    .select('role')
+    .eq('user_id', user.id)
+    .eq('active', true)
+
+  const isGlobalPersonalista = (globalRoles || []).some((item: any) => {
+    const role = String(item.role || '').toUpperCase()
+    return role === 'ADMIN' || role === 'PERSONALISTA'
+  })
+
   const myManageableGroupIds = allMemberships
     .filter((membership: any) => {
       const role = String(membership.role || '').toUpperCase()
@@ -70,6 +81,8 @@ export default async function PersonalistaPage() {
   const manageableGroupIdSet = new Set(myManageableGroupIds)
 
   const visibleMemberships = allMemberships.filter((membership: any) => {
+    if (isGlobalPersonalista) return true
+
     return manageableGroupIdSet.has(membership.group_id)
   })
 
@@ -194,7 +207,7 @@ export default async function PersonalistaPage() {
       groups={groups}
       fromDate={fromDate}
       toDate={toDate}
-      canManage={myManageableGroupIds.length > 0}
+      canManage={isGlobalPersonalista || myManageableGroupIds.length > 0}
     />
   )
 }
