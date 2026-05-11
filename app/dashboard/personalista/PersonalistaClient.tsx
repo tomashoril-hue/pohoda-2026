@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { CSSProperties } from 'react'
 
@@ -84,6 +84,10 @@ export default function PersonalistaClient({
   const [createMessage, setCreateMessage] = useState('')
   const [createMessageType, setCreateMessageType] = useState<'ok' | 'error' | ''>('')
   const [createGroupSelectId, setCreateGroupSelectId] = useState(groups[0]?.id || '')
+  const [detailMode, setDetailMode] = useState<'profile' | 'entitlements' | 'qr' | ''>('')
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailMessage, setDetailMessage] = useState('')
+  const [detailMessageType, setDetailMessageType] = useState<'ok' | 'error' | ''>('')
   const [createForm, setCreateForm] = useState({
     meno: '',
     priezvisko: '',
@@ -97,8 +101,47 @@ export default function PersonalistaClient({
     vecera: false,
     assignQr: true
   })
+  const [profileForm, setProfileForm] = useState({
+    meno: '',
+    priezvisko: '',
+    email: '',
+    telefon: '',
+    typStravy: 'MASO'
+  })
+  const [entitlementForm, setEntitlementForm] = useState({
+    validFrom: fromDate,
+    validTo: toDate,
+    obed: true,
+    vecera: false
+  })
+  const [qrForm, setQrForm] = useState({
+    qrCode: ''
+  })
 
   const selectedPerson = people.find(person => person.id === selectedPersonId) || people[0] || null
+
+  useEffect(() => {
+    if (!selectedPerson) return
+
+    setProfileForm({
+      meno: selectedPerson.meno || '',
+      priezvisko: selectedPerson.priezvisko || '',
+      email: selectedPerson.email || '',
+      telefon: selectedPerson.telefon || '',
+      typStravy: selectedPerson.typStravy || 'MASO'
+    })
+
+    setEntitlementForm({
+      validFrom: fromDate,
+      validTo: toDate,
+      obed: selectedPerson.lunchClaims > 0 || selectedPerson.mealClaims === 0,
+      vecera: selectedPerson.dinnerClaims > 0
+    })
+
+    setQrForm({ qrCode: '' })
+    setDetailMessage('')
+    setDetailMessageType('')
+  }, [selectedPerson, fromDate, toDate])
 
   const filteredPeople = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -275,6 +318,127 @@ export default function PersonalistaClient({
     } finally {
       setCreateLoading(false)
     }
+  }
+
+  const updateProfileForm = (key: string, value: any) => {
+    setProfileForm(prev => ({
+      ...prev,
+      [key]: value
+    }))
+  }
+
+  const updateEntitlementForm = (key: string, value: any) => {
+    setEntitlementForm(prev => ({
+      ...prev,
+      [key]: value
+    }))
+  }
+
+  const postDetailAction = async (url: string, payload: any, fallbackMessage: string) => {
+    setDetailMessage('')
+    setDetailMessageType('')
+
+    if (!selectedPerson) return
+
+    if (!canManage) {
+      setDetailMessage('Nemáš oprávnenie upravovať osoby.')
+      setDetailMessageType('error')
+      return
+    }
+
+    setDetailLoading(true)
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      const text = await res.text()
+      let json: any = {}
+
+      try {
+        json = text ? JSON.parse(text) : {}
+      } catch {
+        setDetailMessage('Server vrátil neplatnú odpoveď.')
+        setDetailMessageType('error')
+        return
+      }
+
+      if (!res.ok || json.error) {
+        setDetailMessage(json.error || fallbackMessage)
+        setDetailMessageType('error')
+        return
+      }
+
+      setDetailMessage(json.message || 'Zmena bola uložená.')
+      setDetailMessageType('ok')
+
+      setTimeout(() => {
+        router.refresh()
+      }, 450)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setDetailMessage('Chyba spojenia so serverom: ' + message)
+      setDetailMessageType('error')
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  const saveProfile = () => {
+    if (!selectedPerson) return
+
+    postDetailAction(
+      '/api/personalista/people/update-profile',
+      {
+        userId: selectedPerson.id,
+        ...profileForm
+      },
+      'Detail osoby sa nepodarilo uložiť.'
+    )
+  }
+
+  const saveEntitlements = () => {
+    if (!selectedPerson) return
+
+    postDetailAction(
+      '/api/personalista/people/update-entitlements',
+      {
+        userId: selectedPerson.id,
+        ...entitlementForm
+      },
+      'Nároky sa nepodarilo uložiť.'
+    )
+  }
+
+  const replaceQr = (mode: 'FREE' | 'SPECIFIC') => {
+    if (!selectedPerson) return
+
+    if (mode === 'SPECIFIC' && !qrForm.qrCode.trim()) {
+      setDetailMessage('Naskenuj alebo zadaj nový QR kód.')
+      setDetailMessageType('error')
+      return
+    }
+
+    const ok = window.confirm(
+      selectedPerson.activeQrCount > 0
+        ? 'Aktívny QR tejto osoby sa zneplatní a nahradí novým. Pokračovať?'
+        : 'Osobe sa priradí nový QR. Pokračovať?'
+    )
+
+    if (!ok) return
+
+    postDetailAction(
+      '/api/personalista/people/qr/replace',
+      {
+        userId: selectedPerson.id,
+        mode,
+        qrCode: mode === 'SPECIFIC' ? qrForm.qrCode : ''
+      },
+      'QR sa nepodarilo vymeniť.'
+    )
   }
 
   return (
@@ -818,15 +982,42 @@ export default function PersonalistaClient({
               <div style={styles.sectionTitle}>Akcie</div>
 
               <div style={styles.detailActions}>
-                <button type="button" style={styles.actionButton} disabled>
-                  Zmeniť stravu
+                <button
+                  type="button"
+                  style={{
+                    ...styles.actionButton,
+                    borderColor: detailMode === 'profile' ? '#93c5fd' : '#e5e7eb',
+                    background: detailMode === 'profile' ? '#eff6ff' : '#fff'
+                  }}
+                  disabled={detailLoading}
+                  onClick={() => setDetailMode(detailMode === 'profile' ? '' : 'profile')}
+                >
+                  Detail a strava
                 </button>
 
-                <button type="button" style={styles.actionButton} disabled>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.actionButton,
+                    borderColor: detailMode === 'entitlements' ? '#93c5fd' : '#e5e7eb',
+                    background: detailMode === 'entitlements' ? '#eff6ff' : '#fff'
+                  }}
+                  disabled={detailLoading}
+                  onClick={() => setDetailMode(detailMode === 'entitlements' ? '' : 'entitlements')}
+                >
                   Upraviť nároky
                 </button>
 
-                <button type="button" style={styles.actionButton} disabled>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.actionButton,
+                    borderColor: detailMode === 'qr' ? '#93c5fd' : '#e5e7eb',
+                    background: detailMode === 'qr' ? '#eff6ff' : '#fff'
+                  }}
+                  disabled={detailLoading}
+                  onClick={() => setDetailMode(detailMode === 'qr' ? '' : 'qr')}
+                >
                   Vymeniť QR
                 </button>
 
@@ -834,6 +1025,198 @@ export default function PersonalistaClient({
                   Priradiť NFC
                 </button>
               </div>
+
+              {detailMode === 'profile' && (
+                <div style={styles.detailEditBox}>
+                  <div style={styles.detailEditTitle}>Detail osoby</div>
+
+                  <div style={styles.detailEditGrid}>
+                    <label style={styles.field}>
+                      <span>Meno</span>
+                      <input
+                        value={profileForm.meno}
+                        onChange={event => updateProfileForm('meno', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                        autoComplete="off"
+                      />
+                    </label>
+
+                    <label style={styles.field}>
+                      <span>Priezvisko</span>
+                      <input
+                        value={profileForm.priezvisko}
+                        onChange={event => updateProfileForm('priezvisko', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                        autoComplete="off"
+                      />
+                    </label>
+
+                    <label style={styles.field}>
+                      <span>Email</span>
+                      <input
+                        value={profileForm.email}
+                        onChange={event => updateProfileForm('email', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                        autoComplete="off"
+                        inputMode="email"
+                      />
+                    </label>
+
+                    <label style={styles.field}>
+                      <span>Telefón</span>
+                      <input
+                        value={profileForm.telefon}
+                        onChange={event => updateProfileForm('telefon', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                        autoComplete="off"
+                        inputMode="tel"
+                      />
+                    </label>
+
+                    <label style={styles.field}>
+                      <span>Typ stravy</span>
+                      <select
+                        value={profileForm.typStravy || 'MASO'}
+                        onChange={event => updateProfileForm('typStravy', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                      >
+                        <option value="MASO">MASO</option>
+                        <option value="VEGE">VEGE</option>
+                        <option value="DIETA">DIÉTA</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    style={styles.confirmButton}
+                    disabled={detailLoading}
+                    onClick={saveProfile}
+                  >
+                    {detailLoading ? 'Ukladám...' : 'Uložiť detail'}
+                  </button>
+                </div>
+              )}
+
+              {detailMode === 'entitlements' && (
+                <div style={styles.detailEditBox}>
+                  <div style={styles.detailEditTitle}>Nároky na stravu</div>
+
+                  <div style={styles.detailEditGrid}>
+                    <label style={styles.field}>
+                      <span>Od</span>
+                      <input
+                        type="date"
+                        value={entitlementForm.validFrom}
+                        onChange={event => updateEntitlementForm('validFrom', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                      />
+                    </label>
+
+                    <label style={styles.field}>
+                      <span>Do</span>
+                      <input
+                        type="date"
+                        value={entitlementForm.validTo}
+                        onChange={event => updateEntitlementForm('validTo', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                      />
+                    </label>
+                  </div>
+
+                  <div style={styles.checkList}>
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={entitlementForm.obed}
+                        onChange={event => updateEntitlementForm('obed', event.target.checked)}
+                        disabled={detailLoading}
+                        style={styles.checkbox}
+                      />
+                      <span>Obed</span>
+                    </label>
+
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={entitlementForm.vecera}
+                        onChange={event => updateEntitlementForm('vecera', event.target.checked)}
+                        disabled={detailLoading}
+                        style={styles.checkbox}
+                      />
+                      <span>Večera</span>
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    style={styles.confirmButton}
+                    disabled={detailLoading}
+                    onClick={saveEntitlements}
+                  >
+                    {detailLoading ? 'Ukladám...' : 'Uložiť nároky'}
+                  </button>
+                </div>
+              )}
+
+              {detailMode === 'qr' && (
+                <div style={styles.detailEditBox}>
+                  <div style={styles.detailEditTitle}>QR zo zoznamu</div>
+                  <div style={styles.optionHint}>
+                    Používa sa iba voľný kód z tabuľky qr_codes. Hodnotu aktuálneho QR nezobrazujeme.
+                  </div>
+
+                  <button
+                    type="button"
+                    style={styles.lightButton}
+                    disabled={detailLoading}
+                    onClick={() => replaceQr('FREE')}
+                  >
+                    Priradiť prvý voľný QR
+                  </button>
+
+                  <label style={styles.field}>
+                    <span>Nový QR z náramku alebo zo zoznamu</span>
+                    <input
+                      value={qrForm.qrCode}
+                      onChange={event => setQrForm({ qrCode: event.target.value })}
+                      style={styles.input}
+                      disabled={detailLoading}
+                      autoComplete="off"
+                      placeholder="Naskenuj nový QR"
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    style={styles.confirmButton}
+                    disabled={detailLoading}
+                    onClick={() => replaceQr('SPECIFIC')}
+                  >
+                    {detailLoading ? 'Ukladám...' : 'Prepnúť na načítaný QR'}
+                  </button>
+                </div>
+              )}
+
+              {detailMessage && (
+                <div
+                  style={{
+                    ...styles.message,
+                    background: detailMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                    color: detailMessageType === 'ok' ? '#166534' : '#991b1b',
+                    borderColor: detailMessageType === 'ok' ? '#86efac' : '#fecaca'
+                  }}
+                >
+                  {detailMessage}
+                </div>
+              )}
             </>
           ) : (
             <div style={styles.emptyState}>
@@ -1166,6 +1549,25 @@ const styles: Record<string, CSSProperties> = {
   detailActions: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 8
+  },
+  detailEditBox: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 14,
+    padding: 10,
+    display: 'grid',
+    gap: 10,
+    background: '#f9fafb'
+  },
+  detailEditTitle: {
+    fontSize: 12,
+    fontWeight: 950,
+    color: '#374151',
+    textTransform: 'uppercase'
+  },
+  detailEditGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))',
     gap: 8
   },
   primaryAction: {
