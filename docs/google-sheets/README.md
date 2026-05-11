@@ -55,3 +55,8 @@ Po vložení Apps Scriptu a obnovení tabuľky pribudne menu `POHODA`:
 - `Importovať READY riadky`
 - `Aktualizovať označené riadky`
 - `Aktualizovať všetky riadky s user_id`
+- `Nastaviť výberové zoznamy`
+
+Položka `Nastaviť výberové zoznamy` doplní dropdowny pre `strava`, `skupina`, `obed`, `vecera`, `qr` a `stav`.
+Skupiny sa načítajú z aktuálnych skupín v aplikácii. Pri stĺpci `skupina` je stále povolené ručné zadanie,
+aby bolo možné zadať viac skupín cez znak `|`.

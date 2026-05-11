@@ -41,6 +41,7 @@ export default async function GoogleSheetsPage() {
           <li>Vlož obsah súboru `docs/google-sheets/pohoda-apps-script.js`.</li>
           <li>V skripte nastav `POHODA_API_BASE` a `POHODA_TOKEN`.</li>
           <li>Obnov tabuľku. Pribudne menu `POHODA`.</li>
+          <li>Spusti `POHODA - Nastaviť výberové zoznamy`.</li>
         </ol>
       </section>
 
@@ -61,6 +62,11 @@ export default async function GoogleSheetsPage() {
         <h2 style={styles.sectionTitle}>API</h2>
 
         <div style={styles.endpointGrid}>
+          <div style={styles.endpointBox}>
+            <b>Výberové zoznamy</b>
+            <code>/api/personalista/google-sheets/options</code>
+          </div>
+
           <div style={styles.endpointBox}>
             <b>Import</b>
             <code>/api/personalista/google-sheets/import-batch</code>

@@ -4,6 +4,8 @@ const POHODA_API_BASE = 'https://SEM_DAJ_DOMENU_APLIKACIE';
 const POHODA_TOKEN = 'SEM_DAJ_GOOGLE_SHEETS_IMPORT_TOKEN';
 
 const HEADER_ROW = 1;
+const VALIDATION_START_ROW = 2;
+const VALIDATION_ROW_COUNT = 1000;
 const COLUMNS = {
   meno: 'meno',
   priezvisko: 'priezvisko',
@@ -35,6 +37,8 @@ function onOpen() {
     .addSeparator()
     .addItem('Aktualizovať označené riadky', 'syncSelectedRows')
     .addItem('Aktualizovať všetky riadky s user_id', 'syncRowsWithUserId')
+    .addSeparator()
+    .addItem('Nastavit vyberove zoznamy', 'setupDropdowns')
     .addToUi();
 }
 
@@ -124,6 +128,36 @@ function setTimestampCell_(sheet, rowNumber, headerMap, name) {
     .getRange(rowNumber, column)
     .setValue(new Date())
     .setNumberFormat('yyyy-mm-dd hh:mm:ss');
+}
+
+function applyDropdown_(sheet, headerMap, name, values, allowInvalid) {
+  const column = headerMap[normalizeHeader_(name)];
+  if (!column || !values || !values.length) return;
+
+  const validation = SpreadsheetApp
+    .newDataValidation()
+    .requireValueInList(values, true)
+    .setAllowInvalid(Boolean(allowInvalid))
+    .build();
+
+  sheet
+    .getRange(VALIDATION_START_ROW, column, VALIDATION_ROW_COUNT, 1)
+    .setDataValidation(validation);
+}
+
+function setupDropdowns() {
+  const data = getSheetData_();
+  const options = callApi_('/api/personalista/google-sheets/options', {});
+  const groupNames = (options.groups || []).map(group => group.name).filter(Boolean);
+
+  applyDropdown_(data.sheet, data.headerMap, COLUMNS.strava, options.foodTypes || ['MASO', 'VEGE', 'DIETA'], false);
+  applyDropdown_(data.sheet, data.headerMap, COLUMNS.obed, options.yesNo || ['ANO', 'NIE'], false);
+  applyDropdown_(data.sheet, data.headerMap, COLUMNS.vecera, options.yesNo || ['ANO', 'NIE'], false);
+  applyDropdown_(data.sheet, data.headerMap, COLUMNS.qr, options.yesNo || ['ANO', 'NIE'], false);
+  applyDropdown_(data.sheet, data.headerMap, COLUMNS.stav, options.statuses || ['READY', 'OK', 'ERROR', 'LOCKED'], false);
+  applyDropdown_(data.sheet, data.headerMap, COLUMNS.skupina, groupNames, true);
+
+  SpreadsheetApp.getUi().alert('Vyberove zoznamy boli nastavene.');
 }
 
 function rowToPayload_(rowNumber, rowValues, headerMap) {
