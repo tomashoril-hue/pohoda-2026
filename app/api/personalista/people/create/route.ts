@@ -204,7 +204,6 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString()
-    let assignedQrPoolId: string | null = null
     let assignedQrCode: string | null = null
 
     const { data: newUser, error: userError } = await supabaseServer
@@ -236,17 +235,6 @@ export async function POST(req: NextRequest) {
         .from('user_qr_codes')
         .delete()
         .eq('user_id', newUser.id)
-
-      if (assignedQrPoolId) {
-        await supabaseServer
-          .from('qr_codes')
-          .update({
-            status: 'VOLNY',
-            assigned_user_id: null,
-            assigned_at: null
-          })
-          .eq('id', assignedQrPoolId)
-      }
 
       await supabaseServer
         .from('users')
@@ -314,26 +302,27 @@ export async function POST(req: NextRequest) {
     }
 
     if (assignQr) {
-      const { data: freeQrRows, error: freeQrError } = await supabaseServer
-        .from('qr_codes')
-        .select('id, code')
-        .eq('status', 'VOLNY')
-        .is('assigned_user_id', null)
-        .order('created_at', { ascending: true })
-        .limit(50)
+      const { data: assignedQrRows, error: assignQrError } = await supabaseServer
+        .rpc('assign_free_qr_to_user', {
+          p_user_id: newUser.id,
+          p_assigned_by: currentUser.id,
+          p_note: 'Priradene z tabulky qr_codes pri rucnom zalozeni osoby.'
+        })
 
-      if (freeQrError) {
+      if (assignQrError) {
         await rollbackUser()
 
         return NextResponse.json(
-          { error: freeQrError.message },
+          { error: assignQrError.message || 'Volny QR kod sa nepodarilo priradit.' },
           { status: 500 }
         )
       }
 
-      const candidateQrRows = freeQrRows || []
+      const assignedQr = Array.isArray(assignedQrRows)
+        ? assignedQrRows[0]
+        : assignedQrRows
 
-      if (!candidateQrRows.length) {
+      if (!assignedQr) {
         await rollbackUser()
 
         return NextResponse.json(
@@ -342,94 +331,7 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      const candidateCodes = candidateQrRows.map((row: any) => row.code).filter(Boolean)
-
-      const { data: usedQrRows, error: usedQrError } = await supabaseServer
-        .from('user_qr_codes')
-        .select('qr_code')
-        .in('qr_code', candidateCodes)
-
-      if (usedQrError) {
-        await rollbackUser()
-
-        return NextResponse.json(
-          { error: usedQrError.message },
-          { status: 500 }
-        )
-      }
-
-      const usedQrCodes = new Set((usedQrRows || []).map((row: any) => row.qr_code))
-      const freeQr = candidateQrRows.find((row: any) => !usedQrCodes.has(row.code))
-
-      if (!freeQr) {
-        await rollbackUser()
-
-        return NextResponse.json(
-          { error: 'Volne QR kody v qr_codes uz existuju v user_qr_codes. Treba vycistit stav QR kodov.' },
-          { status: 409 }
-        )
-      }
-
-      const { data: assignedQr, error: assignQrError } = await supabaseServer
-        .from('qr_codes')
-        .update({
-          status: 'PRIRADENY',
-          assigned_user_id: newUser.id,
-          assigned_at: now
-        })
-        .eq('id', freeQr.id)
-        .eq('status', 'VOLNY')
-        .is('assigned_user_id', null)
-        .select('id, code')
-        .single()
-
-      if (assignQrError || !assignedQr) {
-        await rollbackUser()
-
-        return NextResponse.json(
-          { error: assignQrError?.message || 'Volny QR kod sa nepodarilo priradit.' },
-          { status: 500 }
-        )
-      }
-
-      assignedQrPoolId = assignedQr.id
-      assignedQrCode = assignedQr.code
-
-      const { error: updateUserQrError } = await supabaseServer
-        .from('users')
-        .update({
-          qr_code: assignedQrCode,
-          updated_at: now
-        })
-        .eq('id', newUser.id)
-
-      if (updateUserQrError) {
-        await rollbackUser()
-
-        return NextResponse.json(
-          { error: updateUserQrError.message },
-          { status: 500 }
-        )
-      }
-
-      const { error: userQrError } = await supabaseServer
-        .from('user_qr_codes')
-        .insert({
-          user_id: newUser.id,
-          qr_code: assignedQrCode,
-          active: true,
-          assigned_by: currentUser.id,
-          note: 'Priradene z tabulky qr_codes pri rucnom zalozeni osoby.'
-        })
-
-      if (userQrError) {
-        await rollbackUser()
-
-        return NextResponse.json(
-          { error: userQrError.message },
-          { status: 500 }
-        )
-      }
+      assignedQrCode = assignedQr.qr_code
     }
 
     await supabaseServer
