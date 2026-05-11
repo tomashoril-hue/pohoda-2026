@@ -25,6 +25,8 @@ type PersonItem = {
   typStravy: string
   activeQrCount: number
   entitlementDays: number
+  lunchClaims: number
+  dinnerClaims: number
   mealClaims: number
   groups: PersonGroup[]
 }
@@ -87,7 +89,7 @@ export default function PersonalistaClient({
     email: '',
     telefon: '',
     typStravy: 'MASO',
-    groupIds: groups[0]?.id ? [groups[0].id] : [],
+    groupIds: [] as string[],
     validFrom: isoDateOffset(0),
     validTo: isoDateOffset(0),
     obed: true,
@@ -112,6 +114,7 @@ export default function PersonalistaClient({
       })
       .filter(person => {
         if (groupFilter === 'ALL') return true
+        if (groupFilter === 'UNGROUPED') return person.groups.length === 0
         return person.groups.some(group => group.id === groupFilter)
       })
       .filter(person => {
@@ -136,12 +139,18 @@ export default function PersonalistaClient({
     const withoutQr = people.length - activeQr
     const withDiet = people.filter(person => foodLabel(person.typStravy) === 'DIÉTA').length
     const totalClaims = people.reduce((sum, person) => sum + person.mealClaims, 0)
+    const totalLunches = people.reduce((sum, person) => sum + person.lunchClaims, 0)
+    const totalDinners = people.reduce((sum, person) => sum + person.dinnerClaims, 0)
+    const totalDays = people.reduce((sum, person) => sum + person.entitlementDays, 0)
 
     return {
       activeQr,
       withoutQr,
       withDiet,
-      totalClaims
+      totalClaims,
+      totalLunches,
+      totalDinners,
+      totalDays
     }
   }, [people])
 
@@ -172,7 +181,7 @@ export default function PersonalistaClient({
       email: '',
       telefon: '',
       typStravy: 'MASO',
-      groupIds: groups[0]?.id ? [groups[0].id] : [],
+      groupIds: [] as string[],
       validFrom: isoDateOffset(0),
       validTo: isoDateOffset(0),
       obed: true,
@@ -281,6 +290,7 @@ export default function PersonalistaClient({
         <div style={styles.summaryCardOrange}>
           <b>{stats.totalClaims}</b>
           <span>Nároky {fromDate} - {toDate}</span>
+          <small>{stats.totalLunches} obed / {stats.totalDinners} večera / {stats.totalDays} dní</small>
         </div>
 
         <div style={styles.summaryCardPink}>
@@ -333,7 +343,7 @@ export default function PersonalistaClient({
           <div style={styles.createHeader}>
             <div>
               <b>Ručné vytvorenie osoby</b>
-              <span>Email je voliteľný. Nárok sa vytvorí pre každý deň vo vybranom období.</span>
+              <span>Email aj skupina sú voliteľné. Nárok sa vytvorí pre každý deň vo vybranom období.</span>
             </div>
 
             <button
@@ -437,6 +447,7 @@ export default function PersonalistaClient({
           <div style={styles.createOptionsGrid}>
             <div style={styles.optionBox}>
               <div style={styles.optionTitle}>Skupiny</div>
+              <div style={styles.optionHint}>Ak neoznačíš skupinu, osoba vznikne bez skupiny.</div>
 
               <div style={styles.checkList}>
                 {groups.map(group => (
@@ -549,6 +560,7 @@ export default function PersonalistaClient({
               style={styles.select}
             >
               <option value="ALL">Všetky skupiny</option>
+              <option value="UNGROUPED">Bez skupiny</option>
               {groups.map(group => (
                 <option key={group.id} value={group.id}>
                   {group.name}
@@ -616,6 +628,12 @@ export default function PersonalistaClient({
                     </div>
 
                     <div style={styles.groupBadges}>
+                      {person.groups.length === 0 && (
+                        <span style={styles.groupBadge}>
+                          Bez skupiny
+                        </span>
+                      )}
+
                       {person.groups.slice(0, 3).map(group => (
                         <span key={`${person.id}-${group.id}`} style={styles.groupBadge}>
                           {group.name}
@@ -647,6 +665,7 @@ export default function PersonalistaClient({
 
                     <div style={styles.claimCell}>
                       <b>{person.mealClaims}</b>
+                      <span>{person.lunchClaims} O / {person.dinnerClaims} V</span>
                       <span>{person.entitlementDays} dní</span>
                     </div>
                   </button>
@@ -689,12 +708,20 @@ export default function PersonalistaClient({
                 <div style={styles.detailRow}>
                   <span>Nároky</span>
                   <b>{selectedPerson.mealClaims} jedál / {selectedPerson.entitlementDays} dní</b>
+                  <small>{selectedPerson.lunchClaims} obed / {selectedPerson.dinnerClaims} večera</small>
                 </div>
               </div>
 
               <div style={styles.sectionTitle}>Skupiny</div>
 
               <div style={styles.detailGroups}>
+                {selectedPerson.groups.length === 0 && (
+                  <div style={styles.detailGroupRow}>
+                    <b>Bez skupiny</b>
+                    <span>-</span>
+                  </div>
+                )}
+
                 {selectedPerson.groups.map(group => (
                   <div key={group.id} style={styles.detailGroupRow}>
                     <b>{group.name}</b>
@@ -1104,6 +1131,11 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950,
     color: '#374151',
     textTransform: 'uppercase'
+  },
+  optionHint: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: '#6b7280'
   },
   checkList: {
     display: 'grid',

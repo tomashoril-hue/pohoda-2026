@@ -86,6 +86,17 @@ export default async function PersonalistaPage() {
     return manageableGroupIdSet.has(membership.group_id)
   })
 
+  let allVisibleUsers: any[] = []
+
+  if (isGlobalPersonalista) {
+    const { data: usersData } = await supabaseServer
+      .from('users')
+      .select('id, meno, priezvisko, email, telefon, typ_stravy')
+      .order('created_at', { ascending: false })
+
+    allVisibleUsers = usersData || []
+  }
+
   const groupsById = new Map<string, any>()
 
   visibleMemberships.forEach((membership: any) => {
@@ -101,9 +112,18 @@ export default async function PersonalistaPage() {
     }
   })
 
-  const userIds = Array.from(
-    new Set(visibleMemberships.map((membership: any) => membership.user_id).filter(Boolean))
-  )
+  const membershipUserIds = visibleMemberships
+    .map((membership: any) => membership.user_id)
+    .filter(Boolean)
+
+  const globalUserIds = allVisibleUsers
+    .map((item: any) => item.id)
+    .filter(Boolean)
+
+  const userIds = Array.from(new Set([
+    ...membershipUserIds,
+    ...globalUserIds
+  ]))
 
   const fromDate = isoDateOffset(0)
   const toDate = isoDateOffset(13)
@@ -169,9 +189,9 @@ export default async function PersonalistaPage() {
     }
 
     const rows = entitlementsByUserId.get(membership.user_id) || []
-    const mealClaims = rows.reduce((sum, row) => {
-      return sum + (row.obed ? 1 : 0) + (row.vecera ? 1 : 0)
-    }, 0)
+    const lunchClaims = rows.filter(row => row.obed).length
+    const dinnerClaims = rows.filter(row => row.vecera).length
+    const mealClaims = lunchClaims + dinnerClaims
 
     personMap.set(membership.user_id, {
       id: membership.user_id,
@@ -183,10 +203,38 @@ export default async function PersonalistaPage() {
       typStravy: memberUser?.typ_stravy || '',
       activeQrCount: activeQrByUserId.get(membership.user_id) || 0,
       entitlementDays: rows.length,
+      lunchClaims,
+      dinnerClaims,
       mealClaims,
       groups: [groupItem]
     })
   })
+
+  if (isGlobalPersonalista) {
+    allVisibleUsers.forEach((profile: any) => {
+      if (personMap.has(profile.id)) return
+
+      const rows = entitlementsByUserId.get(profile.id) || []
+      const lunchClaims = rows.filter(row => row.obed).length
+      const dinnerClaims = rows.filter(row => row.vecera).length
+
+      personMap.set(profile.id, {
+        id: profile.id,
+        fullName: fullName(profile) || profile.email || 'Bez mena',
+        meno: profile.meno || '',
+        priezvisko: profile.priezvisko || '',
+        email: profile.email || '',
+        telefon: profile.telefon || '',
+        typStravy: profile.typ_stravy || '',
+        activeQrCount: activeQrByUserId.get(profile.id) || 0,
+        entitlementDays: rows.length,
+        lunchClaims,
+        dinnerClaims,
+        mealClaims: lunchClaims + dinnerClaims,
+        groups: []
+      })
+    })
+  }
 
   const groups = Array.from(groupsById.values()).sort((a, b) => {
     return a.name.localeCompare(b.name, 'sk')

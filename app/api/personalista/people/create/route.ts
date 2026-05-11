@@ -81,13 +81,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!groupIds.length) {
-      return NextResponse.json(
-        { error: 'Vyber aspon jednu skupinu.' },
-        { status: 400 }
-      )
-    }
-
     if (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom) {
       return NextResponse.json(
         { error: 'Zadaj platne obdobie prace.' },
@@ -129,26 +122,39 @@ export async function POST(req: NextRequest) {
       return role === 'ADMIN' || role === 'PERSONALISTA'
     })
 
-    const { data: selectedGroups, error: selectedGroupsError } = await supabaseServer
-      .from('groups')
-      .select('id, name')
-      .in('id', groupIds)
+    let selectedGroups: any[] = []
 
-    if (selectedGroupsError) {
+    if (groupIds.length > 0) {
+      const { data: selectedGroupsData, error: selectedGroupsError } = await supabaseServer
+        .from('groups')
+        .select('id, name')
+        .in('id', groupIds)
+
+      if (selectedGroupsError) {
+        return NextResponse.json(
+          { error: selectedGroupsError.message },
+          { status: 500 }
+        )
+      }
+
+      selectedGroups = selectedGroupsData || []
+
+      if (selectedGroups.length !== groupIds.length) {
+        return NextResponse.json(
+          { error: 'Niektora zo skupin neexistuje.' },
+          { status: 400 }
+        )
+      }
+    }
+
+    if (!groupIds.length && !isGlobalPersonalista) {
       return NextResponse.json(
-        { error: selectedGroupsError.message },
-        { status: 500 }
+        { error: 'Osobu bez skupiny moze vytvorit iba ADMIN alebo PERSONALISTA.' },
+        { status: 403 }
       )
     }
 
-    if (!selectedGroups || selectedGroups.length !== groupIds.length) {
-      return NextResponse.json(
-        { error: 'Niektora zo skupin neexistuje.' },
-        { status: 400 }
-      )
-    }
-
-    if (!isGlobalPersonalista) {
+    if (groupIds.length > 0 && !isGlobalPersonalista) {
       const { data: myMemberships, error: membershipsError } = await supabaseServer
         .from('group_members')
         .select('group_id, role')
@@ -242,21 +248,23 @@ export async function POST(req: NextRequest) {
         .eq('id', newUser.id)
     }
 
-    const { error: membershipError } = await supabaseServer
-      .from('group_members')
-      .insert(groupIds.map(groupId => ({
-        group_id: groupId,
-        user_id: newUser.id,
-        role: 'MEMBER'
-      })))
+    if (groupIds.length > 0) {
+      const { error: membershipError } = await supabaseServer
+        .from('group_members')
+        .insert(groupIds.map(groupId => ({
+          group_id: groupId,
+          user_id: newUser.id,
+          role: 'MEMBER'
+        })))
 
-    if (membershipError) {
-      await rollbackUser()
+      if (membershipError) {
+        await rollbackUser()
 
-      return NextResponse.json(
-        { error: membershipError.message },
-        { status: 500 }
-      )
+        return NextResponse.json(
+          { error: membershipError.message },
+          { status: 500 }
+        )
+      }
     }
 
     const { error: workPeriodError } = await supabaseServer
@@ -339,7 +347,7 @@ export async function POST(req: NextRequest) {
       .insert({
         actor_user_id: currentUser.id,
         target_user_id: newUser.id,
-        group_id: groupIds[0],
+        group_id: groupIds[0] || null,
         action: 'PERSON_CREATED',
         entity_table: 'users',
         entity_id: newUser.id,
