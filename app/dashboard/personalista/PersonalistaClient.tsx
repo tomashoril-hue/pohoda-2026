@@ -83,7 +83,7 @@ export default function PersonalistaClient({
   const [createLoading, setCreateLoading] = useState(false)
   const [createMessage, setCreateMessage] = useState('')
   const [createMessageType, setCreateMessageType] = useState<'ok' | 'error' | ''>('')
-  const [createGroupSelectId, setCreateGroupSelectId] = useState(groups[0]?.id || '')
+  const [createGroupSelectId, setCreateGroupSelectId] = useState('')
   const [detailMode, setDetailMode] = useState<'profile' | 'entitlements' | 'qr' | ''>('')
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailMessage, setDetailMessage] = useState('')
@@ -209,7 +209,7 @@ export default function PersonalistaClient({
   const safeCreateGroupSelectId =
     availableCreateGroups.some(group => group.id === createGroupSelectId)
       ? createGroupSelectId
-      : availableCreateGroups[0]?.id || ''
+      : ''
 
   const updateCreateForm = (key: string, value: any) => {
     setCreateForm(prev => ({
@@ -228,8 +228,7 @@ export default function PersonalistaClient({
         : [...prev.groupIds, safeCreateGroupSelectId]
     }))
 
-    const nextAvailable = availableCreateGroups.find(group => group.id !== safeCreateGroupSelectId)
-    setCreateGroupSelectId(nextAvailable?.id || '')
+    setCreateGroupSelectId('')
   }
 
   const removeCreateGroup = (groupId: string) => {
@@ -247,7 +246,7 @@ export default function PersonalistaClient({
       groupIds: []
     }))
 
-    setCreateGroupSelectId(groups[0]?.id || '')
+    setCreateGroupSelectId('')
   }
 
   const resetCreateForm = () => {
@@ -264,7 +263,7 @@ export default function PersonalistaClient({
       vecera: false,
       assignQr: true
     })
-    setCreateGroupSelectId(groups[0]?.id || '')
+    setCreateGroupSelectId('')
   }
 
   const createPerson = async () => {
@@ -652,17 +651,17 @@ export default function PersonalistaClient({
                   value={safeCreateGroupSelectId}
                   onChange={event => setCreateGroupSelectId(event.target.value)}
                   style={styles.input}
-                  disabled={createLoading || availableCreateGroups.length === 0}
+                  disabled={createLoading}
                 >
-                  {availableCreateGroups.length === 0 ? (
-                    <option value="">Žiadna ďalšia skupina</option>
-                  ) : (
-                    availableCreateGroups.map(group => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))
-                  )}
+                  <option value="">
+                    {availableCreateGroups.length === 0 ? 'Žiadna ďalšia skupina' : 'Žiadna skupina'}
+                  </option>
+
+                  {availableCreateGroups.map(group => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
                 </select>
 
                 <button
