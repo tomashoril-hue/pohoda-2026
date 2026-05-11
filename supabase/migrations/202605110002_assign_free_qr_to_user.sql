@@ -75,7 +75,17 @@ begin
     true,
     p_assigned_by,
     coalesce(p_note, 'Priradene z tabulky qr_codes.')
-  );
+  )
+  on conflict (qr_code) do nothing;
+
+  if not exists (
+    select 1
+    from public.user_qr_codes uq
+    where uq.qr_code = v_qr.code
+      and uq.user_id = p_user_id
+  ) then
+    raise exception 'QR_ALREADY_ASSIGNED';
+  end if;
 
   return query
   select v_qr.id::uuid, v_qr.code::text;
