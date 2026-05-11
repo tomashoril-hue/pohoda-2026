@@ -76,7 +76,7 @@ begin
     p_assigned_by,
     coalesce(p_note, 'Priradene z tabulky qr_codes.')
   )
-  on conflict (qr_code) do nothing;
+  on conflict on constraint user_qr_codes_qr_code_key do nothing;
 
   if not exists (
     select 1
