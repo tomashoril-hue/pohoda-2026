@@ -119,6 +119,13 @@ export default function PersonalistaClient({
   })
 
   const selectedPerson = people.find(person => person.id === selectedPersonId) || people[0] || null
+  const printGroupHref =
+    groupFilter !== 'ALL' && groupFilter !== 'UNGROUPED'
+      ? `/dashboard/personalista/print-qr?groupId=${encodeURIComponent(groupFilter)}`
+      : ''
+  const printPersonHref = selectedPerson
+    ? `/dashboard/personalista/print-qr?personId=${encodeURIComponent(selectedPerson.id)}`
+    : ''
 
   useEffect(() => {
     if (!selectedPerson) return
@@ -526,9 +533,15 @@ export default function PersonalistaClient({
           Google Sheets
         </button>
 
-        <button type="button" style={styles.actionButton} disabled>
-          Tlač QR
-        </button>
+        {printGroupHref ? (
+          <a href={printGroupHref} style={styles.lightButton}>
+            Tlač QR skupiny
+          </a>
+        ) : (
+          <button type="button" style={styles.actionButton} disabled>
+            Tlač QR skupiny
+          </button>
+        )}
 
         <button type="button" style={styles.actionButton} disabled>
           QR/NFC párovanie
@@ -1023,6 +1036,12 @@ export default function PersonalistaClient({
                 <button type="button" style={styles.actionButton} disabled>
                   Priradiť NFC
                 </button>
+
+                {printPersonHref && (
+                  <a href={printPersonHref} style={styles.lightButton}>
+                    Tlačiť QR osoby
+                  </a>
+                )}
               </div>
 
               {detailMode === 'profile' && (
