@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
       })),
       foodTypes: ['MASO', 'VEGE', 'DIETA'],
       yesNo: ['ANO', 'NIE'],
-      statuses: ['READY', 'OK', 'ERROR', 'LOCKED']
+      statuses: ['READY', 'UNSAVED', 'OK', 'ERROR', 'EMAIL_LOCKED', 'LOCKED']
     })
   } catch (err: any) {
     return NextResponse.json(

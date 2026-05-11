@@ -6,6 +6,9 @@ const POHODA_TOKEN = 'SEM_DAJ_GOOGLE_SHEETS_IMPORT_TOKEN';
 const HEADER_ROW = 1;
 const VALIDATION_START_ROW = 2;
 const VALIDATION_ROW_COUNT = 1000;
+const UNSAVED_COLOR = '#fce5cd';
+const EMAIL_LOCK_COLOR = '#f4cccc';
+const CLEAN_COLOR = '#ffffff';
 const COLUMNS = {
   meno: 'meno',
   priezvisko: 'priezvisko',
@@ -28,6 +31,18 @@ const COLUMNS = {
   vecere: 'vecere',
   aktualizovane: 'aktualizovane'
 };
+const EDITABLE_COLUMNS = [
+  COLUMNS.meno,
+  COLUMNS.priezvisko,
+  COLUMNS.telefon,
+  COLUMNS.strava,
+  COLUMNS.skupina,
+  COLUMNS.od,
+  COLUMNS.do,
+  COLUMNS.obed,
+  COLUMNS.vecera,
+  COLUMNS.qr
+];
 
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -39,7 +54,43 @@ function onOpen() {
     .addItem('Aktualizovať všetky riadky s user_id', 'syncRowsWithUserId')
     .addSeparator()
     .addItem('Nastavit vyberove zoznamy', 'setupDropdowns')
+    .addSeparator()
+    .addItem('Ulozit oznacene zmeny do aplikacie', 'saveSelectedRows')
+    .addItem('Ulozit vsetky neulozene zmeny', 'saveUnsavedRows')
     .addToUi();
+}
+
+function onEdit(e) {
+  if (!e || !e.range) return;
+
+  const range = e.range;
+  const sheet = range.getSheet();
+  const rowNumber = range.getRow();
+  const columnNumber = range.getColumn();
+
+  if (rowNumber <= HEADER_ROW) return;
+
+  const data = getSheetData_();
+  if (sheet.getSheetId() !== data.sheet.getSheetId()) return;
+
+  const header = normalizeHeader_(data.values[HEADER_ROW - 1][columnNumber - 1]);
+  const rowValues = data.values[rowNumber - 1];
+  const userId = String(cell_(rowValues, data.headerMap, COLUMNS.userId)).trim();
+
+  if (!userId) return;
+
+  if (header === normalizeHeader_(COLUMNS.email)) {
+    range.setBackground(EMAIL_LOCK_COLOR);
+    setCell_(sheet, rowNumber, data.headerMap, COLUMNS.stav, 'EMAIL_LOCKED');
+    setCell_(sheet, rowNumber, data.headerMap, COLUMNS.sprava, 'E-mail sa zo Sheets neuklada. Zmen ho v aplikacii alebo spusti sync.');
+    return;
+  }
+
+  if (!EDITABLE_COLUMNS.map(normalizeHeader_).includes(header)) return;
+
+  range.setBackground(UNSAVED_COLOR);
+  setCell_(sheet, rowNumber, data.headerMap, COLUMNS.stav, 'UNSAVED');
+  setCell_(sheet, rowNumber, data.headerMap, COLUMNS.sprava, 'Zmeny nie su ulozene v aplikacii.');
 }
 
 function getSheetData_() {
@@ -160,6 +211,16 @@ function setupDropdowns() {
   SpreadsheetApp.getUi().alert('Vyberove zoznamy boli nastavene.');
 }
 
+function clearRowHighlights_(sheet, rowNumber, headerMap) {
+  EDITABLE_COLUMNS.forEach(name => {
+    const column = headerMap[normalizeHeader_(name)];
+    if (column) sheet.getRange(rowNumber, column).setBackground(CLEAN_COLOR);
+  });
+
+  const emailColumn = headerMap[normalizeHeader_(COLUMNS.email)];
+  if (emailColumn) sheet.getRange(rowNumber, emailColumn).setBackground(CLEAN_COLOR);
+}
+
 function rowToPayload_(rowNumber, rowValues, headerMap) {
   return {
     rowNumber,
@@ -224,6 +285,22 @@ function rowsWithUserId_(data) {
   return rows;
 }
 
+function unsavedRowNumbers_(data) {
+  const rows = [];
+  const stavColumn = data.headerMap[normalizeHeader_(COLUMNS.stav)];
+  const userIdColumn = data.headerMap[normalizeHeader_(COLUMNS.userId)];
+
+  if (!stavColumn || !userIdColumn) return rows;
+
+  for (let row = HEADER_ROW + 1; row <= data.values.length; row += 1) {
+    const status = String(data.values[row - 1][stavColumn - 1] || '').trim().toUpperCase();
+    const userId = String(data.values[row - 1][userIdColumn - 1] || '').trim();
+    if (userId && status === 'UNSAVED') rows.push(row);
+  }
+
+  return rows;
+}
+
 function importSelectedRows() {
   importRows_(selectedRowNumbers_());
 }
@@ -262,6 +339,31 @@ function importRows_(rowNumbers, existingData) {
   writeImportResults_(data.sheet, data.headerMap, response.results || []);
 }
 
+function saveSelectedRows() {
+  saveRows_(selectedRowNumbers_());
+}
+
+function saveUnsavedRows() {
+  const data = getSheetData_();
+  saveRows_(unsavedRowNumbers_(data), data);
+}
+
+function saveRows_(rowNumbers, existingData) {
+  const data = existingData || getSheetData_();
+  const rows = rowNumbers
+    .filter(rowNumber => rowNumber > HEADER_ROW)
+    .map(rowNumber => rowToPayload_(rowNumber, data.values[rowNumber - 1], data.headerMap))
+    .filter(row => String(row.userId || '').trim());
+
+  if (!rows.length) {
+    SpreadsheetApp.getUi().alert('Nie su vybrane ziadne riadky s user_id na ulozenie.');
+    return;
+  }
+
+  const response = callApi_('/api/personalista/google-sheets/update-batch', { rows });
+  writeSyncResults_(data.sheet, data.headerMap, response.results || []);
+}
+
 function writeImportResults_(sheet, headerMap, results) {
   results.forEach(result => {
     if (!result.rowNumber) return;
@@ -270,6 +372,7 @@ function writeImportResults_(sheet, headerMap, results) {
     setCell_(sheet, result.rowNumber, headerMap, COLUMNS.sprava, result.message || '');
     if (result.userId) setCell_(sheet, result.rowNumber, headerMap, COLUMNS.userId, result.userId);
     if (result.qrCode) setCell_(sheet, result.rowNumber, headerMap, COLUMNS.qrKod, result.qrCode);
+    if (result.status === 'OK') clearRowHighlights_(sheet, result.rowNumber, headerMap);
     setTimestampCell_(sheet, result.rowNumber, headerMap, COLUMNS.aktualizovane);
   });
 }
@@ -315,6 +418,7 @@ function writeSyncResults_(sheet, headerMap, results) {
     setCell_(sheet, result.rowNumber, headerMap, COLUMNS.narokDni, result.entitlementDays || 0);
     setCell_(sheet, result.rowNumber, headerMap, COLUMNS.obedy, result.lunchClaims || 0);
     setCell_(sheet, result.rowNumber, headerMap, COLUMNS.vecere, result.dinnerClaims || 0);
+    if (result.status === 'OK') clearRowHighlights_(sheet, result.rowNumber, headerMap);
     setTimestampCell_(sheet, result.rowNumber, headerMap, COLUMNS.aktualizovane);
   });
 }

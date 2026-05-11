@@ -42,6 +42,7 @@ export default async function GoogleSheetsPage() {
           <li>V skripte nastav `POHODA_API_BASE` a `POHODA_TOKEN`.</li>
           <li>Obnov tabuľku. Pribudne menu `POHODA`.</li>
           <li>Spusti `POHODA - Nastaviť výberové zoznamy`.</li>
+          <li>Úpravy existujúcich riadkov sa označia oranžovo a uložia sa cez `POHODA - Uložiť označené zmeny do aplikácie`.</li>
         </ol>
       </section>
 
@@ -75,6 +76,11 @@ export default async function GoogleSheetsPage() {
           <div style={styles.endpointBox}>
             <b>Synchronizácia späť</b>
             <code>/api/personalista/google-sheets/sync-batch</code>
+          </div>
+
+          <div style={styles.endpointBox}>
+            <b>Uloženie zmien zo Sheets</b>
+            <code>/api/personalista/google-sheets/update-batch</code>
           </div>
         </div>
       </section>

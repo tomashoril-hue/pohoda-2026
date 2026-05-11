@@ -53,6 +53,8 @@ Po vložení Apps Scriptu a obnovení tabuľky pribudne menu `POHODA`:
 
 - `Importovať označené riadky`
 - `Importovať READY riadky`
+- `Uložiť označené zmeny do aplikácie`
+- `Uložiť všetky neuložené zmeny`
 - `Aktualizovať označené riadky`
 - `Aktualizovať všetky riadky s user_id`
 - `Nastaviť výberové zoznamy`
@@ -60,3 +62,8 @@ Po vložení Apps Scriptu a obnovení tabuľky pribudne menu `POHODA`:
 Položka `Nastaviť výberové zoznamy` doplní dropdowny pre `strava`, `skupina`, `obed`, `vecera`, `qr` a `stav`.
 Skupiny sa načítajú z aktuálnych skupín v aplikácii. Pri stĺpci `skupina` je stále povolené ručné zadanie,
 aby bolo možné zadať viac skupín cez znak `|`.
+
+Po importe riadku s `user_id` Apps Script sleduje úpravy vo vstupných bunkách. Zmenené neuložené bunky označí oranžovo
+a nastaví `stav` na `UNSAVED`. Uložiť ich vieš cez menu `Uložiť označené zmeny do aplikácie`.
+
+Stĺpec `email` sa zo Sheets späť do aplikácie neukladá. E-mail je identifikátor účtu a zmenu treba robiť v aplikácii.
