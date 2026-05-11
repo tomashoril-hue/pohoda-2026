@@ -531,9 +531,15 @@ export default function PersonalistaClient({
           Generovať prázdne QR
         </a>
 
-        <button type="button" style={styles.actionButton} disabled>
+        <a
+          href="/dashboard/personalista/import"
+          style={{
+            ...styles.lightButton,
+            textAlign: 'center'
+          }}
+        >
           Import Excel/CSV
-        </button>
+        </a>
 
         <button type="button" style={styles.actionButton} disabled>
           Google Sheets
