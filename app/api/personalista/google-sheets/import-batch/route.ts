@@ -124,7 +124,10 @@ export async function POST(req: NextRequest) {
       const validTo = dateValue(row.validTo || row.do || row.datum_do, body.defaultTo || validFrom)
       const obed = boolValue(row.obed || row.lunch, body.defaultObed !== false)
       const vecera = boolValue(row.vecera || row.dinner, body.defaultVecera === true)
-      const assignQr = boolValue(row.qr || row.assignQr || row.assign_qr, body.defaultAssignQr !== false)
+      const assignQr = boolValue(
+        row.registracia_qr || row.registraciaQr || row.qr || row.assignQr || row.assign_qr,
+        body.defaultAssignQr !== false
+      )
       const requestedGroupNames = groupNames(row.skupina || row.skupiny || row.group || row.groups)
       const groupIds = Array.from(new Set([
         ...(Array.isArray(row.groupIds) ? row.groupIds.map(text) : []),

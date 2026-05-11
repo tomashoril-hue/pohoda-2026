@@ -1,21 +1,21 @@
 # Google Sheets import
 
-Google tabuľka volá aplikáciu cez Apps Script v súbore `pohoda-apps-script.js`.
+Google tabulka vola aplikaciu cez Apps Script v subore `pohoda-apps-script.js`.
 
-## Premenné v aplikácii
+## Premenne v aplikacii
 
-V deploy prostredí nastav:
+V deploy prostredi nastav:
 
 ```env
 GOOGLE_SHEETS_IMPORT_TOKEN=dlhy-tajny-token
 GOOGLE_SHEETS_IMPORT_ACTOR_USER_ID=volitelne-user-id-admina-alebo-personalistu
 ```
 
-`GOOGLE_SHEETS_IMPORT_TOKEN` musí byť rovnaký ako `POHODA_TOKEN` v Apps Scripte.
+`GOOGLE_SHEETS_IMPORT_TOKEN` musi byt rovnaky ako `POHODA_TOKEN` v Apps Scripte.
 
-## Stĺpce v Google Sheets
+## Stlpce v Google Sheets
 
-Vstupné stĺpce:
+Vstupne stlpce:
 
 ```text
 meno
@@ -28,10 +28,10 @@ od
 do
 obed
 vecera
-qr
+registracia_qr
 ```
 
-Výstupné stĺpce doplní Apps Script automaticky:
+Vystupne stlpce doplni Apps Script automaticky:
 
 ```text
 stav
@@ -45,25 +45,28 @@ vecere
 aktualizovane
 ```
 
-Viac skupín v jednom riadku zapisuj v stĺpci `skupina` cez znak `|`, napr. `Bar|Stage`.
+Viac skupin v jednom riadku zapisuj v stlpci `skupina` cez znak `|`, napr. `Bar|Stage`.
 
-## Menu v tabuľke
+## Menu v tabulke
 
-Po vložení Apps Scriptu a obnovení tabuľky pribudne menu `POHODA`:
+Po vlozeni Apps Scriptu a obnoveni tabulky pribudne menu `POHODA`:
 
-- `Importovať označené riadky`
-- `Importovať READY riadky`
-- `Uložiť označené zmeny do aplikácie`
-- `Uložiť všetky neuložené zmeny`
-- `Aktualizovať označené riadky`
-- `Aktualizovať všetky riadky s user_id`
-- `Nastaviť výberové zoznamy`
+- `1. Nastavit vyberove zoznamy`
+- `2. Importovat oznacene nove riadky`
+- `3. Importovat READY riadky`
+- `4. Ulozit oznacene zmeny`
+- `5. Ulozit vsetky neulozene zmeny`
+- `Nacitat oznacene riadky z aplikacie`
+- `Nacitat vsetky riadky s user_id`
 
-Položka `Nastaviť výberové zoznamy` doplní dropdowny pre `strava`, `skupina`, `obed`, `vecera`, `qr` a `stav`.
-Skupiny sa načítajú z aktuálnych skupín v aplikácii. Pri stĺpci `skupina` je stále povolené ručné zadanie,
-aby bolo možné zadať viac skupín cez znak `|`.
+Polozka `1. Nastavit vyberove zoznamy` doplni dropdowny pre `strava`, `skupina`, `obed`, `vecera`, `registracia_qr` a `stav`.
+Skupiny sa nacitaju z aktualnych skupin v aplikacii. Pri stlpci `skupina` je stale povolene rucne zadanie, aby bolo mozne zadat viac skupin cez znak `|`.
 
-Po importe riadku s `user_id` Apps Script sleduje úpravy vo vstupných bunkách. Zmenené neuložené bunky označí oranžovo
-a nastaví `stav` na `UNSAVED`. Uložiť ich vieš cez menu `Uložiť označené zmeny do aplikácie`.
+Po importe riadku s `user_id` Apps Script sleduje upravy vo vstupnych bunkach. Zmenene neulozene bunky oznaci oranzovo a nastavi `stav` na `UNSAVED`.
+Ulozit ich vies cez menu `4. Ulozit oznacene zmeny` alebo `5. Ulozit vsetky neulozene zmeny`.
 
-Stĺpec `email` sa zo Sheets späť do aplikácie neukladá. E-mail je identifikátor účtu a zmenu treba robiť v aplikácii.
+Stlpec `registracia_qr` sluzi iba pri importe noveho cloveka. Aktualny QR z aplikacie sa zapisuje do `qr_kod`.
+QR sa cez Google Sheets nemeni.
+
+Stlpec `email` sa pri existujucom cloveku meni len vtedy, ak osoba v aplikacii este e-mail nema a novy e-mail nie je pouzity pri inom pouzivatelovi.
+Existujuci e-mail uctu sa cez Sheets nemeni.

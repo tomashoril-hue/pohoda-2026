@@ -7,7 +7,7 @@ const HEADER_ROW = 1;
 const VALIDATION_START_ROW = 2;
 const VALIDATION_ROW_COUNT = 1000;
 const UNSAVED_COLOR = '#fce5cd';
-const EMAIL_LOCK_COLOR = '#f4cccc';
+const LOCK_COLOR = '#f4cccc';
 const CLEAN_COLOR = '#ffffff';
 const COLUMNS = {
   meno: 'meno',
@@ -20,7 +20,7 @@ const COLUMNS = {
   do: 'do',
   obed: 'obed',
   vecera: 'vecera',
-  qr: 'qr',
+  qr: 'registracia_qr',
   stav: 'stav',
   sprava: 'sprava',
   userId: 'user_id',
@@ -40,23 +40,22 @@ const EDITABLE_COLUMNS = [
   COLUMNS.od,
   COLUMNS.do,
   COLUMNS.obed,
-  COLUMNS.vecera,
-  COLUMNS.qr
+  COLUMNS.vecera
 ];
 
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('POHODA')
-    .addItem('Importovať označené riadky', 'importSelectedRows')
-    .addItem('Importovať READY riadky', 'importReadyRows')
+    .addItem('1. Nastavit vyberove zoznamy', 'setupDropdowns')
     .addSeparator()
-    .addItem('Aktualizovať označené riadky', 'syncSelectedRows')
-    .addItem('Aktualizovať všetky riadky s user_id', 'syncRowsWithUserId')
+    .addItem('2. Importovat oznacene nove riadky', 'importSelectedRows')
+    .addItem('3. Importovat READY riadky', 'importReadyRows')
     .addSeparator()
-    .addItem('Nastavit vyberove zoznamy', 'setupDropdowns')
+    .addItem('4. Ulozit oznacene zmeny', 'saveSelectedRows')
+    .addItem('5. Ulozit vsetky neulozene zmeny', 'saveUnsavedRows')
     .addSeparator()
-    .addItem('Ulozit oznacene zmeny do aplikacie', 'saveSelectedRows')
-    .addItem('Ulozit vsetky neulozene zmeny', 'saveUnsavedRows')
+    .addItem('Nacitat oznacene riadky z aplikacie', 'syncSelectedRows')
+    .addItem('Nacitat vsetky riadky s user_id', 'syncRowsWithUserId')
     .addToUi();
 }
 
@@ -79,17 +78,24 @@ function onEdit(e) {
 
   if (!userId) return;
 
+  if (header === normalizeHeader_(COLUMNS.qr)) {
+    range.setBackground(LOCK_COLOR);
+    setStatusCell_(sheet, rowNumber, data.headerMap, 'LOCKED');
+    setCell_(sheet, rowNumber, data.headerMap, COLUMNS.sprava, 'Registracia QR plati iba pri novom importe. Aktualny QR zmen v aplikacii.');
+    return;
+  }
+
   if (header === normalizeHeader_(COLUMNS.email)) {
-    range.setBackground(EMAIL_LOCK_COLOR);
-    setCell_(sheet, rowNumber, data.headerMap, COLUMNS.stav, 'EMAIL_LOCKED');
-    setCell_(sheet, rowNumber, data.headerMap, COLUMNS.sprava, 'E-mail sa zo Sheets neuklada. Zmen ho v aplikacii alebo spusti sync.');
+    range.setBackground(LOCK_COLOR);
+    setStatusCell_(sheet, rowNumber, data.headerMap, 'UNSAVED');
+    setCell_(sheet, rowNumber, data.headerMap, COLUMNS.sprava, 'E-mail sa ulozi iba ak osoba v aplikacii este nema e-mail a novy e-mail nie je duplicitny.');
     return;
   }
 
   if (!EDITABLE_COLUMNS.map(normalizeHeader_).includes(header)) return;
 
   range.setBackground(UNSAVED_COLOR);
-  setCell_(sheet, rowNumber, data.headerMap, COLUMNS.stav, 'UNSAVED');
+  setStatusCell_(sheet, rowNumber, data.headerMap, 'UNSAVED');
   setCell_(sheet, rowNumber, data.headerMap, COLUMNS.sprava, 'Zmeny nie su ulozene v aplikacii.');
 }
 
@@ -98,7 +104,7 @@ function getSheetData_() {
   const values = sheet.getDataRange().getValues();
 
   if (values.length < HEADER_ROW) {
-    throw new Error('Tabuľka nemá hlavičku.');
+    throw new Error('Tabulka nema hlavicku.');
   }
 
   const headers = values[HEADER_ROW - 1].map(value => normalizeHeader_(value));
@@ -107,6 +113,8 @@ function getSheetData_() {
   headers.forEach((header, index) => {
     if (header) headerMap[header] = index + 1;
   });
+
+  migrateOldQrHeader_(sheet, headerMap);
 
   ensureColumns_(sheet, headerMap, [
     COLUMNS.stav,
@@ -149,6 +157,17 @@ function ensureColumns_(sheet, headerMap, names) {
   });
 }
 
+function migrateOldQrHeader_(sheet, headerMap) {
+  const oldQr = normalizeHeader_('qr');
+  const newQr = normalizeHeader_(COLUMNS.qr);
+
+  if (headerMap[oldQr] && !headerMap[newQr]) {
+    sheet.getRange(HEADER_ROW, headerMap[oldQr]).setValue(COLUMNS.qr);
+    headerMap[newQr] = headerMap[oldQr];
+    delete headerMap[oldQr];
+  }
+}
+
 function normalizeHeader_(value) {
   return String(value || '')
     .trim()
@@ -169,6 +188,23 @@ function setCell_(sheet, rowNumber, headerMap, name, value) {
   const column = headerMap[normalizeHeader_(name)];
   if (!column) return;
   sheet.getRange(rowNumber, column).setValue(value);
+}
+
+function setStatusCell_(sheet, rowNumber, headerMap, value) {
+  const column = headerMap[normalizeHeader_(COLUMNS.stav)];
+  if (!column) return;
+
+  const status = String(value || '').toUpperCase();
+  const color =
+    status === 'OK' ? '#d9ead3' :
+    status === 'ERROR' ? '#f4cccc' :
+    status === 'UNSAVED' ? UNSAVED_COLOR :
+    status === 'EMAIL_LOCKED' ? LOCK_COLOR :
+    status === 'LOCKED' ? '#eeeeee' :
+    status === 'READY' ? '#d9eaf7' :
+    '#ffffff';
+
+  sheet.getRange(rowNumber, column).setValue(value).setBackground(color);
 }
 
 function setTimestampCell_(sheet, rowNumber, headerMap, name) {
@@ -205,7 +241,7 @@ function setupDropdowns() {
   applyDropdown_(data.sheet, data.headerMap, COLUMNS.obed, options.yesNo || ['ANO', 'NIE'], false);
   applyDropdown_(data.sheet, data.headerMap, COLUMNS.vecera, options.yesNo || ['ANO', 'NIE'], false);
   applyDropdown_(data.sheet, data.headerMap, COLUMNS.qr, options.yesNo || ['ANO', 'NIE'], false);
-  applyDropdown_(data.sheet, data.headerMap, COLUMNS.stav, options.statuses || ['READY', 'OK', 'ERROR', 'LOCKED'], false);
+  applyDropdown_(data.sheet, data.headerMap, COLUMNS.stav, options.statuses || ['READY', 'UNSAVED', 'OK', 'ERROR', 'EMAIL_LOCKED', 'LOCKED'], false);
   applyDropdown_(data.sheet, data.headerMap, COLUMNS.skupina, groupNames, true);
 
   SpreadsheetApp.getUi().alert('Vyberove zoznamy boli nastavene.');
@@ -219,6 +255,9 @@ function clearRowHighlights_(sheet, rowNumber, headerMap) {
 
   const emailColumn = headerMap[normalizeHeader_(COLUMNS.email)];
   if (emailColumn) sheet.getRange(rowNumber, emailColumn).setBackground(CLEAN_COLOR);
+
+  const registrationQrColumn = headerMap[normalizeHeader_(COLUMNS.qr)];
+  if (registrationQrColumn) sheet.getRange(rowNumber, registrationQrColumn).setBackground(CLEAN_COLOR);
 }
 
 function rowToPayload_(rowNumber, rowValues, headerMap) {
@@ -235,6 +274,7 @@ function rowToPayload_(rowNumber, rowValues, headerMap) {
     obed: cell_(rowValues, headerMap, COLUMNS.obed),
     vecera: cell_(rowValues, headerMap, COLUMNS.vecera),
     qr: cell_(rowValues, headerMap, COLUMNS.qr),
+    registracia_qr: cell_(rowValues, headerMap, COLUMNS.qr),
     userId: cell_(rowValues, headerMap, COLUMNS.userId),
     qrKod: cell_(rowValues, headerMap, COLUMNS.qrKod)
   };
@@ -322,7 +362,7 @@ function importRows_(rowNumbers, existingData) {
       const userId = String(cell_(rowValues, data.headerMap, COLUMNS.userId)).trim();
 
       if (userId || status === 'OK' || status === 'LOCKED') {
-        setCell_(data.sheet, rowNumber, data.headerMap, COLUMNS.sprava, 'Riadok už má user_id alebo stav OK, import preskočený.');
+        setCell_(data.sheet, rowNumber, data.headerMap, COLUMNS.sprava, 'Riadok uz ma user_id alebo stav OK, import preskoceny.');
         setTimestampCell_(data.sheet, rowNumber, data.headerMap, COLUMNS.aktualizovane);
         return;
       }
@@ -331,7 +371,7 @@ function importRows_(rowNumbers, existingData) {
     });
 
   if (!rows.length) {
-    SpreadsheetApp.getUi().alert('Nie sú vybrané žiadne nové riadky na import.');
+    SpreadsheetApp.getUi().alert('Nie su vybrane ziadne nove riadky na import.');
     return;
   }
 
@@ -352,11 +392,15 @@ function saveRows_(rowNumbers, existingData) {
   const data = existingData || getSheetData_();
   const rows = rowNumbers
     .filter(rowNumber => rowNumber > HEADER_ROW)
+    .filter(rowNumber => {
+      const status = String(cell_(data.values[rowNumber - 1], data.headerMap, COLUMNS.stav)).trim().toUpperCase();
+      return status !== 'LOCKED';
+    })
     .map(rowNumber => rowToPayload_(rowNumber, data.values[rowNumber - 1], data.headerMap))
     .filter(row => String(row.userId || '').trim());
 
   if (!rows.length) {
-    SpreadsheetApp.getUi().alert('Nie su vybrane ziadne riadky s user_id na ulozenie.');
+    SpreadsheetApp.getUi().alert('Nie su vybrane ziadne riadky s user_id na ulozenie. Ak je stav LOCKED, najprv nacitaj riadok z aplikacie.');
     return;
   }
 
@@ -368,7 +412,7 @@ function writeImportResults_(sheet, headerMap, results) {
   results.forEach(result => {
     if (!result.rowNumber) return;
 
-    setCell_(sheet, result.rowNumber, headerMap, COLUMNS.stav, result.status || '');
+    setStatusCell_(sheet, result.rowNumber, headerMap, result.status || '');
     setCell_(sheet, result.rowNumber, headerMap, COLUMNS.sprava, result.message || '');
     if (result.userId) setCell_(sheet, result.rowNumber, headerMap, COLUMNS.userId, result.userId);
     if (result.qrCode) setCell_(sheet, result.rowNumber, headerMap, COLUMNS.qrKod, result.qrCode);
@@ -393,7 +437,7 @@ function syncRows_(rowNumbers, existingData) {
     .map(rowNumber => rowToPayload_(rowNumber, data.values[rowNumber - 1], data.headerMap));
 
   if (!rows.length) {
-    SpreadsheetApp.getUi().alert('Nie sú vybrané žiadne dátové riadky.');
+    SpreadsheetApp.getUi().alert('Nie su vybrane ziadne datove riadky.');
     return;
   }
 
@@ -405,7 +449,7 @@ function writeSyncResults_(sheet, headerMap, results) {
   results.forEach(result => {
     if (!result.rowNumber) return;
 
-    setCell_(sheet, result.rowNumber, headerMap, COLUMNS.stav, result.status || '');
+    setStatusCell_(sheet, result.rowNumber, headerMap, result.status || '');
     setCell_(sheet, result.rowNumber, headerMap, COLUMNS.sprava, result.message || '');
     if (result.userId) setCell_(sheet, result.rowNumber, headerMap, COLUMNS.userId, result.userId);
     if (result.meno) setCell_(sheet, result.rowNumber, headerMap, COLUMNS.meno, result.meno);

@@ -22,12 +22,12 @@ export default async function GoogleSheetsPage() {
           <div style={styles.breadcrumb}>Personalista / Google Sheets</div>
           <h1 style={styles.title}>Google Sheets napojenie</h1>
           <p style={styles.subtitle}>
-            Google tabuľka bude volať API aplikácie cez Apps Script a výsledky zapisovať späť do riadkov.
+            Tabulka vola API aplikacie cez Apps Script a vysledky zapisuje spat do riadkov.
           </p>
         </div>
 
         <a href="/dashboard/personalista" style={styles.lightButton}>
-          Späť
+          Spat
         </a>
       </header>
 
@@ -35,27 +35,37 @@ export default async function GoogleSheetsPage() {
         <h2 style={styles.sectionTitle}>Postup</h2>
 
         <ol style={styles.list}>
-          <li>V deploy prostredí nastav `GOOGLE_SHEETS_IMPORT_TOKEN`.</li>
-          <li>Voliteľne nastav `GOOGLE_SHEETS_IMPORT_ACTOR_USER_ID` na ID admina alebo personalistu.</li>
+          <li>V deploy prostredi nastav `GOOGLE_SHEETS_IMPORT_TOKEN`.</li>
+          <li>Volitelne nastav `GOOGLE_SHEETS_IMPORT_ACTOR_USER_ID` na ID admina alebo personalistu.</li>
           <li>V Google Sheets otvor `Extensions - Apps Script`.</li>
-          <li>Vlož obsah súboru `docs/google-sheets/pohoda-apps-script.js`.</li>
+          <li>Vloz obsah suboru `docs/google-sheets/pohoda-apps-script.js`.</li>
           <li>V skripte nastav `POHODA_API_BASE` a `POHODA_TOKEN`.</li>
-          <li>Obnov tabuľku. Pribudne menu `POHODA`.</li>
-          <li>Spusti `POHODA - Nastaviť výberové zoznamy`.</li>
-          <li>Úpravy existujúcich riadkov sa označia oranžovo a uložia sa cez `POHODA - Uložiť označené zmeny do aplikácie`.</li>
+          <li>Obnov tabulku. Pribudne menu `POHODA`.</li>
+          <li>Spusti `POHODA - 1. Nastavit vyberove zoznamy`.</li>
+          <li>Upravy existujucich riadkov sa oznacia oranzovo a ulozia sa cez `POHODA - 4. Ulozit oznacene zmeny`.</li>
         </ol>
       </section>
 
       <section style={styles.panel}>
-        <h2 style={styles.sectionTitle}>Stĺpce tabuľky</h2>
+        <h2 style={styles.sectionTitle}>Stlpce tabulky</h2>
 
         <code style={styles.code}>
-          meno, priezvisko, email, telefon, strava, skupina, od, do, obed, vecera, qr
+          meno, priezvisko, email, telefon, strava, skupina, od, do, obed, vecera, registracia_qr
         </code>
 
         <p style={styles.note}>
-          Apps Script automaticky doplní výstupné stĺpce `stav`, `sprava`, `user_id`, `qr_kod`, `skupiny_app`,
+          Apps Script automaticky doplni vystupne stlpce `stav`, `sprava`, `user_id`, `qr_kod`, `skupiny_app`,
           `narok_dni`, `obedy`, `vecere` a `aktualizovane`.
+        </p>
+
+        <p style={styles.note}>
+          `registracia_qr` rozhoduje iba pri importe noveho cloveka. Aktualny QR z aplikacie sa zobrazuje v `qr_kod`
+          a QR sa cez Google Sheets nemeni.
+        </p>
+
+        <p style={styles.note}>
+          E-mail sa cez Sheets doplni iba vtedy, ked osoba v aplikacii este nema e-mail a novy e-mail nie je duplicitny.
+          Existujuci e-mail sa meni iba v aplikacii.
         </p>
       </section>
 
@@ -64,7 +74,7 @@ export default async function GoogleSheetsPage() {
 
         <div style={styles.endpointGrid}>
           <div style={styles.endpointBox}>
-            <b>Výberové zoznamy</b>
+            <b>Vyberove zoznamy</b>
             <code>/api/personalista/google-sheets/options</code>
           </div>
 
@@ -74,12 +84,12 @@ export default async function GoogleSheetsPage() {
           </div>
 
           <div style={styles.endpointBox}>
-            <b>Synchronizácia späť</b>
+            <b>Synchronizacia spat</b>
             <code>/api/personalista/google-sheets/sync-batch</code>
           </div>
 
           <div style={styles.endpointBox}>
-            <b>Uloženie zmien zo Sheets</b>
+            <b>Ulozenie zmien zo Sheets</b>
             <code>/api/personalista/google-sheets/update-batch</code>
           </div>
         </div>

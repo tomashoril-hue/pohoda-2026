@@ -5,6 +5,11 @@ function text(value: any) {
   return String(value || '').trim()
 }
 
+function email(value: any) {
+  const clean = text(value).toLowerCase()
+  return clean || null
+}
+
 function authorized(req: NextRequest, body: any) {
   const expected = process.env.GOOGLE_SHEETS_IMPORT_TOKEN
   const provided = req.headers.get('x-pohoda-token') || body?.token || ''
@@ -184,11 +189,56 @@ export async function POST(req: NextRequest) {
 
       const meno = text(row.meno || row.first_name) || before.meno || ''
       const priezvisko = text(row.priezvisko || row.last_name || row.surname) || before.priezvisko || ''
+      const requestedEmail = email(row.email || row.mail)
       const telefon = text(row.telefon || row.phone || row.tel) || null
       const typStravy = food(row.typStravy || row.typ_stravy || row.strava || row.food) || before.typ_stravy || 'MASO'
 
       if (!meno || !priezvisko) {
         rowResults.push({ rowNumber, status: 'ERROR', message: 'Meno a priezvisko su povinne.' })
+        continue
+      }
+
+      let nextEmail = before.email || null
+
+      if (requestedEmail && before.email && requestedEmail !== before.email) {
+        rowResults.push({
+          rowNumber,
+          status: 'ERROR',
+          message: 'E-mail uz existujucej osoby sa cez Google Sheets nemeni. Zmen ho v aplikacii.'
+        })
+        continue
+      }
+
+      if (requestedEmail && !before.email) {
+        const { data: existingEmail, error: existingEmailError } = await supabaseServer
+          .from('users')
+          .select('id')
+          .eq('email', requestedEmail)
+          .neq('id', userId)
+          .maybeSingle()
+
+        if (existingEmailError) {
+          rowResults.push({ rowNumber, status: 'ERROR', message: existingEmailError.message })
+          continue
+        }
+
+        if (existingEmail) {
+          rowResults.push({ rowNumber, status: 'ERROR', message: 'Tento e-mail uz pouziva ina osoba.' })
+          continue
+        }
+
+        nextEmail = requestedEmail
+      }
+
+      const requestedGroupNames = groupNames(row.skupina || row.skupiny || row.group || row.groups)
+      const targetGroupIds = requestedGroupNames.length > 0
+        ? Array.from(new Set(
+            requestedGroupNames.map(name => groupByName.get(normalizeKey(name))?.id || '').filter(Boolean)
+          ))
+        : []
+
+      if (requestedGroupNames.length > 0 && targetGroupIds.length !== requestedGroupNames.length) {
+        rowResults.push({ rowNumber, status: 'ERROR', message: 'Niektora skupina sa nenasla.' })
         continue
       }
 
@@ -198,6 +248,7 @@ export async function POST(req: NextRequest) {
         .update({
           meno,
           priezvisko,
+          email: nextEmail,
           telefon,
           typ_stravy: typStravy,
           updated_at: now
@@ -209,18 +260,7 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      const requestedGroupNames = groupNames(row.skupina || row.skupiny || row.group || row.groups)
-
       if (requestedGroupNames.length > 0) {
-        const targetGroupIds = Array.from(new Set(
-          requestedGroupNames.map(name => groupByName.get(normalizeKey(name))?.id || '').filter(Boolean)
-        ))
-
-        if (targetGroupIds.length !== requestedGroupNames.length) {
-          rowResults.push({ rowNumber, status: 'ERROR', message: 'Niektora skupina sa nenasla.' })
-          continue
-        }
-
         const { data: currentMemberships, error: membershipLoadError } = await supabaseServer
           .from('group_members')
           .select('id, group_id, role')
@@ -347,9 +387,10 @@ export async function POST(req: NextRequest) {
             row_number: rowNumber,
             meno,
             priezvisko,
+            email: nextEmail,
             telefon,
             typ_stravy: typStravy,
-            email_ignored: true,
+            email_updated: nextEmail !== before.email,
             claims_updated: shouldUpdateClaims
           }
         })
