@@ -163,9 +163,13 @@ function selectedRowNumbers_() {
 function readyRowNumbers_(data) {
   const rows = [];
   const stavColumn = data.headerMap[normalizeHeader_(COLUMNS.stav)];
+  const userIdColumn = data.headerMap[normalizeHeader_(COLUMNS.userId)];
 
   for (let row = HEADER_ROW + 1; row <= data.values.length; row += 1) {
     const status = String(stavColumn ? data.values[row - 1][stavColumn - 1] : '').trim().toUpperCase();
+    const userId = String(userIdColumn ? data.values[row - 1][userIdColumn - 1] : '').trim();
+
+    if (userId || status === 'OK' || status === 'LOCKED') continue;
     if (!status || status === 'READY') rows.push(row);
   }
 
@@ -197,12 +201,26 @@ function importReadyRows() {
 
 function importRows_(rowNumbers, existingData) {
   const data = existingData || getSheetData_();
-  const rows = rowNumbers
+  const rows = [];
+
+  rowNumbers
     .filter(rowNumber => rowNumber > HEADER_ROW)
-    .map(rowNumber => rowToPayload_(rowNumber, data.values[rowNumber - 1], data.headerMap));
+    .forEach(rowNumber => {
+      const rowValues = data.values[rowNumber - 1];
+      const status = String(cell_(rowValues, data.headerMap, COLUMNS.stav)).trim().toUpperCase();
+      const userId = String(cell_(rowValues, data.headerMap, COLUMNS.userId)).trim();
+
+      if (userId || status === 'OK' || status === 'LOCKED') {
+        setCell_(data.sheet, rowNumber, data.headerMap, COLUMNS.sprava, 'Riadok už má user_id alebo stav OK, import preskočený.');
+        setTimestampCell_(data.sheet, rowNumber, data.headerMap, COLUMNS.aktualizovane);
+        return;
+      }
+
+      rows.push(rowToPayload_(rowNumber, rowValues, data.headerMap));
+    });
 
   if (!rows.length) {
-    SpreadsheetApp.getUi().alert('Nie sú vybrané žiadne dátové riadky.');
+    SpreadsheetApp.getUi().alert('Nie sú vybrané žiadne nové riadky na import.');
     return;
   }
 
