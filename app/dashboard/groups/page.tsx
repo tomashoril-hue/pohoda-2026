@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
+import { canIssueForGroupByRole, canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import GroupsClient from './GroupsClient'
 
@@ -43,6 +44,9 @@ export default async function GroupsPage() {
     )
   }
 
+  const globalAccess = await getGlobalAccess(user.id)
+  const isAdmin = globalAccess.isAdmin
+
   const myMemberships = (memberships || []).filter((membership: any) => {
     return membership.user_id === user.id
   })
@@ -57,8 +61,31 @@ export default async function GroupsPage() {
   )
 
   const visibleMemberships = (memberships || []).filter((membership: any) => {
+    if (isAdmin) return true
+
     return myGroupIds.includes(membership.group_id)
   })
+
+  let adminGroups: any[] = []
+
+  if (isAdmin) {
+    const { data: adminGroupsData, error: adminGroupsError } = await supabaseServer
+      .from('groups')
+      .select('id, name, created_at')
+      .order('created_at', { ascending: true })
+
+    if (adminGroupsError) {
+      return (
+        <main style={styles.page}>
+          <section style={styles.errorBox}>
+            {adminGroupsError.message}
+          </section>
+        </main>
+      )
+    }
+
+    adminGroups = adminGroupsData || []
+  }
 
   const groupCounts = new Map<string, number>()
 
@@ -69,20 +96,30 @@ export default async function GroupsPage() {
     )
   })
 
-  const groups = myMemberships.map((membership: any) => {
+  const groupSources = isAdmin
+    ? adminGroups.map(group => ({
+        group_id: group.id,
+        role: groupRoleMap.get(group.id) || 'ADMIN',
+        groups: group
+      }))
+    : myMemberships
+
+  const groups = groupSources.map((membership: any) => {
     const group = Array.isArray(membership.groups)
       ? membership.groups[0]
       : membership.groups
 
-    const role = groupRoleMap.get(membership.group_id) || ''
+    const role = isAdmin
+      ? groupRoleMap.get(membership.group_id) || 'ADMIN'
+      : groupRoleMap.get(membership.group_id) || ''
 
     return {
       id: group?.id || membership.group_id,
       name: group?.name || 'Skupina bez názvu',
       role,
       membersCount: groupCounts.get(membership.group_id) || 0,
-      canManage: role === 'MANAGER' || role === 'OWNER',
-      canIssue: role === 'MANAGER' || role === 'POVERENY' || role === 'OWNER'
+      canManage: canManageGroupByRole(role, globalAccess),
+      canIssue: canIssueForGroupByRole(role, globalAccess)
     }
   })
 

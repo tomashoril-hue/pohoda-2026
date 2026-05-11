@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
+import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import PersonalistaClient from './PersonalistaClient'
 
@@ -60,16 +61,8 @@ export default async function PersonalistaPage() {
 
   const allMemberships = memberships || []
 
-  const { data: globalRoles } = await supabaseServer
-    .from('app_user_roles')
-    .select('role')
-    .eq('user_id', user.id)
-    .eq('active', true)
-
-  const isGlobalPersonalista = (globalRoles || []).some((item: any) => {
-    const role = String(item.role || '').toUpperCase()
-    return role === 'ADMIN' || role === 'PERSONALISTA'
-  })
+  const globalAccess = await getGlobalAccess(user.id)
+  const isGlobalPersonalista = globalAccess.canUsePersonalista
 
   const myManageableGroupIds = allMemberships
     .filter((membership: any) => {

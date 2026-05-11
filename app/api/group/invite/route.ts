@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { getCurrentUser } from '@/lib/auth'
+import { canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import { Resend } from 'resend'
 
@@ -26,6 +27,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Nemôžete pozvať sám seba.' }, { status: 400 })
     }
 
+    const globalAccess = await getGlobalAccess(user.id)
+
     let membershipQuery = supabaseServer
       .from('group_members')
       .select('group_id, role')
@@ -37,16 +40,19 @@ export async function POST(req: NextRequest) {
 
     const { data: membership } = await membershipQuery.maybeSingle()
 
-    if (!membership) {
+    if (!membership && !globalAccess.isAdmin) {
       return NextResponse.json({ error: 'Nie ste v skupine.' }, { status: 400 })
     }
 
-    const myRole = String(membership.role || '').toUpperCase()
+    if (!membership && globalAccess.isAdmin && !requestedGroupId) {
+      return NextResponse.json({ error: 'ChĂ˝ba skupina pre pozvĂˇnku.' }, { status: 400 })
+    }
+
+    const effectiveGroupId = membership?.group_id || requestedGroupId
+    const myRole = String(membership?.role || '').toUpperCase()
 
     // OWNER nechávame dočasne pre staré dáta. Nový model: skupinu spravuje MANAGER.
-    const canInvite =
-      myRole === 'MANAGER' ||
-      myRole === 'OWNER'
+    const canInvite = canManageGroupByRole(myRole, globalAccess)
 
     if (!canInvite) {
       return NextResponse.json(
@@ -58,7 +64,7 @@ export async function POST(req: NextRequest) {
     const { data: group } = await supabaseServer
       .from('groups')
       .select('name')
-      .eq('id', membership.group_id)
+      .eq('id', effectiveGroupId)
       .single()
 
     const { data: invitedUser, error: invitedUserError } = await supabaseServer
@@ -87,7 +93,7 @@ export async function POST(req: NextRequest) {
           name
         )
       `)
-      .eq('group_id', membership.group_id)
+      .eq('group_id', effectiveGroupId)
       .eq('user_id', invitedUser.id)
       .maybeSingle()
 
@@ -108,7 +114,7 @@ export async function POST(req: NextRequest) {
       .from('group_invites')
       .select('id, email, group_id, status, created_at')
       .eq('email', email)
-      .eq('group_id', membership.group_id)
+      .eq('group_id', effectiveGroupId)
       .eq('status', 'PENDING')
       .maybeSingle()
 
@@ -125,7 +131,7 @@ export async function POST(req: NextRequest) {
     const { error: inviteError } = await supabaseServer
       .from('group_invites')
       .insert({
-        group_id: membership.group_id,
+        group_id: effectiveGroupId,
         email,
         token,
         created_by: user.id,

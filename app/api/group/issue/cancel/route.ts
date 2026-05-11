@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function POST(req: NextRequest) {
@@ -47,6 +48,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const globalAccess = await getGlobalAccess(user.id)
+
     const { data: membership, error: membershipError } = await supabaseServer
       .from('group_members')
       .select('role')
@@ -58,16 +61,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: membershipError.message }, { status: 500 })
     }
 
-    if (!membership) {
+    if (!membership && !globalAccess.isAdmin) {
       return NextResponse.json(
         { error: 'Nie ste členom tejto skupiny.' },
         { status: 403 }
       )
     }
 
-    const myRole = String(membership.role || '').toUpperCase()
+    const myRole = String(membership?.role || '').toUpperCase()
 
-    if (myRole !== 'MANAGER' && myRole !== 'POVERENY') {
+    if (!canIssueForGroupByRole(myRole, globalAccess)) {
       return NextResponse.json(
         { error: 'Nemáte oprávnenie zrušiť prípravu hromadného výdaja.' },
         { status: 403 }

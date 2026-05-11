@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function POST(req: NextRequest) {
@@ -36,6 +37,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const globalAccess = await getGlobalAccess(user.id)
+
     const { data: membership } = await supabaseServer
       .from('group_members')
       .select('group_id, role')
@@ -43,19 +46,17 @@ export async function POST(req: NextRequest) {
       .eq('user_id', user.id)
       .maybeSingle()
 
-    if (!membership) {
+    if (!membership && !globalAccess.isAdmin) {
       return NextResponse.json(
         { error: 'Táto pozvánka nepatrí do vašej skupiny.' },
         { status: 403 }
       )
     }
 
-    const myRole = String(membership.role || '').toUpperCase()
+    const myRole = String(membership?.role || '').toUpperCase()
 
     // OWNER nechávame dočasne pre staré dáta. Nový model: skupinu spravuje MANAGER.
-    const canCancelInvite =
-      myRole === 'MANAGER' ||
-      myRole === 'OWNER'
+    const canCancelInvite = canManageGroupByRole(myRole, globalAccess)
 
     if (!canCancelInvite) {
       return NextResponse.json(

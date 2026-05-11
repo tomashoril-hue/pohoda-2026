@@ -83,6 +83,7 @@ export default function PersonalistaClient({
   const [createLoading, setCreateLoading] = useState(false)
   const [createMessage, setCreateMessage] = useState('')
   const [createMessageType, setCreateMessageType] = useState<'ok' | 'error' | ''>('')
+  const [createGroupSelectId, setCreateGroupSelectId] = useState(groups[0]?.id || '')
   const [createForm, setCreateForm] = useState({
     meno: '',
     priezvisko: '',
@@ -154,6 +155,19 @@ export default function PersonalistaClient({
     }
   }, [people])
 
+  const selectedCreateGroups = useMemo(() => {
+    return groups.filter(group => createForm.groupIds.includes(group.id))
+  }, [groups, createForm.groupIds])
+
+  const availableCreateGroups = useMemo(() => {
+    return groups.filter(group => !createForm.groupIds.includes(group.id))
+  }, [groups, createForm.groupIds])
+
+  const safeCreateGroupSelectId =
+    availableCreateGroups.some(group => group.id === createGroupSelectId)
+      ? createGroupSelectId
+      : availableCreateGroups[0]?.id || ''
+
   const updateCreateForm = (key: string, value: any) => {
     setCreateForm(prev => ({
       ...prev,
@@ -161,17 +175,36 @@ export default function PersonalistaClient({
     }))
   }
 
-  const toggleCreateGroup = (groupId: string) => {
-    setCreateForm(prev => {
-      const hasGroup = prev.groupIds.includes(groupId)
+  const addCreateGroup = () => {
+    if (!safeCreateGroupSelectId) return
 
-      return {
-        ...prev,
-        groupIds: hasGroup
-          ? prev.groupIds.filter(id => id !== groupId)
-          : [...prev.groupIds, groupId]
-      }
-    })
+    setCreateForm(prev => ({
+      ...prev,
+      groupIds: prev.groupIds.includes(safeCreateGroupSelectId)
+        ? prev.groupIds
+        : [...prev.groupIds, safeCreateGroupSelectId]
+    }))
+
+    const nextAvailable = availableCreateGroups.find(group => group.id !== safeCreateGroupSelectId)
+    setCreateGroupSelectId(nextAvailable?.id || '')
+  }
+
+  const removeCreateGroup = (groupId: string) => {
+    setCreateForm(prev => ({
+      ...prev,
+      groupIds: prev.groupIds.filter(id => id !== groupId)
+    }))
+
+    setCreateGroupSelectId(groupId)
+  }
+
+  const clearCreateGroups = () => {
+    setCreateForm(prev => ({
+      ...prev,
+      groupIds: []
+    }))
+
+    setCreateGroupSelectId(groups[0]?.id || '')
   }
 
   const resetCreateForm = () => {
@@ -188,6 +221,7 @@ export default function PersonalistaClient({
       vecera: false,
       assignQr: true
     })
+    setCreateGroupSelectId(groups[0]?.id || '')
   }
 
   const createPerson = async () => {
@@ -449,24 +483,68 @@ export default function PersonalistaClient({
               <div style={styles.optionTitle}>Skupiny</div>
               <div style={styles.optionHint}>Ak neoznačíš skupinu, osoba vznikne bez skupiny.</div>
 
-              <div style={styles.checkList}>
-                {groups.map(group => (
-                  <label key={group.id} style={styles.checkRow}>
-                    <input
-                      type="checkbox"
-                      checked={createForm.groupIds.includes(group.id)}
-                      onChange={() => toggleCreateGroup(group.id)}
-                      disabled={createLoading}
-                      style={styles.checkbox}
-                    />
-                    <span>{group.name}</span>
-                  </label>
-                ))}
+              <div style={styles.groupSelectRow}>
+                <select
+                  value={safeCreateGroupSelectId}
+                  onChange={event => setCreateGroupSelectId(event.target.value)}
+                  style={styles.input}
+                  disabled={createLoading || availableCreateGroups.length === 0}
+                >
+                  {availableCreateGroups.length === 0 ? (
+                    <option value="">Žiadna ďalšia skupina</option>
+                  ) : (
+                    availableCreateGroups.map(group => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+
+                <button
+                  type="button"
+                  style={styles.lightButton}
+                  onClick={addCreateGroup}
+                  disabled={createLoading || !safeCreateGroupSelectId}
+                >
+                  Pridať
+                </button>
               </div>
+
+              <div style={styles.selectedGroupList}>
+                {selectedCreateGroups.length === 0 ? (
+                  <span style={styles.emptyGroupSelection}>Bez skupiny</span>
+                ) : (
+                  selectedCreateGroups.map(group => (
+                    <span key={group.id} style={styles.selectedGroupPill}>
+                      {group.name}
+                      <button
+                        type="button"
+                        style={styles.removePillButton}
+                        onClick={() => removeCreateGroup(group.id)}
+                        disabled={createLoading}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+
+              {selectedCreateGroups.length > 0 && (
+                <button
+                  type="button"
+                  style={styles.tinyTextButton}
+                  onClick={clearCreateGroups}
+                  disabled={createLoading}
+                >
+                  Vytvoriť bez skupiny
+                </button>
+              )}
             </div>
 
             <div style={styles.optionBox}>
-              <div style={styles.optionTitle}>Nárok a identifikácia</div>
+              <div style={styles.optionTitle}>Nárok</div>
 
               <div style={styles.checkList}>
                 <label style={styles.checkRow}>
@@ -490,7 +568,14 @@ export default function PersonalistaClient({
                   />
                   <span>Večera</span>
                 </label>
+              </div>
+            </div>
 
+            <div style={styles.optionBox}>
+              <div style={styles.optionTitle}>Priraďovanie QR</div>
+              <div style={styles.optionHint}>Použije sa voľný nepriradený QR z databázy.</div>
+
+              <div style={styles.checkList}>
                 <label style={styles.checkRow}>
                   <input
                     type="checkbox"
@@ -1115,7 +1200,7 @@ const styles: Record<string, CSSProperties> = {
   },
   createOptionsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',
     gap: 10
   },
   optionBox: {
@@ -1136,6 +1221,60 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 12,
     fontWeight: 800,
     color: '#6b7280'
+  },
+  groupSelectRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 8,
+    alignItems: 'center'
+  },
+  selectedGroupList: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
+    minHeight: 30
+  },
+  emptyGroupSelection: {
+    borderRadius: 999,
+    padding: '7px 10px',
+    background: '#f3f4f6',
+    color: '#6b7280',
+    fontSize: 12,
+    fontWeight: 900
+  },
+  selectedGroupPill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    padding: '6px 7px 6px 10px',
+    background: '#eff6ff',
+    color: '#1d4ed8',
+    border: '1px solid #bfdbfe',
+    fontSize: 12,
+    fontWeight: 900
+  },
+  removePillButton: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    border: '1px solid #bfdbfe',
+    background: '#fff',
+    color: '#1d4ed8',
+    fontSize: 15,
+    fontWeight: 950,
+    lineHeight: 1,
+    cursor: 'pointer'
+  },
+  tinyTextButton: {
+    justifySelf: 'start',
+    border: 0,
+    background: 'transparent',
+    color: '#1d4ed8',
+    padding: 0,
+    fontSize: 12,
+    fontWeight: 950,
+    cursor: 'pointer'
   },
   checkList: {
     display: 'grid',

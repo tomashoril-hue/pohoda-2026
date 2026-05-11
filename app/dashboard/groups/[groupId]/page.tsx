@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
+import { canIssueForGroupByRole, canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import GroupDetailClient from './GroupDetailClient'
 
@@ -22,6 +23,7 @@ export default async function GroupDetailPage({
   }
 
   const { groupId } = await params
+  const globalAccess = await getGlobalAccess(user.id)
 
   const { data: myMembership, error: membershipError } = await supabaseServer
     .from('group_members')
@@ -37,18 +39,40 @@ export default async function GroupDetailPage({
     .eq('user_id', user.id)
     .maybeSingle()
 
-  if (membershipError || !myMembership) {
+  if (membershipError) {
     redirect('/dashboard/groups')
   }
 
-  const myRole = String(myMembership.role || '').toUpperCase()
-  const group = Array.isArray(myMembership.groups)
-    ? myMembership.groups[0]
-    : myMembership.groups
+  const membershipGroup = myMembership?.groups
+  let group: any = Array.isArray(membershipGroup)
+    ? membershipGroup[0]
+    : membershipGroup
 
-  const canManage = myRole === 'MANAGER' || myRole === 'OWNER'
-  const canInvite = myRole === 'MANAGER' || myRole === 'OWNER'
-  const canIssue = myRole === 'MANAGER' || myRole === 'POVERENY' || myRole === 'OWNER'
+  if (!myMembership && globalAccess.isAdmin) {
+    const { data: adminGroup } = await supabaseServer
+      .from('groups')
+      .select('id, name')
+      .eq('id', groupId)
+      .maybeSingle()
+
+    group = adminGroup
+  }
+
+  if (!myMembership && !globalAccess.isAdmin) {
+    redirect('/dashboard/groups')
+  }
+
+  if (!group) {
+    redirect('/dashboard/groups')
+  }
+
+  const myRole = globalAccess.isAdmin
+    ? String(myMembership?.role || 'ADMIN').toUpperCase()
+    : String(myMembership?.role || '').toUpperCase()
+
+  const canManage = canManageGroupByRole(myRole, globalAccess)
+  const canInvite = canManage
+  const canIssue = canIssueForGroupByRole(myRole, globalAccess)
 
   const { data: membersData } = await supabaseServer
     .from('group_members')

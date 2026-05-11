@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function POST(req: NextRequest) {
@@ -61,6 +62,8 @@ export async function POST(req: NextRequest) {
 
     const groupId = groupIds[0]
 
+    const globalAccess = await getGlobalAccess(user.id)
+
     const { data: myMembership, error: myMembershipError } = await supabaseServer
       .from('group_members')
       .select('id, group_id, user_id, role')
@@ -77,7 +80,7 @@ export async function POST(req: NextRequest) {
 
     const myRole = String(myMembership?.role || '').toUpperCase()
 
-    if (!myMembership || (myRole !== 'MANAGER' && myRole !== 'OWNER')) {
+    if ((!myMembership && !globalAccess.isAdmin) || !canManageGroupByRole(myRole, globalAccess)) {
       return NextResponse.json(
         { error: 'Nemáte oprávnenie upravovať členov tejto skupiny.' },
         { status: 403 }
@@ -89,7 +92,7 @@ export async function POST(req: NextRequest) {
     })
 
     if (action === 'REMOVE') {
-      if (selfSelected) {
+      if (selfSelected && !globalAccess.isAdmin) {
         return NextResponse.json(
           { error: 'Nemôžete odobrať sám seba zo skupiny cez hromadnú úpravu.' },
           { status: 400 }
@@ -168,7 +171,7 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      if (selfSelected && role !== myRole) {
+      if (selfSelected && !globalAccess.isAdmin && role !== myRole) {
         return NextResponse.json(
           { error: 'Nemôžete zmeniť vlastnú rolu cez hromadnú úpravu.' },
           { status: 400 }

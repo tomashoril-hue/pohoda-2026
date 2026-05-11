@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function POST(req: NextRequest) {
@@ -19,13 +20,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Chýba člen.' }, { status: 400 })
     }
 
+    const globalAccess = await getGlobalAccess(user.id)
+
     const { data: myMembership } = await supabaseServer
       .from('group_members')
       .select('group_id, role')
       .eq('user_id', user.id)
       .maybeSingle()
 
-    if (!myMembership || myMembership.role !== 'OWNER') {
+    if ((!myMembership && !globalAccess.isAdmin) || !canManageGroupByRole(myMembership?.role, globalAccess)) {
       return NextResponse.json({ error: 'Nemáte oprávnenie.' }, { status: 403 })
     }
 
@@ -39,7 +42,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Člen neexistuje.' }, { status: 404 })
     }
 
-    if (targetMember.group_id !== myMembership.group_id) {
+    if (!globalAccess.isAdmin && targetMember.group_id !== myMembership?.group_id) {
       return NextResponse.json({ error: 'Člen nie je vo vašej skupine.' }, { status: 403 })
     }
 

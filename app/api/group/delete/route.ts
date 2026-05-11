@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function POST(req: NextRequest) {
@@ -23,6 +24,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const globalAccess = await getGlobalAccess(user.id)
+
     const { data: membership, error: membershipError } = await supabaseServer
       .from('group_members')
       .select('role')
@@ -36,7 +39,7 @@ export async function POST(req: NextRequest) {
 
     const myRole = String(membership?.role || '').toUpperCase()
 
-    if (!membership || (myRole !== 'MANAGER' && myRole !== 'OWNER')) {
+    if ((!membership && !globalAccess.isAdmin) || !canManageGroupByRole(myRole, globalAccess)) {
       return NextResponse.json(
         { error: 'Skupinu môže zrušiť iba MANAGER.' },
         { status: 403 }

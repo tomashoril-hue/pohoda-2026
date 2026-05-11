@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function normalizeMealType(value: any) {
@@ -81,6 +82,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const globalAccess = await getGlobalAccess(user.id)
+
     const { data: membership, error: membershipError } = await supabaseServer
       .from('group_members')
       .select('group_id, role')
@@ -95,18 +98,15 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!membership) {
+    if (!membership && !globalAccess.isAdmin) {
       return NextResponse.json(
         { error: 'Nie ste členom tejto skupiny.' },
         { status: 403 }
       )
     }
 
-    const myRole = String(membership.role || '').toUpperCase()
-    const canCreateIssue =
-      myRole === 'MANAGER' ||
-      myRole === 'POVERENY' ||
-      myRole === 'OWNER'
+    const myRole = String(membership?.role || '').toUpperCase()
+    const canCreateIssue = canIssueForGroupByRole(myRole, globalAccess)
 
     if (!canCreateIssue) {
       return NextResponse.json(

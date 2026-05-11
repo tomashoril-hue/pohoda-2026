@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function normalizeText(value: any) {
@@ -104,23 +105,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { data: globalRoles, error: globalRoleError } = await supabaseServer
-      .from('app_user_roles')
-      .select('role')
-      .eq('user_id', currentUser.id)
-      .eq('active', true)
-
-    if (globalRoleError) {
-      return NextResponse.json(
-        { error: globalRoleError.message },
-        { status: 500 }
-      )
-    }
-
-    const isGlobalPersonalista = (globalRoles || []).some((item: any) => {
-      const role = String(item.role || '').toUpperCase()
-      return role === 'ADMIN' || role === 'PERSONALISTA'
-    })
+    const globalAccess = await getGlobalAccess(currentUser.id)
+    const isGlobalPersonalista = globalAccess.canUsePersonalista
 
     let selectedGroups: any[] = []
 

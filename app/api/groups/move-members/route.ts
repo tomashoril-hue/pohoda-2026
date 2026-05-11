@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function POST(req: NextRequest) {
@@ -42,6 +43,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const globalAccess = await getGlobalAccess(user.id)
+
     const { data: myMemberships, error: membershipsError } = await supabaseServer
       .from('group_members')
       .select('group_id, role')
@@ -66,8 +69,8 @@ export async function POST(req: NextRequest) {
     const sourceRole = String(sourceMembership?.role || '').toUpperCase()
     const targetRole = String(targetMembership?.role || '').toUpperCase()
 
-    const canManageSource = sourceRole === 'MANAGER' || sourceRole === 'OWNER'
-    const canManageTarget = targetRole === 'MANAGER' || targetRole === 'OWNER'
+    const canManageSource = canManageGroupByRole(sourceRole, globalAccess)
+    const canManageTarget = canManageGroupByRole(targetRole, globalAccess)
 
     if (!canManageSource || !canManageTarget) {
       return NextResponse.json(
@@ -103,7 +106,7 @@ export async function POST(req: NextRequest) {
       return role === 'MANAGER' || role === 'OWNER'
     })
 
-    if (protectedUsers.length > 0) {
+    if (!globalAccess.isAdmin && protectedUsers.length > 0) {
       return NextResponse.json(
         { error: 'Nie je možné presúvať členov s rolou MANAGER alebo OWNER cez tento rýchly presun.' },
         { status: 400 }

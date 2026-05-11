@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
+import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import GroupIssueClient from '../../../group/issue/GroupIssueClient'
 
@@ -52,6 +53,7 @@ export default async function GroupIssuePage({
   }
 
   const { groupId } = await params
+  const globalAccess = await getGlobalAccess(user.id)
 
   const { data: membership, error: membershipError } = await supabaseServer
     .from('group_members')
@@ -67,19 +69,36 @@ export default async function GroupIssuePage({
     .eq('user_id', user.id)
     .maybeSingle()
 
-  if (membershipError || !membership) {
+  if (membershipError) {
     redirect('/dashboard/groups')
   }
 
-  const role = String(membership.role || '').toUpperCase()
+  const role = globalAccess.isAdmin
+    ? String(membership?.role || 'ADMIN').toUpperCase()
+    : String(membership?.role || '').toUpperCase()
 
-  if (role !== 'MANAGER' && role !== 'POVERENY' && role !== 'OWNER') {
+  if (!canIssueForGroupByRole(role, globalAccess)) {
     redirect(`/dashboard/groups/${groupId}`)
   }
 
-  const group = Array.isArray(membership.groups)
-    ? membership.groups[0]
-    : membership.groups
+  const membershipGroup = membership?.groups
+  let group: any = Array.isArray(membershipGroup)
+    ? membershipGroup[0]
+    : membershipGroup
+
+  if (!membership && globalAccess.isAdmin) {
+    const { data: adminGroup } = await supabaseServer
+      .from('groups')
+      .select('id, name')
+      .eq('id', groupId)
+      .maybeSingle()
+
+    group = adminGroup
+  }
+
+  if (!group) {
+    redirect('/dashboard/groups')
+  }
 
   const { data: currentUserProfile } = await supabaseServer
     .from('users')

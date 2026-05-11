@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function POST(req: Request) {
@@ -21,6 +22,8 @@ export async function POST(req: Request) {
 
     const cleanQr = String(qr_code).trim()
 
+    const globalAccess = await getGlobalAccess(user.id)
+
     const { data: myMembership, error: membershipError } = await supabaseServer
       .from('group_members')
       .select('role')
@@ -39,11 +42,9 @@ export async function POST(req: Request) {
 
     // Pridať cez QR do skupiny môže iba MANAGER.
     // OWNER nechávame dočasne, kým premigrujeme staré dáta v databáze.
-    const canAddMemberByQr =
-      myRole === 'MANAGER' ||
-      myRole === 'OWNER'
+    const canAddMemberByQr = canManageGroupByRole(myRole, globalAccess)
 
-    if (!myMembership || !canAddMemberByQr) {
+    if ((!myMembership && !globalAccess.isAdmin) || !canAddMemberByQr) {
       return NextResponse.json(
         { error: 'Nemáš oprávnenie pridávať členov do tejto skupiny cez QR.' },
         { status: 403 }

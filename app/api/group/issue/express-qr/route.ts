@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function normalizeChoice(value: any) {
@@ -66,6 +67,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const globalAccess = await getGlobalAccess(user.id)
+
     const { data: myMembership, error: membershipError } = await supabaseServer
       .from('group_members')
       .select('role')
@@ -82,10 +85,7 @@ export async function POST(req: NextRequest) {
 
     const myRole = String(myMembership?.role || '').toUpperCase()
 
-    if (
-      !myMembership ||
-      (myRole !== 'MANAGER' && myRole !== 'POVERENY' && myRole !== 'OWNER')
-    ) {
+    if ((!myMembership && !globalAccess.isAdmin) || !canIssueForGroupByRole(myRole, globalAccess)) {
       return NextResponse.json(
         { error: 'Nemáš oprávnenie použiť Expres QR pre túto skupinu.' },
         { status: 403 }
