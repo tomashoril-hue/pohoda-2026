@@ -521,7 +521,13 @@ export default function PersonalistaClient({
           Ručne pridať človeka
         </button>
 
-        <a href="/dashboard/personalista/blank-qr" style={styles.lightButton}>
+        <a
+          href="/dashboard/personalista/blank-qr"
+          style={{
+            ...styles.lightButton,
+            textAlign: 'center'
+          }}
+        >
           Generovať prázdne QR
         </a>
 
@@ -1042,7 +1048,7 @@ export default function PersonalistaClient({
                     href={printPersonHref}
                     style={{
                       ...styles.lightButton,
-                      ...styles.centeredDetailAction
+                      textAlign: 'center'
                     }}
                   >
                     Tlačiť QR osoby
@@ -1593,12 +1599,6 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))',
     gap: 8
-  },
-  centeredDetailAction: {
-    gridColumn: '1 / -1',
-    justifySelf: 'center',
-    textAlign: 'center',
-    minWidth: 190
   },
   primaryAction: {
     background: '#22c55e',
