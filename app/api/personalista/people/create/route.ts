@@ -314,14 +314,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (assignQr) {
-      const { data: freeQr, error: freeQrError } = await supabaseServer
+      const { data: freeQrRows, error: freeQrError } = await supabaseServer
         .from('qr_codes')
         .select('id, code')
         .eq('status', 'VOLNY')
         .is('assigned_user_id', null)
         .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle()
+        .limit(50)
 
       if (freeQrError) {
         await rollbackUser()
@@ -332,11 +331,41 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      if (!freeQr) {
+      const candidateQrRows = freeQrRows || []
+
+      if (!candidateQrRows.length) {
         await rollbackUser()
 
         return NextResponse.json(
           { error: 'Nie je dostupny ziadny volny nepriradeny QR kod.' },
+          { status: 409 }
+        )
+      }
+
+      const candidateCodes = candidateQrRows.map((row: any) => row.code).filter(Boolean)
+
+      const { data: usedQrRows, error: usedQrError } = await supabaseServer
+        .from('user_qr_codes')
+        .select('qr_code')
+        .in('qr_code', candidateCodes)
+
+      if (usedQrError) {
+        await rollbackUser()
+
+        return NextResponse.json(
+          { error: usedQrError.message },
+          { status: 500 }
+        )
+      }
+
+      const usedQrCodes = new Set((usedQrRows || []).map((row: any) => row.qr_code))
+      const freeQr = candidateQrRows.find((row: any) => !usedQrCodes.has(row.code))
+
+      if (!freeQr) {
+        await rollbackUser()
+
+        return NextResponse.json(
+          { error: 'Volne QR kody v qr_codes uz existuju v user_qr_codes. Treba vycistit stav QR kodov.' },
           { status: 409 }
         )
       }
