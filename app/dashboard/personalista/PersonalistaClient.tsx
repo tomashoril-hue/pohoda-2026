@@ -541,9 +541,15 @@ export default function PersonalistaClient({
           Import Excel/CSV
         </a>
 
-        <button type="button" style={styles.actionButton} disabled>
+        <a
+          href="/dashboard/personalista/google-sheets"
+          style={{
+            ...styles.lightButton,
+            textAlign: 'center'
+          }}
+        >
           Google Sheets
-        </button>
+        </a>
 
         {printGroupHref ? (
           <a href={printGroupHref} style={styles.lightButton}>
