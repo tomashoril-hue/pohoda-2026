@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString()
-    let assignedQrTokenId: string | null = null
+    let assignedQrPoolId: string | null = null
     let assignedQrCode: string | null = null
 
     const { data: newUser, error: userError } = await supabaseServer
@@ -237,19 +237,15 @@ export async function POST(req: NextRequest) {
         .delete()
         .eq('user_id', newUser.id)
 
-      if (assignedQrTokenId) {
+      if (assignedQrPoolId) {
         await supabaseServer
-          .from('personnel_qr_tokens')
+          .from('qr_codes')
           .update({
-            user_id: null,
-            status: 'BLANK',
-            active: true,
-            assigned_at: null,
-            assigned_by: null,
-            updated_at: new Date().toISOString(),
-            note: null
+            status: 'VOLNY',
+            assigned_user_id: null,
+            assigned_at: null
           })
-          .eq('id', assignedQrTokenId)
+          .eq('id', assignedQrPoolId)
       }
 
       await supabaseServer
@@ -318,12 +314,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (assignQr) {
-      const { data: freeQrToken, error: freeQrError } = await supabaseServer
-        .from('personnel_qr_tokens')
-        .select('id, qr_code')
-        .eq('active', true)
-        .eq('status', 'BLANK')
-        .is('user_id', null)
+      const { data: freeQr, error: freeQrError } = await supabaseServer
+        .from('qr_codes')
+        .select('id, code')
+        .eq('status', 'VOLNY')
+        .is('assigned_user_id', null)
         .order('created_at', { ascending: true })
         .limit(1)
         .maybeSingle()
@@ -337,7 +332,7 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      if (!freeQrToken) {
+      if (!freeQr) {
         await rollbackUser()
 
         return NextResponse.json(
@@ -346,25 +341,20 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      const { data: assignedQrToken, error: assignQrError } = await supabaseServer
-        .from('personnel_qr_tokens')
+      const { data: assignedQr, error: assignQrError } = await supabaseServer
+        .from('qr_codes')
         .update({
-          user_id: newUser.id,
-          status: 'ASSIGNED',
-          active: true,
-          assigned_at: now,
-          assigned_by: currentUser.id,
-          updated_at: now,
-          note: 'Priradene pri rucnom zalozeni osoby.'
+          status: 'PRIRADENY',
+          assigned_user_id: newUser.id,
+          assigned_at: now
         })
-        .eq('id', freeQrToken.id)
-        .eq('active', true)
-        .eq('status', 'BLANK')
-        .is('user_id', null)
-        .select('id, qr_code')
+        .eq('id', freeQr.id)
+        .eq('status', 'VOLNY')
+        .is('assigned_user_id', null)
+        .select('id, code')
         .single()
 
-      if (assignQrError || !assignedQrToken) {
+      if (assignQrError || !assignedQr) {
         await rollbackUser()
 
         return NextResponse.json(
@@ -373,8 +363,8 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      assignedQrTokenId = assignedQrToken.id
-      assignedQrCode = assignedQrToken.qr_code
+      assignedQrPoolId = assignedQr.id
+      assignedQrCode = assignedQr.code
 
       const { error: updateUserQrError } = await supabaseServer
         .from('users')
@@ -399,9 +389,8 @@ export async function POST(req: NextRequest) {
           user_id: newUser.id,
           qr_code: assignedQrCode,
           active: true,
-          personnel_qr_token_id: assignedQrToken.id,
           assigned_by: currentUser.id,
-          note: 'Priradene z volnych QR kodov pri rucnom zalozeni osoby.'
+          note: 'Priradene z tabulky qr_codes pri rucnom zalozeni osoby.'
         })
 
       if (userQrError) {
