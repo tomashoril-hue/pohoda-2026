@@ -521,9 +521,9 @@ export default function PersonalistaClient({
           Ručne pridať človeka
         </button>
 
-        <button type="button" style={styles.actionButton} disabled>
+        <a href="/dashboard/personalista/blank-qr" style={styles.lightButton}>
           Generovať prázdne QR
-        </button>
+        </a>
 
         <button type="button" style={styles.actionButton} disabled>
           Import Excel/CSV
@@ -1038,7 +1038,13 @@ export default function PersonalistaClient({
                 </button>
 
                 {printPersonHref && (
-                  <a href={printPersonHref} style={styles.lightButton}>
+                  <a
+                    href={printPersonHref}
+                    style={{
+                      ...styles.lightButton,
+                      ...styles.centeredDetailAction
+                    }}
+                  >
                     Tlačiť QR osoby
                   </a>
                 )}
@@ -1587,6 +1593,12 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))',
     gap: 8
+  },
+  centeredDetailAction: {
+    gridColumn: '1 / -1',
+    justifySelf: 'center',
+    textAlign: 'center',
+    minWidth: 190
   },
   primaryAction: {
     background: '#22c55e',
