@@ -19,6 +19,63 @@ function fullName(user: any) {
   return `${user?.meno || ''} ${user?.priezvisko || ''}`.trim()
 }
 
+async function fetchAllMemberships() {
+  const rows: any[] = []
+  const pageSize = 1000
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabaseServer
+      .from('group_members')
+      .select(`
+        id,
+        user_id,
+        group_id,
+        role,
+        created_at,
+        groups (
+          id,
+          name
+        ),
+        users (
+          id,
+          meno,
+          priezvisko,
+          email,
+          telefon,
+          typ_stravy,
+          aktivny
+        )
+      `)
+      .order('created_at', { ascending: true })
+      .range(from, from + pageSize - 1)
+
+    if (error) return { rows, error }
+
+    rows.push(...(data || []))
+
+    if (!data || data.length < pageSize) return { rows, error: null }
+  }
+}
+
+async function fetchAllUsers() {
+  const rows: any[] = []
+  const pageSize = 1000
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabaseServer
+      .from('users')
+      .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny')
+      .order('created_at', { ascending: false })
+      .range(from, from + pageSize - 1)
+
+    if (error) return { rows, error }
+
+    rows.push(...(data || []))
+
+    if (!data || data.length < pageSize) return { rows, error: null }
+  }
+}
+
 export default async function PersonalistaPage() {
   const user = await getCurrentUser()
 
@@ -26,28 +83,7 @@ export default async function PersonalistaPage() {
     redirect('/')
   }
 
-  const { data: memberships, error } = await supabaseServer
-    .from('group_members')
-    .select(`
-      id,
-      user_id,
-      group_id,
-      role,
-      created_at,
-      groups (
-        id,
-        name
-      ),
-      users (
-        id,
-        meno,
-        priezvisko,
-        email,
-        telefon,
-        typ_stravy
-      )
-    `)
-    .order('created_at', { ascending: true })
+  const { rows: memberships, error } = await fetchAllMemberships()
 
   if (error) {
     return (
@@ -82,10 +118,7 @@ export default async function PersonalistaPage() {
   let allVisibleUsers: any[] = []
 
   if (isGlobalPersonalista) {
-    const { data: usersData } = await supabaseServer
-      .from('users')
-      .select('id, meno, priezvisko, email, telefon, typ_stravy')
-      .order('created_at', { ascending: false })
+    const { rows: usersData } = await fetchAllUsers()
 
     allVisibleUsers = usersData || []
   }
@@ -194,6 +227,7 @@ export default async function PersonalistaPage() {
       email: memberUser?.email || '',
       telefon: memberUser?.telefon || '',
       typStravy: memberUser?.typ_stravy || '',
+      aktivny: memberUser?.aktivny || 'ANO',
       activeQrCount: activeQrByUserId.get(membership.user_id) || 0,
       entitlementDays: rows.length,
       lunchClaims,
@@ -219,6 +253,7 @@ export default async function PersonalistaPage() {
         email: profile.email || '',
         telefon: profile.telefon || '',
         typStravy: profile.typ_stravy || '',
+        aktivny: profile.aktivny || 'ANO',
         activeQrCount: activeQrByUserId.get(profile.id) || 0,
         entitlementDays: rows.length,
         lunchClaims,

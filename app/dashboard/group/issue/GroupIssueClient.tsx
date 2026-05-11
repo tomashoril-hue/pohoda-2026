@@ -81,6 +81,7 @@ function isQrExtra(row: any) {
 function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: string[]) {
   if (item.removeReason === 'IN_OTHER_ISSUE') return 'V INOM VÝDAJI'
 
+  if (item.removeReason === 'USER_BLOCKED') return 'BLOKOVANY'
   if (item.status === 'INDIVIDUAL_ISSUED') return 'PREVZAL'
   if (item.status === 'BULK_ISSUED') return 'VYDANÉ'
 
@@ -132,6 +133,10 @@ function itemStatusNote(item: any) {
     return 'Osoba bola cez QR presunutá do inej prípravy.'
   }
 
+  if (item.removeReason === 'USER_BLOCKED') {
+    return 'Osoba je zablokovana personalistom alebo adminom.'
+  }
+
   if (item.removeReason === 'MOVED_TO_OTHER_GROUP') {
     return 'Osoba bola presunutá do inej skupiny.'
   }
@@ -153,6 +158,7 @@ function itemStatusNote(item: any) {
 
 function canSelectRow(item: any, _currentIssue: any) {
   if (item.removeReason === 'IN_OTHER_ISSUE') return false
+  if (item.removeReason === 'USER_BLOCKED') return false
   if (item.status === 'INDIVIDUAL_ISSUED') return false
   if (item.status === 'BULK_ISSUED') return false
 

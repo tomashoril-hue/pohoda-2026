@@ -125,7 +125,8 @@ export default async function GroupIssuePage({
         email,
         telefon,
         typ_stravy,
-        qr_code
+        qr_code,
+        aktivny
       )
     `)
     .eq('group_id', groupId)
@@ -137,6 +138,7 @@ export default async function GroupIssuePage({
       : member.users
 
     const fullName = `${memberUser?.meno || ''} ${memberUser?.priezvisko || ''}`.trim()
+    const blocked = String(memberUser?.aktivny || '').toUpperCase() !== 'ANO'
 
     return {
       userId: member.user_id,
@@ -148,8 +150,9 @@ export default async function GroupIssuePage({
       telefon: memberUser?.telefon || '',
       typStravy: memberUser?.typ_stravy || '',
       qrCode: memberUser?.qr_code || '',
-      status: 'PLANNED',
-      removeReason: null
+      aktivny: memberUser?.aktivny || 'ANO',
+      status: blocked ? 'REMOVED' : 'PLANNED',
+      removeReason: blocked ? 'USER_BLOCKED' : null
     }
   })
 
@@ -372,7 +375,7 @@ export default async function GroupIssuePage({
     if (userIds.length > 0) {
       const { data: usersData } = await supabaseServer
         .from('users')
-        .select('id, meno, priezvisko, email, telefon, typ_stravy, qr_code')
+        .select('id, meno, priezvisko, email, telefon, typ_stravy, qr_code, aktivny')
         .in('id', userIds)
 
       usersMap = new Map((usersData || []).map((u: any) => [u.id, u]))
@@ -389,9 +392,13 @@ export default async function GroupIssuePage({
 
       const isStillInGroup = memberIdSet.has(item.user_id)
       const isGroupSource = item.source === 'GROUP'
+      const isUserBlocked = String(itemUser?.aktivny || '').toUpperCase() !== 'ANO'
       const shouldShowRemovedFromGroup =
         isGroupSource &&
         !isStillInGroup &&
+        item.status === 'PLANNED'
+      const shouldShowBlocked =
+        isUserBlocked &&
         item.status === 'PLANNED'
 
       return {
@@ -405,18 +412,22 @@ export default async function GroupIssuePage({
         telefon: itemUser?.telefon || '',
         typStravy: item.volba || itemUser?.typ_stravy || '',
         qrCode: itemUser?.qr_code || '',
+        aktivny: itemUser?.aktivny || 'ANO',
         role:
-          shouldShowRemovedFromGroup
+          shouldShowRemovedFromGroup || shouldShowBlocked
             ? '—'
             : item.source === 'QR_EXTRA'
               ? '—'
               : memberRoleMap.get(item.user_id) || '—',
-        status: shouldShowRemovedFromGroup ? 'REMOVED' : item.status,
+        status: shouldShowRemovedFromGroup || shouldShowBlocked ? 'REMOVED' : item.status,
         source: item.source,
         addedByQr: item.source === 'QR_EXTRA',
-        removeReason: shouldShowRemovedFromGroup
-          ? 'REMOVED_FROM_GROUP'
-          : item.remove_reason,
+        removeReason:
+          shouldShowBlocked
+            ? 'USER_BLOCKED'
+            : shouldShowRemovedFromGroup
+              ? 'REMOVED_FROM_GROUP'
+              : item.remove_reason,
         removedAt: item.removed_at,
         entitlementStatus: issue
           ? getEntitlement(item.user_id, issue.datum, issue.typ_jedla)

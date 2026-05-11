@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
 
     const { data: profile, error: profileError } = await supabaseServer
       .from('users')
-      .select('id, meno, priezvisko, email, telefon, typ_stravy, qr_code')
+      .select('id, meno, priezvisko, email, telefon, typ_stravy, qr_code, aktivny')
       .eq('id', targetUserId)
       .maybeSingle()
 
@@ -132,6 +132,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: 'Používateľ k QR kódu sa nenašiel.' },
         { status: 404 }
+      )
+    }
+
+    if (String(profile.aktivny || '').toUpperCase() !== 'ANO') {
+      return NextResponse.json(
+        { error: 'Osoba je zablokovana.' },
+        { status: 403 }
       )
     }
 

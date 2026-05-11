@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   const { data: user, error: userError } = await supabaseServer
     .from('users')
-    .select('id, email, meno, priezvisko')
+    .select('id, email, meno, priezvisko, aktivny')
     .eq('email', email)
     .single()
 
@@ -20,6 +20,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: 'Tento e-mail nie je registrovaný.' },
       { status: 404 }
+    )
+  }
+
+  if (String(user.aktivny || '').toUpperCase() !== 'ANO') {
+    return NextResponse.json(
+      { error: 'Tento ucet je zablokovany.' },
+      { status: 403 }
     )
   }
 

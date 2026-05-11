@@ -23,6 +23,7 @@ type PersonItem = {
   email: string
   telefon: string
   typStravy: string
+  aktivny: string
   activeQrCount: number
   entitlementDays: number
   lunchClaims: number
@@ -78,6 +79,9 @@ export default function PersonalistaClient({
   const [groupFilter, setGroupFilter] = useState('ALL')
   const [foodFilter, setFoodFilter] = useState('ALL')
   const [qrFilter, setQrFilter] = useState('ALL')
+  const [statusFilter, setStatusFilter] = useState('ALL')
+  const [pageSize, setPageSize] = useState(50)
+  const [currentPage, setCurrentPage] = useState(1)
   const [selectedPersonId, setSelectedPersonId] = useState(people[0]?.id || '')
   const [createOpen, setCreateOpen] = useState(false)
   const [createLoading, setCreateLoading] = useState(false)
@@ -118,7 +122,9 @@ export default function PersonalistaClient({
     qrCode: ''
   })
 
-  const selectedPerson = people.find(person => person.id === selectedPersonId) || people[0] || null
+  const selectedPerson = selectedPersonId
+    ? people.find(person => person.id === selectedPersonId) || null
+    : null
   const printGroupHref =
     groupFilter !== 'ALL' && groupFilter !== 'UNGROUPED'
       ? `/dashboard/personalista/print-qr?groupId=${encodeURIComponent(groupFilter)}`
@@ -177,17 +183,51 @@ export default function PersonalistaClient({
         if (qrFilter === 'ACTIVE') return person.activeQrCount > 0
         return person.activeQrCount === 0
       })
+      .filter(person => {
+        const blocked = String(person.aktivny || '').toUpperCase() !== 'ANO'
+
+        if (statusFilter === 'ALL') return true
+        if (statusFilter === 'BLOCKED') return blocked
+        return !blocked
+      })
       .sort((a, b) => {
+        const aBlocked = String(a.aktivny || '').toUpperCase() !== 'ANO'
+        const bBlocked = String(b.aktivny || '').toUpperCase() !== 'ANO'
+
+        if (aBlocked !== bBlocked) return aBlocked ? 1 : -1
+
         const priority = rolePriority(a) - rolePriority(b)
         if (priority !== 0) return priority
 
         return a.fullName.localeCompare(b.fullName, 'sk')
       })
-  }, [people, search, groupFilter, foodFilter, qrFilter])
+  }, [people, search, groupFilter, foodFilter, qrFilter, statusFilter])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, groupFilter, foodFilter, qrFilter, statusFilter, pageSize])
+
+  useEffect(() => {
+    if (!filteredPeople.length) {
+      if (selectedPersonId) setSelectedPersonId('')
+      return
+    }
+
+    if (!filteredPeople.some(person => person.id === selectedPersonId)) {
+      setSelectedPersonId(filteredPeople[0].id)
+    }
+  }, [filteredPeople, selectedPersonId])
+
+  const pageCount = Math.max(1, Math.ceil(filteredPeople.length / pageSize))
+  const safeCurrentPage = Math.min(currentPage, pageCount)
+  const pageStart = (safeCurrentPage - 1) * pageSize
+  const pageEnd = Math.min(pageStart + pageSize, filteredPeople.length)
+  const pagedPeople = filteredPeople.slice(pageStart, pageEnd)
 
   const stats = useMemo(() => {
     const activeQr = people.filter(person => person.activeQrCount > 0).length
     const withoutQr = people.length - activeQr
+    const blocked = people.filter(person => String(person.aktivny || '').toUpperCase() !== 'ANO').length
     const withDiet = people.filter(person => foodLabel(person.typStravy) === 'DIÉTA').length
     const totalClaims = people.reduce((sum, person) => sum + person.mealClaims, 0)
     const totalLunches = people.reduce((sum, person) => sum + person.lunchClaims, 0)
@@ -197,6 +237,7 @@ export default function PersonalistaClient({
     return {
       activeQr,
       withoutQr,
+      blocked,
       withDiet,
       totalClaims,
       totalLunches,
@@ -447,6 +488,34 @@ export default function PersonalistaClient({
     )
   }
 
+  const updateStatus = (active: boolean) => {
+    if (!selectedPerson) return
+
+    const reason = active
+      ? window.prompt('Poznamka k odblokovaniu:', 'Odblokovane personalistom.')
+      : window.prompt('Dovod blokovania:', 'Blokovane personalistom.')
+
+    if (reason === null) return
+
+    const ok = window.confirm(
+      active
+        ? 'Odblokovat tuto osobu?'
+        : 'Zablokovat tuto osobu? Blokovana osoba nebude moct pouzivat zakladne akcie.'
+    )
+
+    if (!ok) return
+
+    postDetailAction(
+      '/api/personalista/people/update-status',
+      {
+        userId: selectedPerson.id,
+        active,
+        reason
+      },
+      active ? 'Osobu sa nepodarilo odblokovat.' : 'Osobu sa nepodarilo zablokovat.'
+    )
+  }
+
   return (
     <main style={styles.page}>
       <header style={styles.header}>
@@ -479,6 +548,11 @@ export default function PersonalistaClient({
         <div style={styles.summaryCard}>
           <b>{people.length}</b>
           <span>Ľudí</span>
+        </div>
+
+        <div style={styles.summaryCardRed}>
+          <b>{stats.blocked}</b>
+          <span>BlokovanĂ­</span>
         </div>
 
         <div style={styles.summaryCardBlue}>
@@ -868,11 +942,22 @@ export default function PersonalistaClient({
               <option value="ACTIVE">Aktívny QR</option>
               <option value="MISSING">Bez QR</option>
             </select>
+
+            <select
+              value={statusFilter}
+              onChange={event => setStatusFilter(event.target.value)}
+              style={styles.select}
+            >
+              <option value="ALL">Vsetky stavy</option>
+              <option value="ACTIVE">Aktivni</option>
+              <option value="BLOCKED">Blokovani</option>
+            </select>
           </section>
 
           <section style={styles.tableCard}>
             <div style={styles.tableHeader}>
               <span>Osoba</span>
+              <span>Stav</span>
               <span>Skupiny</span>
               <span>Strava</span>
               <span>QR</span>
@@ -884,8 +969,9 @@ export default function PersonalistaClient({
                 Nenašli sa žiadni ľudia.
               </div>
             ) : (
-              filteredPeople.map(person => {
+              pagedPeople.map(person => {
                 const selected = selectedPerson?.id === person.id
+                const blocked = String(person.aktivny || '').toUpperCase() !== 'ANO'
 
                 return (
                   <button
@@ -893,8 +979,8 @@ export default function PersonalistaClient({
                     type="button"
                     style={{
                       ...styles.personRow,
-                      background: selected ? '#eff6ff' : '#fff',
-                      borderColor: selected ? '#93c5fd' : '#e5e7eb'
+                      background: selected ? '#eff6ff' : blocked ? '#fef2f2' : '#fff',
+                      borderColor: selected ? '#93c5fd' : blocked ? '#fecaca' : '#e5e7eb'
                     }}
                     onClick={() => setSelectedPersonId(person.id)}
                   >
@@ -903,6 +989,18 @@ export default function PersonalistaClient({
                       <span>
                         {person.email || '-'}
                         {person.telefon ? ` · ${person.telefon}` : ''}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span
+                        style={{
+                          ...styles.statusBadge,
+                          background: blocked ? '#fee2e2' : '#dcfce7',
+                          color: blocked ? '#991b1b' : '#166534'
+                        }}
+                      >
+                        {blocked ? 'BLOK' : 'AKTIVNY'}
                       </span>
                     </div>
 
@@ -951,6 +1049,44 @@ export default function PersonalistaClient({
                 )
               })
             )}
+
+            {filteredPeople.length > 0 && (
+              <div style={styles.paginationBar}>
+                <span>
+                  {pageStart + 1}-{pageEnd} z {filteredPeople.length}
+                </span>
+
+                <select
+                  value={pageSize}
+                  onChange={event => setPageSize(Number(event.target.value))}
+                  style={styles.pageSizeSelect}
+                >
+                  <option value={50}>50 / strana</option>
+                  <option value={100}>100 / strana</option>
+                  <option value={200}>200 / strana</option>
+                </select>
+
+                <button
+                  type="button"
+                  style={styles.pageButton}
+                  disabled={safeCurrentPage <= 1}
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                >
+                  Spat
+                </button>
+
+                <b>{safeCurrentPage} / {pageCount}</b>
+
+                <button
+                  type="button"
+                  style={styles.pageButton}
+                  disabled={safeCurrentPage >= pageCount}
+                  onClick={() => setCurrentPage(prev => Math.min(pageCount, prev + 1))}
+                >
+                  Dalej
+                </button>
+              </div>
+            )}
           </section>
         </div>
 
@@ -963,12 +1099,29 @@ export default function PersonalistaClient({
                   <h2 style={styles.detailTitle}>{selectedPerson.fullName}</h2>
                 </div>
 
-                <span style={styles.foodBadge}>
-                  {foodLabel(selectedPerson.typStravy)}
-                </span>
+                <div style={styles.detailHeaderBadges}>
+                  <span
+                    style={{
+                      ...styles.statusBadge,
+                      background: String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? '#fee2e2' : '#dcfce7',
+                      color: String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? '#991b1b' : '#166534'
+                    }}
+                  >
+                    {String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? 'BLOKOVANY' : 'AKTIVNY'}
+                  </span>
+
+                  <span style={styles.foodBadge}>
+                    {foodLabel(selectedPerson.typStravy)}
+                  </span>
+                </div>
               </div>
 
               <div style={styles.detailRows}>
+                <div style={styles.detailRow}>
+                  <span>Stav</span>
+                  <b>{String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? 'Blokovany' : 'Aktivny'}</b>
+                </div>
+
                 <div style={styles.detailRow}>
                   <span>Email</span>
                   <b>{selectedPerson.email || '-'}</b>
@@ -1053,6 +1206,20 @@ export default function PersonalistaClient({
 
                 <button type="button" style={styles.actionButton} disabled>
                   Priradiť NFC
+                </button>
+
+                <button
+                  type="button"
+                  style={{
+                    ...(String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO'
+                      ? styles.confirmButton
+                      : styles.dangerButton),
+                    opacity: detailLoading ? 0.6 : 1
+                  }}
+                  disabled={detailLoading}
+                  onClick={() => updateStatus(String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO')}
+                >
+                  {String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? 'Odblokovat' : 'Zablokovat'}
                 </button>
 
                 {printPersonHref && (
@@ -1280,6 +1447,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 12,
     alignContent: 'start',
     fontFamily: 'Arial, Helvetica, sans-serif',
+    fontSize: 13,
     color: '#111827'
   },
   header: {
@@ -1358,6 +1526,16 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gap: 3,
     color: '#166534',
+    boxShadow: '0 5px 16px rgba(0,0,0,0.04)'
+  },
+  summaryCardRed: {
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: 16,
+    padding: 12,
+    display: 'grid',
+    gap: 3,
+    color: '#991b1b',
     boxShadow: '0 5px 16px rgba(0,0,0,0.04)'
   },
   summaryCardOrange: {
@@ -1445,10 +1623,10 @@ const styles: Record<string, CSSProperties> = {
   tableHeader: {
     minWidth: 850,
     display: 'grid',
-    gridTemplateColumns: 'minmax(210px, 1.3fr) minmax(180px, 1fr) 92px 88px 92px',
-    gap: 10,
+    gridTemplateColumns: 'minmax(190px, 1.25fr) 78px minmax(160px, 1fr) 78px 78px 82px',
+    gap: 8,
     alignItems: 'center',
-    padding: '10px 12px',
+    padding: '8px 10px',
     background: '#f9fafb',
     borderBottom: '1px solid #e5e7eb',
     fontSize: 10,
@@ -1461,14 +1639,15 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 850,
     border: '0 solid #e5e7eb',
     borderBottomWidth: 1,
-    padding: '10px 12px',
+    padding: '7px 10px',
     display: 'grid',
-    gridTemplateColumns: 'minmax(210px, 1.3fr) minmax(180px, 1fr) 92px 88px 92px',
-    gap: 10,
+    gridTemplateColumns: 'minmax(190px, 1.25fr) 78px minmax(160px, 1fr) 78px 78px 82px',
+    gap: 8,
     alignItems: 'center',
     textAlign: 'left',
     color: '#111827',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    fontSize: 12
   },
   personCell: {
     minWidth: 0,
@@ -1487,7 +1666,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     borderRadius: 999,
-    padding: '5px 8px',
+    padding: '4px 7px',
     background: '#f3f4f6',
     color: '#374151',
     fontSize: 10,
@@ -1495,7 +1674,7 @@ const styles: Record<string, CSSProperties> = {
   },
   moreBadge: {
     borderRadius: 999,
-    padding: '5px 8px',
+    padding: '4px 7px',
     background: '#111827',
     color: '#fff',
     fontSize: 10,
@@ -1513,6 +1692,16 @@ const styles: Record<string, CSSProperties> = {
     color: '#3730a3',
     whiteSpace: 'nowrap'
   },
+  statusBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    padding: '5px 7px',
+    fontSize: 10,
+    fontWeight: 950,
+    whiteSpace: 'nowrap'
+  },
   qrBadge: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -1526,7 +1715,7 @@ const styles: Record<string, CSSProperties> = {
   claimCell: {
     display: 'grid',
     gap: 2,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 800,
     color: '#6b7280'
   },
@@ -1592,6 +1781,12 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     gap: 8
+  },
+  detailHeaderBadges: {
+    display: 'flex',
+    gap: 6,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end'
   },
   detailEditBox: {
     border: '1px solid #e5e7eb',
@@ -1786,6 +1981,48 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 13,
     fontWeight: 950,
     cursor: 'pointer'
+  },
+  dangerButton: {
+    background: '#fee2e2',
+    color: '#991b1b',
+    border: '1px solid #fecaca',
+    borderRadius: 12,
+    padding: '10px 12px',
+    fontSize: 13,
+    fontWeight: 950,
+    cursor: 'pointer'
+  },
+  paginationBar: {
+    minWidth: 850,
+    display: 'flex',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+    padding: '9px 10px',
+    background: '#f9fafb',
+    borderTop: '1px solid #e5e7eb',
+    fontSize: 12,
+    fontWeight: 900,
+    color: '#374151'
+  },
+  pageButton: {
+    border: '1px solid #d1d5db',
+    background: '#fff',
+    color: '#111827',
+    borderRadius: 10,
+    padding: '7px 9px',
+    fontSize: 12,
+    fontWeight: 900,
+    cursor: 'pointer'
+  },
+  pageSizeSelect: {
+    border: '1px solid #d1d5db',
+    borderRadius: 10,
+    padding: '7px 8px',
+    fontSize: 12,
+    fontWeight: 900,
+    background: '#fff',
+    color: '#111827'
   },
   message: {
     border: '1px solid',

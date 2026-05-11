@@ -147,7 +147,8 @@ export async function POST(req: NextRequest) {
         user_id,
         users (
           id,
-          typ_stravy
+          typ_stravy,
+          aktivny
         )
       `)
       .eq('group_id', groupId)
@@ -245,7 +246,7 @@ export async function POST(req: NextRequest) {
 
     const { data: qrUsersData, error: qrUsersError } = await supabaseServer
       .from('users')
-      .select('id, typ_stravy')
+      .select('id, typ_stravy, aktivny')
       .in(
         'id',
         selectedQrExtraUserIds.length
@@ -354,20 +355,27 @@ export async function POST(req: NextRequest) {
 
       const issuedMeal = issuedMap.get(member.user_id)
       const conflict = conflictUserIds.has(member.user_id)
+      const blocked = String(memberUser?.aktivny || '').toUpperCase() !== 'ANO'
 
       return {
         hromadny_vydaj_id: issue.id,
         user_id: member.user_id,
         source: 'GROUP',
         volba: selectedChoice || defaultChoice,
-        status: issuedMeal
-          ? issuedStatusToItemStatus(issuedMeal)
+        status: blocked
+          ? 'REMOVED'
+          : issuedMeal
+            ? issuedStatusToItemStatus(issuedMeal)
+            : conflict
+              ? 'REMOVED'
+              : 'PLANNED',
+        remove_reason: blocked
+          ? 'USER_BLOCKED'
           : conflict
-            ? 'REMOVED'
-            : 'PLANNED',
-        remove_reason: conflict ? 'IN_OTHER_ISSUE' : null,
-        removed_at: conflict ? now : null,
-        removed_by: conflict ? user.id : null,
+            ? 'IN_OTHER_ISSUE'
+            : null,
+        removed_at: blocked || conflict ? now : null,
+        removed_by: blocked || conflict ? user.id : null,
         added_by: user.id,
         updated_at: now
       }
@@ -380,20 +388,27 @@ export async function POST(req: NextRequest) {
 
       const issuedMeal = issuedMap.get(userId)
       const conflict = conflictUserIds.has(userId)
+      const blocked = String(qrUser?.aktivny || 'ANO').toUpperCase() !== 'ANO'
 
       return {
         hromadny_vydaj_id: issue.id,
         user_id: userId,
         source: 'QR_EXTRA',
         volba: selectedChoice || defaultChoice,
-        status: issuedMeal
-          ? issuedStatusToItemStatus(issuedMeal)
-          : conflict
+        status: blocked
+          ? 'REMOVED'
+          : issuedMeal
+            ? issuedStatusToItemStatus(issuedMeal)
+            : conflict
             ? 'REMOVED'
             : 'PLANNED',
-        remove_reason: conflict ? 'IN_OTHER_ISSUE' : null,
-        removed_at: conflict ? now : null,
-        removed_by: conflict ? user.id : null,
+        remove_reason: blocked
+          ? 'USER_BLOCKED'
+          : conflict
+            ? 'IN_OTHER_ISSUE'
+            : null,
+        removed_at: blocked || conflict ? now : null,
+        removed_by: blocked || conflict ? user.id : null,
         added_by: user.id,
         updated_at: now
       }

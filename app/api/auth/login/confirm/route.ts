@@ -36,6 +36,23 @@ export async function GET(req: NextRequest) {
     )
   }
 
+  const { data: user, error: userError } = await supabaseServer
+    .from('users')
+    .select('id, aktivny')
+    .eq('id', loginToken.user_id)
+    .maybeSingle()
+
+  if (userError) {
+    return NextResponse.json({ error: userError.message }, { status: 500 })
+  }
+
+  if (!user || String(user.aktivny || '').toUpperCase() !== 'ANO') {
+    return NextResponse.json(
+      { error: 'Tento ucet je zablokovany.' },
+      { status: 403 }
+    )
+  }
+
   const sessionToken = crypto.randomBytes(32).toString('hex')
 
   const expiresAt = new Date()

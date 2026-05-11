@@ -28,6 +28,7 @@ export async function getCurrentUser() {
     .single()
 
   if (userError || !user) return null
+  if (String(user.aktivny || '').toUpperCase() !== 'ANO') return null
 
   return user
 }
