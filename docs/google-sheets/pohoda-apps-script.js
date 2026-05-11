@@ -116,6 +116,16 @@ function setCell_(sheet, rowNumber, headerMap, name, value) {
   sheet.getRange(rowNumber, column).setValue(value);
 }
 
+function setTimestampCell_(sheet, rowNumber, headerMap, name) {
+  const column = headerMap[normalizeHeader_(name)];
+  if (!column) return;
+
+  sheet
+    .getRange(rowNumber, column)
+    .setValue(new Date())
+    .setNumberFormat('yyyy-mm-dd hh:mm:ss');
+}
+
 function rowToPayload_(rowNumber, rowValues, headerMap) {
   return {
     rowNumber,
@@ -208,7 +218,7 @@ function writeImportResults_(sheet, headerMap, results) {
     setCell_(sheet, result.rowNumber, headerMap, COLUMNS.sprava, result.message || '');
     if (result.userId) setCell_(sheet, result.rowNumber, headerMap, COLUMNS.userId, result.userId);
     if (result.qrCode) setCell_(sheet, result.rowNumber, headerMap, COLUMNS.qrKod, result.qrCode);
-    setCell_(sheet, result.rowNumber, headerMap, COLUMNS.aktualizovane, new Date());
+    setTimestampCell_(sheet, result.rowNumber, headerMap, COLUMNS.aktualizovane);
   });
 }
 
@@ -253,7 +263,7 @@ function writeSyncResults_(sheet, headerMap, results) {
     setCell_(sheet, result.rowNumber, headerMap, COLUMNS.narokDni, result.entitlementDays || 0);
     setCell_(sheet, result.rowNumber, headerMap, COLUMNS.obedy, result.lunchClaims || 0);
     setCell_(sheet, result.rowNumber, headerMap, COLUMNS.vecere, result.dinnerClaims || 0);
-    setCell_(sheet, result.rowNumber, headerMap, COLUMNS.aktualizovane, new Date());
+    setTimestampCell_(sheet, result.rowNumber, headerMap, COLUMNS.aktualizovane);
   });
 }
 
