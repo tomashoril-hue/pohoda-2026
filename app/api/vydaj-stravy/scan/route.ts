@@ -157,6 +157,7 @@ export async function POST(req: NextRequest) {
       .from('group_members')
       .select(`
         group_id,
+        role,
         groups (
           name
         )
@@ -170,6 +171,13 @@ export async function POST(req: NextRequest) {
     const allowedTargetGroups = (targetMemberships || []).filter((membership: any) => {
       return access.global || access.groupIds.includes(membership.group_id)
     })
+
+    const targetRoleByGroup = new Map(
+      (targetMemberships || []).map((membership: any) => [
+        membership.group_id,
+        String(membership.role || '').toUpperCase()
+      ])
+    )
 
     if (!access.global && allowedTargetGroups.length === 0) {
       return NextResponse.json({
@@ -304,7 +312,21 @@ export async function POST(req: NextRequest) {
       return true
     })
 
-    const relatedPlannedItem = matchingPlannedItems[0] || null
+    const now = new Date()
+    const validBulkItem = matchingPlannedItems.find((item: any) => {
+      const issue = issueOf(item)
+      if (!issue) return false
+
+      const targetRole = targetRoleByGroup.get(issue.group_id) || ''
+      if (!canIssueForGroupByRole(targetRole, { isAdmin: false })) return false
+
+      if (issue.status === 'READY') return true
+      if (!issue.valid_after) return true
+
+      return new Date(issue.valid_after).getTime() <= now.getTime()
+    }) || null
+
+    const relatedPlannedItem = validBulkItem || matchingPlannedItems[0] || null
     const relatedIssue = issueOf(relatedPlannedItem)
     const relatedGroup = groupOf(relatedIssue)
     const fallbackGroupId =
@@ -312,7 +334,7 @@ export async function POST(req: NextRequest) {
       allowedTargetGroups[0]?.group_id ||
       null
 
-    const sposob = 'INDIVIDUALNE'
+    const sposob = validBulkItem ? 'HROMADNE' : 'INDIVIDUALNE'
 
     const { data: issued, error: issueError } = await supabaseServer
       .from('vydaj_jedal')
@@ -328,9 +350,11 @@ export async function POST(req: NextRequest) {
         issued_by: actor.id,
         qr_code: qrCode,
         source: 'QR',
-        note: relatedPlannedItem
-          ? 'Individuálny výdaj cez QR z hromadnej prípravy.'
-          : 'Individuálny výdaj cez QR.'
+        note: validBulkItem
+          ? 'Hromadný výdaj cez QR oprávnenej osoby.'
+          : relatedPlannedItem
+            ? 'Individuálny výdaj cez QR z hromadnej prípravy.'
+            : 'Individuálny výdaj cez QR.'
       })
       .select('id, issued_at')
       .single()
@@ -354,7 +378,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: issueError.message }, { status: 500 })
     }
 
-    if (matchingPlannedItems.length > 0) {
+    if (validBulkItem) {
+      await supabaseServer
+        .from('hromadny_vydaj_polozky')
+        .update({
+          status: 'BULK_ISSUED',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', validBulkItem.id)
+        .eq('status', 'PLANNED')
+    } else if (matchingPlannedItems.length > 0) {
       await supabaseServer
         .from('hromadny_vydaj_polozky')
         .update({
@@ -380,7 +413,7 @@ export async function POST(req: NextRequest) {
       choice,
       method: sposob,
       groupName: relatedGroup?.name || '',
-      message: 'Vydané individuálne'
+      message: sposob === 'HROMADNE' ? 'Vydané hromadne' : 'Vydané individuálne'
     })
   } catch (err: any) {
     return NextResponse.json(
