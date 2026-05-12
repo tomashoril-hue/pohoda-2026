@@ -58,6 +58,29 @@ function isActiveIssue(issue: any, now: Date) {
   return new Date(issue.valid_after).getTime() <= now.getTime()
 }
 
+function choiceSummary(rows: any[]) {
+  const counts = {
+    MASO: 0,
+    VEGE: 0,
+    DIETA: 0
+  }
+
+  rows.forEach((row: any) => {
+    const choice = normalizeChoice(row.volba) || 'DIETA'
+    counts[choice] += 1
+  })
+
+  return counts
+}
+
+function formatChoiceSummary(summary: { MASO: number; VEGE: number; DIETA: number }) {
+  return [
+    summary.MASO ? `MASO ${summary.MASO}` : '',
+    summary.VEGE ? `VEGE ${summary.VEGE}` : '',
+    summary.DIETA ? `DIÉTA ${summary.DIETA}` : ''
+  ].filter(Boolean).join(' · ')
+}
+
 async function issuerAccess(actorId: string) {
   const globalAccess = await getGlobalAccess(actorId)
 
@@ -448,6 +471,8 @@ export async function POST(req: NextRequest) {
         .eq('status', 'PLANNED')
 
       const firstIssuedRow = issuedBulkRows?.[0]
+      const summary = choiceSummary(bulkRowsToIssue)
+      const summaryText = formatChoiceSummary(summary)
 
       return NextResponse.json({
         ok: true,
@@ -464,9 +489,12 @@ export async function POST(req: NextRequest) {
           phone: profile.telefon || ''
         },
         choice,
+        bulkSummary: summary,
         method: 'HROMADNE',
         groupName: relatedGroup?.name || '',
-        message: `Vydané hromadne (${bulkRowsToIssue.length})`
+        message: summaryText
+          ? `Vydané hromadne: ${summaryText}`
+          : `Vydané hromadne (${bulkRowsToIssue.length})`
       })
     }
 

@@ -62,49 +62,48 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Chýba dátum alebo typ jedla.' }, { status: 400 })
     }
 
-    const query = supabaseServer
+    const { data: issuedRows, error } = await supabaseServer
       .from('vydaj_jedal')
-      .select(`
-        id,
-        user_id,
-        group_id,
-        hromadny_vydaj_id,
-        datum,
-        typ_jedla,
-        volba,
-        sposob,
-        issued_by,
-        issued_at,
-        users (
-          meno,
-          priezvisko,
-          email
-        ),
-        groups (
-          name
-        )
-      `)
+      .select('id, user_id, group_id, hromadny_vydaj_id, datum, typ_jedla, volba, sposob, issued_by, issued_at')
       .eq('datum', datum)
       .eq('typ_jedla', typJedla)
       .eq('status', 'VYDANE')
       .order('issued_at', { ascending: false })
-      .limit(60)
-
-    const { data, error } = await query
+      .limit(100)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    const visibleRows = (data || []).filter((row: any) => {
+    const visibleRows = (issuedRows || []).filter((row: any) => {
       return access.global || access.groupIds.includes(row.group_id) || row.issued_by === actor.id
     }).slice(0, 10)
+
+    const userIds = Array.from(new Set(visibleRows.map((row: any) => row.user_id).filter(Boolean)))
+    const groupIds = Array.from(new Set(visibleRows.map((row: any) => row.group_id).filter(Boolean)))
+
+    const { data: usersData } = userIds.length > 0
+      ? await supabaseServer
+        .from('users')
+        .select('id, meno, priezvisko, email')
+        .in('id', userIds)
+      : { data: [] }
+
+    const { data: groupsData } = groupIds.length > 0
+      ? await supabaseServer
+        .from('groups')
+        .select('id, name')
+        .in('id', groupIds)
+      : { data: [] }
+
+    const userMap = new Map((usersData || []).map((user: any) => [user.id, user]))
+    const groupMap = new Map((groupsData || []).map((group: any) => [group.id, group]))
 
     return NextResponse.json({
       ok: true,
       items: visibleRows.map((row: any) => {
-        const person = Array.isArray(row.users) ? row.users[0] : row.users
-        const group = Array.isArray(row.groups) ? row.groups[0] : row.groups
+        const person = userMap.get(row.user_id)
+        const group = groupMap.get(row.group_id)
 
         return {
           issuedId: row.id,

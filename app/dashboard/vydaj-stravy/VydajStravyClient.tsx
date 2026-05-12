@@ -139,11 +139,17 @@ export default function VydajStravyClient({
   })
   const [recentIssued, setRecentIssued] = useState<ScanItem[]>([])
   const [selectedCancelIds, setSelectedCancelIds] = useState<string[]>([])
+  const [editChoices, setEditChoices] = useState<Record<string, string>>({})
   const [cancelLoading, setCancelLoading] = useState(false)
+  const [editLoading, setEditLoading] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
 
   const lastItem = history[0] || null
   const selectedCancelItems = recentIssued.filter(item => selectedCancelIds.includes(item.issuedId))
+  const changedChoiceCount = recentIssued.filter(item => {
+    const nextChoice = editChoices[item.issuedId]
+    return nextChoice && nextChoice !== item.choice
+  }).length
 
   useEffect(() => {
     const timer = setTimeout(() => inputRef.current?.focus(), 100)
@@ -285,6 +291,7 @@ export default function VydajStravyClient({
     }))
 
     setRecentIssued(items)
+    setEditChoices(Object.fromEntries(items.map(item => [item.issuedId, item.choice || ''])))
     setSelectedCancelIds(prev => prev.filter(id => items.some(item => item.issuedId === id)))
   }
 
@@ -397,6 +404,73 @@ export default function VydajStravyClient({
 
       return [...prev, issuedId]
     })
+  }
+
+  const saveChoiceChanges = async () => {
+    const changedItems = recentIssued.filter(item => {
+      const nextChoice = editChoices[item.issuedId]
+      return nextChoice && nextChoice !== item.choice
+    })
+
+    if (!changedItems.length || editLoading) return
+
+    setEditLoading(true)
+
+    try {
+      for (const item of changedItems) {
+        const res = await fetch('/api/vydaj-stravy/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            issuedId: item.issuedId,
+            choice: editChoices[item.issuedId]
+          })
+        })
+
+        const json = await res.json().catch(() => ({}))
+
+        if (!res.ok || !json.ok) {
+          throw new Error(json.error || `Úprava sa nepodarila pre ${item.personName || item.email || 'osobu'}.`)
+        }
+      }
+
+      playBeep('ok')
+      addHistory({
+        id: `${Date.now()}-edit`,
+        typJedla,
+        status: 'UPDATED',
+        tone: 'success',
+        message: `Upravené výdaje (${changedItems.length})`,
+        personName: '',
+        email: '',
+        choice: '',
+        method: '',
+        groupName: '',
+        issuedId: '',
+        issuedAt: new Date().toISOString()
+      })
+      await refreshRecentIssued()
+      await refreshStats()
+    } catch (err: any) {
+      playBeep('error')
+      addHistory({
+        id: `${Date.now()}-edit-error`,
+        typJedla,
+        status: 'UPDATE_ERROR',
+        tone: 'error',
+        message: err?.message || 'Úprava sa nepodarila.',
+        personName: '',
+        email: '',
+        choice: '',
+        method: '',
+        groupName: '',
+        issuedId: '',
+        issuedAt: new Date().toISOString()
+      })
+    } finally {
+      setEditLoading(false)
+      setTimeout(() => inputRef.current?.focus(), 70)
+    }
   }
 
   const cancelSelectedIssued = async () => {
@@ -652,6 +726,17 @@ export default function VydajStravyClient({
             >
               {cancelLoading ? 'Stornujem...' : `Stornovať (${selectedCancelItems.length})`}
             </button>
+            <button
+              type="button"
+              onClick={saveChoiceChanges}
+              disabled={!changedChoiceCount || editLoading}
+              style={{
+                ...styles.saveButton,
+                opacity: !changedChoiceCount || editLoading ? 0.45 : 1
+              }}
+            >
+              {editLoading ? 'Ukladám...' : `Uložiť úpravy (${changedChoiceCount})`}
+            </button>
           </div>
 
           {recentIssued.length === 0 ? (
@@ -670,6 +755,18 @@ export default function VydajStravyClient({
                     <b>{item.personName || item.email || '-'}</b>
                     <em>{mealLabel(item.typJedla)} · {formatTime(item.issuedAt)}</em>
                   </span>
+                  <select
+                    value={editChoices[item.issuedId] || item.choice || ''}
+                    onChange={event => setEditChoices(prev => ({
+                      ...prev,
+                      [item.issuedId]: event.target.value
+                    }))}
+                    style={styles.choiceSelect}
+                  >
+                    <option value="MASO">MASO</option>
+                    <option value="VEGE">VEGE</option>
+                    <option value="DIETA">DIÉTA</option>
+                  </select>
                 </label>
               ))}
             </div>
@@ -1052,6 +1149,13 @@ const styles: Record<string, CSSProperties> = {
     color: '#111827',
     padding: '0 14px'
   },
+  saveButton: {
+    ...baseButton,
+    background: '#16a34a',
+    borderColor: '#15803d',
+    color: '#fff',
+    padding: '0 14px'
+  },
   cancelList: {
     display: 'grid',
     gap: 8
@@ -1059,7 +1163,7 @@ const styles: Record<string, CSSProperties> = {
   cancelItem: {
     minHeight: 52,
     display: 'grid',
-    gridTemplateColumns: '28px 1fr',
+    gridTemplateColumns: '28px 1fr 110px',
     alignItems: 'center',
     gap: 10,
     borderRadius: 8,
@@ -1071,6 +1175,16 @@ const styles: Record<string, CSSProperties> = {
   cancelCheckbox: {
     width: 22,
     height: 22
+  },
+  choiceSelect: {
+    height: 42,
+    borderRadius: 8,
+    border: '1px solid #cbd5e1',
+    background: '#fff',
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: 900,
+    padding: '0 8px'
   },
   activeBox: {
     background: '#fff',
