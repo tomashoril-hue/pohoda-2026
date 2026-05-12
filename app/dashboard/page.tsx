@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getCurrentUser } from '@/lib/auth'
+import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import DashboardInvites from './DashboardInvites'
 
@@ -146,9 +147,14 @@ export default async function DashboardPage() {
   const hasMembership = !!memberships && memberships.length > 0
   const hasPendingInvites = !!pendingInvites && pendingInvites.length > 0
   const hasEntitlementRow = !!entitlement
+  const globalAccess = await getGlobalAccess(user.id)
   const canOpenPersonalista = (memberships || []).some((membership: any) => {
     const role = String(membership.role || '').toUpperCase()
     return role === 'MANAGER' || role === 'OWNER'
+  }) || globalAccess.canUsePersonalista
+  const canOpenFoodIssue = globalAccess.canUsePersonalista || (memberships || []).some((membership: any) => {
+    const role = String(membership.role || '').toUpperCase()
+    return canIssueForGroupByRole(role, globalAccess)
   })
 
   const getSelection = (typJedla: string) => {
@@ -334,6 +340,9 @@ export default async function DashboardPage() {
           <a href="/menu" style={styles.menuButton}>Výber stravy</a>
           <a href="/dashboard/qr" style={styles.menuButton}>Môj QR kód</a>
           <Link href="/dashboard/groups" style={styles.menuButtonPink}>Skupiny</Link>
+          {canOpenFoodIssue && (
+            <Link href="/dashboard/vydaj-stravy" style={styles.menuButtonGreen}>Výdaj stravy</Link>
+          )}
           {canOpenPersonalista && (
             <Link href="/dashboard/personalista" style={styles.menuButtonGreen}>Personalista</Link>
           )}

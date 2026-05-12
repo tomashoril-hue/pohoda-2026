@@ -1,0 +1,910 @@
+'use client'
+
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
+import Link from 'next/link'
+import { BrowserQRCodeReader } from '@zxing/browser'
+
+type Meal = 'OBED' | 'VECERA'
+type Tone = 'success' | 'error' | 'warning'
+
+type ScanItem = {
+  id: string
+  typJedla: string
+  status: string
+  tone: Tone
+  message: string
+  personName: string
+  email: string
+  choice: string
+  method: string
+  groupName: string
+  issuedId: string
+  issuedAt: string
+}
+
+type ActiveIssue = {
+  id: string
+  groupName: string
+  typJedla: string
+  status: string
+  validAfter: string
+}
+
+function formatTime(value: string) {
+  if (!value) return ''
+
+  try {
+    return new Intl.DateTimeFormat('sk-SK', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }).format(new Date(value))
+  } catch {
+    return value
+  }
+}
+
+function mealLabel(value: string) {
+  if (value === 'VECERA') return 'VEČERA'
+  return 'OBED'
+}
+
+function choiceLabel(value: string) {
+  if (value === 'DIETA') return 'DIÉTA'
+  if (value === 'VEGE') return 'VEGE'
+  if (value === 'MASO') return 'MASO'
+  return '-'
+}
+
+function methodLabel(value: string) {
+  if (value === 'HROMADNE') return 'HROMADNE'
+  if (value === 'INDIVIDUALNE') return 'INDIVIDUÁLNE'
+  return ''
+}
+
+function issueStatusLabel(value: string) {
+  if (value === 'READY') return 'aktívna'
+  if (value === 'WAITING') return 'čaká'
+  return value.toLowerCase()
+}
+
+function toneOf(status: string, ok: boolean): Tone {
+  if (ok) return 'success'
+  if (status === 'ALREADY_ISSUED') return 'warning'
+  return 'error'
+}
+
+export default function VydajStravyClient({
+  actorName,
+  initialDate,
+  initialMeal,
+  initialCounts,
+  activeIssues
+}: {
+  actorName: string
+  initialDate: string
+  initialMeal: string
+  initialCounts: {
+    obed: number
+    vecera: number
+  }
+  activeIssues: ActiveIssue[]
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const controlsRef = useRef<any>(null)
+  const cancelledRef = useRef(false)
+  const busyRef = useRef(false)
+  const lastScanTextRef = useRef('')
+  const lastScanTimeRef = useRef(0)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+
+  const [datum, setDatum] = useState(initialDate)
+  const [typJedla, setTypJedla] = useState<Meal>(initialMeal === 'VECERA' ? 'VECERA' : 'OBED')
+  const [qrValue, setQrValue] = useState('')
+  const [cameraOpen, setCameraOpen] = useState(false)
+  const [cameraReady, setCameraReady] = useState(false)
+  const [cameraStatus, setCameraStatus] = useState('Kamera je vypnutá.')
+  const [loading, setLoading] = useState(false)
+  const [history, setHistory] = useState<ScanItem[]>([])
+  const [successCount, setSuccessCount] = useState(0)
+  const [errorCount, setErrorCount] = useState(0)
+  const [dayCounts, setDayCounts] = useState(initialCounts)
+  const [lastIssued, setLastIssued] = useState<ScanItem | null>(null)
+  const [cancelLoading, setCancelLoading] = useState(false)
+
+  const lastItem = history[0] || null
+
+  useEffect(() => {
+    const timer = setTimeout(() => inputRef.current?.focus(), 100)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const playBeep = (type: 'ok' | 'error') => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        audioCtxRef.current = new AudioContextClass()
+      }
+
+      const ctx = audioCtxRef.current
+      const oscillator = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      oscillator.type = 'sine'
+      oscillator.frequency.value = type === 'ok' ? 980 : 220
+
+      const duration = type === 'ok' ? 0.18 : 0.34
+
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.24, ctx.currentTime + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration)
+
+      oscillator.connect(gain)
+      gain.connect(ctx.destination)
+      oscillator.start(ctx.currentTime)
+      oscillator.stop(ctx.currentTime + duration + 0.02)
+    } catch {
+      // zvuk nemusí byť dostupný
+    }
+
+    try {
+      if (navigator.vibrate) {
+        navigator.vibrate(type === 'ok' ? 70 : [90, 60, 90])
+      }
+    } catch {
+      // vibrácia nemusí byť dostupná
+    }
+  }
+
+  const stopCamera = () => {
+    cancelledRef.current = true
+
+    try {
+      controlsRef.current?.stop?.()
+      controlsRef.current = null
+    } catch {
+      // ignorujeme
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+
+    setCameraReady(false)
+    setCameraStatus('Kamera je vypnutá.')
+  }
+
+  const startCamera = async () => {
+    setCameraOpen(true)
+    setCameraReady(false)
+    setCameraStatus('Spúšťam kameru...')
+    cancelledRef.current = false
+
+    try {
+      if (!videoRef.current) {
+        setCameraStatus('Video nie je pripravené.')
+        return
+      }
+
+      const reader = new BrowserQRCodeReader()
+      const controls = await reader.decodeFromVideoDevice(
+        undefined,
+        videoRef.current,
+        async (result) => {
+          if (cancelledRef.current) return
+
+          const text = String(result?.getText?.() || '').trim()
+          if (!text) return
+
+          const nowMs = Date.now()
+          if (busyRef.current) return
+          if (lastScanTextRef.current === text && nowMs - lastScanTimeRef.current < 2500) return
+          if (nowMs - lastScanTimeRef.current < 800) return
+
+          lastScanTextRef.current = text
+          lastScanTimeRef.current = nowMs
+
+          await submitQr(text)
+        }
+      )
+
+      controlsRef.current = controls
+      setCameraReady(true)
+      setCameraStatus('Kamera je zapnutá.')
+    } catch (err: any) {
+      setCameraReady(false)
+      setCameraStatus(err?.message || 'Kamera sa nepodarila zapnúť. Použi manuálne pole.')
+      setTimeout(() => inputRef.current?.focus(), 80)
+    }
+  }
+
+  useEffect(() => {
+    return () => stopCamera()
+  }, [])
+
+  const addHistory = (item: ScanItem) => {
+    setHistory(prev => [item, ...prev].slice(0, 24))
+  }
+
+  const submitQr = async (manualValue?: string) => {
+    const cleanQr = String(manualValue ?? qrValue).trim()
+    if (!cleanQr || busyRef.current) return
+
+    busyRef.current = true
+    setLoading(true)
+
+    try {
+      const res = await fetch('/api/vydaj-stravy/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          qrCode: cleanQr,
+          datum,
+          typJedla
+        })
+      })
+
+      const json = await res.json().catch(() => ({}))
+      const ok = !!json.ok && res.ok
+      const tone = toneOf(String(json.status || ''), ok)
+      const item: ScanItem = {
+        id: `${Date.now()}-${cleanQr}`,
+        typJedla,
+        status: String(json.status || (ok ? 'ISSUED' : 'ERROR')),
+        tone,
+        message: String(json.message || json.error || 'Nepodarilo sa spracovať QR.'),
+        personName: String(json.person?.fullName || ''),
+        email: String(json.person?.email || ''),
+        choice: String(json.choice || ''),
+        method: String(json.method || ''),
+        groupName: String(json.groupName || ''),
+        issuedId: String(json.issuedId || ''),
+        issuedAt: String(json.issuedAt || new Date().toISOString())
+      }
+
+      addHistory(item)
+
+      if (ok) {
+        playBeep('ok')
+        setSuccessCount(prev => prev + 1)
+        setLastIssued(item)
+        setDayCounts(prev => ({
+          ...prev,
+          [typJedla === 'OBED' ? 'obed' : 'vecera']: prev[typJedla === 'OBED' ? 'obed' : 'vecera'] + 1
+        }))
+      } else {
+        playBeep('error')
+        setErrorCount(prev => prev + 1)
+      }
+
+      setQrValue('')
+    } catch (err: any) {
+      playBeep('error')
+      setErrorCount(prev => prev + 1)
+      addHistory({
+        id: `${Date.now()}-error`,
+        typJedla,
+        status: 'ERROR',
+        tone: 'error',
+        message: err?.message || 'Chyba spojenia so serverom.',
+        personName: '',
+        email: '',
+        choice: '',
+        method: '',
+        groupName: '',
+        issuedId: '',
+        issuedAt: new Date().toISOString()
+      })
+    } finally {
+      busyRef.current = false
+      setLoading(false)
+      setTimeout(() => inputRef.current?.focus(), 70)
+    }
+  }
+
+  const cancelLastIssued = async () => {
+    if (!lastIssued?.issuedId || cancelLoading) return
+
+    setCancelLoading(true)
+
+    try {
+      const res = await fetch('/api/vydaj-stravy/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issuedId: lastIssued.issuedId })
+      })
+
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || 'Storno sa nepodarilo.')
+      }
+
+      playBeep('ok')
+      addHistory({
+        ...lastIssued,
+        id: `${Date.now()}-cancel`,
+        status: 'CANCELLED',
+        tone: 'warning',
+        message: 'Výdaj bol stornovaný.'
+      })
+      setDayCounts(prev => ({
+        ...prev,
+        [lastIssued.typJedla === 'OBED' ? 'obed' : 'vecera']: Math.max(0, prev[lastIssued.typJedla === 'OBED' ? 'obed' : 'vecera'] - 1)
+      }))
+      setLastIssued(null)
+    } catch (err: any) {
+      playBeep('error')
+      addHistory({
+        id: `${Date.now()}-cancel-error`,
+        typJedla: lastIssued.typJedla,
+        status: 'CANCEL_ERROR',
+        tone: 'error',
+        message: err?.message || 'Storno sa nepodarilo.',
+        personName: lastIssued.personName,
+        email: lastIssued.email,
+        choice: lastIssued.choice,
+        method: lastIssued.method,
+        groupName: lastIssued.groupName,
+        issuedId: lastIssued.issuedId,
+        issuedAt: new Date().toISOString()
+      })
+    } finally {
+      setCancelLoading(false)
+      setTimeout(() => inputRef.current?.focus(), 70)
+    }
+  }
+
+  const onInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    submitQr()
+  }
+
+  return (
+    <main style={styles.page}>
+      <header style={styles.header}>
+        <div>
+          <div style={styles.kicker}>POHODA 2026</div>
+          <h1 style={styles.title}>Výdaj stravy</h1>
+          <div style={styles.actor}>{actorName}</div>
+        </div>
+
+        <Link href="/dashboard" style={styles.backButton}>Späť</Link>
+      </header>
+
+      <section style={styles.toolbar}>
+        <label style={styles.field}>
+          <span>Dátum</span>
+          <input
+            type="date"
+            value={datum}
+            onChange={event => setDatum(event.target.value)}
+            style={styles.dateInput}
+          />
+        </label>
+
+        <div style={styles.mealSwitch}>
+          {(['OBED', 'VECERA'] as Meal[]).map(meal => (
+            <button
+              key={meal}
+              type="button"
+              onClick={() => setTypJedla(meal)}
+              style={{
+                ...styles.mealButton,
+                ...(typJedla === meal ? styles.mealButtonActive : {})
+              }}
+            >
+              {mealLabel(meal)}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section style={styles.scanGrid}>
+        <div style={styles.scanPanel}>
+          <div style={styles.scanTop}>
+            <div>
+              <div style={styles.scanLabel}>Aktuálny výdaj</div>
+              <h2 style={styles.scanMeal}>{mealLabel(typJedla)}</h2>
+            </div>
+
+            <div style={styles.liveBadge}>{loading ? 'Spracúvam' : 'Pripravené'}</div>
+          </div>
+
+          <input
+            ref={inputRef}
+            value={qrValue}
+            onChange={event => setQrValue(event.target.value)}
+            onKeyDown={onInputKeyDown}
+            placeholder="Načítaj alebo zadaj QR"
+            inputMode="text"
+            autoComplete="off"
+            style={styles.qrInput}
+            disabled={loading}
+          />
+
+          <button
+            type="button"
+            onClick={() => submitQr()}
+            disabled={loading || !qrValue.trim()}
+            style={{
+              ...styles.primaryButton,
+              opacity: loading || !qrValue.trim() ? 0.55 : 1
+            }}
+          >
+            {loading ? 'Kontrolujem...' : 'Vydať stravu'}
+          </button>
+
+          <div style={styles.cameraActions}>
+            <button
+              type="button"
+              onClick={() => cameraOpen ? (setCameraOpen(false), stopCamera()) : startCamera()}
+              style={styles.secondaryButton}
+            >
+              {cameraOpen ? 'Vypnúť kameru' : 'Zapnúť kameru'}
+            </button>
+
+            <span style={styles.cameraStatus}>
+              {cameraReady ? '● ' : ''}
+              {cameraStatus}
+            </span>
+          </div>
+
+          {cameraOpen && (
+            <video
+              ref={videoRef}
+              muted
+              playsInline
+              style={styles.video}
+            />
+          )}
+        </div>
+
+        <aside style={{
+          ...styles.resultPanel,
+          ...(lastItem ? styles[`tone_${lastItem.tone}`] : {})
+        }}>
+          {!lastItem ? (
+            <>
+              <div style={styles.resultEmpty}>Čaká sa na prvý QR kód.</div>
+              <div style={styles.resultHint}>Systém najprv overí blokovanie, nárok, duplicitu výdaja a prípadnú hromadnú prípravu.</div>
+            </>
+          ) : (
+            <>
+              <div style={styles.resultStatus}>{lastItem.message}</div>
+              <div style={styles.resultName}>{lastItem.personName || 'Bez mena'}</div>
+              {lastItem.email && <div style={styles.resultSub}>{lastItem.email}</div>}
+
+              <div style={styles.badges}>
+                {lastItem.choice && <span style={styles.badge}>{choiceLabel(lastItem.choice)}</span>}
+                {lastItem.method && <span style={styles.badge}>{methodLabel(lastItem.method)}</span>}
+                {lastItem.groupName && <span style={styles.badge}>{lastItem.groupName}</span>}
+              </div>
+
+              {lastItem.issuedAt && (
+                <div style={styles.resultTime}>{formatTime(lastItem.issuedAt)}</div>
+              )}
+            </>
+          )}
+        </aside>
+      </section>
+
+      <section style={styles.statsGrid}>
+        <div style={styles.statBox}>
+          <span>Dnes obed</span>
+          <b>{dayCounts.obed}</b>
+        </div>
+        <div style={styles.statBox}>
+          <span>Dnes večera</span>
+          <b>{dayCounts.vecera}</b>
+        </div>
+        <div style={styles.statBoxGreen}>
+          <span>Vydané teraz</span>
+          <b>{successCount}</b>
+        </div>
+        <div style={styles.statBoxRed}>
+          <span>Kontroly stop</span>
+          <b>{errorCount}</b>
+        </div>
+      </section>
+
+      <section style={styles.actionsRow}>
+        <button
+          type="button"
+          onClick={cancelLastIssued}
+          disabled={!lastIssued?.issuedId || cancelLoading}
+          style={{
+            ...styles.cancelButton,
+            opacity: !lastIssued?.issuedId || cancelLoading ? 0.45 : 1
+          }}
+        >
+          {cancelLoading ? 'Stornujem...' : 'Stornovať posledný výdaj'}
+        </button>
+      </section>
+
+      {activeIssues.length > 0 && (
+        <section style={styles.activeBox}>
+          <h2 style={styles.sectionTitle}>Aktívne prípravy</h2>
+          <div style={styles.activeList}>
+            {activeIssues.map(issue => (
+              <div key={issue.id} style={styles.activeIssue}>
+                <b>{mealLabel(issue.typJedla)}</b>
+                <span>{issue.groupName}</span>
+                <em>{issueStatusLabel(issue.status)}</em>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section style={styles.historyBox}>
+        <h2 style={styles.sectionTitle}>Posledné načítania</h2>
+        {history.length === 0 ? (
+          <div style={styles.emptyHistory}>Zatiaľ bez záznamu.</div>
+        ) : (
+          <div style={styles.historyList}>
+            {history.map(item => (
+              <div key={item.id} style={{
+                ...styles.historyItem,
+                ...(item.tone === 'success'
+                  ? styles.historySuccess
+                  : item.tone === 'warning'
+                    ? styles.historyWarning
+                    : styles.historyError)
+              }}>
+                <div>
+                  <b>{item.message}</b>
+                  <span>{item.personName || item.email || '-'}</span>
+                </div>
+                <em>{formatTime(item.issuedAt)}</em>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </main>
+  )
+}
+
+const baseButton: CSSProperties = {
+  minHeight: 56,
+  borderRadius: 8,
+  border: '1px solid #111827',
+  fontSize: 17,
+  fontWeight: 900,
+  cursor: 'pointer'
+}
+
+const styles: Record<string, CSSProperties> = {
+  page: {
+    minHeight: '100vh',
+    background: '#f3f4f6',
+    color: '#111827',
+    fontFamily: 'Arial, Helvetica, sans-serif',
+    padding: 12,
+    display: 'grid',
+    gap: 12,
+    maxWidth: 1120,
+    margin: '0 auto'
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    background: '#111827',
+    color: '#fff',
+    borderRadius: 8,
+    padding: 16
+  },
+  kicker: {
+    color: '#86efac',
+    fontSize: 12,
+    fontWeight: 900,
+    letterSpacing: 0
+  },
+  title: {
+    margin: 0,
+    fontSize: 34,
+    lineHeight: 1.05,
+    fontWeight: 950
+  },
+  actor: {
+    marginTop: 6,
+    color: '#d1d5db',
+    fontSize: 14,
+    fontWeight: 750
+  },
+  backButton: {
+    ...baseButton,
+    minHeight: 48,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#fff',
+    color: '#111827',
+    textDecoration: 'none',
+    padding: '0 16px'
+  },
+  toolbar: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(170px, 230px) 1fr',
+    gap: 10,
+    alignItems: 'end'
+  },
+  field: {
+    display: 'grid',
+    gap: 5,
+    fontSize: 13,
+    fontWeight: 850
+  },
+  dateInput: {
+    height: 56,
+    borderRadius: 8,
+    border: '1px solid #cbd5e1',
+    padding: '0 12px',
+    fontSize: 17,
+    fontWeight: 850,
+    background: '#fff',
+    color: '#111827'
+  },
+  mealSwitch: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 10
+  },
+  mealButton: {
+    ...baseButton,
+    background: '#fff',
+    color: '#111827'
+  },
+  mealButtonActive: {
+    background: '#2563eb',
+    color: '#fff',
+    borderColor: '#1d4ed8'
+  },
+  scanGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1.15fr) minmax(280px, 0.85fr)',
+    gap: 12
+  },
+  scanPanel: {
+    background: '#fff',
+    borderRadius: 8,
+    border: '1px solid #e5e7eb',
+    padding: 14,
+    display: 'grid',
+    gap: 12
+  },
+  scanTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 10,
+    alignItems: 'center'
+  },
+  scanLabel: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: 850
+  },
+  scanMeal: {
+    margin: 0,
+    fontSize: 36,
+    fontWeight: 950
+  },
+  liveBadge: {
+    borderRadius: 999,
+    background: '#dcfce7',
+    color: '#166534',
+    padding: '8px 12px',
+    fontSize: 13,
+    fontWeight: 950
+  },
+  qrInput: {
+    width: '100%',
+    boxSizing: 'border-box',
+    height: 68,
+    borderRadius: 8,
+    border: '2px solid #111827',
+    padding: '0 14px',
+    fontSize: 22,
+    fontWeight: 900,
+    outline: 'none'
+  },
+  primaryButton: {
+    ...baseButton,
+    minHeight: 64,
+    background: '#16a34a',
+    borderColor: '#15803d',
+    color: '#fff',
+    fontSize: 20
+  },
+  cameraActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap'
+  },
+  secondaryButton: {
+    ...baseButton,
+    background: '#111827',
+    color: '#fff',
+    padding: '0 14px'
+  },
+  cameraStatus: {
+    color: '#475569',
+    fontSize: 13,
+    fontWeight: 750
+  },
+  video: {
+    width: '100%',
+    maxHeight: 320,
+    background: '#020617',
+    borderRadius: 8,
+    objectFit: 'cover'
+  },
+  resultPanel: {
+    minHeight: 260,
+    borderRadius: 8,
+    border: '1px solid #e5e7eb',
+    padding: 18,
+    background: '#fff',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    gap: 10
+  },
+  tone_success: {
+    background: '#dcfce7',
+    borderColor: '#22c55e',
+    color: '#14532d'
+  },
+  tone_error: {
+    background: '#fee2e2',
+    borderColor: '#ef4444',
+    color: '#7f1d1d'
+  },
+  tone_warning: {
+    background: '#fef3c7',
+    borderColor: '#f59e0b',
+    color: '#78350f'
+  },
+  resultEmpty: {
+    fontSize: 28,
+    fontWeight: 950
+  },
+  resultHint: {
+    fontSize: 14,
+    fontWeight: 750,
+    color: '#475569'
+  },
+  resultStatus: {
+    fontSize: 36,
+    fontWeight: 950,
+    lineHeight: 1
+  },
+  resultName: {
+    fontSize: 26,
+    fontWeight: 950
+  },
+  resultSub: {
+    fontSize: 15,
+    fontWeight: 750
+  },
+  badges: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8
+  },
+  badge: {
+    background: '#111827',
+    color: '#fff',
+    borderRadius: 999,
+    padding: '7px 10px',
+    fontSize: 13,
+    fontWeight: 950
+  },
+  resultTime: {
+    fontSize: 20,
+    fontWeight: 950
+  },
+  statsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 10
+  },
+  statBox: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 12,
+    display: 'grid',
+    gap: 6
+  },
+  statBoxGreen: {
+    background: '#dcfce7',
+    border: '1px solid #86efac',
+    borderRadius: 8,
+    padding: 12,
+    display: 'grid',
+    gap: 6
+  },
+  statBoxRed: {
+    background: '#fee2e2',
+    border: '1px solid #fecaca',
+    borderRadius: 8,
+    padding: 12,
+    display: 'grid',
+    gap: 6
+  },
+  actionsRow: {
+    display: 'grid'
+  },
+  cancelButton: {
+    ...baseButton,
+    background: '#f59e0b',
+    borderColor: '#d97706',
+    color: '#111827'
+  },
+  activeBox: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 12
+  },
+  sectionTitle: {
+    margin: '0 0 10px 0',
+    fontSize: 20,
+    fontWeight: 950
+  },
+  activeList: {
+    display: 'grid',
+    gap: 8
+  },
+  activeIssue: {
+    display: 'grid',
+    gridTemplateColumns: '90px 1fr auto',
+    gap: 10,
+    alignItems: 'center',
+    background: '#f8fafc',
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 14
+  },
+  historyBox: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 12
+  },
+  emptyHistory: {
+    color: '#64748b',
+    fontSize: 14,
+    fontWeight: 750
+  },
+  historyList: {
+    display: 'grid',
+    gap: 8
+  },
+  historyItem: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 13
+  },
+  historySuccess: {
+    background: '#dcfce7'
+  },
+  historyWarning: {
+    background: '#fef3c7'
+  },
+  historyError: {
+    background: '#fee2e2'
+  }
+}
