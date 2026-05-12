@@ -74,7 +74,7 @@ export async function POST(req: Request) {
 
     const { data: profile, error: profileError } = await supabaseServer
       .from('users')
-      .select('meno, priezvisko, email')
+      .select('meno, priezvisko, email, aktivny')
       .eq('id', qrUser.user_id)
       .maybeSingle()
 
@@ -88,6 +88,13 @@ export async function POST(req: Request) {
     const fullName = profile
       ? `${profile.meno || ''} ${profile.priezvisko || ''}`.trim()
       : ''
+
+    if (String(profile?.aktivny || '').toUpperCase() !== 'ANO') {
+      return NextResponse.json(
+        { error: `Osoba ${fullName || profile?.email || cleanQr} je zablokovana.` },
+        { status: 403 }
+      )
+    }
 
     const { data: existing } = await supabaseServer
       .from('group_members')

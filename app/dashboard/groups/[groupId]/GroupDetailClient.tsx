@@ -13,6 +13,7 @@ type Member = {
   fullName: string
   email: string
   telefon: string
+  aktivny: string
   isMe: boolean
 }
 
@@ -95,10 +96,18 @@ export default function GroupDetailClient({
           member.fullName.toLowerCase().includes(q) ||
           member.email.toLowerCase().includes(q) ||
           member.telefon.toLowerCase().includes(q) ||
-          member.role.toLowerCase().includes(q)
+          member.role.toLowerCase().includes(q) ||
+          (String(member.aktivny || '').toUpperCase() !== 'ANO' && 'blokovany'.includes(q))
         )
       })
-      .sort((a, b) => a.fullName.localeCompare(b.fullName, 'sk'))
+      .sort((a, b) => {
+        const aBlocked = String(a.aktivny || '').toUpperCase() !== 'ANO'
+        const bBlocked = String(b.aktivny || '').toUpperCase() !== 'ANO'
+
+        if (aBlocked !== bBlocked) return aBlocked ? 1 : -1
+
+        return a.fullName.localeCompare(b.fullName, 'sk')
+      })
   }, [members, search])
 
   const selectableMembers = filteredMembers.filter(member => !member.isMe)
@@ -589,6 +598,13 @@ export default function GroupDetailClient({
         </div>
       </section>
 
+      {members.some(member => String(member.aktivny || '').toUpperCase() !== 'ANO') && (
+        <section style={styles.blockedNotice}>
+          <b>{members.filter(member => String(member.aktivny || '').toUpperCase() !== 'ANO').length}</b>
+          <span>blokovanĂ­ ÄŤlenovia v tejto skupine</span>
+        </section>
+      )}
+
       <section style={styles.actionBar}>
         <div style={styles.actionLeft}>
           {canIssue && (
@@ -748,6 +764,7 @@ export default function GroupDetailClient({
         <div style={styles.tableHeader}>
           <div />
           <div>Osoba</div>
+          <div>Stav</div>
           <div>Rola</div>
           <div>Akcie</div>
         </div>
@@ -755,8 +772,17 @@ export default function GroupDetailClient({
         {filteredMembers.length === 0 ? (
           <div style={styles.emptyState}>Nenašli sa žiadni členovia.</div>
         ) : (
-          filteredMembers.map(member => (
-            <div key={member.id} style={styles.row}>
+          filteredMembers.map(member => {
+            const blocked = String(member.aktivny || '').toUpperCase() !== 'ANO'
+
+            return (
+            <div
+              key={member.id}
+              style={{
+                ...styles.row,
+                background: blocked ? '#fef2f2' : '#fff'
+              }}
+            >
               <div style={styles.checkCell}>
                 {canManage && (
                   <input
@@ -776,6 +802,18 @@ export default function GroupDetailClient({
                 <div style={styles.personMeta}>
                   {member.email || '-'}{member.telefon ? ` · ${member.telefon}` : ''}
                 </div>
+              </div>
+
+              <div>
+                <span
+                  style={{
+                    ...styles.statusBadge,
+                    background: blocked ? '#fee2e2' : '#dcfce7',
+                    color: blocked ? '#991b1b' : '#166534'
+                  }}
+                >
+                  {blocked ? 'BLOK' : 'AKTIVNY'}
+                </span>
               </div>
 
               <div>
@@ -812,7 +850,8 @@ export default function GroupDetailClient({
                 )}
               </div>
             </div>
-          ))
+            )
+          })
         )}
       </section>
 
@@ -1057,6 +1096,18 @@ const styles: Record<string, CSSProperties> = {
     justifyItems: 'center',
     minWidth: 82
   },
+  blockedNotice: {
+    background: '#fef2f2',
+    color: '#991b1b',
+    border: '1px solid #fecaca',
+    borderRadius: 16,
+    padding: 12,
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+    fontSize: 13,
+    fontWeight: 900
+  },
   actionBar: {
     background: '#fff',
     border: '1px solid #e5e7eb',
@@ -1226,9 +1277,9 @@ const styles: Record<string, CSSProperties> = {
     boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
   },
   tableHeader: {
-    minWidth: 650,
+    minWidth: 720,
     display: 'grid',
-    gridTemplateColumns: '32px minmax(0, 1fr) 130px 100px',
+    gridTemplateColumns: '32px minmax(0, 1fr) 82px 130px 100px',
     gap: 8,
     alignItems: 'center',
     padding: '9px 10px',
@@ -1240,9 +1291,9 @@ const styles: Record<string, CSSProperties> = {
     textTransform: 'uppercase'
   },
   row: {
-    minWidth: 650,
+    minWidth: 720,
     display: 'grid',
-    gridTemplateColumns: '32px minmax(0, 1fr) 130px 100px',
+    gridTemplateColumns: '32px minmax(0, 1fr) 82px 130px 100px',
     gap: 8,
     alignItems: 'center',
     padding: '9px 10px',
@@ -1292,6 +1343,16 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 900,
     background: '#f3f4f6',
     color: '#374151',
+    whiteSpace: 'nowrap'
+  },
+  statusBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    padding: '5px 7px',
+    fontSize: 10,
+    fontWeight: 950,
     whiteSpace: 'nowrap'
   },
   sourceBadge: {

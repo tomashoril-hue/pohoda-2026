@@ -222,6 +222,7 @@ export default function GroupIssueClient({
 
   const availableMemberIdsFor = (targetDate: string, targetMeal: string) => {
     return members
+      .filter((member: any) => String(member.aktivny || 'ANO').toUpperCase() === 'ANO')
       .filter((member: any) => !getMemberConflict(member, targetDate, targetMeal))
       .map((member: any) => member.userId)
   }
@@ -645,6 +646,7 @@ export default function GroupIssueClient({
           row.removeReason === 'MOVED_TO_OTHER_GROUP' ||
           row.removeReason === 'MOVED_TO_OTHER_ISSUE' ||
           row.removeReason === 'IN_OTHER_ISSUE' ||
+          row.removeReason === 'USER_BLOCKED' ||
           row.removeReason === 'MANUAL' ||
           row.removeReason === 'GROUP_CANCELLED'
 
