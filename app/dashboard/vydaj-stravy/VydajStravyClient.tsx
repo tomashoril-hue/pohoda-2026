@@ -30,6 +30,29 @@ type ActiveIssue = {
   validAfter: string
 }
 
+type ChoiceStats = {
+  total: number
+  issued: number
+}
+
+type MealStats = {
+  total: number
+  issued: number
+  MASO: ChoiceStats
+  VEGE: ChoiceStats
+  DIETA: ChoiceStats
+}
+
+function emptyMealStats(issued = 0): MealStats {
+  return {
+    total: 0,
+    issued,
+    MASO: { total: 0, issued: 0 },
+    VEGE: { total: 0, issued: 0 },
+    DIETA: { total: 0, issued: 0 }
+  }
+}
+
 function formatTime(value: string) {
   if (!value) return ''
 
@@ -109,10 +132,15 @@ export default function VydajStravyClient({
   const [history, setHistory] = useState<ScanItem[]>([])
   const [successCount, setSuccessCount] = useState(0)
   const [errorCount, setErrorCount] = useState(0)
-  const [dayCounts, setDayCounts] = useState(initialCounts)
+  const [, setDayCounts] = useState(initialCounts)
+  const [mealStats, setMealStats] = useState<Record<Meal, MealStats>>({
+    OBED: emptyMealStats(initialCounts.obed),
+    VECERA: emptyMealStats(initialCounts.vecera)
+  })
   const [recentIssued, setRecentIssued] = useState<ScanItem[]>([])
   const [selectedCancelIds, setSelectedCancelIds] = useState<string[]>([])
   const [cancelLoading, setCancelLoading] = useState(false)
+  const [cancelOpen, setCancelOpen] = useState(false)
 
   const lastItem = history[0] || null
   const selectedCancelItems = recentIssued.filter(item => selectedCancelIds.includes(item.issuedId))
@@ -230,6 +258,56 @@ export default function VydajStravyClient({
     setHistory(prev => [item, ...prev].slice(0, 24))
   }
 
+  const refreshRecentIssued = async () => {
+    const params = new URLSearchParams({
+      datum,
+      typJedla
+    })
+
+    const res = await fetch(`/api/vydaj-stravy/recent?${params.toString()}`)
+    const json = await res.json().catch(() => ({}))
+
+    if (!res.ok || !json.ok) return
+
+    const items: ScanItem[] = (json.items || []).map((item: any) => ({
+      id: item.issuedId,
+      typJedla: item.typJedla,
+      status: 'ISSUED',
+      tone: 'success',
+      message: item.method === 'HROMADNE' ? 'Vydané hromadne' : 'Vydané',
+      personName: item.personName || '',
+      email: item.email || '',
+      choice: item.choice || '',
+      method: item.method || '',
+      groupName: item.groupName || '',
+      issuedId: item.issuedId || '',
+      issuedAt: item.issuedAt || ''
+    }))
+
+    setRecentIssued(items)
+    setSelectedCancelIds(prev => prev.filter(id => items.some(item => item.issuedId === id)))
+  }
+
+  const refreshStats = async () => {
+    const params = new URLSearchParams({ datum })
+    const res = await fetch(`/api/vydaj-stravy/stats?${params.toString()}`)
+    const json = await res.json().catch(() => ({}))
+
+    if (!res.ok || !json.ok || !json.stats) return
+
+    setMealStats(json.stats)
+    setDayCounts({
+      obed: Number(json.stats.OBED?.issued || 0),
+      vecera: Number(json.stats.VECERA?.issued || 0)
+    })
+  }
+
+  useEffect(() => {
+    setSelectedCancelIds([])
+    refreshRecentIssued()
+    refreshStats()
+  }, [datum, typJedla])
+
   const submitQr = async (manualValue?: string) => {
     const cleanQr = String(manualValue ?? qrValue).trim()
     if (!cleanQr || busyRef.current) return
@@ -269,19 +347,18 @@ export default function VydajStravyClient({
       addHistory(item)
 
       if (ok) {
+        const issuedCount = Math.max(1, Number(json.issuedCount || 1))
         playBeep('ok')
-        setSuccessCount(prev => prev + 1)
+        setSuccessCount(prev => prev + issuedCount)
         if (item.issuedId) {
-          setRecentIssued(prev => [
-            item,
-            ...prev.filter(prevItem => prevItem.issuedId !== item.issuedId)
-          ].slice(0, 10))
           setSelectedCancelIds([item.issuedId])
         }
         setDayCounts(prev => ({
           ...prev,
-          [typJedla === 'OBED' ? 'obed' : 'vecera']: prev[typJedla === 'OBED' ? 'obed' : 'vecera'] + 1
+          [typJedla === 'OBED' ? 'obed' : 'vecera']: prev[typJedla === 'OBED' ? 'obed' : 'vecera'] + issuedCount
         }))
+        await refreshRecentIssued()
+        await refreshStats()
       } else {
         playBeep('error')
         setErrorCount(prev => prev + 1)
@@ -358,8 +435,9 @@ export default function VydajStravyClient({
       }
 
       playBeep('ok')
-      setRecentIssued(prev => prev.filter(item => !cancelledIds.includes(item.issuedId)))
-      setSelectedCancelIds(prev => prev.filter(id => !cancelledIds.includes(id)))
+      await refreshRecentIssued()
+      await refreshStats()
+      setSelectedCancelIds([])
     } catch (err: any) {
       playBeep('error')
       addHistory({
@@ -377,8 +455,8 @@ export default function VydajStravyClient({
         issuedAt: new Date().toISOString()
       })
       if (cancelledIds.length > 0) {
-        setRecentIssued(prev => prev.filter(item => !cancelledIds.includes(item.issuedId)))
-        setSelectedCancelIds(prev => prev.filter(id => !cancelledIds.includes(id)))
+        await refreshRecentIssued()
+        await refreshStats()
       }
     } finally {
       setCancelLoading(false)
@@ -522,13 +600,23 @@ export default function VydajStravyClient({
       </section>
 
       <section style={styles.statsGrid}>
-        <div style={styles.statBox}>
+        <div style={styles.statBoxWide}>
           <span>Dnes obed</span>
-          <b>{dayCounts.obed}</b>
+          <b>{mealStats.OBED.issued} / {mealStats.OBED.total}</b>
+          <div style={styles.foodBreakdown}>
+            <em>MASO {mealStats.OBED.MASO.issued}/{mealStats.OBED.MASO.total}</em>
+            <em>VEGE {mealStats.OBED.VEGE.issued}/{mealStats.OBED.VEGE.total}</em>
+            <em>DIÉTA {mealStats.OBED.DIETA.issued}/{mealStats.OBED.DIETA.total}</em>
+          </div>
         </div>
-        <div style={styles.statBox}>
+        <div style={styles.statBoxWide}>
           <span>Dnes večera</span>
-          <b>{dayCounts.vecera}</b>
+          <b>{mealStats.VECERA.issued} / {mealStats.VECERA.total}</b>
+          <div style={styles.foodBreakdown}>
+            <em>MASO {mealStats.VECERA.MASO.issued}/{mealStats.VECERA.MASO.total}</em>
+            <em>VEGE {mealStats.VECERA.VEGE.issued}/{mealStats.VECERA.VEGE.total}</em>
+            <em>DIÉTA {mealStats.VECERA.DIETA.issued}/{mealStats.VECERA.DIETA.total}</em>
+          </div>
         </div>
         <div style={styles.statBoxGreen}>
           <span>Vydané teraz</span>
@@ -541,7 +629,12 @@ export default function VydajStravyClient({
       </section>
 
       <section style={styles.actionsRow}>
-        <div style={styles.cancelBox}>
+        <button type="button" onClick={() => setCancelOpen(true)} style={styles.cancelButton}>
+          Storno výdajov
+        </button>
+        {cancelOpen && (
+          <div style={styles.modalBackdrop} onClick={() => setCancelOpen(false)}>
+            <div style={styles.cancelBox} onClick={event => event.stopPropagation()}>
           <div style={styles.cancelHeader}>
             <div>
               <h2 style={styles.sectionTitle}>Storno posledných výdajov</h2>
@@ -581,7 +674,9 @@ export default function VydajStravyClient({
               ))}
             </div>
           )}
-        </div>
+            </div>
+          </div>
+        )}
       </section>
 
       {activeIssues.length > 0 && (
@@ -883,6 +978,21 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gap: 6
   },
+  statBoxWide: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 12,
+    display: 'grid',
+    gap: 6
+  },
+  foodBreakdown: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
+    fontSize: 12,
+    fontWeight: 850
+  },
   statBoxGreen: {
     background: '#dcfce7',
     border: '1px solid #86efac',
@@ -902,13 +1012,26 @@ const styles: Record<string, CSSProperties> = {
   actionsRow: {
     display: 'grid'
   },
+  modalBackdrop: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 50,
+    background: 'rgba(15, 23, 42, 0.55)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12
+  },
   cancelBox: {
     background: '#fff',
     border: '1px solid #e5e7eb',
     borderRadius: 8,
     padding: 12,
     display: 'grid',
-    gap: 10
+    gap: 10,
+    width: 'min(560px, 100%)',
+    maxHeight: '86vh',
+    overflowY: 'auto'
   },
   cancelHeader: {
     display: 'grid',

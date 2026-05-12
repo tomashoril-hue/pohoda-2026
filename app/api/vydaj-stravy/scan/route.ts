@@ -50,6 +50,14 @@ function groupOf(issue: any) {
     : issue?.groups
 }
 
+function isActiveIssue(issue: any, now: Date) {
+  if (!issue) return false
+  if (issue.status === 'READY') return true
+  if (issue.status !== 'WAITING') return false
+  if (!issue.valid_after) return true
+  return new Date(issue.valid_after).getTime() <= now.getTime()
+}
+
 async function issuerAccess(actorId: string) {
   const globalAccess = await getGlobalAccess(actorId)
 
@@ -320,10 +328,7 @@ export async function POST(req: NextRequest) {
       const targetRole = targetRoleByGroup.get(issue.group_id) || ''
       if (!canIssueForGroupByRole(targetRole, { isAdmin: false })) return false
 
-      if (issue.status === 'READY') return true
-      if (!issue.valid_after) return true
-
-      return new Date(issue.valid_after).getTime() <= now.getTime()
+      return isActiveIssue(issue, now)
     }) || null
 
     const relatedPlannedItem = validBulkItem || matchingPlannedItems[0] || null
@@ -335,6 +340,135 @@ export async function POST(req: NextRequest) {
       null
 
     const sposob = validBulkItem ? 'HROMADNE' : 'INDIVIDUALNE'
+
+    if (validBulkItem && relatedIssue?.id) {
+      const { data: bulkItems, error: bulkItemsError } = await supabaseServer
+        .from('hromadny_vydaj_polozky')
+        .select('id, user_id, volba')
+        .eq('hromadny_vydaj_id', relatedIssue.id)
+        .eq('status', 'PLANNED')
+
+      if (bulkItemsError) {
+        return NextResponse.json({ error: bulkItemsError.message }, { status: 500 })
+      }
+
+      const bulkUserIds = Array.from(
+        new Set((bulkItems || []).map((item: any) => item.user_id).filter(Boolean))
+      )
+
+      if (bulkUserIds.length === 0) {
+        return NextResponse.json({
+          ok: false,
+          status: 'EMPTY_BULK',
+          tone: 'error',
+          person: {
+            id: profile.id,
+            fullName: fullName(profile) || profile.email || '',
+            email: profile.email || ''
+          },
+          message: 'Hromadná príprava nemá žiadne nevydané položky.'
+        }, { status: 409 })
+      }
+
+      const { data: alreadyBulkIssued, error: alreadyBulkIssuedError } = await supabaseServer
+        .from('vydaj_jedal')
+        .select('user_id')
+        .eq('datum', datum)
+        .eq('typ_jedla', typJedla)
+        .eq('status', 'VYDANE')
+        .in('user_id', bulkUserIds)
+
+      if (alreadyBulkIssuedError) {
+        return NextResponse.json({ error: alreadyBulkIssuedError.message }, { status: 500 })
+      }
+
+      const alreadyBulkIssuedIds = new Set((alreadyBulkIssued || []).map((row: any) => row.user_id))
+      const bulkRowsToIssue = (bulkItems || []).filter((item: any) => !alreadyBulkIssuedIds.has(item.user_id))
+
+      if (bulkRowsToIssue.length === 0) {
+        return NextResponse.json({
+          ok: false,
+          status: 'ALREADY_ISSUED',
+          tone: 'error',
+          person: {
+            id: profile.id,
+            fullName: fullName(profile) || profile.email || '',
+            email: profile.email || ''
+          },
+          message: 'Už vydané'
+        }, { status: 409 })
+      }
+
+      const bulkInsertRows = bulkRowsToIssue.map((item: any) => ({
+        user_id: item.user_id,
+        group_id: relatedIssue.group_id,
+        hromadny_vydaj_id: relatedIssue.id,
+        datum,
+        typ_jedla: typJedla,
+        volba: normalizeChoice(item.volba) || null,
+        sposob: 'HROMADNE',
+        status: 'VYDANE',
+        issued_by: actor.id,
+        qr_code: item.user_id === targetUserId ? qrCode : null,
+        source: 'QR',
+        note: 'Hromadný výdaj cez QR oprávnenej osoby.'
+      }))
+
+      const { data: issuedBulkRows, error: issueBulkError } = await supabaseServer
+        .from('vydaj_jedal')
+        .insert(bulkInsertRows)
+        .select('id, issued_at')
+
+      if (issueBulkError) {
+        if (issueBulkError.code === '23505') {
+          return NextResponse.json({
+            ok: false,
+            status: 'ALREADY_ISSUED',
+            tone: 'error',
+            person: {
+              id: profile.id,
+              fullName: fullName(profile) || profile.email || '',
+              email: profile.email || ''
+            },
+            message: 'Niektoré jedlo už bolo vydané. Obnov stránku a skontroluj stav.'
+          }, { status: 409 })
+        }
+
+        return NextResponse.json({ error: issueBulkError.message }, { status: 500 })
+      }
+
+      await supabaseServer
+        .from('hromadny_vydaj_polozky')
+        .update({
+          status: 'BULK_ISSUED',
+          updated_at: new Date().toISOString()
+        })
+        .eq('hromadny_vydaj_id', relatedIssue.id)
+        .in('user_id', bulkRowsToIssue.map((item: any) => item.user_id))
+        .eq('status', 'PLANNED')
+
+      const firstIssuedRow = issuedBulkRows?.[0]
+
+      return NextResponse.json({
+        ok: true,
+        status: 'ISSUED',
+        tone: 'success',
+        issuedId: firstIssuedRow?.id || '',
+        issuedAt: firstIssuedRow?.issued_at || new Date().toISOString(),
+        issuedCount: bulkRowsToIssue.length,
+        totalCount: bulkItems?.length || bulkRowsToIssue.length,
+        person: {
+          id: profile.id,
+          fullName: fullName(profile) || profile.email || '',
+          email: profile.email || '',
+          phone: profile.telefon || ''
+        },
+        choice,
+        method: 'HROMADNE',
+        groupName: relatedGroup?.name || '',
+        message: `Vydané hromadne (${bulkRowsToIssue.length})`
+      })
+    }
 
     const { data: issued, error: issueError } = await supabaseServer
       .from('vydaj_jedal')
@@ -378,16 +512,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: issueError.message }, { status: 500 })
     }
 
-    if (validBulkItem) {
-      await supabaseServer
-        .from('hromadny_vydaj_polozky')
-        .update({
-          status: 'BULK_ISSUED',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', validBulkItem.id)
-        .eq('status', 'PLANNED')
-    } else if (matchingPlannedItems.length > 0) {
+    if (matchingPlannedItems.length > 0) {
       await supabaseServer
         .from('hromadny_vydaj_polozky')
         .update({
@@ -413,7 +538,7 @@ export async function POST(req: NextRequest) {
       choice,
       method: sposob,
       groupName: relatedGroup?.name || '',
-      message: sposob === 'HROMADNE' ? 'Vydané hromadne' : 'Vydané individuálne'
+      message: relatedPlannedItem ? 'Vydané individuálne' : 'Vydané'
     })
   } catch (err: any) {
     return NextResponse.json(
