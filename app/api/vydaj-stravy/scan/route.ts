@@ -293,7 +293,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: plannedItemsError.message }, { status: 500 })
     }
 
-    const now = new Date()
     const matchingPlannedItems = (plannedItems || []).filter((item: any) => {
       const issue = issueOf(item)
 
@@ -305,15 +304,7 @@ export async function POST(req: NextRequest) {
       return true
     })
 
-    const validBulkItem = matchingPlannedItems.find((item: any) => {
-      const issue = issueOf(item)
-      if (!issue) return false
-      if (issue.status === 'READY') return true
-      if (!issue.valid_after) return true
-      return new Date(issue.valid_after).getTime() <= now.getTime()
-    }) || null
-
-    const relatedPlannedItem = validBulkItem || matchingPlannedItems[0] || null
+    const relatedPlannedItem = matchingPlannedItems[0] || null
     const relatedIssue = issueOf(relatedPlannedItem)
     const relatedGroup = groupOf(relatedIssue)
     const fallbackGroupId =
@@ -321,7 +312,7 @@ export async function POST(req: NextRequest) {
       allowedTargetGroups[0]?.group_id ||
       null
 
-    const sposob = validBulkItem ? 'HROMADNE' : 'INDIVIDUALNE'
+    const sposob = 'INDIVIDUALNE'
 
     const { data: issued, error: issueError } = await supabaseServer
       .from('vydaj_jedal')
@@ -337,7 +328,9 @@ export async function POST(req: NextRequest) {
         issued_by: actor.id,
         qr_code: qrCode,
         source: 'QR',
-        note: validBulkItem ? 'Výdaj z hromadnej prípravy.' : 'Individuálny výdaj cez QR.'
+        note: relatedPlannedItem
+          ? 'Individuálny výdaj cez QR z hromadnej prípravy.'
+          : 'Individuálny výdaj cez QR.'
       })
       .select('id, issued_at')
       .single()
@@ -361,16 +354,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: issueError.message }, { status: 500 })
     }
 
-    if (validBulkItem) {
-      await supabaseServer
-        .from('hromadny_vydaj_polozky')
-        .update({
-          status: 'BULK_ISSUED',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', validBulkItem.id)
-        .eq('status', 'PLANNED')
-    } else if (matchingPlannedItems.length > 0) {
+    if (matchingPlannedItems.length > 0) {
       await supabaseServer
         .from('hromadny_vydaj_polozky')
         .update({
@@ -396,7 +380,7 @@ export async function POST(req: NextRequest) {
       choice,
       method: sposob,
       groupName: relatedGroup?.name || '',
-      message: sposob === 'HROMADNE' ? 'Vydané hromadne' : 'Vydané'
+      message: 'Vydané individuálne'
     })
   } catch (err: any) {
     return NextResponse.json(

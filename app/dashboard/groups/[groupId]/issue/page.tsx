@@ -220,8 +220,29 @@ export default async function GroupIssuePage({
     return entitlementStatus(row, typJedla)
   }
 
+  let issuedMealRows: any[] = []
+
+  if (groupUserIds.length > 0 && dateList.length > 0) {
+    const { data: issuedMealsData } = await supabaseServer
+      .from('vydaj_jedal')
+      .select('user_id, datum, typ_jedla, sposob, issued_at')
+      .eq('status', 'VYDANE')
+      .in('user_id', groupUserIds)
+      .in('datum', dateList)
+
+    issuedMealRows = issuedMealsData || []
+  }
+
+  const issuedMealMap = new Map(
+    issuedMealRows.map((row: any) => [
+      `${row.user_id}|${row.datum}|${row.typ_jedla}`,
+      row
+    ])
+  )
+
   const membersWithEntitlements = members.map((member: any) => {
     const entitlementsByDate: Record<string, any> = {}
+    const issuedMealsByDate: Record<string, any> = {}
 
     dateList.forEach(date => {
       const row = entitlementMap.get(`${member.userId}|${date}`)
@@ -230,11 +251,17 @@ export default async function GroupIssuePage({
         OBED: entitlementStatus(row, 'OBED'),
         VECERA: entitlementStatus(row, 'VECERA')
       }
+
+      issuedMealsByDate[date] = {
+        OBED: issuedMealMap.get(`${member.userId}|${date}|OBED`) || null,
+        VECERA: issuedMealMap.get(`${member.userId}|${date}|VECERA`) || null
+      }
     })
 
     return {
       ...member,
-      entitlementsByDate
+      entitlementsByDate,
+      issuedMealsByDate
     }
   })
 

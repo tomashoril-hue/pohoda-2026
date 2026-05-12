@@ -188,6 +188,18 @@ function getMemberConflict(member: any, datum: string, typJedla: string) {
   return day?.[typJedla] || null
 }
 
+function getMemberIssued(member: any, datum: string, typJedla: string) {
+  const byDate = member?.issuedMealsByDate || {}
+  const day = byDate[datum] || {}
+  return day?.[typJedla] || null
+}
+
+function issuedMealStatus(row: any) {
+  if (!row) return null
+  if (row.sposob === 'HROMADNE') return 'BULK_ISSUED'
+  return 'INDIVIDUAL_ISSUED'
+}
+
 function sameStringSet(a: string[], b: string[]) {
   if (a.length !== b.length) return false
   const setA = new Set(a)
@@ -461,6 +473,7 @@ export default function GroupIssueClient({
 
   const applyOtherIssueConflict = (row: any, targetDate: string, targetMeal: string) => {
     if (isQrExtra(row)) return row
+    if (row.status === 'INDIVIDUAL_ISSUED' || row.status === 'BULK_ISSUED') return row
 
     if (row.isFromIssue && row.status === 'PLANNED') return row
 
@@ -553,16 +566,21 @@ export default function GroupIssueClient({
           })
         }
 
+        const issuedMeal = getMemberIssued(member, currentIssue.datum, currentIssue.typ_jedla)
+
         return applyOtherIssueConflict(applyQrOverride({
           ...member,
           rowId: member.userId,
-          status: String(member.aktivny || 'ANO').toUpperCase() !== 'ANO' ? 'REMOVED' : 'NOT_PREPARED',
+          status: String(member.aktivny || 'ANO').toUpperCase() !== 'ANO'
+            ? 'REMOVED'
+            : issuedMealStatus(issuedMeal) || 'NOT_PREPARED',
           removeReason: String(member.aktivny || 'ANO').toUpperCase() !== 'ANO' ? 'USER_BLOCKED' : null,
           typStravy: member.typStravy || '',
           qrCode: member.qrCode || '',
           source: 'GROUP',
           addedByQr: false,
           entitlementStatus: getMemberEntitlement(member, currentIssue.datum, currentIssue.typ_jedla),
+          issuedMeal,
           isFromIssue: false
         }), currentIssue.datum, currentIssue.typ_jedla)
       })
@@ -595,15 +613,20 @@ export default function GroupIssueClient({
     }
 
     const baseRows = members.map((member: any) => {
+      const issuedMeal = getMemberIssued(member, datum, typJedla)
+
       return applyOtherIssueConflict(applyQrOverride({
         ...member,
         rowId: member.userId,
-        status: String(member.aktivny || 'ANO').toUpperCase() !== 'ANO' ? 'REMOVED' : 'NOT_PREPARED',
+        status: String(member.aktivny || 'ANO').toUpperCase() !== 'ANO'
+          ? 'REMOVED'
+          : issuedMealStatus(issuedMeal) || 'NOT_PREPARED',
         removeReason: String(member.aktivny || 'ANO').toUpperCase() !== 'ANO' ? 'USER_BLOCKED' : null,
         source: 'GROUP',
         addedByQr: false,
         qrCode: member.qrCode || '',
         entitlementStatus: getMemberEntitlement(member, datum, typJedla),
+        issuedMeal,
         isFromIssue: false
       }), datum, typJedla)
     })

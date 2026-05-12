@@ -110,10 +110,12 @@ export default function VydajStravyClient({
   const [successCount, setSuccessCount] = useState(0)
   const [errorCount, setErrorCount] = useState(0)
   const [dayCounts, setDayCounts] = useState(initialCounts)
-  const [lastIssued, setLastIssued] = useState<ScanItem | null>(null)
+  const [recentIssued, setRecentIssued] = useState<ScanItem[]>([])
+  const [selectedCancelIds, setSelectedCancelIds] = useState<string[]>([])
   const [cancelLoading, setCancelLoading] = useState(false)
 
   const lastItem = history[0] || null
+  const selectedCancelItems = recentIssued.filter(item => selectedCancelIds.includes(item.issuedId))
 
   useEffect(() => {
     const timer = setTimeout(() => inputRef.current?.focus(), 100)
@@ -269,7 +271,13 @@ export default function VydajStravyClient({
       if (ok) {
         playBeep('ok')
         setSuccessCount(prev => prev + 1)
-        setLastIssued(item)
+        if (item.issuedId) {
+          setRecentIssued(prev => [
+            item,
+            ...prev.filter(prevItem => prevItem.issuedId !== item.issuedId)
+          ].slice(0, 10))
+          setSelectedCancelIds([item.issuedId])
+        }
         setDayCounts(prev => ({
           ...prev,
           [typJedla === 'OBED' ? 'obed' : 'vecera']: prev[typJedla === 'OBED' ? 'obed' : 'vecera'] + 1
@@ -304,53 +312,74 @@ export default function VydajStravyClient({
     }
   }
 
-  const cancelLastIssued = async () => {
-    if (!lastIssued?.issuedId || cancelLoading) return
+  const toggleCancelSelection = (issuedId: string) => {
+    setSelectedCancelIds(prev => {
+      if (prev.includes(issuedId)) {
+        return prev.filter(id => id !== issuedId)
+      }
+
+      return [...prev, issuedId]
+    })
+  }
+
+  const cancelSelectedIssued = async () => {
+    if (!selectedCancelItems.length || cancelLoading) return
 
     setCancelLoading(true)
 
+    const cancelledIds: string[] = []
+
     try {
-      const res = await fetch('/api/vydaj-stravy/cancel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ issuedId: lastIssued.issuedId })
-      })
+      for (const item of selectedCancelItems) {
+        const res = await fetch('/api/vydaj-stravy/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ issuedId: item.issuedId })
+        })
 
-      const json = await res.json().catch(() => ({}))
+        const json = await res.json().catch(() => ({}))
 
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || 'Storno sa nepodarilo.')
+        if (!res.ok || !json.ok) {
+          throw new Error(json.error || `Storno sa nepodarilo pre ${item.personName || item.email || 'osobu'}.`)
+        }
+
+        cancelledIds.push(item.issuedId)
+        addHistory({
+          ...item,
+          id: `${Date.now()}-cancel-${item.issuedId}`,
+          status: 'CANCELLED',
+          tone: 'warning',
+          message: 'Výdaj bol stornovaný.'
+        })
+        setDayCounts(prev => ({
+          ...prev,
+          [item.typJedla === 'OBED' ? 'obed' : 'vecera']: Math.max(0, prev[item.typJedla === 'OBED' ? 'obed' : 'vecera'] - 1)
+        }))
       }
 
       playBeep('ok')
-      addHistory({
-        ...lastIssued,
-        id: `${Date.now()}-cancel`,
-        status: 'CANCELLED',
-        tone: 'warning',
-        message: 'Výdaj bol stornovaný.'
-      })
-      setDayCounts(prev => ({
-        ...prev,
-        [lastIssued.typJedla === 'OBED' ? 'obed' : 'vecera']: Math.max(0, prev[lastIssued.typJedla === 'OBED' ? 'obed' : 'vecera'] - 1)
-      }))
-      setLastIssued(null)
+      setRecentIssued(prev => prev.filter(item => !cancelledIds.includes(item.issuedId)))
+      setSelectedCancelIds(prev => prev.filter(id => !cancelledIds.includes(id)))
     } catch (err: any) {
       playBeep('error')
       addHistory({
         id: `${Date.now()}-cancel-error`,
-        typJedla: lastIssued.typJedla,
+        typJedla,
         status: 'CANCEL_ERROR',
         tone: 'error',
         message: err?.message || 'Storno sa nepodarilo.',
-        personName: lastIssued.personName,
-        email: lastIssued.email,
-        choice: lastIssued.choice,
-        method: lastIssued.method,
-        groupName: lastIssued.groupName,
-        issuedId: lastIssued.issuedId,
+        personName: '',
+        email: '',
+        choice: '',
+        method: '',
+        groupName: '',
+        issuedId: '',
         issuedAt: new Date().toISOString()
       })
+      if (cancelledIds.length > 0) {
+        setRecentIssued(prev => prev.filter(item => !cancelledIds.includes(item.issuedId)))
+        setSelectedCancelIds(prev => prev.filter(id => !cancelledIds.includes(id)))
+      }
     } finally {
       setCancelLoading(false)
       setTimeout(() => inputRef.current?.focus(), 70)
@@ -512,17 +541,47 @@ export default function VydajStravyClient({
       </section>
 
       <section style={styles.actionsRow}>
-        <button
-          type="button"
-          onClick={cancelLastIssued}
-          disabled={!lastIssued?.issuedId || cancelLoading}
-          style={{
-            ...styles.cancelButton,
-            opacity: !lastIssued?.issuedId || cancelLoading ? 0.45 : 1
-          }}
-        >
-          {cancelLoading ? 'Stornujem...' : 'Stornovať posledný výdaj'}
-        </button>
+        <div style={styles.cancelBox}>
+          <div style={styles.cancelHeader}>
+            <div>
+              <h2 style={styles.sectionTitle}>Storno posledných výdajov</h2>
+              <p style={styles.cancelHint}>Vyber jeden alebo viac z posledných 10 výdajov.</p>
+            </div>
+
+            <button
+              type="button"
+              onClick={cancelSelectedIssued}
+              disabled={!selectedCancelItems.length || cancelLoading}
+              style={{
+                ...styles.cancelButton,
+                opacity: !selectedCancelItems.length || cancelLoading ? 0.45 : 1
+              }}
+            >
+              {cancelLoading ? 'Stornujem...' : `Stornovať (${selectedCancelItems.length})`}
+            </button>
+          </div>
+
+          {recentIssued.length === 0 ? (
+            <div style={styles.emptyHistory}>Zatiaľ nie je čo stornovať.</div>
+          ) : (
+            <div style={styles.cancelList}>
+              {recentIssued.map(item => (
+                <label key={item.issuedId} style={styles.cancelItem}>
+                  <input
+                    type="checkbox"
+                    checked={selectedCancelIds.includes(item.issuedId)}
+                    onChange={() => toggleCancelSelection(item.issuedId)}
+                    style={styles.cancelCheckbox}
+                  />
+                  <span>
+                    <b>{item.personName || item.email || '-'}</b>
+                    <em>{mealLabel(item.typJedla)} · {formatTime(item.issuedAt)}</em>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       {activeIssues.length > 0 && (
@@ -843,11 +902,52 @@ const styles: Record<string, CSSProperties> = {
   actionsRow: {
     display: 'grid'
   },
+  cancelBox: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 12,
+    display: 'grid',
+    gap: 10
+  },
+  cancelHeader: {
+    display: 'grid',
+    gridTemplateColumns: '1fr auto',
+    gap: 10,
+    alignItems: 'center'
+  },
+  cancelHint: {
+    margin: 0,
+    color: '#64748b',
+    fontSize: 13,
+    fontWeight: 750
+  },
   cancelButton: {
     ...baseButton,
     background: '#f59e0b',
     borderColor: '#d97706',
-    color: '#111827'
+    color: '#111827',
+    padding: '0 14px'
+  },
+  cancelList: {
+    display: 'grid',
+    gap: 8
+  },
+  cancelItem: {
+    minHeight: 52,
+    display: 'grid',
+    gridTemplateColumns: '28px 1fr',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 8,
+    background: '#f8fafc',
+    padding: '8px 10px',
+    fontSize: 13,
+    fontWeight: 850
+  },
+  cancelCheckbox: {
+    width: 22,
+    height: 22
   },
   activeBox: {
     background: '#fff',
