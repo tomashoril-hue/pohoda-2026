@@ -552,7 +552,7 @@ export default function PersonalistaClient({
 
         <div style={styles.summaryCardRed}>
           <b>{stats.blocked}</b>
-          <span>BlokovanĂ­</span>
+          <span>Blokovaní</span>
         </div>
 
         <div style={styles.summaryCardBlue}>
@@ -948,9 +948,9 @@ export default function PersonalistaClient({
               onChange={event => setStatusFilter(event.target.value)}
               style={styles.select}
             >
-              <option value="ALL">Vsetky stavy</option>
-              <option value="ACTIVE">Aktivni</option>
-              <option value="BLOCKED">Blokovani</option>
+              <option value="ALL">Všetky stavy</option>
+              <option value="ACTIVE">Aktívni</option>
+              <option value="BLOCKED">Blokovaní</option>
             </select>
           </section>
 
@@ -1000,7 +1000,7 @@ export default function PersonalistaClient({
                           color: blocked ? '#991b1b' : '#166534'
                         }}
                       >
-                        {blocked ? 'BLOK' : 'AKTIVNY'}
+                        {blocked ? 'Blokovaný' : 'Aktívny'}
                       </span>
                     </div>
 
@@ -1107,7 +1107,7 @@ export default function PersonalistaClient({
                       color: String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? '#991b1b' : '#166534'
                     }}
                   >
-                    {String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? 'BLOKOVANY' : 'AKTIVNY'}
+                    {String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? 'Blokovaný' : 'Aktívny'}
                   </span>
 
                   <span style={styles.foodBadge}>
@@ -1119,7 +1119,7 @@ export default function PersonalistaClient({
               <div style={styles.detailRows}>
                 <div style={styles.detailRow}>
                   <span>Stav</span>
-                  <b>{String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? 'Blokovany' : 'Aktivny'}</b>
+                  <b>{String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? 'Blokovaný' : 'Aktívny'}</b>
                 </div>
 
                 <div style={styles.detailRow}>

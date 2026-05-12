@@ -81,7 +81,7 @@ function isQrExtra(row: any) {
 function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: string[]) {
   if (item.removeReason === 'IN_OTHER_ISSUE') return 'V INOM VÝDAJI'
 
-  if (item.removeReason === 'USER_BLOCKED') return 'BLOKOVANY'
+  if (item.removeReason === 'USER_BLOCKED') return 'Blokovaný'
   if (item.status === 'INDIVIDUAL_ISSUED') return 'PREVZAL'
   if (item.status === 'BULK_ISSUED') return 'VYDANÉ'
 
@@ -134,7 +134,7 @@ function itemStatusNote(item: any) {
   }
 
   if (item.removeReason === 'USER_BLOCKED') {
-    return 'Osoba je zablokovana personalistom alebo adminom.'
+    return 'Osoba je zablokovaná personalistom alebo adminom.'
   }
 
   if (item.removeReason === 'MOVED_TO_OTHER_GROUP') {
@@ -556,8 +556,8 @@ export default function GroupIssueClient({
         return applyOtherIssueConflict(applyQrOverride({
           ...member,
           rowId: member.userId,
-          status: 'NOT_PREPARED',
-          removeReason: null,
+          status: String(member.aktivny || 'ANO').toUpperCase() !== 'ANO' ? 'REMOVED' : 'NOT_PREPARED',
+          removeReason: String(member.aktivny || 'ANO').toUpperCase() !== 'ANO' ? 'USER_BLOCKED' : null,
           typStravy: member.typStravy || '',
           qrCode: member.qrCode || '',
           source: 'GROUP',
@@ -598,8 +598,8 @@ export default function GroupIssueClient({
       return applyOtherIssueConflict(applyQrOverride({
         ...member,
         rowId: member.userId,
-        status: 'NOT_PREPARED',
-        removeReason: null,
+        status: String(member.aktivny || 'ANO').toUpperCase() !== 'ANO' ? 'REMOVED' : 'NOT_PREPARED',
+        removeReason: String(member.aktivny || 'ANO').toUpperCase() !== 'ANO' ? 'USER_BLOCKED' : null,
         source: 'GROUP',
         addedByQr: false,
         qrCode: member.qrCode || '',

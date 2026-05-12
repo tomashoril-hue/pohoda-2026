@@ -601,10 +601,9 @@ export default function GroupDetailClient({
       {members.some(member => String(member.aktivny || '').toUpperCase() !== 'ANO') && (
         <section style={styles.blockedNotice}>
           <b>{members.filter(member => String(member.aktivny || '').toUpperCase() !== 'ANO').length}</b>
-          <span>blokovanĂ­ ÄŤlenovia v tejto skupine</span>
+          <span>blokovaní členovia v tejto skupine</span>
         </section>
       )}
-
       <section style={styles.actionBar}>
         <div style={styles.actionLeft}>
           {canIssue && (
@@ -812,7 +811,7 @@ export default function GroupDetailClient({
                     color: blocked ? '#991b1b' : '#166534'
                   }}
                 >
-                  {blocked ? 'BLOK' : 'AKTIVNY'}
+                  {blocked ? 'Blokovaný' : 'Aktívny'}
                 </span>
               </div>
 
