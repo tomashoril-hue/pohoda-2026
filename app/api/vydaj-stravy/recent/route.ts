@@ -62,22 +62,100 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Chýba dátum alebo typ jedla.' }, { status: 400 })
     }
 
-    const { data: issuedRows, error } = await supabaseServer
-      .from('vydaj_jedal')
-      .select('id, user_id, group_id, hromadny_vydaj_id, datum, typ_jedla, volba, sposob, issued_by, issued_at')
-      .eq('datum', datum)
-      .eq('typ_jedla', typJedla)
-      .eq('status', 'VYDANE')
-      .order('issued_at', { ascending: false })
-      .limit(100)
+    const selectIssued = 'id, user_id, group_id, hromadny_vydaj_id, datum, typ_jedla, volba, sposob, issued_by, issued_at'
+    let issuedRows: any[] = []
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (access.global) {
+      const { data, error } = await supabaseServer
+        .from('vydaj_jedal')
+        .select(selectIssued)
+        .eq('datum', datum)
+        .eq('typ_jedla', typJedla)
+        .eq('status', 'VYDANE')
+        .order('issued_at', { ascending: false })
+        .limit(160)
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
+
+      issuedRows = data || []
+    } else {
+      const queries: any[] = [
+        supabaseServer
+          .from('vydaj_jedal')
+          .select(selectIssued)
+          .eq('datum', datum)
+          .eq('typ_jedla', typJedla)
+          .eq('status', 'VYDANE')
+          .eq('issued_by', actor.id)
+          .order('issued_at', { ascending: false })
+          .limit(80)
+      ]
+
+      if (access.groupIds.length > 0) {
+        queries.push(
+          supabaseServer
+            .from('vydaj_jedal')
+            .select(selectIssued)
+            .eq('datum', datum)
+            .eq('typ_jedla', typJedla)
+            .eq('status', 'VYDANE')
+            .in('group_id', access.groupIds)
+            .order('issued_at', { ascending: false })
+            .limit(160)
+        )
+      }
+
+      const results = await Promise.all(queries)
+      const queryError = results.find(result => result.error)?.error
+
+      if (queryError) {
+        return NextResponse.json({ error: queryError.message }, { status: 500 })
+      }
+
+      const rowMap = new Map<string, any>()
+      results.forEach(result => {
+        ;(result.data || []).forEach((row: any) => rowMap.set(row.id, row))
+      })
+      issuedRows = Array.from(rowMap.values())
     }
 
-    const visibleRows = (issuedRows || []).filter((row: any) => {
+    const visibleBaseRows = issuedRows.filter((row: any) => {
       return access.global || access.groupIds.includes(row.group_id) || row.issued_by === actor.id
     })
+    const bulkIssueIds = Array.from(
+      new Set(
+        visibleBaseRows
+          .filter((row: any) => row.sposob === 'HROMADNE' && row.hromadny_vydaj_id)
+          .map((row: any) => row.hromadny_vydaj_id)
+      )
+    )
+
+    let visibleRows = visibleBaseRows
+
+    if (bulkIssueIds.length > 0) {
+      const { data: bulkRows, error: bulkRowsError } = await supabaseServer
+        .from('vydaj_jedal')
+        .select(selectIssued)
+        .eq('datum', datum)
+        .eq('typ_jedla', typJedla)
+        .eq('status', 'VYDANE')
+        .in('hromadny_vydaj_id', bulkIssueIds)
+
+      if (bulkRowsError) {
+        return NextResponse.json({ error: bulkRowsError.message }, { status: 500 })
+      }
+
+      const rowMap = new Map<string, any>()
+      visibleBaseRows.forEach((row: any) => rowMap.set(row.id, row))
+      ;(bulkRows || [])
+        .filter((row: any) => {
+          return access.global || access.groupIds.includes(row.group_id) || row.issued_by === actor.id
+        })
+        .forEach((row: any) => rowMap.set(row.id, row))
+      visibleRows = Array.from(rowMap.values())
+    }
 
     const userIds = Array.from(new Set(visibleRows.map((row: any) => row.user_id).filter(Boolean)))
     const groupIds = Array.from(new Set(visibleRows.map((row: any) => row.group_id).filter(Boolean)))

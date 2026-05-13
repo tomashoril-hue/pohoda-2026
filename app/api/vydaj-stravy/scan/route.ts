@@ -38,6 +38,10 @@ function entitlementOk(row: any, meal: string) {
   return false
 }
 
+function isActiveUser(row: any) {
+  return row && String(row.aktivny || '').toUpperCase() === 'ANO'
+}
+
 function issueOf(item: any) {
   return Array.isArray(item?.hromadne_vydaje)
     ? item.hromadne_vydaje[0]
@@ -400,20 +404,118 @@ export async function POST(req: NextRequest) {
         }, { status: 409 })
       }
 
-      const { data: alreadyBulkIssued, error: alreadyBulkIssuedError } = await supabaseServer
-        .from('vydaj_jedal')
-        .select('user_id')
-        .eq('datum', datum)
-        .eq('typ_jedla', typJedla)
-        .eq('status', 'VYDANE')
-        .in('user_id', bulkUserIds)
+      const [alreadyBulkIssuedResult, bulkProfilesResult, bulkEntitlementsResult] = await Promise.all([
+        supabaseServer
+          .from('vydaj_jedal')
+          .select('user_id')
+          .eq('datum', datum)
+          .eq('typ_jedla', typJedla)
+          .eq('status', 'VYDANE')
+          .in('user_id', bulkUserIds),
+        supabaseServer
+          .from('users')
+          .select('id, aktivny')
+          .in('id', bulkUserIds),
+        supabaseServer
+          .from('user_food_entitlements')
+          .select('user_id, obed, vecera')
+          .eq('datum', datum)
+          .in('user_id', bulkUserIds)
+      ])
 
-      if (alreadyBulkIssuedError) {
-        return NextResponse.json({ error: alreadyBulkIssuedError.message }, { status: 500 })
+      if (alreadyBulkIssuedResult.error) {
+        return NextResponse.json({ error: alreadyBulkIssuedResult.error.message }, { status: 500 })
       }
 
-      const alreadyBulkIssuedIds = new Set((alreadyBulkIssued || []).map((row: any) => row.user_id))
-      const bulkRowsToIssue = (bulkItems || []).filter((item: any) => !alreadyBulkIssuedIds.has(item.user_id))
+      if (bulkProfilesResult.error) {
+        return NextResponse.json({ error: bulkProfilesResult.error.message }, { status: 500 })
+      }
+
+      if (bulkEntitlementsResult.error) {
+        return NextResponse.json({ error: bulkEntitlementsResult.error.message }, { status: 500 })
+      }
+
+      const bulkProfileMap = new Map((bulkProfilesResult.data || []).map((row: any) => [row.id, row]))
+      const bulkEntitlementMap = new Map((bulkEntitlementsResult.data || []).map((row: any) => [row.user_id, row]))
+      const invalidBulkItems: Array<{ id: string; reason: string }> = []
+      const eligibleBulkItems = (bulkItems || []).filter((item: any) => {
+        const profileRow = bulkProfileMap.get(item.user_id)
+
+        if (!isActiveUser(profileRow)) {
+          invalidBulkItems.push({ id: item.id, reason: 'USER_BLOCKED' })
+          return false
+        }
+
+        if (!entitlementOk(bulkEntitlementMap.get(item.user_id), typJedla)) {
+          invalidBulkItems.push({ id: item.id, reason: 'MANUAL' })
+          return false
+        }
+
+        return true
+      })
+
+      if (invalidBulkItems.length > 0) {
+        const invalidBlockedIds = invalidBulkItems
+          .filter(item => item.reason === 'USER_BLOCKED')
+          .map(item => item.id)
+        const invalidNoEntitlementIds = invalidBulkItems
+          .filter(item => item.reason !== 'USER_BLOCKED')
+          .map(item => item.id)
+        const invalidUpdateTime = new Date().toISOString()
+
+        if (invalidBlockedIds.length > 0) {
+          const { error: invalidBlockedError } = await supabaseServer
+            .from('hromadny_vydaj_polozky')
+            .update({
+              status: 'REMOVED',
+              remove_reason: 'USER_BLOCKED',
+              removed_at: invalidUpdateTime,
+              removed_by: actor.id,
+              updated_at: invalidUpdateTime
+            })
+            .in('id', invalidBlockedIds)
+            .eq('status', 'PLANNED')
+
+          if (invalidBlockedError) {
+            return NextResponse.json({ error: invalidBlockedError.message }, { status: 500 })
+          }
+        }
+
+        if (invalidNoEntitlementIds.length > 0) {
+          const { error: invalidEntitlementError } = await supabaseServer
+            .from('hromadny_vydaj_polozky')
+            .update({
+              status: 'REMOVED',
+              remove_reason: 'MANUAL',
+              removed_at: invalidUpdateTime,
+              removed_by: actor.id,
+              updated_at: invalidUpdateTime
+            })
+            .in('id', invalidNoEntitlementIds)
+            .eq('status', 'PLANNED')
+
+          if (invalidEntitlementError) {
+            return NextResponse.json({ error: invalidEntitlementError.message }, { status: 500 })
+          }
+        }
+      }
+
+      if (eligibleBulkItems.length === 0) {
+        return NextResponse.json({
+          ok: false,
+          status: 'EMPTY_BULK',
+          tone: 'error',
+          person: {
+            id: profile.id,
+            fullName: fullName(profile) || profile.email || '',
+            email: profile.email || ''
+          },
+          message: 'Hromadná príprava nemá žiadne vydateľné položky.'
+        }, { status: 409 })
+      }
+
+      const alreadyBulkIssuedIds = new Set((alreadyBulkIssuedResult.data || []).map((row: any) => row.user_id))
+      const bulkRowsToIssue = eligibleBulkItems.filter((item: any) => !alreadyBulkIssuedIds.has(item.user_id))
 
       if (bulkRowsToIssue.length === 0) {
         return NextResponse.json({
@@ -467,15 +569,46 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: issueBulkError.message }, { status: 500 })
       }
 
-      await supabaseServer
+      const updateIssuedTime = new Date().toISOString()
+      const { data: updatedBulkItems, error: updateBulkItemsError } = await supabaseServer
         .from('hromadny_vydaj_polozky')
         .update({
           status: 'BULK_ISSUED',
-          updated_at: new Date().toISOString()
+          updated_at: updateIssuedTime
         })
         .eq('hromadny_vydaj_id', relatedIssue.id)
         .in('user_id', bulkRowsToIssue.map((item: any) => item.user_id))
         .eq('status', 'PLANNED')
+        .select('id')
+
+      if (updateBulkItemsError || (updatedBulkItems || []).length !== bulkRowsToIssue.length) {
+        const insertedIds = (issuedBulkRows || []).map((row: any) => row.id).filter(Boolean)
+
+        if (insertedIds.length > 0) {
+          await supabaseServer
+            .from('vydaj_jedal')
+            .update({
+              status: 'STORNOVANE',
+              cancelled_by: actor.id,
+              cancelled_at: new Date().toISOString(),
+              note: 'Výdaj bol automaticky stornovaný, lebo sa nepodarilo potvrdiť položky prípravy.'
+            })
+            .in('id', insertedIds)
+            .eq('status', 'VYDANE')
+        }
+
+        return NextResponse.json({
+          ok: false,
+          status: 'BULK_STATE_CHANGED',
+          tone: 'error',
+          person: {
+            id: profile.id,
+            fullName: fullName(profile) || profile.email || '',
+            email: profile.email || ''
+          },
+          message: updateBulkItemsError?.message || 'Príprava sa medzitým zmenila. Skontroluj stav a skús znova.'
+        }, { status: 409 })
+      }
 
       const firstIssuedRow = issuedBulkRows?.[0]
       const summary = choiceSummary(bulkRowsToIssue)
@@ -500,7 +633,7 @@ export async function POST(req: NextRequest) {
         method: 'HROMADNE',
         groupName: relatedGroup?.name || '',
         message: summaryText
-          ? `Vydané hromadne: ${summaryText}`
+          ? `Vydané hromadne: ${summaryText}${invalidBulkItems.length ? ` · preskočené ${invalidBulkItems.length}` : ''}`
           : `Vydané hromadne (${bulkRowsToIssue.length})`
       })
     }
