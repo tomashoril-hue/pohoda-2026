@@ -156,7 +156,13 @@ export default function VydajStravyClient({
   const [cancelOpen, setCancelOpen] = useState(false)
 
   const lastItem = history[0] || null
-  const selectedCancelItems = recentIssued.filter(item => selectedCancelIds.includes(item.issuedId))
+  const selectedCancelTopItems = recentIssued.filter(item => selectedCancelIds.includes(item.issuedId))
+  const selectedCancelChildItems = recentIssued.flatMap(item => {
+    if (!item.children?.length || selectedCancelIds.includes(item.issuedId)) return []
+
+    return item.children.filter(child => selectedCancelIds.includes(child.issuedId))
+  })
+  const selectedCancelItems = [...selectedCancelTopItems, ...selectedCancelChildItems]
   const editableIssuedItems = recentIssued.flatMap(item => item.children?.length ? item.children : [item])
   const changedChoiceCount = editableIssuedItems.filter(item => {
     const nextChoice = editChoices[item.issuedId]
@@ -441,6 +447,30 @@ export default function VydajStravyClient({
       }
 
       return [...prev, issuedId]
+    })
+  }
+
+  const toggleBulkCancelSelection = (item: ScanItem) => {
+    setSelectedCancelIds(prev => {
+      const childIds = (item.children || []).map(child => child.issuedId)
+
+      if (prev.includes(item.issuedId)) {
+        return prev.filter(id => id !== item.issuedId)
+      }
+
+      return [...prev.filter(id => !childIds.includes(id)), item.issuedId]
+    })
+  }
+
+  const toggleBulkChildCancelSelection = (parent: ScanItem, child: ScanItem) => {
+    setSelectedCancelIds(prev => {
+      const withoutParent = prev.filter(id => id !== parent.issuedId)
+
+      if (withoutParent.includes(child.issuedId)) {
+        return withoutParent.filter(id => id !== child.issuedId)
+      }
+
+      return [...withoutParent, child.issuedId]
     })
   }
 
@@ -809,7 +839,7 @@ export default function VydajStravyClient({
                         <input
                           type="checkbox"
                           checked={selectedCancelIds.includes(item.issuedId)}
-                          onChange={() => toggleCancelSelection(item.issuedId)}
+                          onChange={() => toggleBulkCancelSelection(item)}
                           style={styles.cancelCheckbox}
                         />
                         <span>
@@ -822,6 +852,13 @@ export default function VydajStravyClient({
                         <div style={styles.bulkChildren}>
                           {(item.children || []).map(child => (
                             <div key={child.issuedId} style={styles.childEditRow}>
+                              <input
+                                type="checkbox"
+                                checked={selectedCancelIds.includes(child.issuedId)}
+                                onChange={() => toggleBulkChildCancelSelection(item, child)}
+                                style={styles.cancelCheckbox}
+                                aria-label={`Stornovať ${child.personName || child.email || 'osobu'}`}
+                              />
                               <span>
                                 <b>{child.personName || child.email || '-'}</b>
                                 <em>{child.email || choiceLabel(child.choice)}</em>
@@ -1314,7 +1351,7 @@ const styles: Record<string, CSSProperties> = {
   },
   childEditRow: {
     display: 'grid',
-    gridTemplateColumns: '1fr 110px',
+    gridTemplateColumns: '28px 1fr 110px',
     alignItems: 'center',
     gap: 10,
     background: '#fff',
