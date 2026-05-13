@@ -138,6 +138,307 @@ async function findUserIdByQr(qrCode: string) {
   return userRow?.id || ''
 }
 
+function shouldFallbackAtomicRpc(error: any) {
+  const code = String(error?.code || '')
+  const message = String(error?.message || '')
+
+  return (
+    code === 'PGRST202' ||
+    code === '42883' ||
+    message.includes('Could not find the function') ||
+    message.includes('issue_bulk_meal_atomic') ||
+    message.includes('issue_individual_meal_atomic')
+  )
+}
+
+function atomicStateChangedMessage(error: any) {
+  const message = String(error?.message || '')
+
+  if (
+    message.includes('PLANNED_ITEMS_CHANGED') ||
+    message.includes('PLANNED_ITEMS_UPDATE_FAILED') ||
+    message.includes('ISSUED_ROWS_MISMATCH')
+  ) {
+    return 'Príprava sa medzitým zmenila. Skontroluj stav a skús znova.'
+  }
+
+  return ''
+}
+
+async function issueBulkMealAtomicOrFallback({
+  relatedIssue,
+  datum,
+  typJedla,
+  actorId,
+  targetUserId,
+  qrCode,
+  bulkRowsToIssue
+}: {
+  relatedIssue: any
+  datum: string
+  typJedla: string
+  actorId: string
+  targetUserId: string
+  qrCode: string
+  bulkRowsToIssue: any[]
+}) {
+  const atomicItems = bulkRowsToIssue.map((item: any) => ({
+    planned_item_id: item.id,
+    user_id: item.user_id,
+    volba: normalizeChoice(item.volba) || null
+  }))
+
+  const atomicResult = await supabaseServer
+    .rpc('issue_bulk_meal_atomic', {
+      p_hromadny_vydaj_id: relatedIssue.id,
+      p_group_id: relatedIssue.group_id,
+      p_datum: datum,
+      p_typ_jedla: typJedla,
+      p_issued_by: actorId,
+      p_qr_user_id: targetUserId,
+      p_qr_code: qrCode,
+      p_items: atomicItems
+    })
+    .single()
+
+  if (!atomicResult.error) {
+    const row: any = atomicResult.data || {}
+
+    return {
+      issuedBulkRows: [{
+        id: row.first_issued_id || '',
+        issued_at: row.first_issued_at || new Date().toISOString()
+      }],
+      issueBulkError: null,
+      stateChangedMessage: ''
+    }
+  }
+
+  const stateChangedMessage = atomicStateChangedMessage(atomicResult.error)
+
+  if (stateChangedMessage) {
+    return {
+      issuedBulkRows: [],
+      issueBulkError: null,
+      stateChangedMessage
+    }
+  }
+
+  if (!shouldFallbackAtomicRpc(atomicResult.error)) {
+    return {
+      issuedBulkRows: [],
+      issueBulkError: atomicResult.error,
+      stateChangedMessage: ''
+    }
+  }
+
+  const bulkInsertRows = bulkRowsToIssue.map((item: any) => ({
+    user_id: item.user_id,
+    group_id: relatedIssue.group_id,
+    hromadny_vydaj_id: relatedIssue.id,
+    datum,
+    typ_jedla: typJedla,
+    volba: normalizeChoice(item.volba) || null,
+    sposob: 'HROMADNE',
+    status: 'VYDANE',
+    issued_by: actorId,
+    qr_code: item.user_id === targetUserId ? qrCode : null,
+    source: 'QR',
+    note: 'Hromadný výdaj cez QR oprávnenej osoby.'
+  }))
+
+  const { data: issuedBulkRows, error: issueBulkError } = await supabaseServer
+    .from('vydaj_jedal')
+    .insert(bulkInsertRows)
+    .select('id, issued_at')
+
+  if (issueBulkError) {
+    return {
+      issuedBulkRows: [],
+      issueBulkError,
+      stateChangedMessage: ''
+    }
+  }
+
+  const { data: updatedBulkItems, error: updateBulkItemsError } = await supabaseServer
+    .from('hromadny_vydaj_polozky')
+    .update({
+      status: 'BULK_ISSUED',
+      updated_at: new Date().toISOString()
+    })
+    .eq('hromadny_vydaj_id', relatedIssue.id)
+    .in('user_id', bulkRowsToIssue.map((item: any) => item.user_id))
+    .eq('status', 'PLANNED')
+    .select('id')
+
+  if (updateBulkItemsError || (updatedBulkItems || []).length !== bulkRowsToIssue.length) {
+    const insertedIds = (issuedBulkRows || []).map((row: any) => row.id).filter(Boolean)
+
+    if (insertedIds.length > 0) {
+      await supabaseServer
+        .from('vydaj_jedal')
+        .update({
+          status: 'STORNOVANE',
+          cancelled_by: actorId,
+          cancelled_at: new Date().toISOString(),
+          note: 'Výdaj bol automaticky stornovaný, lebo sa nepodarilo potvrdiť položky prípravy.'
+        })
+        .in('id', insertedIds)
+        .eq('status', 'VYDANE')
+    }
+
+    return {
+      issuedBulkRows: [],
+      issueBulkError: null,
+      stateChangedMessage: updateBulkItemsError?.message || 'Príprava sa medzitým zmenila. Skontroluj stav a skús znova.'
+    }
+  }
+
+  return {
+    issuedBulkRows: issuedBulkRows || [],
+    issueBulkError: null,
+    stateChangedMessage: ''
+  }
+}
+
+async function issueIndividualMealAtomicOrFallback({
+  targetUserId,
+  groupId,
+  relatedIssueId,
+  plannedItemIds,
+  datum,
+  typJedla,
+  choice,
+  sposob,
+  actorId,
+  qrCode,
+  note
+}: {
+  targetUserId: string
+  groupId: string | null
+  relatedIssueId: string | null
+  plannedItemIds: string[]
+  datum: string
+  typJedla: string
+  choice: string | null
+  sposob: string
+  actorId: string
+  qrCode: string
+  note: string
+}) {
+  const atomicResult = await supabaseServer
+    .rpc('issue_individual_meal_atomic', {
+      p_user_id: targetUserId,
+      p_datum: datum,
+      p_typ_jedla: typJedla,
+      p_issued_by: actorId,
+      p_group_id: groupId,
+      p_hromadny_vydaj_id: relatedIssueId,
+      p_planned_item_ids: plannedItemIds,
+      p_volba: choice,
+      p_sposob: sposob,
+      p_qr_code: qrCode,
+      p_source: 'QR',
+      p_note: note
+    })
+    .single()
+
+  if (!atomicResult.error) {
+    const row: any = atomicResult.data || {}
+
+    return {
+      issued: {
+        id: row.issued_id || '',
+        issued_at: row.issued_at || new Date().toISOString()
+      },
+      issueError: null,
+      stateChangedMessage: ''
+    }
+  }
+
+  const stateChangedMessage = atomicStateChangedMessage(atomicResult.error)
+
+  if (stateChangedMessage) {
+    return {
+      issued: null,
+      issueError: null,
+      stateChangedMessage
+    }
+  }
+
+  if (!shouldFallbackAtomicRpc(atomicResult.error)) {
+    return {
+      issued: null,
+      issueError: atomicResult.error,
+      stateChangedMessage: ''
+    }
+  }
+
+  const { data: issued, error: issueError } = await supabaseServer
+    .from('vydaj_jedal')
+    .insert({
+      user_id: targetUserId,
+      group_id: groupId,
+      hromadny_vydaj_id: relatedIssueId,
+      datum,
+      typ_jedla: typJedla,
+      volba: choice,
+      sposob,
+      status: 'VYDANE',
+      issued_by: actorId,
+      qr_code: qrCode,
+      source: 'QR',
+      note
+    })
+    .select('id, issued_at')
+    .single()
+
+  if (issueError) {
+    return {
+      issued: null,
+      issueError,
+      stateChangedMessage: ''
+    }
+  }
+
+  if (plannedItemIds.length > 0) {
+    const { data: updatedItems, error: updateItemsError } = await supabaseServer
+      .from('hromadny_vydaj_polozky')
+      .update({
+        status: 'INDIVIDUAL_ISSUED',
+        updated_at: new Date().toISOString()
+      })
+      .in('id', plannedItemIds)
+      .eq('status', 'PLANNED')
+      .select('id')
+
+    if (updateItemsError || (updatedItems || []).length !== plannedItemIds.length) {
+      await supabaseServer
+        .from('vydaj_jedal')
+        .update({
+          status: 'STORNOVANE',
+          cancelled_by: actorId,
+          cancelled_at: new Date().toISOString(),
+          note: 'Výdaj bol automaticky stornovaný, lebo sa nepodarilo potvrdiť položky prípravy.'
+        })
+        .eq('id', issued.id)
+        .eq('status', 'VYDANE')
+
+      return {
+        issued: null,
+        issueError: null,
+        stateChangedMessage: updateItemsError?.message || 'Príprava sa medzitým zmenila. Skontroluj stav a skús znova.'
+      }
+    }
+  }
+
+  return {
+    issued,
+    issueError: null,
+    stateChangedMessage: ''
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const actor = await getCurrentUser()
@@ -553,25 +854,15 @@ export async function POST(req: NextRequest) {
         }, { status: 409 })
       }
 
-      const bulkInsertRows = bulkRowsToIssue.map((item: any) => ({
-        user_id: item.user_id,
-        group_id: relatedIssue.group_id,
-        hromadny_vydaj_id: relatedIssue.id,
+      const { issuedBulkRows, issueBulkError, stateChangedMessage } = await issueBulkMealAtomicOrFallback({
+        relatedIssue,
         datum,
-        typ_jedla: typJedla,
-        volba: normalizeChoice(item.volba) || null,
-        sposob: 'HROMADNE',
-        status: 'VYDANE',
-        issued_by: actor.id,
-        qr_code: item.user_id === targetUserId ? qrCode : null,
-        source: 'QR',
-        note: 'Hromadný výdaj cez QR oprávnenej osoby.'
-      }))
-
-      const { data: issuedBulkRows, error: issueBulkError } = await supabaseServer
-        .from('vydaj_jedal')
-        .insert(bulkInsertRows)
-        .select('id, issued_at')
+        typJedla,
+        actorId: actor.id,
+        targetUserId,
+        qrCode,
+        bulkRowsToIssue
+      })
 
       if (issueBulkError) {
         if (issueBulkError.code === '23505') {
@@ -591,34 +882,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: issueBulkError.message }, { status: 500 })
       }
 
-      const updateIssuedTime = new Date().toISOString()
-      const { data: updatedBulkItems, error: updateBulkItemsError } = await supabaseServer
-        .from('hromadny_vydaj_polozky')
-        .update({
-          status: 'BULK_ISSUED',
-          updated_at: updateIssuedTime
-        })
-        .eq('hromadny_vydaj_id', relatedIssue.id)
-        .in('user_id', bulkRowsToIssue.map((item: any) => item.user_id))
-        .eq('status', 'PLANNED')
-        .select('id')
-
-      if (updateBulkItemsError || (updatedBulkItems || []).length !== bulkRowsToIssue.length) {
-        const insertedIds = (issuedBulkRows || []).map((row: any) => row.id).filter(Boolean)
-
-        if (insertedIds.length > 0) {
-          await supabaseServer
-            .from('vydaj_jedal')
-            .update({
-              status: 'STORNOVANE',
-              cancelled_by: actor.id,
-              cancelled_at: new Date().toISOString(),
-              note: 'Výdaj bol automaticky stornovaný, lebo sa nepodarilo potvrdiť položky prípravy.'
-            })
-            .in('id', insertedIds)
-            .eq('status', 'VYDANE')
-        }
-
+      if (stateChangedMessage) {
         return NextResponse.json({
           ok: false,
           status: 'BULK_STATE_CHANGED',
@@ -628,7 +892,7 @@ export async function POST(req: NextRequest) {
             fullName: fullName(profile) || profile.email || '',
             email: profile.email || ''
           },
-          message: updateBulkItemsError?.message || 'Príprava sa medzitým zmenila. Skontroluj stav a skús znova.'
+          message: stateChangedMessage
         }, { status: 409 })
       }
 
@@ -660,28 +924,25 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const { data: issued, error: issueError } = await supabaseServer
-      .from('vydaj_jedal')
-      .insert({
-        user_id: targetUserId,
-        group_id: fallbackGroupId,
-        hromadny_vydaj_id: relatedIssue?.id || null,
-        datum,
-        typ_jedla: typJedla,
-        volba: choice,
-        sposob,
-        status: 'VYDANE',
-        issued_by: actor.id,
-        qr_code: qrCode,
-        source: 'QR',
-        note: validBulkItem
-          ? 'Hromadný výdaj cez QR oprávnenej osoby.'
-          : relatedPlannedItem
-            ? 'Individuálny výdaj cez QR z hromadnej prípravy.'
-            : 'Individuálny výdaj cez QR.'
-      })
-      .select('id, issued_at')
-      .single()
+    const individualNote = validBulkItem
+      ? 'Hromadný výdaj cez QR oprávnenej osoby.'
+      : relatedPlannedItem
+        ? 'Individuálny výdaj cez QR z hromadnej prípravy.'
+        : 'Individuálny výdaj cez QR.'
+    const plannedItemIds = matchingPlannedItems.map((item: any) => item.id)
+    const { issued, issueError, stateChangedMessage } = await issueIndividualMealAtomicOrFallback({
+      targetUserId,
+      groupId: fallbackGroupId,
+      relatedIssueId: relatedIssue?.id || null,
+      plannedItemIds,
+      datum,
+      typJedla,
+      choice,
+      sposob,
+      actorId: actor.id,
+      qrCode,
+      note: individualNote
+    })
 
     if (issueError) {
       if (issueError.code === '23505') {
@@ -702,15 +963,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: issueError.message }, { status: 500 })
     }
 
-    if (matchingPlannedItems.length > 0) {
-      await supabaseServer
-        .from('hromadny_vydaj_polozky')
-        .update({
-          status: 'INDIVIDUAL_ISSUED',
-          updated_at: new Date().toISOString()
-        })
-        .in('id', matchingPlannedItems.map((item: any) => item.id))
-        .eq('status', 'PLANNED')
+    if (stateChangedMessage || !issued) {
+      return NextResponse.json({
+        ok: false,
+        status: 'ISSUE_STATE_CHANGED',
+        tone: 'error',
+        person: {
+          id: profile.id,
+          fullName: fullName(profile) || profile.email || '',
+          email: profile.email || ''
+        },
+        message: stateChangedMessage || 'Výdaj sa nepodarilo uložiť. Skontroluj stav a skús znova.'
+      }, { status: 409 })
     }
 
     return NextResponse.json({
