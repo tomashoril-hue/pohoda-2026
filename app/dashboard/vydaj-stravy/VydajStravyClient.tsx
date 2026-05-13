@@ -75,12 +75,12 @@ function formatTime(value: string) {
 }
 
 function mealLabel(value: string) {
-  if (value === 'VECERA') return 'VEÄŚERA'
+  if (value === 'VECERA') return 'VEČERA'
   return 'OBED'
 }
 
 function choiceLabel(value: string) {
-  if (value === 'DIETA') return 'DIĂ‰TA'
+  if (value === 'DIETA') return 'DIÉTA'
   if (value === 'VEGE') return 'VEGE'
   if (value === 'MASO') return 'MASO'
   return '-'
@@ -88,13 +88,13 @@ function choiceLabel(value: string) {
 
 function methodLabel(value: string) {
   if (value === 'HROMADNE') return 'HROMADNE'
-  if (value === 'INDIVIDUALNE') return 'INDIVIDUĂLNE'
+  if (value === 'INDIVIDUALNE') return 'INDIVIDUÁLNE'
   return ''
 }
 
 function issueStatusLabel(value: string) {
-  if (value === 'READY') return 'aktĂ­vna'
-  if (value === 'WAITING') return 'ÄŤakĂˇ'
+  if (value === 'READY') return 'aktívna'
+  if (value === 'WAITING') return 'čaká'
   return value.toLowerCase()
 }
 
@@ -134,7 +134,7 @@ export default function VydajStravyClient({
   const [qrValue, setQrValue] = useState('')
   const [cameraOpen, setCameraOpen] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
-  const [cameraStatus, setCameraStatus] = useState('Kamera je vypnutĂˇ.')
+  const [cameraStatus, setCameraStatus] = useState('Kamera je vypnutá.')
   const [loading, setLoading] = useState(false)
   const [history, setHistory] = useState<ScanItem[]>([])
   const [successCount, setSuccessCount] = useState(0)
@@ -190,7 +190,7 @@ export default function VydajStravyClient({
       oscillator.start(ctx.currentTime)
       oscillator.stop(ctx.currentTime + duration + 0.02)
     } catch {
-      // zvuk nemusĂ­ byĹĄ dostupnĂ˝
+      // zvuk nemusí byť dostupný
     }
 
     try {
@@ -198,7 +198,7 @@ export default function VydajStravyClient({
         navigator.vibrate(type === 'ok' ? 70 : [90, 60, 90])
       }
     } catch {
-      // vibrĂˇcia nemusĂ­ byĹĄ dostupnĂˇ
+      // vibrácia nemusí byť dostupná
     }
   }
 
@@ -217,18 +217,18 @@ export default function VydajStravyClient({
     }
 
     setCameraReady(false)
-    setCameraStatus('Kamera je vypnutĂˇ.')
+    setCameraStatus('Kamera je vypnutá.')
   }
 
   const startCamera = async () => {
     setCameraOpen(true)
     setCameraReady(false)
-    setCameraStatus('SpĂşĹˇĹĄam kameru...')
+    setCameraStatus('Spúšťam kameru...')
     cancelledRef.current = false
 
     try {
       if (!videoRef.current) {
-        setCameraStatus('Video nie je pripravenĂ©.')
+        setCameraStatus('Video nie je pripravené.')
         return
       }
 
@@ -256,10 +256,10 @@ export default function VydajStravyClient({
 
       controlsRef.current = controls
       setCameraReady(true)
-      setCameraStatus('Kamera je zapnutĂˇ.')
+      setCameraStatus('Kamera je zapnutá.')
     } catch (err: any) {
       setCameraReady(false)
-      setCameraStatus(err?.message || 'Kamera sa nepodarila zapnĂşĹĄ. PouĹľi manuĂˇlne pole.')
+      setCameraStatus(err?.message || 'Kamera sa nepodarila zapnúť. Použi manuálne pole.')
       setTimeout(() => inputRef.current?.focus(), 80)
     }
   }
@@ -289,7 +289,7 @@ export default function VydajStravyClient({
       typJedla: item.typJedla,
       status: 'ISSUED',
       tone: 'success',
-      message: item.method === 'HROMADNE' ? 'VydanĂ© hromadne' : 'VydanĂ©',
+      message: item.method === 'HROMADNE' ? 'Vydané hromadne' : 'Vydané',
       personName: item.personName || '',
       email: item.email || '',
       choice: item.choice || '',
@@ -304,7 +304,7 @@ export default function VydajStravyClient({
         typJedla: child.typJedla,
         status: 'ISSUED',
         tone: 'success',
-        message: child.method === 'HROMADNE' ? 'VydanĂ© hromadne' : 'VydanĂ©',
+        message: child.method === 'HROMADNE' ? 'Vydané hromadne' : 'Vydané',
         personName: child.personName || '',
         email: child.email || '',
         choice: child.choice || '',
@@ -367,7 +367,7 @@ export default function VydajStravyClient({
         typJedla,
         status: String(json.status || (ok ? 'ISSUED' : 'ERROR')),
         tone,
-        message: String(json.message || json.error || 'Nepodarilo sa spracovaĹĄ QR.'),
+        message: String(json.message || json.error || 'Nepodarilo sa spracovať QR.'),
         personName: String(json.person?.fullName || ''),
         email: String(json.person?.email || ''),
         choice: String(json.choice || ''),
@@ -456,7 +456,7 @@ export default function VydajStravyClient({
         const json = await res.json().catch(() => ({}))
 
         if (!res.ok || !json.ok) {
-          throw new Error(json.error || `Ăšprava sa nepodarila pre ${item.personName || item.email || 'osobu'}.`)
+          throw new Error(json.error || `Úprava sa nepodarila pre ${item.personName || item.email || 'osobu'}.`)
         }
       }
 
@@ -466,7 +466,7 @@ export default function VydajStravyClient({
         typJedla,
         status: 'UPDATED',
         tone: 'success',
-        message: `UpravenĂ© vĂ˝daje (${changedItems.length})`,
+        message: `Upravené výdaje (${changedItems.length})`,
         personName: '',
         email: '',
         choice: '',
@@ -484,7 +484,7 @@ export default function VydajStravyClient({
         typJedla,
         status: 'UPDATE_ERROR',
         tone: 'error',
-        message: err?.message || 'Ăšprava sa nepodarila.',
+        message: err?.message || 'Úprava sa nepodarila.',
         personName: '',
         email: '',
         choice: '',
@@ -528,7 +528,7 @@ export default function VydajStravyClient({
           id: `${Date.now()}-cancel-${item.issuedId}`,
           status: 'CANCELLED',
           tone: 'warning',
-          message: 'VĂ˝daj bol stornovanĂ˝.'
+          message: 'Výdaj bol stornovaný.'
         })
         setDayCounts(prev => ({
           ...prev,
@@ -577,16 +577,16 @@ export default function VydajStravyClient({
       <header style={styles.header}>
         <div>
           <div style={styles.kicker}>POHODA 2026</div>
-          <h1 style={styles.title}>VĂ˝daj stravy</h1>
+          <h1 style={styles.title}>Výdaj stravy</h1>
           <div style={styles.actor}>{actorName}</div>
         </div>
 
-        <Link href="/dashboard" style={styles.backButton}>SpĂ¤ĹĄ</Link>
+        <Link href="/dashboard" style={styles.backButton}>Späť</Link>
       </header>
 
       <section style={styles.toolbar}>
         <label style={styles.field}>
-          <span>DĂˇtum</span>
+          <span>Dátum</span>
           <input
             type="date"
             value={datum}
@@ -616,11 +616,11 @@ export default function VydajStravyClient({
         <div style={styles.scanPanel}>
           <div style={styles.scanTop}>
             <div>
-              <div style={styles.scanLabel}>AktuĂˇlny vĂ˝daj</div>
+              <div style={styles.scanLabel}>Aktuálny výdaj</div>
               <h2 style={styles.scanMeal}>{mealLabel(typJedla)}</h2>
             </div>
 
-            <div style={styles.liveBadge}>{loading ? 'SpracĂşvam' : 'PripravenĂ©'}</div>
+            <div style={styles.liveBadge}>{loading ? 'Spracúvam' : 'Pripravené'}</div>
           </div>
 
           <input
@@ -628,7 +628,7 @@ export default function VydajStravyClient({
             value={qrValue}
             onChange={event => setQrValue(event.target.value)}
             onKeyDown={onInputKeyDown}
-            placeholder="NaÄŤĂ­taj alebo zadaj QR"
+            placeholder="Načítaj alebo zadaj QR"
             inputMode="text"
             autoComplete="off"
             style={styles.qrInput}
@@ -644,7 +644,7 @@ export default function VydajStravyClient({
               opacity: loading || !qrValue.trim() ? 0.55 : 1
             }}
           >
-            {loading ? 'Kontrolujem...' : 'VydaĹĄ stravu'}
+            {loading ? 'Kontrolujem...' : 'Vydať stravu'}
           </button>
 
           <div style={styles.cameraActions}>
@@ -653,11 +653,11 @@ export default function VydajStravyClient({
               onClick={() => cameraOpen ? (setCameraOpen(false), stopCamera()) : startCamera()}
               style={styles.secondaryButton}
             >
-              {cameraOpen ? 'VypnĂşĹĄ kameru' : 'ZapnĂşĹĄ kameru'}
+              {cameraOpen ? 'Vypnúť kameru' : 'Zapnúť kameru'}
             </button>
 
             <span style={styles.cameraStatus}>
-              {cameraReady ? 'â—Ź ' : ''}
+              {cameraReady ? '● ' : ''}
               {cameraStatus}
             </span>
           </div>
@@ -678,8 +678,8 @@ export default function VydajStravyClient({
         }}>
           {!lastItem ? (
             <>
-              <div style={styles.resultEmpty}>ÄŚakĂˇ sa na prvĂ˝ QR kĂłd.</div>
-              <div style={styles.resultHint}>SystĂ©m najprv overĂ­ blokovanie, nĂˇrok, duplicitu vĂ˝daja a prĂ­padnĂş hromadnĂş prĂ­pravu.</div>
+              <div style={styles.resultEmpty}>Čaká sa na prvý QR kód.</div>
+              <div style={styles.resultHint}>Systém najprv overí blokovanie, nárok, duplicitu výdaja a prípadnú hromadnú prípravu.</div>
             </>
           ) : (
             <>
@@ -708,20 +708,20 @@ export default function VydajStravyClient({
           <div style={styles.foodBreakdown}>
             <em>MASO {mealStats.OBED.MASO.issued}/{mealStats.OBED.MASO.total}</em>
             <em>VEGE {mealStats.OBED.VEGE.issued}/{mealStats.OBED.VEGE.total}</em>
-            <em>DIĂ‰TA {mealStats.OBED.DIETA.issued}/{mealStats.OBED.DIETA.total}</em>
+            <em>DIÉTA {mealStats.OBED.DIETA.issued}/{mealStats.OBED.DIETA.total}</em>
           </div>
         </div>
         <div style={styles.statBoxWide}>
-          <span>Dnes veÄŤera</span>
+          <span>Dnes večera</span>
           <b>{mealStats.VECERA.issued} / {mealStats.VECERA.total}</b>
           <div style={styles.foodBreakdown}>
             <em>MASO {mealStats.VECERA.MASO.issued}/{mealStats.VECERA.MASO.total}</em>
             <em>VEGE {mealStats.VECERA.VEGE.issued}/{mealStats.VECERA.VEGE.total}</em>
-            <em>DIĂ‰TA {mealStats.VECERA.DIETA.issued}/{mealStats.VECERA.DIETA.total}</em>
+            <em>DIÉTA {mealStats.VECERA.DIETA.issued}/{mealStats.VECERA.DIETA.total}</em>
           </div>
         </div>
         <div style={styles.statBoxGreen}>
-          <span>VydanĂ© teraz</span>
+          <span>Vydané teraz</span>
           <b>{successCount}</b>
         </div>
         <div style={styles.statBoxRed}>
@@ -732,15 +732,15 @@ export default function VydajStravyClient({
 
       <section style={styles.actionsRow}>
         <button type="button" onClick={() => setCancelOpen(true)} style={styles.cancelButton}>
-          Storno vĂ˝dajov
+          Storno výdajov
         </button>
         {cancelOpen && (
           <div style={styles.modalBackdrop} onClick={() => setCancelOpen(false)}>
             <div style={styles.cancelBox} onClick={event => event.stopPropagation()}>
           <div style={styles.cancelHeader}>
             <div>
-              <h2 style={styles.sectionTitle}>Storno poslednĂ˝ch vĂ˝dajov</h2>
-              <p style={styles.cancelHint}>Vyber jeden alebo viac z poslednĂ˝ch 10 vĂ˝dajov.</p>
+              <h2 style={styles.sectionTitle}>Storno posledných výdajov</h2>
+              <p style={styles.cancelHint}>Vyber jeden alebo viac z posledných 10 výdajov.</p>
             </div>
 
             <button
@@ -752,7 +752,7 @@ export default function VydajStravyClient({
                 opacity: !selectedCancelItems.length || cancelLoading ? 0.45 : 1
               }}
             >
-              {cancelLoading ? 'Stornujem...' : `StornovaĹĄ (${selectedCancelItems.length})`}
+              {cancelLoading ? 'Stornujem...' : `Stornovať (${selectedCancelItems.length})`}
             </button>
             <button
               type="button"
@@ -763,12 +763,12 @@ export default function VydajStravyClient({
                 opacity: !changedChoiceCount || editLoading ? 0.45 : 1
               }}
             >
-              {editLoading ? 'UkladĂˇm...' : `UloĹľiĹĄ Ăşpravy (${changedChoiceCount})`}
+              {editLoading ? 'Ukladám...' : `Uložiť úpravy (${changedChoiceCount})`}
             </button>
           </div>
 
           {recentIssued.length === 0 ? (
-            <div style={styles.emptyHistory}>ZatiaÄľ nie je ÄŤo stornovaĹĄ.</div>
+            <div style={styles.emptyHistory}>Zatiaľ nie je čo stornovať.</div>
           ) : (
             <div style={styles.cancelList}>
               {recentIssued.map(item => {
@@ -854,7 +854,7 @@ export default function VydajStravyClient({
 
       {activeIssues.length > 0 && (
         <section style={styles.activeBox}>
-          <h2 style={styles.sectionTitle}>AktĂ­vne prĂ­pravy</h2>
+          <h2 style={styles.sectionTitle}>Aktívne prípravy</h2>
           <div style={styles.activeList}>
             {activeIssues.map(issue => (
               <div key={issue.id} style={styles.activeIssue}>
@@ -868,9 +868,9 @@ export default function VydajStravyClient({
       )}
 
       <section style={styles.historyBox}>
-        <h2 style={styles.sectionTitle}>PoslednĂ© naÄŤĂ­tania</h2>
+        <h2 style={styles.sectionTitle}>Posledné načítania</h2>
         {history.length === 0 ? (
-          <div style={styles.emptyHistory}>ZatiaÄľ bez zĂˇznamu.</div>
+          <div style={styles.emptyHistory}>Zatiaľ bez záznamu.</div>
         ) : (
           <div style={styles.historyList}>
             {history.map(item => (
