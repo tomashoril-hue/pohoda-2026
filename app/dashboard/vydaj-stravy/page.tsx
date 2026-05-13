@@ -5,16 +5,27 @@ import { supabaseServer } from '@/lib/supabaseServer'
 import VydajStravyClient from './VydajStravyClient'
 
 function todayIsoDate() {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
+  const parts = new Intl.DateTimeFormat('sk-SK', {
+    timeZone: 'Europe/Bratislava',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date())
+  const year = parts.find(part => part.type === 'year')?.value || ''
+  const month = parts.find(part => part.type === 'month')?.value || ''
+  const day = parts.find(part => part.type === 'day')?.value || ''
 
   return `${year}-${month}-${day}`
 }
 
 function defaultMeal() {
-  return new Date().getHours() < 15 ? 'OBED' : 'VECERA'
+  const hour = Number(new Intl.DateTimeFormat('sk-SK', {
+    timeZone: 'Europe/Bratislava',
+    hour: '2-digit',
+    hour12: false
+  }).format(new Date()))
+
+  return hour < 15 ? 'OBED' : 'VECERA'
 }
 
 export default async function VydajStravyPage() {
