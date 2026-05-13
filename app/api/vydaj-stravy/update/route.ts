@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
 
     const { data: issuedMeal, error: issuedMealError } = await supabaseServer
       .from('vydaj_jedal')
-      .select('id, user_id, group_id, hromadny_vydaj_id, issued_by, status')
+      .select('id, user_id, group_id, issued_by, status')
       .eq('id', issuedId)
       .maybeSingle()
 
@@ -82,18 +82,6 @@ export async function POST(req: NextRequest) {
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 })
-    }
-
-    if (issuedMeal.hromadny_vydaj_id) {
-      await supabaseServer
-        .from('hromadny_vydaj_polozky')
-        .update({
-          volba: choice,
-          updated_at: new Date().toISOString()
-        })
-        .eq('hromadny_vydaj_id', issuedMeal.hromadny_vydaj_id)
-        .eq('user_id', issuedMeal.user_id)
-        .in('status', ['BULK_ISSUED', 'INDIVIDUAL_ISSUED'])
     }
 
     return NextResponse.json({

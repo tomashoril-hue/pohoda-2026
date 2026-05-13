@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
 
     const visibleRows = (issuedRows || []).filter((row: any) => {
       return access.global || access.groupIds.includes(row.group_id) || row.issued_by === actor.id
-    }).slice(0, 10)
+    })
 
     const userIds = Array.from(new Set(visibleRows.map((row: any) => row.user_id).filter(Boolean)))
     const groupIds = Array.from(new Set(visibleRows.map((row: any) => row.group_id).filter(Boolean)))
@@ -99,9 +99,7 @@ export async function GET(req: NextRequest) {
     const userMap = new Map((usersData || []).map((user: any) => [user.id, user]))
     const groupMap = new Map((groupsData || []).map((group: any) => [group.id, group]))
 
-    return NextResponse.json({
-      ok: true,
-      items: visibleRows.map((row: any) => {
+    const rowToItem = (row: any) => {
         const person = userMap.get(row.user_id)
         const group = groupMap.get(row.group_id)
 
@@ -115,7 +113,57 @@ export async function GET(req: NextRequest) {
           method: row.sposob || '',
           groupName: group?.name || ''
         }
+    }
+
+    const bulkGroups = new Map<string, any[]>()
+    const items: any[] = []
+
+    visibleRows.forEach((row: any) => {
+      if (row.sposob === 'HROMADNE' && row.hromadny_vydaj_id) {
+        const key = row.hromadny_vydaj_id
+        bulkGroups.set(key, [...(bulkGroups.get(key) || []), row])
+        return
+      }
+
+      items.push({
+        ...rowToItem(row),
+        itemType: 'INDIVIDUAL',
+        children: []
       })
+    })
+
+    bulkGroups.forEach((rows, issueId) => {
+      const first = rows[0]
+      const group = groupMap.get(first.group_id)
+      const children = rows.map(rowToItem)
+      const summary = rows.reduce((acc: any, row: any) => {
+        const choice = row.volba === 'MASO' || row.volba === 'VEGE' || row.volba === 'DIETA'
+          ? row.volba
+          : 'DIETA'
+        acc[choice] = (acc[choice] || 0) + 1
+        return acc
+      }, { MASO: 0, VEGE: 0, DIETA: 0 })
+
+      items.push({
+        issuedId: `bulk:${issueId}`,
+        itemType: 'BULK',
+        typJedla: first.typ_jedla,
+        issuedAt: first.issued_at,
+        personName: group?.name || 'Hromadný výdaj',
+        email: '',
+        choice: '',
+        method: 'HROMADNE',
+        groupName: group?.name || '',
+        summary,
+        children
+      })
+    })
+
+    items.sort((a: any, b: any) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime())
+
+    return NextResponse.json({
+      ok: true,
+      items: items.slice(0, 10)
     })
   } catch (err: any) {
     return NextResponse.json(
