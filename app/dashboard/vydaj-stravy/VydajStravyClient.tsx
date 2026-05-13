@@ -520,33 +520,47 @@ export default function VydajStravyClient({
 
     try {
       const itemsToCancel = selectedCancelItems.flatMap(item => item.children?.length ? item.children : [item])
+      const idsToCancel = itemsToCancel.map(item => item.issuedId).filter(Boolean)
 
-      for (const item of itemsToCancel) {
-        const res = await fetch('/api/vydaj-stravy/cancel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ issuedId: item.issuedId })
-        })
+      if (!idsToCancel.length) return
 
-        const json = await res.json().catch(() => ({}))
+      const res = await fetch('/api/vydaj-stravy/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issuedIds: idsToCancel })
+      })
 
-        if (!res.ok || !json.ok) {
-          throw new Error(json.error || `Storno sa nepodarilo pre ${item.personName || item.email || 'osobu'}.`)
-        }
+      const json = await res.json().catch(() => ({}))
 
-        cancelledIds.push(item.issuedId)
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || 'Storno sa nepodarilo.')
+      }
+
+      cancelledIds.push(...idsToCancel)
+
+      selectedCancelItems.forEach(item => {
+        const count = item.children?.length || 1
         addHistory({
           ...item,
           id: `${Date.now()}-cancel-${item.issuedId}`,
           status: 'CANCELLED',
           tone: 'warning',
-          message: 'Výdaj bol stornovaný.'
+          personName: item.itemType === 'BULK'
+            ? item.groupName || item.personName || 'Hromadný výdaj'
+            : item.personName,
+          email: '',
+          message: item.itemType === 'BULK'
+            ? `Hromadný výdaj bol stornovaný (${count} osôb).`
+            : 'Výdaj bol stornovaný.'
         })
+      })
+
+      itemsToCancel.forEach(item => {
         setDayCounts(prev => ({
           ...prev,
           [item.typJedla === 'OBED' ? 'obed' : 'vecera']: Math.max(0, prev[item.typJedla === 'OBED' ? 'obed' : 'vecera'] - 1)
         }))
-      }
+      })
 
       playBeep('ok')
       await refreshRecentIssued()

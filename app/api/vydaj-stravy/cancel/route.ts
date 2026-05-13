@@ -33,32 +33,37 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const issuedId = String(body.issuedId || '').trim()
+    const issuedIds = Array.isArray(body.issuedIds)
+      ? body.issuedIds.map((id: any) => String(id || '').trim()).filter(Boolean)
+      : []
+    const idsToCancel = Array.from(new Set(issuedIds.length > 0 ? issuedIds : issuedId ? [issuedId] : []))
 
-    if (!issuedId) {
+    if (idsToCancel.length === 0) {
       return NextResponse.json({ error: 'Chýba ID výdaja.' }, { status: 400 })
     }
 
-    const { data: issuedMeal, error: issuedMealError } = await supabaseServer
+    const { data: issuedMeals, error: issuedMealError } = await supabaseServer
       .from('vydaj_jedal')
       .select('id, user_id, group_id, hromadny_vydaj_id, issued_by, status')
-      .eq('id', issuedId)
-      .maybeSingle()
+      .in('id', idsToCancel)
 
     if (issuedMealError) {
       return NextResponse.json({ error: issuedMealError.message }, { status: 500 })
     }
 
-    if (!issuedMeal) {
+    if (!issuedMeals || issuedMeals.length !== idsToCancel.length) {
       return NextResponse.json({ error: 'Výdaj sa nenašiel.' }, { status: 404 })
     }
 
-    if (issuedMeal.status !== 'VYDANE') {
+    if (issuedMeals.some((issuedMeal: any) => issuedMeal.status !== 'VYDANE')) {
       return NextResponse.json({ error: 'Tento výdaj už nie je aktívny.' }, { status: 400 })
     }
 
-    const allowed = await canCancelIssuedMeal(actor.id, issuedMeal)
+    const allowedChecks = await Promise.all(
+      issuedMeals.map((issuedMeal: any) => canCancelIssuedMeal(actor.id, issuedMeal))
+    )
 
-    if (!allowed) {
+    if (allowedChecks.some(allowed => !allowed)) {
       return NextResponse.json({ error: 'Nemáš oprávnenie stornovať tento výdaj.' }, { status: 403 })
     }
 
@@ -71,28 +76,39 @@ export async function POST(req: NextRequest) {
         cancelled_by: actor.id,
         cancelled_at: now
       })
-      .eq('id', issuedMeal.id)
+      .in('id', idsToCancel)
       .eq('status', 'VYDANE')
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
 
-    if (issuedMeal.hromadny_vydaj_id) {
+    const issuedMealsByIssue = new Map<string, string[]>()
+
+    issuedMeals.forEach((issuedMeal: any) => {
+      if (!issuedMeal.hromadny_vydaj_id) return
+      issuedMealsByIssue.set(
+        issuedMeal.hromadny_vydaj_id,
+        [...(issuedMealsByIssue.get(issuedMeal.hromadny_vydaj_id) || []), issuedMeal.user_id]
+      )
+    })
+
+    for (const [issueId, userIds] of issuedMealsByIssue.entries()) {
       await supabaseServer
         .from('hromadny_vydaj_polozky')
         .update({
           status: 'PLANNED',
           updated_at: now
         })
-        .eq('hromadny_vydaj_id', issuedMeal.hromadny_vydaj_id)
-        .eq('user_id', issuedMeal.user_id)
+        .eq('hromadny_vydaj_id', issueId)
+        .in('user_id', userIds)
         .in('status', ['BULK_ISSUED', 'INDIVIDUAL_ISSUED'])
     }
 
     return NextResponse.json({
       ok: true,
-      message: 'Výdaj bol stornovaný.'
+      cancelledCount: idsToCancel.length,
+      message: idsToCancel.length > 1 ? 'Výdaje boli stornované.' : 'Výdaj bol stornovaný.'
     })
   } catch (err: any) {
     return NextResponse.json(
