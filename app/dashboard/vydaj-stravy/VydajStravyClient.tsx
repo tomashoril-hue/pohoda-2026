@@ -244,8 +244,8 @@ export default function VydajStravyClient({
 
           const nowMs = Date.now()
           if (busyRef.current) return
-          if (lastScanTextRef.current === text && nowMs - lastScanTimeRef.current < 2500) return
-          if (nowMs - lastScanTimeRef.current < 800) return
+          if (lastScanTextRef.current === text && nowMs - lastScanTimeRef.current < 1200) return
+          if (nowMs - lastScanTimeRef.current < 300) return
 
           lastScanTextRef.current = text
           lastScanTimeRef.current = nowMs
@@ -270,6 +270,15 @@ export default function VydajStravyClient({
 
   const addHistory = (item: ScanItem) => {
     setHistory(prev => [item, ...prev].slice(0, 24))
+  }
+
+  const refreshIssueDataInBackground = () => {
+    Promise.all([
+      refreshRecentIssued(),
+      refreshStats()
+    ]).catch(() => {
+      // Obnova prehľadov nesmie blokovať ďalšie skenovanie.
+    })
   }
 
   const refreshRecentIssued = async () => {
@@ -390,8 +399,7 @@ export default function VydajStravyClient({
           ...prev,
           [typJedla === 'OBED' ? 'obed' : 'vecera']: prev[typJedla === 'OBED' ? 'obed' : 'vecera'] + issuedCount
         }))
-        await refreshRecentIssued()
-        await refreshStats()
+        refreshIssueDataInBackground()
       } else {
         playBeep('error')
         setErrorCount(prev => prev + 1)

@@ -82,12 +82,15 @@ function formatChoiceSummary(summary: { MASO: number; VEGE: number; DIETA: numbe
 }
 
 async function issuerAccess(actorId: string) {
-  const globalAccess = await getGlobalAccess(actorId)
+  const [globalAccess, membershipsResult] = await Promise.all([
+    getGlobalAccess(actorId),
+    supabaseServer
+      .from('group_members')
+      .select('group_id, role')
+      .eq('user_id', actorId)
+  ])
 
-  const { data: memberships, error } = await supabaseServer
-    .from('group_members')
-    .select('group_id, role')
-    .eq('user_id', actorId)
+  const { data: memberships, error } = membershipsResult
 
   if (error) {
     throw new Error(error.message)
@@ -105,21 +108,25 @@ async function issuerAccess(actorId: string) {
 }
 
 async function findUserIdByQr(qrCode: string) {
-  const { data: qrRow, error: qrError } = await supabaseServer
-    .from('user_qr_codes')
-    .select('user_id')
-    .eq('qr_code', qrCode)
-    .eq('active', true)
-    .maybeSingle()
+  const [qrResult, userResult] = await Promise.all([
+    supabaseServer
+      .from('user_qr_codes')
+      .select('user_id')
+      .eq('qr_code', qrCode)
+      .eq('active', true)
+      .maybeSingle(),
+    supabaseServer
+      .from('users')
+      .select('id')
+      .eq('qr_code', qrCode)
+      .maybeSingle()
+  ])
+
+  const { data: qrRow, error: qrError } = qrResult
+  const { data: userRow, error: userError } = userResult
 
   if (qrError) throw new Error(qrError.message)
   if (qrRow?.user_id) return qrRow.user_id
-
-  const { data: userRow, error: userError } = await supabaseServer
-    .from('users')
-    .select('id')
-    .eq('qr_code', qrCode)
-    .maybeSingle()
 
   if (userError) throw new Error(userError.message)
   return userRow?.id || ''
