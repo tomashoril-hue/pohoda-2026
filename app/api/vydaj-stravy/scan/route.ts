@@ -178,11 +178,77 @@ export async function POST(req: NextRequest) {
       }, { status: 404 })
     }
 
-    const { data: profile, error: profileError } = await supabaseServer
-      .from('users')
-      .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny')
-      .eq('id', targetUserId)
-      .maybeSingle()
+    const [
+      profileResult,
+      targetMembershipsResult,
+      alreadyIssuedResult,
+      entitlementResult,
+      selectionResult,
+      plannedItemsResult
+    ] = await Promise.all([
+      supabaseServer
+        .from('users')
+        .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny')
+        .eq('id', targetUserId)
+        .maybeSingle(),
+      supabaseServer
+        .from('group_members')
+        .select(`
+          group_id,
+          role,
+          groups (
+            name
+          )
+        `)
+        .eq('user_id', targetUserId),
+      supabaseServer
+        .from('vydaj_jedal')
+        .select('id, sposob, issued_at, volba, group_id, hromadny_vydaj_id')
+        .eq('user_id', targetUserId)
+        .eq('datum', datum)
+        .eq('typ_jedla', typJedla)
+        .eq('status', 'VYDANE')
+        .order('issued_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabaseServer
+        .from('user_food_entitlements')
+        .select('obed, vecera')
+        .eq('user_id', targetUserId)
+        .eq('datum', datum)
+        .maybeSingle(),
+      supabaseServer
+        .from('vyber_jedal')
+        .select('volba')
+        .eq('user_id', targetUserId)
+        .eq('datum', datum)
+        .eq('typ_jedla', typJedla)
+        .maybeSingle(),
+      supabaseServer
+        .from('hromadny_vydaj_polozky')
+        .select(`
+          id,
+          hromadny_vydaj_id,
+          user_id,
+          status,
+          volba,
+          hromadne_vydaje (
+            id,
+            group_id,
+            datum,
+            typ_jedla,
+            status,
+            valid_after,
+            groups (
+              name
+            )
+          )
+        `)
+        .eq('user_id', targetUserId)
+        .eq('status', 'PLANNED')
+    ])
+
+    const { data: profile, error: profileError } = profileResult
 
     if (profileError) {
       return NextResponse.json({ error: profileError.message }, { status: 500 })
@@ -197,16 +263,7 @@ export async function POST(req: NextRequest) {
       }, { status: 404 })
     }
 
-    const { data: targetMemberships, error: targetMembershipsError } = await supabaseServer
-      .from('group_members')
-      .select(`
-        group_id,
-        role,
-        groups (
-          name
-        )
-      `)
-      .eq('user_id', targetUserId)
+    const { data: targetMemberships, error: targetMembershipsError } = targetMembershipsResult
 
     if (targetMembershipsError) {
       return NextResponse.json({ error: targetMembershipsError.message }, { status: 500 })
@@ -251,16 +308,7 @@ export async function POST(req: NextRequest) {
       }, { status: 403 })
     }
 
-    const { data: alreadyIssued, error: alreadyIssuedError } = await supabaseServer
-      .from('vydaj_jedal')
-      .select('id, sposob, issued_at, volba, group_id, hromadny_vydaj_id')
-      .eq('user_id', targetUserId)
-      .eq('datum', datum)
-      .eq('typ_jedla', typJedla)
-      .eq('status', 'VYDANE')
-      .order('issued_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const { data: alreadyIssued, error: alreadyIssuedError } = alreadyIssuedResult
 
     if (alreadyIssuedError) {
       return NextResponse.json({ error: alreadyIssuedError.message }, { status: 500 })
@@ -283,12 +331,7 @@ export async function POST(req: NextRequest) {
       }, { status: 409 })
     }
 
-    const { data: entitlement, error: entitlementError } = await supabaseServer
-      .from('user_food_entitlements')
-      .select('obed, vecera')
-      .eq('user_id', targetUserId)
-      .eq('datum', datum)
-      .maybeSingle()
+    const { data: entitlement, error: entitlementError } = entitlementResult
 
     if (entitlementError) {
       return NextResponse.json({ error: entitlementError.message }, { status: 500 })
@@ -308,38 +351,15 @@ export async function POST(req: NextRequest) {
       }, { status: 403 })
     }
 
-    const { data: selection } = await supabaseServer
-      .from('vyber_jedal')
-      .select('volba')
-      .eq('user_id', targetUserId)
-      .eq('datum', datum)
-      .eq('typ_jedla', typJedla)
-      .maybeSingle()
+    const { data: selection, error: selectionError } = selectionResult
+
+    if (selectionError) {
+      return NextResponse.json({ error: selectionError.message }, { status: 500 })
+    }
 
     const choice = normalizeChoice(selection?.volba) || normalizeChoice(profile.typ_stravy)
 
-    const { data: plannedItems, error: plannedItemsError } = await supabaseServer
-      .from('hromadny_vydaj_polozky')
-      .select(`
-        id,
-        hromadny_vydaj_id,
-        user_id,
-        status,
-        volba,
-        hromadne_vydaje (
-          id,
-          group_id,
-          datum,
-          typ_jedla,
-          status,
-          valid_after,
-          groups (
-            name
-          )
-        )
-      `)
-      .eq('user_id', targetUserId)
-      .eq('status', 'PLANNED')
+    const { data: plannedItems, error: plannedItemsError } = plannedItemsResult
 
     if (plannedItemsError) {
       return NextResponse.json({ error: plannedItemsError.message }, { status: 500 })
