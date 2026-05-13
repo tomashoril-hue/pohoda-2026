@@ -66,22 +66,24 @@ function choiceSummary(rows: any[]) {
   const counts = {
     MASO: 0,
     VEGE: 0,
-    DIETA: 0
+    DIETA: 0,
+    NEZADANE: 0
   }
 
   rows.forEach((row: any) => {
-    const choice = normalizeChoice(row.volba) || 'DIETA'
+    const choice = normalizeChoice(row.volba) || 'NEZADANE'
     counts[choice] += 1
   })
 
   return counts
 }
 
-function formatChoiceSummary(summary: { MASO: number; VEGE: number; DIETA: number }) {
+function formatChoiceSummary(summary: { MASO: number; VEGE: number; DIETA: number; NEZADANE?: number }) {
   return [
     summary.MASO ? `MASO ${summary.MASO}` : '',
     summary.VEGE ? `VEGE ${summary.VEGE}` : '',
-    summary.DIETA ? `DIÉTA ${summary.DIETA}` : ''
+    summary.DIETA ? `DIÉTA ${summary.DIETA}` : '',
+    summary.NEZADANE ? `NEZADANÉ ${summary.NEZADANE}` : ''
   ].filter(Boolean).join(' · ')
 }
 

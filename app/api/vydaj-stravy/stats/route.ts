@@ -3,7 +3,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
-type FoodChoice = 'MASO' | 'VEGE' | 'DIETA'
+type FoodChoice = 'MASO' | 'VEGE' | 'DIETA' | 'NEZADANE'
 
 function normalizeDate(value: any) {
   const text = String(value || '').trim()
@@ -14,7 +14,8 @@ function normalizeChoice(value: any): FoodChoice {
   const text = String(value || '').trim().toUpperCase()
   if (text === 'MASO') return 'MASO'
   if (text === 'VEGE') return 'VEGE'
-  return 'DIETA'
+  if (text === 'DIETA' || text === 'DIÉTA') return 'DIETA'
+  return 'NEZADANE'
 }
 
 function chunks<T>(items: T[], size: number) {
@@ -74,7 +75,8 @@ function emptyStats() {
     issued: 0,
     MASO: { total: 0, issued: 0 },
     VEGE: { total: 0, issued: 0 },
-    DIETA: { total: 0, issued: 0 }
+    DIETA: { total: 0, issued: 0 },
+    NEZADANE: { total: 0, issued: 0 }
   }
 }
 

@@ -217,10 +217,10 @@ export async function GET(req: NextRequest) {
       const summary = rows.reduce((acc: any, row: any) => {
         const choice = row.volba === 'MASO' || row.volba === 'VEGE' || row.volba === 'DIETA'
           ? row.volba
-          : 'DIETA'
+          : 'NEZADANE'
         acc[choice] = (acc[choice] || 0) + 1
         return acc
-      }, { MASO: 0, VEGE: 0, DIETA: 0 })
+      }, { MASO: 0, VEGE: 0, DIETA: 0, NEZADANE: 0 })
 
       items.push({
         issuedId: `bulk:${issueId}`,

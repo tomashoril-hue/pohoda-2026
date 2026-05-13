@@ -25,6 +25,7 @@ type ScanItem = {
     MASO: number
     VEGE: number
     DIETA: number
+    NEZADANE?: number
   }
   children?: ScanItem[]
 }
@@ -48,6 +49,7 @@ type MealStats = {
   MASO: ChoiceStats
   VEGE: ChoiceStats
   DIETA: ChoiceStats
+  NEZADANE: ChoiceStats
 }
 
 function emptyMealStats(issued = 0): MealStats {
@@ -56,7 +58,8 @@ function emptyMealStats(issued = 0): MealStats {
     issued,
     MASO: { total: 0, issued: 0 },
     VEGE: { total: 0, issued: 0 },
-    DIETA: { total: 0, issued: 0 }
+    DIETA: { total: 0, issued: 0 },
+    NEZADANE: { total: 0, issued: 0 }
   }
 }
 
@@ -81,6 +84,7 @@ function mealLabel(value: string) {
 
 function choiceLabel(value: string) {
   if (value === 'DIETA') return 'DIÉTA'
+  if (value === 'NEZADANE') return 'NEZADANÉ'
   if (value === 'VEGE') return 'VEGE'
   if (value === 'MASO') return 'MASO'
   return '-'
@@ -717,6 +721,7 @@ export default function VydajStravyClient({
             <em>MASO {mealStats.OBED.MASO.issued}/{mealStats.OBED.MASO.total}</em>
             <em>VEGE {mealStats.OBED.VEGE.issued}/{mealStats.OBED.VEGE.total}</em>
             <em>DIÉTA {mealStats.OBED.DIETA.issued}/{mealStats.OBED.DIETA.total}</em>
+            <em>NEZADANÉ {mealStats.OBED.NEZADANE?.issued || 0}/{mealStats.OBED.NEZADANE?.total || 0}</em>
           </div>
         </div>
         <div style={styles.statBoxWide}>
@@ -726,6 +731,7 @@ export default function VydajStravyClient({
             <em>MASO {mealStats.VECERA.MASO.issued}/{mealStats.VECERA.MASO.total}</em>
             <em>VEGE {mealStats.VECERA.VEGE.issued}/{mealStats.VECERA.VEGE.total}</em>
             <em>DIÉTA {mealStats.VECERA.DIETA.issued}/{mealStats.VECERA.DIETA.total}</em>
+            <em>NEZADANÉ {mealStats.VECERA.NEZADANE?.issued || 0}/{mealStats.VECERA.NEZADANE?.total || 0}</em>
           </div>
         </div>
         <div style={styles.statBoxGreen}>
@@ -814,6 +820,7 @@ export default function VydajStravyClient({
                                 }))}
                                 style={styles.choiceSelect}
                               >
+                                <option value="" disabled>NEZADANÉ</option>
                                 <option value="MASO">MASO</option>
                                 <option value="VEGE">VEGE</option>
                                 <option value="DIETA">DIÉTA</option>
@@ -846,6 +853,7 @@ export default function VydajStravyClient({
                       }))}
                       style={styles.choiceSelect}
                     >
+                      <option value="" disabled>NEZADANÉ</option>
                       <option value="MASO">MASO</option>
                       <option value="VEGE">VEGE</option>
                       <option value="DIETA">DIÉTA</option>
