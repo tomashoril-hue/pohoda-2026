@@ -727,7 +727,7 @@ export async function POST(req: NextRequest) {
         }, { status: 409 })
       }
 
-      const [alreadyBulkIssuedResult, bulkProfilesResult, bulkEntitlementsResult] = await Promise.all([
+      const [alreadyBulkIssuedResult, bulkProfilesResult, bulkEntitlementsResult, bulkSelectionsResult] = await Promise.all([
         supabaseServer
           .from('vydaj_jedal')
           .select('user_id')
@@ -737,12 +737,18 @@ export async function POST(req: NextRequest) {
           .in('user_id', bulkUserIds),
         supabaseServer
           .from('users')
-          .select('id, aktivny')
+          .select('id, aktivny, typ_stravy')
           .in('id', bulkUserIds),
         supabaseServer
           .from('user_food_entitlements')
           .select('user_id, obed, vecera')
           .eq('datum', datum)
+          .in('user_id', bulkUserIds),
+        supabaseServer
+          .from('vyber_jedal')
+          .select('user_id, volba')
+          .eq('datum', datum)
+          .eq('typ_jedla', typJedla)
           .in('user_id', bulkUserIds)
       ])
 
@@ -758,23 +764,31 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: bulkEntitlementsResult.error.message }, { status: 500 })
       }
 
+      if (bulkSelectionsResult.error) {
+        return NextResponse.json({ error: bulkSelectionsResult.error.message }, { status: 500 })
+      }
+
       const bulkProfileMap = new Map((bulkProfilesResult.data || []).map((row: any) => [row.id, row]))
       const bulkEntitlementMap = new Map((bulkEntitlementsResult.data || []).map((row: any) => [row.user_id, row]))
+      const bulkSelectionMap = new Map((bulkSelectionsResult.data || []).map((row: any) => [row.user_id, normalizeChoice(row.volba)]))
       const invalidBulkItems: Array<{ id: string; reason: string }> = []
-      const eligibleBulkItems = (bulkItems || []).filter((item: any) => {
+      const eligibleBulkItems = (bulkItems || []).flatMap((item: any) => {
         const profileRow = bulkProfileMap.get(item.user_id)
 
         if (!isActiveUser(profileRow)) {
           invalidBulkItems.push({ id: item.id, reason: 'USER_BLOCKED' })
-          return false
+          return []
         }
 
         if (!entitlementOk(bulkEntitlementMap.get(item.user_id), typJedla)) {
           invalidBulkItems.push({ id: item.id, reason: 'MANUAL' })
-          return false
+          return []
         }
 
-        return true
+        return [{
+          ...item,
+          volba: bulkSelectionMap.get(item.user_id) || normalizeChoice(profileRow?.typ_stravy) || null
+        }]
       })
 
       if (invalidBulkItems.length > 0) {

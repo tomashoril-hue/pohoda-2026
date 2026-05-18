@@ -2,6 +2,39 @@ import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
 
+function bratislavaLocalToUtcIso(datum: string, hour: number) {
+  const localGuess = new Date(`${datum}T${String(hour).padStart(2, '0')}:00:00.000Z`)
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Bratislava',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).formatToParts(localGuess)
+  const get = (type: string) => Number(parts.find(part => part.type === type)?.value || 0)
+  const zonedAsUtc = Date.UTC(
+    get('year'),
+    get('month') - 1,
+    get('day'),
+    get('hour'),
+    get('minute'),
+    get('second')
+  )
+  const offset = zonedAsUtc - localGuess.getTime()
+
+  return new Date(localGuess.getTime() - offset).toISOString()
+}
+
+function defaultDeadlineIso(datum: string, typJedla: string) {
+  const d = new Date(`${datum}T12:00:00.000Z`)
+  d.setUTCDate(d.getUTCDate() - 1)
+  const previousDate = d.toISOString().slice(0, 10)
+  return bratislavaLocalToUtcIso(previousDate, typJedla === 'OBED' ? 16 : 17)
+}
+
 export async function POST(req: Request) {
   const user = await getCurrentUser()
 
@@ -27,10 +60,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Výber je už uzamknutý.' }, { status: 403 })
   }
 
-  if (deadline?.deadline_at) {
-    if (Date.now() > new Date(deadline.deadline_at).getTime()) {
-      return NextResponse.json({ error: 'Čas na zmenu výberu už vypršal.' }, { status: 403 })
-    }
+  const effectiveDeadline = deadline?.deadline_at || defaultDeadlineIso(datum, typ_jedla)
+
+  if (Date.now() > new Date(effectiveDeadline).getTime()) {
+    return NextResponse.json({ error: 'Čas na zmenu výberu už vypršal.' }, { status: 403 })
   }
 
   const { data: membership } = await supabaseServer

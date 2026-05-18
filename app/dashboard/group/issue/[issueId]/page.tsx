@@ -3,6 +3,14 @@ import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
 import IssueDetailClient from './IssueDetailClient'
 
+function normalizeChoice(value: any) {
+  const text = String(value || '').trim().toUpperCase()
+  if (text === 'MASO') return 'MASO'
+  if (text === 'VEGE') return 'VEGE'
+  if (text === 'DIETA' || text === 'DIÉTA') return 'DIETA'
+  return ''
+}
+
 export default async function IssueDetailPage({
   params
 }: {
@@ -84,22 +92,34 @@ export default async function IssueDetailPage({
   )
 
   let usersById = new Map<string, any>()
+  let selectionsByUserId = new Map<string, string>()
 
   if (userIds.length > 0) {
-    const { data: usersData } = await supabaseServer
-      .from('users')
-      .select(`
-        id,
-        meno,
-        priezvisko,
-        email,
-        telefon,
-        typ_stravy
-      `)
-      .in('id', userIds)
+    const [usersResult, selectionsResult] = await Promise.all([
+      supabaseServer
+        .from('users')
+        .select(`
+          id,
+          meno,
+          priezvisko,
+          email,
+          telefon,
+          typ_stravy
+        `)
+        .in('id', userIds),
+      supabaseServer
+        .from('vyber_jedal')
+        .select('user_id, volba')
+        .eq('datum', issue.datum)
+        .eq('typ_jedla', issue.typ_jedla)
+        .in('user_id', userIds)
+    ])
 
     usersById = new Map(
-      (usersData || []).map((u: any) => [u.id, u])
+      (usersResult.data || []).map((u: any) => [u.id, u])
+    )
+    selectionsByUserId = new Map(
+      (selectionsResult.data || []).map((row: any) => [row.user_id, normalizeChoice(row.volba)])
     )
   }
 
@@ -111,12 +131,17 @@ export default async function IssueDetailPage({
     const itemUser = usersById.get(item.user_id)
 
     const fullName = `${itemUser?.meno || ''} ${itemUser?.priezvisko || ''}`.trim()
+    const currentChoice = selectionsByUserId.get(item.user_id) || normalizeChoice(itemUser?.typ_stravy)
+    const displayChoice =
+      item.status === 'BULK_ISSUED' || item.status === 'INDIVIDUAL_ISSUED'
+        ? item.volba || currentChoice
+        : currentChoice
 
     return {
       id: item.id,
       userId: item.user_id,
       source: item.source,
-      volba: item.volba,
+      volba: displayChoice,
       status: item.status,
       meno: itemUser?.meno || '',
       priezvisko: itemUser?.priezvisko || '',

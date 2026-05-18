@@ -85,6 +85,14 @@ export default function MenuClient({
     label: '',
   })
 
+  const defaultDeadlineAt = (datum: string, typ: MealType) => {
+    const d = new Date(`${datum}T12:00:00`)
+    d.setDate(d.getDate() - 1)
+    const hour = typ === 'OBED' ? 16 : 17
+    d.setHours(hour, 0, 0, 0)
+    return d
+  }
+
   const getSelected = (datum: string, typ: MealType) => {
     return (
       localSelections.find((s) => s.datum === datum && s.typ_jedla === typ)
@@ -141,16 +149,16 @@ export default function MenuClient({
       (d) => d.datum === datum && d.typ_jedla === typ
     )
 
-    if (!deadline) {
-      return emptyDeadlineState()
-    }
+    const effectiveDeadlineAt = deadline?.deadline_at
+      ? new Date(deadline.deadline_at)
+      : defaultDeadlineAt(datum, typ)
 
-    if (deadline.locked) {
+    if (deadline?.locked) {
       return {
         locked: true,
         blockedByAdmin: true,
         closedByTime: false,
-        deadlineText: formatDeadline(deadline.deadline_at),
+        deadlineText: formatDeadline(effectiveDeadlineAt.toISOString()),
         countdown: '',
         showCountdown: false,
         danger: false,
@@ -158,15 +166,15 @@ export default function MenuClient({
       }
     }
 
-    if (deadline.deadline_at && now !== null) {
-      const diff = new Date(deadline.deadline_at).getTime() - now
+    if (now !== null) {
+      const diff = effectiveDeadlineAt.getTime() - now
 
       if (diff <= 0) {
         return {
           locked: true,
           blockedByAdmin: false,
           closedByTime: true,
-          deadlineText: formatDeadline(deadline.deadline_at),
+          deadlineText: formatDeadline(effectiveDeadlineAt.toISOString()),
           countdown: '',
           showCountdown: false,
           danger: false,
@@ -178,7 +186,7 @@ export default function MenuClient({
         locked: false,
         blockedByAdmin: false,
         closedByTime: false,
-        deadlineText: formatDeadline(deadline.deadline_at),
+        deadlineText: formatDeadline(effectiveDeadlineAt.toISOString()),
         countdown: diff <= 60 * 60 * 1000 ? formatCountdown(diff) : '',
         showCountdown: diff <= 60 * 60 * 1000,
         danger: diff <= 5 * 60 * 1000,
@@ -190,7 +198,7 @@ export default function MenuClient({
       locked: false,
       blockedByAdmin: false,
       closedByTime: false,
-      deadlineText: formatDeadline(deadline.deadline_at),
+      deadlineText: formatDeadline(effectiveDeadlineAt.toISOString()),
       countdown: '',
       showCountdown: false,
       danger: false,

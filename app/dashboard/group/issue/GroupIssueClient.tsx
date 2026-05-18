@@ -194,6 +194,12 @@ function getMemberIssued(member: any, datum: string, typJedla: string) {
   return day?.[typJedla] || null
 }
 
+function getMemberChoice(member: any, datum: string, typJedla: string) {
+  const byDate = member?.choicesByDate || {}
+  const day = byDate[datum] || {}
+  return day?.[typJedla] || member?.typStravy || ''
+}
+
 function issuedMealStatus(row: any) {
   if (!row) return null
   if (row.sposob === 'HROMADNE') return 'BULK_ISSUED'
@@ -554,7 +560,7 @@ export default function GroupIssueClient({
             fullName: issueItem.fullName || member.fullName,
             email: issueItem.email || member.email,
             telefon: issueItem.telefon || member.telefon,
-            typStravy: issueItem.typStravy || issueItem.volba || member.typStravy || '',
+            typStravy: issueItem.typStravy || issueItem.volba || getMemberChoice(member, currentIssue.datum, currentIssue.typ_jedla),
             qrCode: issueItem.qrCode || member.qrCode || '',
             role: issueItem.source === 'QR_EXTRA' ? '—' : member.role || issueItem.role || '—',
             source: issueItem.source || 'GROUP',
@@ -575,7 +581,7 @@ export default function GroupIssueClient({
             ? 'REMOVED'
             : issuedMealStatus(issuedMeal) || 'NOT_PREPARED',
           removeReason: String(member.aktivny || 'ANO').toUpperCase() !== 'ANO' ? 'USER_BLOCKED' : null,
-          typStravy: member.typStravy || '',
+          typStravy: getMemberChoice(member, currentIssue.datum, currentIssue.typ_jedla),
           qrCode: member.qrCode || '',
           source: 'GROUP',
           addedByQr: false,
@@ -625,6 +631,7 @@ export default function GroupIssueClient({
         source: 'GROUP',
         addedByQr: false,
         qrCode: member.qrCode || '',
+        typStravy: getMemberChoice(member, datum, typJedla),
         entitlementStatus: getMemberEntitlement(member, datum, typJedla),
         issuedMeal,
         isFromIssue: false

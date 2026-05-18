@@ -20,6 +20,13 @@ export async function POST(req: Request) {
       )
     }
 
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(datum)) || !['OBED', 'VECERA'].includes(String(typ_jedla))) {
+      return NextResponse.json(
+        { error: 'Neplatný dátum alebo typ jedla.' },
+        { status: 400 }
+      )
+    }
+
     const payload: any = {
       datum,
       typ_jedla,
@@ -29,17 +36,19 @@ export async function POST(req: Request) {
       locked_at: locked ? new Date().toISOString() : null,
     }
 
-    const { error } = await supabaseServer
+    const { data, error } = await supabaseServer
       .from('menu_deadlines')
       .upsert(payload, {
         onConflict: 'datum,typ_jedla',
       })
+      .select('datum, typ_jedla, deadline_at, locked')
+      .single()
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, deadline: data })
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || 'Neznáma chyba servera.' },

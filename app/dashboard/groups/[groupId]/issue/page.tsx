@@ -41,6 +41,14 @@ function entitlementStatus(
   return 'UNKNOWN'
 }
 
+function normalizeChoice(value: any) {
+  const text = String(value || '').trim().toUpperCase()
+  if (text === 'MASO') return 'MASO'
+  if (text === 'VEGE') return 'VEGE'
+  if (text === 'DIETA' || text === 'DIÉTA') return 'DIETA'
+  return ''
+}
+
 export default async function GroupIssuePage({
   params
 }: {
@@ -215,6 +223,29 @@ export default async function GroupIssuePage({
     ])
   )
 
+  let selectionRows: any[] = []
+
+  if (groupUserIds.length > 0 && dateList.length > 0) {
+    const { data: selectionsData } = await supabaseServer
+      .from('vyber_jedal')
+      .select('user_id, datum, typ_jedla, volba')
+      .in('user_id', groupUserIds)
+      .in('datum', dateList)
+
+    selectionRows = selectionsData || []
+  }
+
+  const selectionMap = new Map(
+    selectionRows.map((row: any) => [
+      `${row.user_id}|${row.datum}|${row.typ_jedla}`,
+      normalizeChoice(row.volba)
+    ])
+  )
+
+  const getEffectiveChoice = (userId: string, datum: string, typJedla: string, defaultChoice: any) => {
+    return selectionMap.get(`${userId}|${datum}|${typJedla}`) || normalizeChoice(defaultChoice)
+  }
+
   const getEntitlement = (userId: string, datum: string, typJedla: string) => {
     const row = entitlementMap.get(`${userId}|${datum}`)
     return entitlementStatus(row, typJedla)
@@ -243,6 +274,7 @@ export default async function GroupIssuePage({
   const membersWithEntitlements = members.map((member: any) => {
     const entitlementsByDate: Record<string, any> = {}
     const issuedMealsByDate: Record<string, any> = {}
+    const choicesByDate: Record<string, any> = {}
 
     dateList.forEach(date => {
       const row = entitlementMap.get(`${member.userId}|${date}`)
@@ -250,6 +282,15 @@ export default async function GroupIssuePage({
       entitlementsByDate[date] = {
         OBED: entitlementStatus(row, 'OBED'),
         VECERA: entitlementStatus(row, 'VECERA')
+      }
+
+      const defaultChoice = normalizeChoice(member.typStravy)
+      const selectedObed = selectionMap.get(`${member.userId}|${date}|OBED`)
+      const selectedVecera = selectionMap.get(`${member.userId}|${date}|VECERA`)
+
+      choicesByDate[date] = {
+        OBED: selectedObed || defaultChoice,
+        VECERA: selectedVecera || defaultChoice
       }
 
       issuedMealsByDate[date] = {
@@ -261,6 +302,7 @@ export default async function GroupIssuePage({
     return {
       ...member,
       entitlementsByDate,
+      choicesByDate,
       issuedMealsByDate
     }
   })
@@ -400,12 +442,27 @@ export default async function GroupIssuePage({
     let usersMap = new Map<string, any>()
 
     if (userIds.length > 0) {
-      const { data: usersData } = await supabaseServer
-        .from('users')
-        .select('id, meno, priezvisko, email, telefon, typ_stravy, qr_code, aktivny')
-        .in('id', userIds)
+      const activeIssueDates = Array.from(
+        new Set((activeIssuesData || []).map((issue: any) => issue.datum).filter(Boolean))
+      )
+      const [usersResult, activeSelectionsResult] = await Promise.all([
+        supabaseServer
+          .from('users')
+          .select('id, meno, priezvisko, email, telefon, typ_stravy, qr_code, aktivny')
+          .in('id', userIds),
+        activeIssueDates.length > 0
+          ? supabaseServer
+            .from('vyber_jedal')
+            .select('user_id, datum, typ_jedla, volba')
+            .in('user_id', userIds)
+            .in('datum', activeIssueDates)
+          : Promise.resolve({ data: [] as any[] })
+      ])
 
-      usersMap = new Map((usersData || []).map((u: any) => [u.id, u]))
+      usersMap = new Map((usersResult.data || []).map((u: any) => [u.id, u]))
+      ;(activeSelectionsResult.data || []).forEach((row: any) => {
+        selectionMap.set(`${row.user_id}|${row.datum}|${row.typ_jedla}`, normalizeChoice(row.volba))
+      })
     }
 
     const issueById = new Map(
@@ -437,7 +494,10 @@ export default async function GroupIssuePage({
         priezvisko: itemUser?.priezvisko || '',
         email: itemUser?.email || '',
         telefon: itemUser?.telefon || '',
-        typStravy: item.volba || itemUser?.typ_stravy || '',
+        typStravy:
+          item.status === 'BULK_ISSUED' || item.status === 'INDIVIDUAL_ISSUED'
+            ? item.volba || getEffectiveChoice(item.user_id, issue?.datum, issue?.typ_jedla, itemUser?.typ_stravy)
+            : getEffectiveChoice(item.user_id, issue?.datum, issue?.typ_jedla, itemUser?.typ_stravy),
         qrCode: itemUser?.qr_code || '',
         aktivny: itemUser?.aktivny || 'ANO',
         role:

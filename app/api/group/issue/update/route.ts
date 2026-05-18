@@ -342,6 +342,20 @@ export async function POST(req: NextRequest) {
     }
 
     const qrUsersMap = new Map((qrUsersData || []).map((u: any) => [u.id, u]))
+    const defaultChoiceMap = new Map<string, string | null>()
+
+    selectedGroupMembers.forEach((member: any) => {
+      const memberUser = Array.isArray(member.users)
+        ? member.users[0]
+        : member.users
+
+      defaultChoiceMap.set(member.user_id, normalizeChoice(memberUser?.typ_stravy))
+    })
+
+    selectedQrExtraUserIds.forEach((userId: string) => {
+      defaultChoiceMap.set(userId, normalizeChoice(qrUsersMap.get(userId)?.typ_stravy))
+    })
+
     const blockedUserIds = new Set<string>([
       ...selectedGroupMembers
         .filter((member: any) => {
@@ -384,6 +398,7 @@ export async function POST(req: NextRequest) {
             removed_at: blocked || conflict ? now : null,
             removed_by: blocked || conflict ? user.id : null,
             source: shouldBeQrExtra ? 'QR_EXTRA' : existingItem.source || 'GROUP',
+            volba: selectionMap.get(userId) || defaultChoiceMap.get(userId) || null,
             updated_at: now
           }
         }

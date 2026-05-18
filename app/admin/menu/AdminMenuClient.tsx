@@ -66,6 +66,18 @@ export default function AdminMenuClient({
     return new Date(value).toISOString()
   }
 
+  const defaultDeadlineInput = (datum: string, typ: MealType) => {
+    const d = new Date(`${datum}T12:00:00`)
+    d.setDate(d.getDate() - 1)
+
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    const time = typ === 'OBED' ? '16:00' : '17:00'
+
+    return `${year}-${month}-${day}T${time}`
+  }
+
   const saveDeadline = async (
     datum: string,
     typ: MealType,
@@ -103,6 +115,13 @@ try {
       return
     }
 
+    const savedDeadline = result.deadline || {
+      datum,
+      typ_jedla: typ,
+      deadline_at: fromLocalInputValue(deadlineValue),
+      locked,
+    }
+
     setLocalDeadlines((prev) => {
       const filtered = prev.filter(
         (d) => !(d.datum === datum && d.typ_jedla === typ)
@@ -110,12 +129,7 @@ try {
 
       return [
         ...filtered,
-        {
-          datum,
-          typ_jedla: typ,
-          deadline_at: fromLocalInputValue(deadlineValue),
-          locked,
-        },
+        savedDeadline,
       ]
     })
 
@@ -128,12 +142,9 @@ try {
     const key = `${datum}-${typ}`
     const isSaving = savingKey === key
 
-    const defaultDeadline = (() => {
-      const d = new Date(datum + 'T20:00:00')
-      return d.toISOString()
-    })()
-
-    const initialInput = toLocalInputValue(current?.deadline_at || defaultDeadline)
+    const initialInput = current?.deadline_at
+      ? toLocalInputValue(current.deadline_at)
+      : defaultDeadlineInput(datum, typ)
     const locked = current?.locked || false
 
     return (
