@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabaseServer'
 
+const MAX_ROWS = 300
+
 function text(value: any) {
   return String(value || '').trim()
 }
@@ -24,7 +26,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Neplatny Google Sheets token.' }, { status: 401 })
     }
 
-    const rows = Array.isArray(body.rows) ? body.rows.slice(0, 300) : []
+    const rows = Array.isArray(body.rows) ? body.rows.slice(0, MAX_ROWS) : []
 
     if (rows.length === 0) {
       return NextResponse.json({ error: 'Chybaju riadky na synchronizaciu.' }, { status: 400 })

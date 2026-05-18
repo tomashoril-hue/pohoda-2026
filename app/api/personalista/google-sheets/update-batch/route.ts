@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabaseServer'
 
-const EVENT_DAYS = ['2026-07-08', '2026-07-09', '2026-07-10', '2026-07-11']
+const MAX_ROWS = 200
+const MAX_ENTITLEMENT_DAYS = 120
 
 function text(value: any) {
   return String(value || '').trim()
@@ -59,7 +60,9 @@ function dateRange(from: string, to: string) {
   const dates: string[] = []
 
   for (const date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
-    dates.push(`${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`)
+    dates.push(
+      `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+    )
   }
 
   return dates
@@ -75,6 +78,8 @@ function normalizeKey(value: string) {
 }
 
 function groupNames(value: any) {
+  if (Array.isArray(value)) return value.map(text).filter(Boolean)
+
   return text(value)
     .split('|')
     .map(item => item.trim())
@@ -90,10 +95,16 @@ function normalizeEntitlementDays(value: any) {
 
   return Array.from(new Set(
     value
-      .map((item: any) => text(item))
+      .map((item: any) => dateValue(item))
       .filter((item: string) => /^\d{4}-\d{2}-\d{2}$/.test(item))
-      .filter((item: string) => EVENT_DAYS.includes(item))
   )).sort()
+}
+
+async function touchUser(userId: string, now: string) {
+  await supabaseServer
+    .from('users')
+    .update({ updated_at: now })
+    .eq('id', userId)
 }
 
 async function loadSyncData(userIds: string[]) {
@@ -160,7 +171,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Neplatny Google Sheets token.' }, { status: 401 })
     }
 
-    const rows = Array.isArray(body.rows) ? body.rows.slice(0, 200) : []
+    const rows = Array.isArray(body.rows) ? body.rows.slice(0, MAX_ROWS) : []
 
     if (rows.length === 0) {
       return NextResponse.json({ error: 'Chybaju riadky na ulozenie.' }, { status: 400 })
@@ -333,6 +344,8 @@ export async function POST(req: NextRequest) {
             continue
           }
         }
+
+        await touchUser(userId, now)
       }
 
       const explicitEntitlementDays = normalizeEntitlementDays(row.entitlementDays)
@@ -347,7 +360,7 @@ export async function POST(req: NextRequest) {
       if (hasExplicitEntitlementDays) {
         shouldUpdateClaims = true
         dates = explicitEntitlementDays
-      } else if (validFrom && validTo) {
+      } else if (validFrom && validTo && validTo >= validFrom) {
         shouldUpdateClaims = true
         dates = dateRange(validFrom, validTo)
       }
@@ -358,13 +371,13 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        const firstDate = dates[0]
-        const lastDate = dates[dates.length - 1]
-
-        if (lastDate < firstDate) {
-          rowResults.push({ rowNumber, status: 'ERROR', message: 'Neplatne obdobie narokov.' })
+        if (dates.length > MAX_ENTITLEMENT_DAYS) {
+          rowResults.push({ rowNumber, status: 'ERROR', message: `Narok moze mat najviac ${MAX_ENTITLEMENT_DAYS} dni.` })
           continue
         }
+
+        const firstDate = dates[0]
+        const lastDate = dates[dates.length - 1]
 
         const obed = boolValue(row.obed || row.lunch, true)
         const vecera = boolValue(row.vecera || row.dinner, false)
@@ -374,19 +387,10 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        if (dates.length > 120) {
-          rowResults.push({ rowNumber, status: 'ERROR', message: 'Obdobie moze mat najviac 120 dni.' })
-          continue
-        }
-
-        const deleteQuery = supabaseServer
+        const { error: deleteClaimError } = await supabaseServer
           .from('user_food_entitlements')
           .delete()
           .eq('user_id', userId)
-
-        const { error: deleteClaimError } = hasExplicitEntitlementDays
-          ? await deleteQuery.in('datum', EVENT_DAYS)
-          : await deleteQuery.gte('datum', firstDate).lte('datum', lastDate)
 
         if (deleteClaimError) {
           rowResults.push({ rowNumber, status: 'ERROR', message: deleteClaimError.message })
@@ -430,6 +434,8 @@ export async function POST(req: NextRequest) {
               updated_by: actorUserId
             })
         }
+
+        await touchUser(userId, now)
       }
 
       await supabaseServer

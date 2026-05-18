@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabaseServer'
 
-const EVENT_DAYS = ['2026-07-08', '2026-07-09', '2026-07-10', '2026-07-11']
+const MAX_ROWS = 200
+const MAX_ENTITLEMENT_DAYS = 120
 
 function text(value: any) {
   return String(value || '').trim()
@@ -32,7 +33,7 @@ function boolValue(value: any, fallback: boolean) {
   return fallback
 }
 
-function dateValue(value: any, fallback: string) {
+function dateValue(value: any, fallback = '') {
   const clean = text(value)
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean
@@ -57,7 +58,9 @@ function dateRange(from: string, to: string) {
   const dates: string[] = []
 
   for (const date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
-    dates.push(`${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`)
+    dates.push(
+      `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+    )
   }
 
   return dates
@@ -93,20 +96,21 @@ function normalizeEntitlementDays(value: any) {
 
   return Array.from(new Set(
     value
-      .map((item: any) => text(item))
+      .map((item: any) => dateValue(item))
       .filter((item: string) => /^\d{4}-\d{2}-\d{2}$/.test(item))
-      .filter((item: string) => EVENT_DAYS.includes(item))
   )).sort()
 }
 
 function resolveEntitlementDays(row: any, validFrom: string, validTo: string) {
-  const explicitDays = normalizeEntitlementDays(row.entitlementDays)
-
   if (Array.isArray(row.entitlementDays)) {
-    return explicitDays
+    return normalizeEntitlementDays(row.entitlementDays)
   }
 
-  return dateRange(validFrom, validTo)
+  if (validFrom && validTo && validTo >= validFrom) {
+    return dateRange(validFrom, validTo)
+  }
+
+  return []
 }
 
 export async function POST(req: NextRequest) {
@@ -117,7 +121,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Neplatny Google Sheets token.' }, { status: 401 })
     }
 
-    const rows = Array.isArray(body.rows) ? body.rows.slice(0, 200) : []
+    const rows = Array.isArray(body.rows) ? body.rows.slice(0, MAX_ROWS) : []
 
     if (rows.length === 0) {
       return NextResponse.json({ error: 'Chybaju riadky na import.' }, { status: 400 })
@@ -134,10 +138,11 @@ export async function POST(req: NextRequest) {
       (groups || []).map((group: any) => [normalizeKey(group.name), group])
     )
 
-    const results = []
+    const results: any[] = []
 
     for (const row of rows) {
       const rowNumber = Number(row.rowNumber || row.row || 0) || null
+
       const meno = text(row.meno || row.first_name)
       const priezvisko = text(row.priezvisko || row.last_name || row.surname)
       const userEmail = email(row.email || row.mail)
@@ -175,6 +180,11 @@ export async function POST(req: NextRequest) {
         continue
       }
 
+      if (dates.length > MAX_ENTITLEMENT_DAYS) {
+        results.push({ rowNumber, status: 'ERROR', message: `Narok moze mat najviac ${MAX_ENTITLEMENT_DAYS} dni.` })
+        continue
+      }
+
       if (validTo < validFrom) {
         results.push({ rowNumber, status: 'ERROR', message: 'Neplatne obdobie.' })
         continue
@@ -185,8 +195,8 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      if (dates.length > 120) {
-        results.push({ rowNumber, status: 'ERROR', message: 'Obdobie moze mat najviac 120 dni.' })
+      if (requestedGroupNames.length > 0 && groupIds.length !== requestedGroupNames.length) {
+        results.push({ rowNumber, status: 'ERROR', message: 'Niektora skupina sa nenasla.' })
         continue
       }
 
@@ -234,7 +244,11 @@ export async function POST(req: NextRequest) {
         .single()
 
       if (userError || !newUser) {
-        results.push({ rowNumber, status: 'ERROR', message: userError?.message || 'Osobu sa nepodarilo vytvorit.' })
+        results.push({
+          rowNumber,
+          status: 'ERROR',
+          message: userError?.message || 'Osobu sa nepodarilo vytvorit.'
+        })
         continue
       }
 
@@ -309,7 +323,11 @@ export async function POST(req: NextRequest) {
 
         if (assignQrError) {
           await rollbackUser()
-          results.push({ rowNumber, status: 'ERROR', message: assignQrError.message || 'QR sa nepodarilo priradit.' })
+          results.push({
+            rowNumber,
+            status: 'ERROR',
+            message: assignQrError.message || 'QR sa nepodarilo priradit.'
+          })
           continue
         }
 
@@ -352,8 +370,9 @@ export async function POST(req: NextRequest) {
         qrAssigned: !!assignedQrCode,
         qrCode: assignedQrCode || '',
         entitlementDays: dates,
-        lunchClaims: dates.filter(() => obed).length,
-        dinnerClaims: dates.filter(() => vecera).length
+        entitlementDaysCount: dates.length,
+        lunchClaims: obed ? dates.length : 0,
+        dinnerClaims: vecera ? dates.length : 0
       })
     }
 
