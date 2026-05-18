@@ -47,11 +47,6 @@ function dateValue(value: any, fallback = '') {
   return fallback
 }
 
-function todayIso() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
-
 function dateRange(from: string, to: string) {
   const start = new Date(`${from}T00:00:00.000Z`)
   const end = new Date(`${to}T00:00:00.000Z`)
@@ -101,10 +96,19 @@ function normalizeEntitlementDays(value: any) {
   )).sort()
 }
 
-function resolveEntitlementDays(row: any, validFrom: string, validTo: string) {
+/**
+ * Dôležité:
+ * - pri registrácii už nedávame žiadny default nárok
+ * - nároky vzniknú iba vtedy, keď ich niekto explicitne pošle
+ * - ak nič nepríde, osoba sa vytvorí bez záznamov v user_food_entitlements
+ */
+function resolveEntitlementDays(row: any) {
   if (Array.isArray(row.entitlementDays)) {
     return normalizeEntitlementDays(row.entitlementDays)
   }
+
+  const validFrom = dateValue(row.validFrom || row.od || row.datum_od)
+  const validTo = dateValue(row.validTo || row.do || row.datum_do)
 
   if (validFrom && validTo && validTo >= validFrom) {
     return dateRange(validFrom, validTo)
@@ -128,7 +132,6 @@ export async function POST(req: NextRequest) {
     }
 
     const actorUserId = text(process.env.GOOGLE_SHEETS_IMPORT_ACTOR_USER_ID) || null
-    const defaultDate = todayIso()
 
     const { data: groups } = await supabaseServer
       .from('groups')
@@ -149,20 +152,22 @@ export async function POST(req: NextRequest) {
       const telefon = text(row.telefon || row.phone || row.tel) || null
       const typStravy = food(row.typStravy || row.typ_stravy || row.strava || row.food)
 
-      const fallbackFrom = dateValue(row.validFrom || row.od || row.datum_od, body.defaultFrom || defaultDate)
-      const fallbackTo = dateValue(row.validTo || row.do || row.datum_do, body.defaultTo || fallbackFrom)
+      const dates = resolveEntitlementDays(row)
+      const validFrom = dates[0] || ''
+      const validTo = dates[dates.length - 1] || ''
 
-      const dates = resolveEntitlementDays(row, fallbackFrom, fallbackTo)
-      const validFrom = dates[0] || fallbackFrom
-      const validTo = dates[dates.length - 1] || fallbackTo
+      /**
+       * QR sa pri Google Sheets importe prideľuje vždy.
+       * Stĺpec registracia_qr už nepoužívame.
+       */
+      const assignQr = true
 
-      const obed = boolValue(row.obed || row.lunch, body.defaultObed !== false)
-      const vecera = boolValue(row.vecera || row.dinner, body.defaultVecera === true)
-
-      const assignQr = boolValue(
-        row.registracia_qr || row.registraciaQr || row.qr || row.assignQr || row.assign_qr,
-        body.defaultAssignQr !== false
-      )
+      /**
+       * Obed/večera sa riešia iba vtedy, keď prídu nárokové dni.
+       * Pri bežnej registrácii bez nárokov sa tieto hodnoty nepoužijú.
+       */
+      const obed = boolValue(row.obed || row.lunch, true)
+      const vecera = boolValue(row.vecera || row.dinner, false)
 
       const requestedGroupNames = groupNames(row.skupina || row.skupiny || row.group || row.groups)
       const groupIds = Array.from(new Set([
@@ -175,22 +180,12 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      if (!dates.length) {
-        results.push({ rowNumber, status: 'ERROR', message: 'Vyber aspon jeden narokovy den.' })
-        continue
-      }
-
       if (dates.length > MAX_ENTITLEMENT_DAYS) {
         results.push({ rowNumber, status: 'ERROR', message: `Narok moze mat najviac ${MAX_ENTITLEMENT_DAYS} dni.` })
         continue
       }
 
-      if (validTo < validFrom) {
-        results.push({ rowNumber, status: 'ERROR', message: 'Neplatne obdobie.' })
-        continue
-      }
-
-      if (!obed && !vecera) {
+      if (dates.length > 0 && !obed && !vecera) {
         results.push({ rowNumber, status: 'ERROR', message: 'Chyba narok na obed alebo veceru.' })
         continue
       }
@@ -276,41 +271,47 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const { error: workPeriodError } = await supabaseServer
-        .from('personnel_work_periods')
-        .insert({
-          user_id: newUser.id,
-          valid_from: validFrom,
-          valid_to: validTo,
-          source: 'GOOGLE_SHEETS',
-          created_by: actorUserId,
-          updated_by: actorUserId
-        })
+      /**
+       * Pracovné obdobie zapisujeme iba vtedy, keď import reálne obsahuje nárokové dni.
+       * Bežná registrácia osoby bez nárokov nič nezapisuje do personnel_work_periods.
+       */
+      if (dates.length > 0) {
+        const { error: workPeriodError } = await supabaseServer
+          .from('personnel_work_periods')
+          .insert({
+            user_id: newUser.id,
+            valid_from: validFrom,
+            valid_to: validTo,
+            source: 'GOOGLE_SHEETS',
+            created_by: actorUserId,
+            updated_by: actorUserId
+          })
 
-      if (workPeriodError) {
-        await rollbackUser()
-        results.push({ rowNumber, status: 'ERROR', message: workPeriodError.message })
-        continue
-      }
+        if (workPeriodError) {
+          await rollbackUser()
+          results.push({ rowNumber, status: 'ERROR', message: workPeriodError.message })
+          continue
+        }
 
-      const { error: entitlementError } = await supabaseServer
-        .from('user_food_entitlements')
-        .insert(dates.map(datum => ({
-          user_id: newUser.id,
-          datum,
-          obed,
-          vecera,
-          source: 'IMPORT',
-          note: 'Google Sheets import.',
-          created_by: actorUserId,
-          updated_by: actorUserId,
-          updated_at: now
-        })))
+        const { error: entitlementError } = await supabaseServer
+          .from('user_food_entitlements')
+          .insert(dates.map(datum => ({
+            user_id: newUser.id,
+            datum,
+            obed,
+            vecera,
+            source: 'IMPORT',
+            note: 'Google Sheets import.',
+            created_by: actorUserId,
+            updated_by: actorUserId,
+            updated_at: now
+          })))
 
-      if (entitlementError) {
-        await rollbackUser()
-        results.push({ rowNumber, status: 'ERROR', message: entitlementError.message })
-        continue
+        if (entitlementError) {
+          await rollbackUser()
+          results.push({ rowNumber, status: 'ERROR', message: entitlementError.message })
+          continue
+        }
       }
 
       if (assignQr) {
@@ -365,14 +366,16 @@ export async function POST(req: NextRequest) {
       results.push({
         rowNumber,
         status: 'OK',
-        message: 'Osoba bola vytvorena.',
+        message: dates.length > 0
+          ? 'Osoba bola vytvorena aj s narokmi.'
+          : 'Osoba bola vytvorena bez narokov.',
         userId: newUser.id,
         qrAssigned: !!assignedQrCode,
         qrCode: assignedQrCode || '',
         entitlementDays: dates,
         entitlementDaysCount: dates.length,
-        lunchClaims: obed ? dates.length : 0,
-        dinnerClaims: vecera ? dates.length : 0
+        lunchClaims: obed && dates.length > 0 ? dates.length : 0,
+        dinnerClaims: vecera && dates.length > 0 ? dates.length : 0
       })
     }
 
