@@ -42,12 +42,14 @@ type DeadlineState = {
 export default function MenuClient({
   userId,
   today,
+  defaultFood,
   menu,
   selections,
   deadlines,
 }: {
   userId: string
   today: string
+  defaultFood: string | null
   menu: MenuItem[]
   selections: Selection[]
   deadlines: Deadline[]
@@ -73,6 +75,14 @@ export default function MenuClient({
   const dates = useMemo(() => {
     return Array.from(new Set(menu.map((m) => m.datum)))
   }, [menu])
+
+  const defaultFoodLabel = useMemo(() => {
+    const normalized = String(defaultFood || '').trim().toUpperCase()
+    if (normalized === 'MASO') return 'MASO'
+    if (normalized === 'VEGE') return 'VEGE'
+    if (normalized === 'DIETA' || normalized === 'DIÉTA') return 'DIÉTA'
+    return 'nenastavená'
+  }, [defaultFood])
 
   const emptyDeadlineState = (): DeadlineState => ({
     locked: false,
@@ -138,8 +148,7 @@ export default function MenuClient({
   }
 
   const getDeadlineState = (datum: string, typ: MealType): DeadlineState => {
-    // Dôležité: pred mountom nič nezamykáme vizuálne,
-    // aby nevznikol hydration mismatch medzi serverom a browserom.
+    // Pred mountom nič nezamykáme vizuálne, aby nevznikol hydration mismatch.
     // Reálnu ochranu stále robí API /api/menu/select.
     if (!mounted) {
       return emptyDeadlineState()
@@ -324,7 +333,7 @@ export default function MenuClient({
                     ? '#f25be6'
                     : selected
                       ? '#56db3f'
-                      : '#f25be6',
+                      : '#fff176',
               color: state.locked || state.danger ? '#fff' : '#000',
               border: '3px solid #000',
               borderRadius: 999,
@@ -332,7 +341,7 @@ export default function MenuClient({
               fontWeight: 900,
               fontSize: 13,
               textAlign: 'center',
-              minWidth: 130,
+              minWidth: 150,
             }}
           >
             {state.locked
@@ -341,7 +350,7 @@ export default function MenuClient({
                 ? `UZÁVIERKA ${state.countdown}`
                 : selected
                   ? `Vybrané: ${selected}`
-                  : 'Nevybraté'}
+                  : `Predvolené: ${defaultFoodLabel}`}
           </div>
         </div>
 
@@ -505,13 +514,43 @@ export default function MenuClient({
 
         <p
           style={{
-            margin: '0 0 20px 0',
+            margin: '0 0 14px 0',
             fontSize: 16,
             fontWeight: 700,
           }}
         >
           Vyber si jedlo na každý deň. Po uzávierke už výber nebude možné meniť.
         </p>
+
+        <div
+          style={{
+            margin: '0 0 20px 0',
+            border: '3px solid #000',
+            borderRadius: 18,
+            padding: 14,
+            background: '#56db3f',
+            boxShadow: '5px 5px 0 #000',
+          }}
+        >
+          <div
+            style={{
+              fontSize: 17,
+              fontWeight: 900,
+              marginBottom: 4,
+            }}
+          >
+            Ak nič nezmeníš, platí tvoja predvolená strava: {defaultFoodLabel}.
+          </div>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 800,
+              lineHeight: 1.35,
+            }}
+          >
+            Výber ukladáme iba vtedy, keď klikneš na konkrétnu možnosť.
+          </div>
+        </div>
 
         <div
           style={{

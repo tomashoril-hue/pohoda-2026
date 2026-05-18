@@ -56,6 +56,7 @@ export default async function MenuPage() {
     <MenuClient
       userId={user.id}
       today={today}
+      defaultFood={user.typ_stravy || null}
       menu={menu || []}
       selections={selections || []}
       deadlines={deadlines || []}
