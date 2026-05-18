@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
-import { canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
+import { getGlobalAccess } from '@/lib/globalRoles'
 import { canManagePersonAsPersonalista } from '@/lib/personalistaAccess'
 import { supabaseServer } from '@/lib/supabaseServer'
 import PrintQrClient from './PrintQrClient'
@@ -42,6 +42,12 @@ export default async function PersonalistaPrintQrPage({
 
   if (!groupId && !personId) {
     redirect('/dashboard/personalista')
+  }
+
+  const globalAccess = await getGlobalAccess(actor.id)
+
+  if (!globalAccess.canUsePersonalista) {
+    redirect('/dashboard')
   }
 
   if (personId) {
@@ -91,21 +97,6 @@ export default async function PersonalistaPrintQrPage({
         }] : []}
       />
     )
-  }
-
-  const globalAccess = await getGlobalAccess(actor.id)
-
-  if (!globalAccess.canUsePersonalista) {
-    const { data: membership } = await supabaseServer
-      .from('group_members')
-      .select('role')
-      .eq('group_id', groupId)
-      .eq('user_id', actor.id)
-      .maybeSingle()
-
-    if (!membership || !canManageGroupByRole(membership.role, globalAccess)) {
-      redirect('/dashboard/personalista')
-    }
   }
 
   const { data: group } = await supabaseServer

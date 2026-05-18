@@ -32,6 +32,7 @@ type PersonItem = {
   aktivny: string
   activeQrCount: number
   activeNfcCount: number
+  globalRoles: string[]
   entitlementDays: number
   lunchClaims: number
   dinnerClaims: number
@@ -68,6 +69,31 @@ function isoDateOffset(days: number) {
   return `${year}-${month}-${day}`
 }
 
+function dateRangeIso(from: string, to: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from) {
+    return []
+  }
+
+  const start = new Date(`${from}T00:00:00.000Z`)
+  const end = new Date(`${to}T00:00:00.000Z`)
+  const dates: string[] = []
+
+  for (const date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
+    dates.push(`${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`)
+  }
+
+  return dates
+}
+
+function shortDateLabel(value: string) {
+  const date = new Date(`${value}T12:00:00`)
+
+  return date.toLocaleDateString('sk-SK', {
+    day: '2-digit',
+    month: '2-digit'
+  })
+}
+
 export default function PersonalistaClient({
   people,
   groups,
@@ -98,7 +124,7 @@ export default function PersonalistaClient({
   const [createMessage, setCreateMessage] = useState('')
   const [createMessageType, setCreateMessageType] = useState<'ok' | 'error' | ''>('')
   const [createGroupSelectId, setCreateGroupSelectId] = useState('')
-  const [detailMode, setDetailMode] = useState<'profile' | 'entitlements' | 'groups' | 'qr' | 'nfc' | ''>('')
+  const [detailMode, setDetailMode] = useState<'profile' | 'entitlements' | 'groups' | 'roles' | 'qr' | 'nfc' | ''>('')
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailMessage, setDetailMessage] = useState('')
   const [detailMessageType, setDetailMessageType] = useState<'ok' | 'error' | ''>('')
@@ -128,6 +154,7 @@ export default function PersonalistaClient({
     obed: true,
     vecera: false
   })
+  const [selectedEntitlementDates, setSelectedEntitlementDates] = useState<string[]>([])
   const [qrForm, setQrForm] = useState({
     qrCode: ''
   })
@@ -137,6 +164,10 @@ export default function PersonalistaClient({
   })
   const [nfcForm, setNfcForm] = useState({
     tokenUid: ''
+  })
+  const [roleForm, setRoleForm] = useState({
+    admin: false,
+    personalista: false
   })
 
   const selectedPerson = selectedPersonId
@@ -167,10 +198,15 @@ export default function PersonalistaClient({
       obed: selectedPerson.lunchClaims > 0 || selectedPerson.mealClaims === 0,
       vecera: selectedPerson.dinnerClaims > 0
     })
+    setSelectedEntitlementDates(selectedPerson.entitlements.map(item => item.datum))
 
     setQrForm({ qrCode: '' })
     setGroupForm({ groupId: '', role: 'MEMBER' })
     setNfcForm({ tokenUid: '' })
+    setRoleForm({
+      admin: selectedPerson.globalRoles.includes('ADMIN'),
+      personalista: selectedPerson.globalRoles.includes('PERSONALISTA')
+    })
     setDetailMessage('')
     setDetailMessageType('')
   }, [selectedPerson, fromDate, toDate])
@@ -291,6 +327,18 @@ export default function PersonalistaClient({
   const groupRoleOptions = canAssignSensitiveRoles
     ? ['MEMBER', 'POVERENY', 'MANAGER', 'OWNER']
     : ['MEMBER', 'POVERENY']
+
+  const entitlementCalendarDates = useMemo(() => {
+    return dateRangeIso(entitlementForm.validFrom, entitlementForm.validTo).slice(0, 120)
+  }, [entitlementForm.validFrom, entitlementForm.validTo])
+
+  const selectedEntitlementDateSet = useMemo(() => {
+    return new Set(selectedEntitlementDates)
+  }, [selectedEntitlementDates])
+
+  const entitlementByDate = useMemo(() => {
+    return new Map((selectedPerson?.entitlements || []).map(item => [item.datum, item]))
+  }, [selectedPerson])
 
   const updateCreateForm = (key: string, value: any) => {
     setCreateForm(prev => ({
@@ -514,6 +562,47 @@ export default function PersonalistaClient({
     )
   }
 
+  const toggleEntitlementDate = (date: string) => {
+    setSelectedEntitlementDates(prev => (
+      prev.includes(date)
+        ? prev.filter(item => item !== date)
+        : [...prev, date].sort()
+    ))
+  }
+
+  const selectEntitlementRange = () => {
+    setSelectedEntitlementDates(entitlementCalendarDates)
+  }
+
+  const clearEntitlementCalendarSelection = () => {
+    setSelectedEntitlementDates([])
+  }
+
+  const saveSelectedEntitlementDates = () => {
+    if (!selectedPerson) return
+
+    const allowedDates = new Set(entitlementCalendarDates)
+    const dates = selectedEntitlementDates.filter(date => allowedDates.has(date))
+
+    if (dates.length === 0) {
+      setDetailMessage('Vyber aspoň jeden deň v kalendári.')
+      setDetailMessageType('error')
+      return
+    }
+
+    postDetailAction(
+      '/api/personalista/people/update-entitlements',
+      {
+        userId: selectedPerson.id,
+        mode: 'DATES',
+        dates,
+        obed: entitlementForm.obed,
+        vecera: entitlementForm.vecera
+      },
+      'Nároky podľa kalendára sa nepodarilo uložiť.'
+    )
+  }
+
   const updateGroupForm = (key: string, value: any) => {
     setGroupForm(prev => ({
       ...prev,
@@ -664,6 +753,24 @@ export default function PersonalistaClient({
         action: 'INVALIDATE'
       },
       'NFC sa nepodarilo zneplatniť.'
+    )
+  }
+
+  const saveGlobalRoles = () => {
+    if (!selectedPerson) return
+
+    const roles = [
+      ...(canAssignSensitiveRoles && roleForm.admin ? ['ADMIN'] : []),
+      ...(roleForm.personalista ? ['PERSONALISTA'] : [])
+    ]
+
+    postDetailAction(
+      '/api/personalista/people/roles',
+      {
+        userId: selectedPerson.id,
+        roles
+      },
+      'Globálne role sa nepodarilo uložiť.'
     )
   }
 
@@ -1264,6 +1371,12 @@ export default function PersonalistaClient({
                   <span style={styles.foodBadge}>
                     {foodLabel(selectedPerson.typStravy)}
                   </span>
+
+                  {selectedPerson.globalRoles.map(role => (
+                    <span key={role} style={styles.globalRoleBadge}>
+                      {role}
+                    </span>
+                  ))}
                 </div>
               </div>
 
@@ -1372,6 +1485,19 @@ export default function PersonalistaClient({
                   onClick={() => setDetailMode(detailMode === 'groups' ? '' : 'groups')}
                 >
                   Upraviť skupiny
+                </button>
+
+                <button
+                  type="button"
+                  style={{
+                    ...styles.actionButton,
+                    borderColor: detailMode === 'roles' ? '#93c5fd' : '#e5e7eb',
+                    background: detailMode === 'roles' ? '#eff6ff' : '#fff'
+                  }}
+                  disabled={detailLoading}
+                  onClick={() => setDetailMode(detailMode === 'roles' ? '' : 'roles')}
+                >
+                  Globálne role
                 </button>
 
                 <button
@@ -1556,6 +1682,54 @@ export default function PersonalistaClient({
                     </label>
                   </div>
 
+                  <div style={styles.calendarToolbar}>
+                    <button
+                      type="button"
+                      style={styles.lightButton}
+                      disabled={detailLoading || entitlementCalendarDates.length === 0}
+                      onClick={selectEntitlementRange}
+                    >
+                      Označiť celé obdobie
+                    </button>
+
+                    <button
+                      type="button"
+                      style={styles.lightButton}
+                      disabled={detailLoading}
+                      onClick={clearEntitlementCalendarSelection}
+                    >
+                      Zrušiť výber dní
+                    </button>
+                  </div>
+
+                  <div style={styles.entitlementCalendar}>
+                    {entitlementCalendarDates.length === 0 ? (
+                      <span style={styles.emptyGroupSelection}>Vyber platné obdobie</span>
+                    ) : (
+                      entitlementCalendarDates.map(date => {
+                        const saved = entitlementByDate.get(date)
+                        const selected = selectedEntitlementDateSet.has(date)
+
+                        return (
+                          <button
+                            key={date}
+                            type="button"
+                            style={{
+                              ...styles.calendarDay,
+                              ...(saved ? styles.calendarDaySaved : {}),
+                              ...(selected ? styles.calendarDaySelected : {})
+                            }}
+                            disabled={detailLoading}
+                            onClick={() => toggleEntitlementDate(date)}
+                          >
+                            <b>{shortDateLabel(date)}</b>
+                            <span>{saved ? `${saved.obed ? 'O' : '-'} / ${saved.vecera ? 'V' : '-'}` : '- / -'}</span>
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+
                   <button
                     type="button"
                     style={styles.confirmButton}
@@ -1572,6 +1746,15 @@ export default function PersonalistaClient({
                     onClick={clearEntitlements}
                   >
                     Vymazať nároky v období
+                  </button>
+
+                  <button
+                    type="button"
+                    style={styles.confirmButton}
+                    disabled={detailLoading || selectedEntitlementDates.length === 0}
+                    onClick={saveSelectedEntitlementDates}
+                  >
+                    Uložiť označené dni
                   </button>
                 </div>
               )}
@@ -1662,6 +1845,53 @@ export default function PersonalistaClient({
                     onClick={addPersonGroup}
                   >
                     Pridať do skupiny
+                  </button>
+                </div>
+              )}
+
+              {detailMode === 'roles' && (
+                <div style={styles.detailEditBox}>
+                  <div style={styles.detailEditTitle}>Globálne role</div>
+
+                  <div style={styles.checkList}>
+                    {canAssignSensitiveRoles && (
+                      <label style={styles.checkRow}>
+                        <input
+                          type="checkbox"
+                          checked={roleForm.admin}
+                          onChange={event => setRoleForm(prev => ({
+                            ...prev,
+                            admin: event.target.checked
+                          }))}
+                          disabled={detailLoading}
+                          style={styles.checkbox}
+                        />
+                        <span>ADMIN</span>
+                      </label>
+                    )}
+
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={roleForm.personalista}
+                        onChange={event => setRoleForm(prev => ({
+                          ...prev,
+                          personalista: event.target.checked
+                        }))}
+                        disabled={detailLoading}
+                        style={styles.checkbox}
+                      />
+                      <span>PERSONALISTA</span>
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    style={styles.confirmButton}
+                    disabled={detailLoading}
+                    onClick={saveGlobalRoles}
+                  >
+                    {detailLoading ? 'Ukladám...' : 'Uložiť globálne role'}
                   </button>
                 </div>
               )}
@@ -2115,6 +2345,14 @@ const styles: Record<string, CSSProperties> = {
     flexWrap: 'wrap',
     justifyContent: 'flex-end'
   },
+  globalRoleBadge: {
+    borderRadius: 999,
+    padding: '5px 8px',
+    background: '#111827',
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 950
+  },
   detailEditBox: {
     border: '1px solid #e5e7eb',
     borderRadius: 14,
@@ -2215,6 +2453,40 @@ const styles: Record<string, CSSProperties> = {
     color: '#3730a3',
     fontSize: 11,
     fontWeight: 950
+  },
+  calendarToolbar: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 8
+  },
+  entitlementCalendar: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+    gap: 6
+  },
+  calendarDay: {
+    minHeight: 54,
+    border: '1px solid #e5e7eb',
+    borderRadius: 12,
+    background: '#fff',
+    color: '#374151',
+    display: 'grid',
+    gap: 2,
+    placeItems: 'center',
+    fontSize: 11,
+    fontWeight: 900,
+    cursor: 'pointer'
+  },
+  calendarDaySaved: {
+    background: '#dcfce7',
+    borderColor: '#86efac',
+    color: '#166534'
+  },
+  calendarDaySelected: {
+    background: '#22c55e',
+    borderColor: '#111827',
+    color: '#052e16',
+    boxShadow: '0 0 0 2px #111827 inset'
   },
   selectedGroupList: {
     display: 'flex',

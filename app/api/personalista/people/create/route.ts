@@ -108,6 +108,13 @@ export async function POST(req: NextRequest) {
     const globalAccess = await getGlobalAccess(currentUser.id)
     const isGlobalPersonalista = globalAccess.canUsePersonalista
 
+    if (!isGlobalPersonalista) {
+      return NextResponse.json(
+        { error: 'Personalistiku moze pouzivat iba ADMIN alebo PERSONALISTA.' },
+        { status: 403 }
+      )
+    }
+
     let selectedGroups: any[] = []
 
     if (groupIds.length > 0) {

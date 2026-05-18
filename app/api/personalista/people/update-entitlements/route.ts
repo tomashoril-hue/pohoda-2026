@@ -36,29 +36,38 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const userId = cleanText(body.userId)
-    const validFrom = cleanText(body.validFrom)
-    const validTo = cleanText(body.validTo)
     const obed = !!body.obed
     const vecera = !!body.vecera
     const mode = cleanText(body.mode).toUpperCase() || 'SET'
+    const requestedDates: string[] = Array.isArray(body.dates)
+      ? Array.from(new Set<string>(body.dates.map((date: any) => cleanText(date)).filter(isIsoDate))).sort()
+      : []
+    const validFrom = mode === 'DATES'
+      ? requestedDates[0] || ''
+      : cleanText(body.validFrom)
+    const validTo = mode === 'DATES'
+      ? requestedDates[requestedDates.length - 1] || ''
+      : cleanText(body.validTo)
 
     if (!userId) {
       return NextResponse.json({ error: 'Chyba osoba.' }, { status: 400 })
+    }
+
+    if (mode !== 'SET' && mode !== 'CLEAR' && mode !== 'DATES') {
+      return NextResponse.json({ error: 'Neplatny sposob upravy narokov.' }, { status: 400 })
     }
 
     if (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom) {
       return NextResponse.json({ error: 'Zadaj platne obdobie.' }, { status: 400 })
     }
 
-    if (mode !== 'SET' && mode !== 'CLEAR') {
-      return NextResponse.json({ error: 'Neplatny sposob upravy narokov.' }, { status: 400 })
-    }
-
-    if (mode === 'SET' && !obed && !vecera) {
+    if ((mode === 'SET' || mode === 'DATES') && !obed && !vecera) {
       return NextResponse.json({ error: 'Vyber aspon jeden narok.' }, { status: 400 })
     }
 
-    const dates = dateRange(validFrom, validTo)
+    const dates = mode === 'DATES'
+      ? requestedDates
+      : dateRange(validFrom, validTo)
 
     if (dates.length > 120) {
       return NextResponse.json(
@@ -96,7 +105,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: deleteError.message }, { status: 500 })
     }
 
-    if (mode === 'SET') {
+    if (mode === 'SET' || mode === 'DATES') {
       const { error: insertError } = await supabaseServer
         .from('user_food_entitlements')
         .insert(dates.map(datum => ({
@@ -122,9 +131,9 @@ export async function POST(req: NextRequest) {
         user_id: userId,
         valid_from: validFrom,
         valid_to: validTo,
-        active: mode === 'SET',
+        active: mode !== 'CLEAR',
         source: 'MANUAL',
-        note: mode === 'SET'
+        note: mode !== 'CLEAR'
           ? 'Rucna uprava narokov v personalistike.'
           : 'Rucne vymazanie narokov v personalistike.',
         created_by: actor.id,
@@ -136,7 +145,7 @@ export async function POST(req: NextRequest) {
       .insert({
         actor_user_id: actor.id,
         target_user_id: userId,
-        action: mode === 'SET' ? 'PERSON_ENTITLEMENTS_UPDATED' : 'PERSON_ENTITLEMENTS_CLEARED',
+        action: mode === 'CLEAR' ? 'PERSON_ENTITLEMENTS_CLEARED' : 'PERSON_ENTITLEMENTS_UPDATED',
         entity_table: 'user_food_entitlements',
         entity_id: null,
         before_data: {
@@ -155,9 +164,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       days: dates.length,
-      lunches: mode === 'SET' && obed ? dates.length : 0,
-      dinners: mode === 'SET' && vecera ? dates.length : 0,
-      message: mode === 'SET' ? 'Naroky boli ulozene.' : 'Naroky v obdobi boli vymazane.'
+      lunches: mode !== 'CLEAR' && obed ? dates.length : 0,
+      dinners: mode !== 'CLEAR' && vecera ? dates.length : 0,
+      message: mode === 'CLEAR' ? 'Naroky v obdobi boli vymazane.' : 'Naroky boli ulozene.'
     })
   } catch (err: any) {
     return NextResponse.json(

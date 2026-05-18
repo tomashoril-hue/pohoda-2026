@@ -24,6 +24,10 @@ export default async function PersonalistaImportPage() {
 
   const globalAccess = await getGlobalAccess(user.id)
 
+  if (!globalAccess.canUsePersonalista) {
+    redirect('/dashboard')
+  }
+
   const { data: memberships } = await supabaseServer
     .from('group_members')
     .select(`
@@ -43,10 +47,6 @@ export default async function PersonalistaImportPage() {
       return membership.user_id === user.id && (role === 'MANAGER' || role === 'OWNER')
     })
     .map((membership: any) => membership.group_id)
-
-  if (!globalAccess.canUsePersonalista && manageableGroupIds.length === 0) {
-    redirect('/dashboard/personalista')
-  }
 
   let groups: any[] = []
 

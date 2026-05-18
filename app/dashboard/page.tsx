@@ -152,10 +152,7 @@ export default async function DashboardPage() {
   const hasPendingInvites = !!pendingInvites && pendingInvites.length > 0
   const hasEntitlementRow = !!entitlement
   const globalAccess = await getGlobalAccess(user.id)
-  const canOpenPersonalista = (memberships || []).some((membership: any) => {
-    const role = String(membership.role || '').toUpperCase()
-    return role === 'MANAGER' || role === 'OWNER'
-  }) || globalAccess.canUsePersonalista
+  const canOpenPersonalista = globalAccess.canUsePersonalista
   const canOpenFoodIssue = globalAccess.canUsePersonalista || (memberships || []).some((membership: any) => {
     const role = String(membership.role || '').toUpperCase()
     return canIssueForGroupByRole(role, globalAccess)

@@ -100,6 +100,10 @@ export default async function PersonalistaPage() {
   const globalAccess = await getGlobalAccess(user.id)
   const isGlobalPersonalista = globalAccess.canUsePersonalista
 
+  if (!isGlobalPersonalista) {
+    redirect('/dashboard')
+  }
+
   const myManageableGroupIds = allMemberships
     .filter((membership: any) => {
       const role = String(membership.role || '').toUpperCase()
@@ -172,6 +176,7 @@ export default async function PersonalistaPage() {
 
   let qrRows: any[] = []
   let nfcRows: any[] = []
+  let roleRows: any[] = []
   let entitlementRows: any[] = []
 
   if (userIds.length > 0) {
@@ -189,6 +194,13 @@ export default async function PersonalistaPage() {
 
     nfcRows = nfcData || []
 
+    const { data: roleData } = await supabaseServer
+      .from('app_user_roles')
+      .select('user_id, role, active')
+      .in('user_id', userIds)
+
+    roleRows = roleData || []
+
     const { data: entitlementData } = await supabaseServer
       .from('user_food_entitlements')
       .select('user_id, datum, obed, vecera')
@@ -201,6 +213,7 @@ export default async function PersonalistaPage() {
 
   const activeQrByUserId = new Map<string, number>()
   const activeNfcByUserId = new Map<string, number>()
+  const globalRolesByUserId = new Map<string, string[]>()
 
   qrRows.forEach((row: any) => {
     if (!row.active) return
@@ -218,6 +231,14 @@ export default async function PersonalistaPage() {
       row.user_id,
       (activeNfcByUserId.get(row.user_id) || 0) + 1
     )
+  })
+
+  roleRows.forEach((row: any) => {
+    if (!row.active) return
+
+    const list = globalRolesByUserId.get(row.user_id) || []
+    list.push(String(row.role || '').toUpperCase())
+    globalRolesByUserId.set(row.user_id, list)
   })
 
   const entitlementsByUserId = new Map<string, any[]>()
@@ -264,6 +285,7 @@ export default async function PersonalistaPage() {
       aktivny: memberUser?.aktivny || 'ANO',
       activeQrCount: activeQrByUserId.get(membership.user_id) || 0,
       activeNfcCount: activeNfcByUserId.get(membership.user_id) || 0,
+      globalRoles: globalRolesByUserId.get(membership.user_id) || [],
       entitlementDays: rows.length,
       lunchClaims,
       dinnerClaims,
@@ -298,6 +320,7 @@ export default async function PersonalistaPage() {
         aktivny: profile.aktivny || 'ANO',
         activeQrCount: activeQrByUserId.get(profile.id) || 0,
         activeNfcCount: activeNfcByUserId.get(profile.id) || 0,
+        globalRoles: globalRolesByUserId.get(profile.id) || [],
         entitlementDays: rows.length,
         lunchClaims,
         dinnerClaims,
@@ -333,8 +356,8 @@ export default async function PersonalistaPage() {
       groups={groups}
       fromDate={fromDate}
       toDate={toDate}
-      canManage={isGlobalPersonalista || myManageableGroupIds.length > 0}
-      canAssignSensitiveRoles={isGlobalPersonalista}
+      canManage={isGlobalPersonalista}
+      canAssignSensitiveRoles={globalAccess.isAdmin}
     />
   )
 }
