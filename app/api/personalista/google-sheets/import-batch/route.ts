@@ -97,10 +97,8 @@ function normalizeEntitlementDays(value: any) {
 }
 
 /**
- * Dôležité:
- * - pri registrácii už nedávame žiadny default nárok
- * - nároky vzniknú iba vtedy, keď ich niekto explicitne pošle
- * - ak nič nepríde, osoba sa vytvorí bez záznamov v user_food_entitlements
+ * Pri importe už nevytvárame default nároky.
+ * Nároky sa vytvoria iba vtedy, keď prídu explicitne v payload-e.
  */
 function resolveEntitlementDays(row: any) {
   if (Array.isArray(row.entitlementDays)) {
@@ -115,6 +113,85 @@ function resolveEntitlementDays(row: any) {
   }
 
   return []
+}
+
+async function loadExistingPersonForSheets(existingUserId: string, rowNumber: number | null) {
+  const { data: existingUserFull, error: existingUserFullError } = await supabaseServer
+    .from('users')
+    .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, updated_at')
+    .eq('id', existingUserId)
+    .maybeSingle()
+
+  if (existingUserFullError) {
+    return {
+      rowNumber,
+      status: 'ERROR',
+      message: existingUserFullError.message,
+      userId: existingUserId
+    }
+  }
+
+  const { data: qrRows } = await supabaseServer
+    .from('user_qr_codes')
+    .select('qr_code')
+    .eq('user_id', existingUserId)
+    .eq('active', true)
+    .limit(1)
+
+  const { data: membershipRows } = await supabaseServer
+    .from('group_members')
+    .select(`
+      user_id,
+      groups (
+        name
+      )
+    `)
+    .eq('user_id', existingUserId)
+
+  const groupNames = (membershipRows || [])
+    .map((row: any) => {
+      const group = Array.isArray(row.groups) ? row.groups[0] : row.groups
+      return group?.name || ''
+    })
+    .filter(Boolean)
+
+  const { data: entitlementRows } = await supabaseServer
+    .from('user_food_entitlements')
+    .select('datum, obed, vecera')
+    .eq('user_id', existingUserId)
+
+  const entitlementDays = Array.from(new Set(
+    (entitlementRows || [])
+      .map((row: any) => row.datum)
+      .filter(Boolean)
+  )).sort()
+
+  const lunchClaims = (entitlementRows || []).filter((row: any) => row.obed).length
+  const dinnerClaims = (entitlementRows || []).filter((row: any) => row.vecera).length
+
+  return {
+    rowNumber,
+    status: 'LOCKED',
+    message: 'Pouzivatel s tymto emailom uz existuje. Udaje boli nacitane z aplikacie. Dalej ho spravuj v aplikacii.',
+    existingPerson: true,
+    manageInApp: true,
+
+    userId: existingUserId,
+    meno: existingUserFull?.meno || '',
+    priezvisko: existingUserFull?.priezvisko || '',
+    email: existingUserFull?.email || '',
+    telefon: existingUserFull?.telefon || '',
+    typStravy: existingUserFull?.typ_stravy || '',
+    aktivny: existingUserFull?.aktivny || '',
+    qrCode: qrRows?.[0]?.qr_code || '',
+    groups: groupNames.join('|'),
+
+    entitlementDays,
+    entitlementDaysCount: entitlementDays.length,
+    lunchClaims,
+    dinnerClaims,
+    updatedAt: existingUserFull?.updated_at || ''
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -158,13 +235,11 @@ export async function POST(req: NextRequest) {
 
       /**
        * QR sa pri Google Sheets importe prideľuje vždy.
-       * Stĺpec registracia_qr už nepoužívame.
        */
       const assignQr = true
 
       /**
        * Obed/večera sa riešia iba vtedy, keď prídu nárokové dni.
-       * Pri bežnej registrácii bez nárokov sa tieto hodnoty nepoužijú.
        */
       const obed = boolValue(row.obed || row.lunch, true)
       const vecera = boolValue(row.vecera || row.dinner, false)
@@ -181,7 +256,11 @@ export async function POST(req: NextRequest) {
       }
 
       if (dates.length > MAX_ENTITLEMENT_DAYS) {
-        results.push({ rowNumber, status: 'ERROR', message: `Narok moze mat najviac ${MAX_ENTITLEMENT_DAYS} dni.` })
+        results.push({
+          rowNumber,
+          status: 'ERROR',
+          message: `Narok moze mat najviac ${MAX_ENTITLEMENT_DAYS} dni.`
+        })
         continue
       }
 
@@ -207,13 +286,14 @@ export async function POST(req: NextRequest) {
           continue
         }
 
+        /**
+         * Dôležité:
+         * Ak používateľ s e-mailom už existuje, neimportujeme ho znova.
+         * Dotiahneme jeho údaje, QR, skupiny, nároky a riadok zamkneme.
+         */
         if (existingEmail) {
-          results.push({
-            rowNumber,
-            status: 'ERROR',
-            message: 'Pouzivatel s tymto emailom uz existuje.',
-            userId: existingEmail.id
-          })
+          const existingResult = await loadExistingPersonForSheets(existingEmail.id, rowNumber)
+          results.push(existingResult)
           continue
         }
       }
@@ -272,8 +352,8 @@ export async function POST(req: NextRequest) {
       }
 
       /**
-       * Pracovné obdobie zapisujeme iba vtedy, keď import reálne obsahuje nárokové dni.
-       * Bežná registrácia osoby bez nárokov nič nezapisuje do personnel_work_periods.
+       * Pracovné obdobie a nároky zapisujeme iba vtedy,
+       * keď import reálne obsahuje explicitné nárokové dni.
        */
       if (dates.length > 0) {
         const { error: workPeriodError } = await supabaseServer
