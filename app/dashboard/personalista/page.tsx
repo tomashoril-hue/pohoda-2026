@@ -138,6 +138,22 @@ export default async function PersonalistaPage() {
     }
   })
 
+  if (isGlobalPersonalista) {
+    const { data: allGroupsData } = await supabaseServer
+      .from('groups')
+      .select('id, name')
+      .order('name', { ascending: true })
+
+    ;(allGroupsData || []).forEach((group: any) => {
+      if (!group?.id) return
+
+      groupsById.set(group.id, {
+        id: group.id,
+        name: group.name || 'Skupina bez nazvu'
+      })
+    })
+  }
+
   const membershipUserIds = visibleMemberships
     .map((membership: any) => membership.user_id)
     .filter(Boolean)
@@ -155,6 +171,7 @@ export default async function PersonalistaPage() {
   const toDate = isoDateOffset(13)
 
   let qrRows: any[] = []
+  let nfcRows: any[] = []
   let entitlementRows: any[] = []
 
   if (userIds.length > 0) {
@@ -164,6 +181,13 @@ export default async function PersonalistaPage() {
       .in('user_id', userIds)
 
     qrRows = qrData || []
+
+    const { data: nfcData } = await supabaseServer
+      .from('personnel_nfc_tokens')
+      .select('user_id, active')
+      .in('user_id', userIds)
+
+    nfcRows = nfcData || []
 
     const { data: entitlementData } = await supabaseServer
       .from('user_food_entitlements')
@@ -176,6 +200,7 @@ export default async function PersonalistaPage() {
   }
 
   const activeQrByUserId = new Map<string, number>()
+  const activeNfcByUserId = new Map<string, number>()
 
   qrRows.forEach((row: any) => {
     if (!row.active) return
@@ -183,6 +208,15 @@ export default async function PersonalistaPage() {
     activeQrByUserId.set(
       row.user_id,
       (activeQrByUserId.get(row.user_id) || 0) + 1
+    )
+  })
+
+  nfcRows.forEach((row: any) => {
+    if (!row.active) return
+
+    activeNfcByUserId.set(
+      row.user_id,
+      (activeNfcByUserId.get(row.user_id) || 0) + 1
     )
   })
 
@@ -229,10 +263,18 @@ export default async function PersonalistaPage() {
       typStravy: memberUser?.typ_stravy || '',
       aktivny: memberUser?.aktivny || 'ANO',
       activeQrCount: activeQrByUserId.get(membership.user_id) || 0,
+      activeNfcCount: activeNfcByUserId.get(membership.user_id) || 0,
       entitlementDays: rows.length,
       lunchClaims,
       dinnerClaims,
       mealClaims,
+      entitlements: rows
+        .map(row => ({
+          datum: row.datum,
+          obed: !!row.obed,
+          vecera: !!row.vecera
+        }))
+        .sort((a, b) => String(a.datum).localeCompare(String(b.datum))),
       groups: [groupItem]
     })
   })
@@ -255,10 +297,18 @@ export default async function PersonalistaPage() {
         typStravy: profile.typ_stravy || '',
         aktivny: profile.aktivny || 'ANO',
         activeQrCount: activeQrByUserId.get(profile.id) || 0,
+        activeNfcCount: activeNfcByUserId.get(profile.id) || 0,
         entitlementDays: rows.length,
         lunchClaims,
         dinnerClaims,
         mealClaims: lunchClaims + dinnerClaims,
+        entitlements: rows
+          .map(row => ({
+            datum: row.datum,
+            obed: !!row.obed,
+            vecera: !!row.vecera
+          }))
+          .sort((a, b) => String(a.datum).localeCompare(String(b.datum))),
         groups: []
       })
     })
@@ -284,6 +334,7 @@ export default async function PersonalistaPage() {
       fromDate={fromDate}
       toDate={toDate}
       canManage={isGlobalPersonalista || myManageableGroupIds.length > 0}
+      canAssignSensitiveRoles={isGlobalPersonalista}
     />
   )
 }

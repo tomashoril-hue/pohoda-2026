@@ -15,6 +15,12 @@ type PersonGroup = {
   role: string
 }
 
+type PersonEntitlement = {
+  datum: string
+  obed: boolean
+  vecera: boolean
+}
+
 type PersonItem = {
   id: string
   fullName: string
@@ -25,10 +31,12 @@ type PersonItem = {
   typStravy: string
   aktivny: string
   activeQrCount: number
+  activeNfcCount: number
   entitlementDays: number
   lunchClaims: number
   dinnerClaims: number
   mealClaims: number
+  entitlements: PersonEntitlement[]
   groups: PersonGroup[]
 }
 
@@ -65,13 +73,15 @@ export default function PersonalistaClient({
   groups,
   fromDate,
   toDate,
-  canManage
+  canManage,
+  canAssignSensitiveRoles
 }: {
   people: PersonItem[]
   groups: GroupItem[]
   fromDate: string
   toDate: string
   canManage: boolean
+  canAssignSensitiveRoles: boolean
 }) {
   const router = useRouter()
 
@@ -88,7 +98,7 @@ export default function PersonalistaClient({
   const [createMessage, setCreateMessage] = useState('')
   const [createMessageType, setCreateMessageType] = useState<'ok' | 'error' | ''>('')
   const [createGroupSelectId, setCreateGroupSelectId] = useState('')
-  const [detailMode, setDetailMode] = useState<'profile' | 'entitlements' | 'qr' | ''>('')
+  const [detailMode, setDetailMode] = useState<'profile' | 'entitlements' | 'groups' | 'qr' | 'nfc' | ''>('')
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailMessage, setDetailMessage] = useState('')
   const [detailMessageType, setDetailMessageType] = useState<'ok' | 'error' | ''>('')
@@ -121,6 +131,13 @@ export default function PersonalistaClient({
   const [qrForm, setQrForm] = useState({
     qrCode: ''
   })
+  const [groupForm, setGroupForm] = useState({
+    groupId: '',
+    role: 'MEMBER'
+  })
+  const [nfcForm, setNfcForm] = useState({
+    tokenUid: ''
+  })
 
   const selectedPerson = selectedPersonId
     ? people.find(person => person.id === selectedPersonId) || null
@@ -152,6 +169,8 @@ export default function PersonalistaClient({
     })
 
     setQrForm({ qrCode: '' })
+    setGroupForm({ groupId: '', role: 'MEMBER' })
+    setNfcForm({ tokenUid: '' })
     setDetailMessage('')
     setDetailMessageType('')
   }, [selectedPerson, fromDate, toDate])
@@ -258,6 +277,20 @@ export default function PersonalistaClient({
     availableCreateGroups.some(group => group.id === createGroupSelectId)
       ? createGroupSelectId
       : ''
+
+  const availableDetailGroups = useMemo(() => {
+    if (!selectedPerson) return []
+    return groups.filter(group => !selectedPerson.groups.some(personGroup => personGroup.id === group.id))
+  }, [groups, selectedPerson])
+
+  const safeDetailGroupId =
+    availableDetailGroups.some(group => group.id === groupForm.groupId)
+      ? groupForm.groupId
+      : ''
+
+  const groupRoleOptions = canAssignSensitiveRoles
+    ? ['MEMBER', 'POVERENY', 'MANAGER', 'OWNER']
+    : ['MEMBER', 'POVERENY']
 
   const updateCreateForm = (key: string, value: any) => {
     setCreateForm(prev => ({
@@ -454,9 +487,91 @@ export default function PersonalistaClient({
       '/api/personalista/people/update-entitlements',
       {
         userId: selectedPerson.id,
+        mode: 'SET',
         ...entitlementForm
       },
       'Nároky sa nepodarilo uložiť.'
+    )
+  }
+
+  const clearEntitlements = () => {
+    if (!selectedPerson) return
+
+    const ok = window.confirm('Vymazať nároky v zadanom období?')
+    if (!ok) return
+
+    postDetailAction(
+      '/api/personalista/people/update-entitlements',
+      {
+        userId: selectedPerson.id,
+        mode: 'CLEAR',
+        validFrom: entitlementForm.validFrom,
+        validTo: entitlementForm.validTo,
+        obed: false,
+        vecera: false
+      },
+      'Nároky sa nepodarilo vymazať.'
+    )
+  }
+
+  const updateGroupForm = (key: string, value: any) => {
+    setGroupForm(prev => ({
+      ...prev,
+      [key]: value
+    }))
+  }
+
+  const postGroupAction = (payload: any, fallbackMessage: string) => {
+    if (!selectedPerson) return
+
+    postDetailAction(
+      '/api/personalista/people/groups',
+      {
+        userId: selectedPerson.id,
+        ...payload
+      },
+      fallbackMessage
+    )
+  }
+
+  const addPersonGroup = () => {
+    if (!safeDetailGroupId) {
+      setDetailMessage('Vyber skupinu.')
+      setDetailMessageType('error')
+      return
+    }
+
+    postGroupAction(
+      {
+        action: 'ADD',
+        groupId: safeDetailGroupId,
+        role: groupForm.role
+      },
+      'Osobu sa nepodarilo pridať do skupiny.'
+    )
+  }
+
+  const updatePersonGroupRole = (groupId: string, role: string) => {
+    postGroupAction(
+      {
+        action: 'UPDATE_ROLE',
+        groupId,
+        role
+      },
+      'Rolu v skupine sa nepodarilo zmeniť.'
+    )
+  }
+
+  const removePersonGroup = (groupId: string, groupName: string) => {
+    const ok = window.confirm(`Odobrať osobu zo skupiny ${groupName}?`)
+    if (!ok) return
+
+    postGroupAction(
+      {
+        action: 'REMOVE',
+        groupId
+      },
+      'Osobu sa nepodarilo odobrať zo skupiny.'
     )
   }
 
@@ -513,6 +628,42 @@ export default function PersonalistaClient({
         reason
       },
       active ? 'Osobu sa nepodarilo odblokovat.' : 'Osobu sa nepodarilo zablokovat.'
+    )
+  }
+
+  const assignNfc = () => {
+    if (!selectedPerson) return
+
+    if (!nfcForm.tokenUid.trim()) {
+      setDetailMessage('Naskenuj alebo zadaj NFC kód.')
+      setDetailMessageType('error')
+      return
+    }
+
+    postDetailAction(
+      '/api/personalista/people/nfc',
+      {
+        userId: selectedPerson.id,
+        action: 'ASSIGN',
+        tokenUid: nfcForm.tokenUid
+      },
+      'NFC sa nepodarilo priradiť.'
+    )
+  }
+
+  const invalidateNfc = () => {
+    if (!selectedPerson) return
+
+    const ok = window.confirm('Zneplatniť aktívne NFC tejto osoby?')
+    if (!ok) return
+
+    postDetailAction(
+      '/api/personalista/people/nfc',
+      {
+        userId: selectedPerson.id,
+        action: 'INVALIDATE'
+      },
+      'NFC sa nepodarilo zneplatniť.'
     )
   }
 
@@ -1138,6 +1289,11 @@ export default function PersonalistaClient({
                 </div>
 
                 <div style={styles.detailRow}>
+                  <span>NFC</span>
+                  <b>{selectedPerson.activeNfcCount > 0 ? 'Aktívny' : 'Chýba'}</b>
+                </div>
+
+                <div style={styles.detailRow}>
                   <span>Nároky</span>
                   <b>{selectedPerson.mealClaims} jedál / {selectedPerson.entitlementDays} dní</b>
                   <small>{selectedPerson.lunchClaims} obed / {selectedPerson.dinnerClaims} večera</small>
@@ -1160,6 +1316,20 @@ export default function PersonalistaClient({
                     <span>{group.role || 'MEMBER'}</span>
                   </div>
                 ))}
+              </div>
+
+              <div style={styles.sectionTitle}>Nároky v zobrazenom období</div>
+
+              <div style={styles.entitlementList}>
+                {selectedPerson.entitlements.length === 0 ? (
+                  <span style={styles.emptyGroupSelection}>Bez nárokov</span>
+                ) : (
+                  selectedPerson.entitlements.map(item => (
+                    <span key={item.datum} style={styles.entitlementPill}>
+                      {item.datum}: {item.obed ? 'O' : '-'} / {item.vecera ? 'V' : '-'}
+                    </span>
+                  ))
+                )}
               </div>
 
               <div style={styles.sectionTitle}>Akcie</div>
@@ -1195,6 +1365,19 @@ export default function PersonalistaClient({
                   type="button"
                   style={{
                     ...styles.actionButton,
+                    borderColor: detailMode === 'groups' ? '#93c5fd' : '#e5e7eb',
+                    background: detailMode === 'groups' ? '#eff6ff' : '#fff'
+                  }}
+                  disabled={detailLoading}
+                  onClick={() => setDetailMode(detailMode === 'groups' ? '' : 'groups')}
+                >
+                  Upraviť skupiny
+                </button>
+
+                <button
+                  type="button"
+                  style={{
+                    ...styles.actionButton,
                     borderColor: detailMode === 'qr' ? '#93c5fd' : '#e5e7eb',
                     background: detailMode === 'qr' ? '#eff6ff' : '#fff'
                   }}
@@ -1204,7 +1387,16 @@ export default function PersonalistaClient({
                   Vymeniť QR
                 </button>
 
-                <button type="button" style={styles.actionButton} disabled>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.actionButton,
+                    borderColor: detailMode === 'nfc' ? '#93c5fd' : '#e5e7eb',
+                    background: detailMode === 'nfc' ? '#eff6ff' : '#fff'
+                  }}
+                  disabled={detailLoading}
+                  onClick={() => setDetailMode(detailMode === 'nfc' ? '' : 'nfc')}
+                >
                   Priradiť NFC
                 </button>
 
@@ -1262,12 +1454,12 @@ export default function PersonalistaClient({
                       />
                     </label>
 
-                    <label style={styles.field}>
+                    <label style={styles.fieldWarning}>
                       <span>Email</span>
                       <input
                         value={profileForm.email}
                         onChange={event => updateProfileForm('email', event.target.value)}
-                        style={styles.input}
+                        style={styles.inputWarning}
                         disabled={detailLoading}
                         autoComplete="off"
                         inputMode="email"
@@ -1372,6 +1564,105 @@ export default function PersonalistaClient({
                   >
                     {detailLoading ? 'Ukladám...' : 'Uložiť nároky'}
                   </button>
+
+                  <button
+                    type="button"
+                    style={styles.dangerButton}
+                    disabled={detailLoading}
+                    onClick={clearEntitlements}
+                  >
+                    Vymazať nároky v období
+                  </button>
+                </div>
+              )}
+
+              {detailMode === 'groups' && (
+                <div style={styles.detailEditBox}>
+                  <div style={styles.detailEditTitle}>Skupiny osoby</div>
+
+                  <div style={styles.detailGroups}>
+                    {selectedPerson.groups.length === 0 && (
+                      <div style={styles.detailGroupRow}>
+                        <b>Bez skupiny</b>
+                        <span>-</span>
+                      </div>
+                    )}
+
+                    {selectedPerson.groups.map(group => (
+                      <div key={group.id} style={styles.detailGroupManageRow}>
+                        <b>{group.name}</b>
+
+                        <select
+                          value={group.role || 'MEMBER'}
+                          onChange={event => updatePersonGroupRole(group.id, event.target.value)}
+                          style={styles.compactSelect}
+                          disabled={detailLoading}
+                        >
+                          {groupRoleOptions.map(role => (
+                            <option key={role} value={role}>
+                              {role}
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          type="button"
+                          style={styles.dangerTinyButton}
+                          disabled={detailLoading}
+                          onClick={() => removePersonGroup(group.id, group.name)}
+                        >
+                          Odobrať
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={styles.detailEditGrid}>
+                    <label style={styles.field}>
+                      <span>Pridať do skupiny</span>
+                      <select
+                        value={safeDetailGroupId}
+                        onChange={event => updateGroupForm('groupId', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                      >
+                        <option value="">
+                          {availableDetailGroups.length === 0 ? 'Žiadna ďalšia skupina' : 'Vyber skupinu'}
+                        </option>
+
+                        {availableDetailGroups.map(group => (
+                          <option key={group.id} value={group.id}>
+                            {group.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={styles.field}>
+                      <span>Rola</span>
+                      <select
+                        value={groupForm.role}
+                        onChange={event => updateGroupForm('role', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                      >
+                        {groupRoleOptions.map(role => (
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    style={styles.confirmButton}
+                    disabled={detailLoading || !safeDetailGroupId}
+                    onClick={addPersonGroup}
+                  >
+                    Pridať do skupiny
+                  </button>
                 </div>
               )}
 
@@ -1410,6 +1701,42 @@ export default function PersonalistaClient({
                     onClick={() => replaceQr('SPECIFIC')}
                   >
                     {detailLoading ? 'Ukladám...' : 'Prepnúť na načítaný QR'}
+                  </button>
+                </div>
+              )}
+
+              {detailMode === 'nfc' && (
+                <div style={styles.detailEditBox}>
+                  <div style={styles.detailEditTitle}>NFC kód</div>
+
+                  <label style={styles.field}>
+                    <span>Načítaný NFC kód</span>
+                    <input
+                      value={nfcForm.tokenUid}
+                      onChange={event => setNfcForm({ tokenUid: event.target.value })}
+                      style={styles.input}
+                      disabled={detailLoading}
+                      autoComplete="off"
+                      placeholder="Prilož náramok alebo zadaj kód"
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    style={styles.confirmButton}
+                    disabled={detailLoading}
+                    onClick={assignNfc}
+                  >
+                    {detailLoading ? 'Ukladám...' : 'Priradiť NFC'}
+                  </button>
+
+                  <button
+                    type="button"
+                    style={styles.dangerButton}
+                    disabled={detailLoading || selectedPerson.activeNfcCount === 0}
+                    onClick={invalidateNfc}
+                  >
+                    Zneplatniť aktívne NFC
                   </button>
                 </div>
               )}
@@ -1867,6 +2194,28 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     alignItems: 'center'
   },
+  detailGroupManageRow: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 12,
+    padding: 10,
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) 120px auto',
+    gap: 8,
+    alignItems: 'center'
+  },
+  entitlementList: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6
+  },
+  entitlementPill: {
+    borderRadius: 999,
+    padding: '6px 9px',
+    background: '#eef2ff',
+    color: '#3730a3',
+    fontSize: 11,
+    fontWeight: 950
+  },
   selectedGroupList: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -1947,6 +2296,13 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950,
     color: '#6b7280'
   },
+  fieldWarning: {
+    display: 'grid',
+    gap: 5,
+    fontSize: 11,
+    fontWeight: 950,
+    color: '#b91c1c'
+  },
   input: {
     width: '100%',
     minWidth: 0,
@@ -1956,6 +2312,32 @@ const styles: Record<string, CSSProperties> = {
     padding: '11px 10px',
     fontSize: 16,
     fontWeight: 800,
+    background: '#fff',
+    color: '#111827',
+    outline: 'none'
+  },
+  inputWarning: {
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
+    border: '2px solid #ef4444',
+    borderRadius: 12,
+    padding: '10px 9px',
+    fontSize: 16,
+    fontWeight: 900,
+    background: '#fff7f7',
+    color: '#991b1b',
+    outline: 'none'
+  },
+  compactSelect: {
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
+    border: '1px solid #d1d5db',
+    borderRadius: 10,
+    padding: '8px 7px',
+    fontSize: 12,
+    fontWeight: 900,
     background: '#fff',
     color: '#111827',
     outline: 'none'
@@ -1989,6 +2371,16 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 12,
     padding: '10px 12px',
     fontSize: 13,
+    fontWeight: 950,
+    cursor: 'pointer'
+  },
+  dangerTinyButton: {
+    background: '#fee2e2',
+    color: '#991b1b',
+    border: '1px solid #fecaca',
+    borderRadius: 10,
+    padding: '8px 9px',
+    fontSize: 12,
     fontWeight: 950,
     cursor: 'pointer'
   },

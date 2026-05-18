@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
     const validTo = cleanText(body.validTo)
     const obed = !!body.obed
     const vecera = !!body.vecera
+    const mode = cleanText(body.mode).toUpperCase() || 'SET'
 
     if (!userId) {
       return NextResponse.json({ error: 'Chyba osoba.' }, { status: 400 })
@@ -49,7 +50,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Zadaj platne obdobie.' }, { status: 400 })
     }
 
-    if (!obed && !vecera) {
+    if (mode !== 'SET' && mode !== 'CLEAR') {
+      return NextResponse.json({ error: 'Neplatny sposob upravy narokov.' }, { status: 400 })
+    }
+
+    if (mode === 'SET' && !obed && !vecera) {
       return NextResponse.json({ error: 'Vyber aspon jeden narok.' }, { status: 400 })
     }
 
@@ -91,22 +96,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: deleteError.message }, { status: 500 })
     }
 
-    const { error: insertError } = await supabaseServer
-      .from('user_food_entitlements')
-      .insert(dates.map(datum => ({
-        user_id: userId,
-        datum,
-        obed,
-        vecera,
-        source: 'PERSONALISTA',
-        note: 'Rucna uprava v personalistike.',
-        created_by: actor.id,
-        updated_by: actor.id,
-        updated_at: now
-      })))
+    if (mode === 'SET') {
+      const { error: insertError } = await supabaseServer
+        .from('user_food_entitlements')
+        .insert(dates.map(datum => ({
+          user_id: userId,
+          datum,
+          obed,
+          vecera,
+          source: 'PERSONALISTA',
+          note: 'Rucna uprava v personalistike.',
+          created_by: actor.id,
+          updated_by: actor.id,
+          updated_at: now
+        })))
 
-    if (insertError) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 })
+      if (insertError) {
+        return NextResponse.json({ error: insertError.message }, { status: 500 })
+      }
     }
 
     await supabaseServer
@@ -115,8 +122,11 @@ export async function POST(req: NextRequest) {
         user_id: userId,
         valid_from: validFrom,
         valid_to: validTo,
+        active: mode === 'SET',
         source: 'MANUAL',
-        note: 'Rucna uprava narokov v personalistike.',
+        note: mode === 'SET'
+          ? 'Rucna uprava narokov v personalistike.'
+          : 'Rucne vymazanie narokov v personalistike.',
         created_by: actor.id,
         updated_by: actor.id
       })
@@ -126,7 +136,7 @@ export async function POST(req: NextRequest) {
       .insert({
         actor_user_id: actor.id,
         target_user_id: userId,
-        action: 'PERSON_ENTITLEMENTS_UPDATED',
+        action: mode === 'SET' ? 'PERSON_ENTITLEMENTS_UPDATED' : 'PERSON_ENTITLEMENTS_CLEARED',
         entity_table: 'user_food_entitlements',
         entity_id: null,
         before_data: {
@@ -135,6 +145,7 @@ export async function POST(req: NextRequest) {
         after_data: {
           valid_from: validFrom,
           valid_to: validTo,
+          mode,
           days: dates.length,
           obed,
           vecera
@@ -144,9 +155,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       days: dates.length,
-      lunches: obed ? dates.length : 0,
-      dinners: vecera ? dates.length : 0,
-      message: 'Naroky boli ulozene.'
+      lunches: mode === 'SET' && obed ? dates.length : 0,
+      dinners: mode === 'SET' && vecera ? dates.length : 0,
+      message: mode === 'SET' ? 'Naroky boli ulozene.' : 'Naroky v obdobi boli vymazane.'
     })
   } catch (err: any) {
     return NextResponse.json(
