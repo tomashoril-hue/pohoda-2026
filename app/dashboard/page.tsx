@@ -32,9 +32,13 @@ function mealLabel(value: string) {
   return value
 }
 
-function choiceLabel(value: string | null | undefined) {
+function choiceLabel(value: string | null | undefined, defaultValue?: string | null) {
   if (value === 'MASO') return 'MASO'
   if (value === 'VEGE') return 'VEGE'
+
+  if (defaultValue === 'MASO') return 'PREDVOLENÉ MASO'
+  if (defaultValue === 'VEGE') return 'PREDVOLENÉ VEGE'
+
   return 'NEZADANÉ'
 }
 
@@ -205,6 +209,7 @@ export default async function DashboardPage() {
 
   const obedSelection = getSelection('OBED')
   const veceraSelection = getSelection('VECERA')
+  const defaultFood = user.typ_stravy || user.typStravy || null
 
   const todayMeals = [
     {
@@ -309,7 +314,7 @@ export default async function DashboardPage() {
                   <div style={styles.todayRows}>
                     <div style={styles.todayRow}>
                       <span>Výber</span>
-                      <b>{choiceLabel(meal.selection?.volba)}</b>
+                      <b>{choiceLabel(meal.selection?.volba, defaultFood)}</b>
                     </div>
 
                     <div style={styles.todayRowWide}>
