@@ -21,6 +21,11 @@ type PersonEntitlement = {
   vecera: boolean
 }
 
+type CalendarClaim = {
+  obed: boolean
+  vecera: boolean
+}
+
 type PersonItem = {
   id: string
   fullName: string
@@ -154,7 +159,7 @@ export default function PersonalistaClient({
     obed: true,
     vecera: false
   })
-  const [selectedEntitlementDates, setSelectedEntitlementDates] = useState<string[]>([])
+  const [calendarClaims, setCalendarClaims] = useState<Record<string, CalendarClaim>>({})
   const [qrForm, setQrForm] = useState({
     qrCode: ''
   })
@@ -198,7 +203,15 @@ export default function PersonalistaClient({
       obed: selectedPerson.lunchClaims > 0 || selectedPerson.mealClaims === 0,
       vecera: selectedPerson.dinnerClaims > 0
     })
-    setSelectedEntitlementDates(selectedPerson.entitlements.map(item => item.datum))
+    setCalendarClaims(Object.fromEntries(
+      selectedPerson.entitlements.map(item => [
+        item.datum,
+        {
+          obed: item.obed,
+          vecera: item.vecera
+        }
+      ])
+    ))
 
     setQrForm({ qrCode: '' })
     setGroupForm({ groupId: '', role: 'MEMBER' })
@@ -331,10 +344,6 @@ export default function PersonalistaClient({
   const entitlementCalendarDates = useMemo(() => {
     return dateRangeIso(entitlementForm.validFrom, entitlementForm.validTo).slice(0, 120)
   }, [entitlementForm.validFrom, entitlementForm.validTo])
-
-  const selectedEntitlementDateSet = useMemo(() => {
-    return new Set(selectedEntitlementDates)
-  }, [selectedEntitlementDates])
 
   const entitlementByDate = useMemo(() => {
     return new Map((selectedPerson?.entitlements || []).map(item => [item.datum, item]))
@@ -562,30 +571,76 @@ export default function PersonalistaClient({
     )
   }
 
-  const toggleEntitlementDate = (date: string) => {
-    setSelectedEntitlementDates(prev => (
-      prev.includes(date)
-        ? prev.filter(item => item !== date)
-        : [...prev, date].sort()
-    ))
+  const toggleEntitlementClaim = (date: string, meal: 'obed' | 'vecera') => {
+    setCalendarClaims(prev => {
+      const current = prev[date] || { obed: false, vecera: false }
+      const next = {
+        ...current,
+        [meal]: !current[meal]
+      }
+
+      if (!next.obed && !next.vecera) {
+        const copy = { ...prev }
+        delete copy[date]
+        return copy
+      }
+
+      return {
+        ...prev,
+        [date]: next
+      }
+    })
   }
 
   const selectEntitlementRange = () => {
-    setSelectedEntitlementDates(entitlementCalendarDates)
+    if (!entitlementForm.obed && !entitlementForm.vecera) {
+      setDetailMessage('Vyber obed alebo večeru.')
+      setDetailMessageType('error')
+      return
+    }
+
+    setCalendarClaims(prev => {
+      const next = { ...prev }
+
+      entitlementCalendarDates.forEach(date => {
+        next[date] = {
+          obed: entitlementForm.obed,
+          vecera: entitlementForm.vecera
+        }
+      })
+
+      return next
+    })
   }
 
   const clearEntitlementCalendarSelection = () => {
-    setSelectedEntitlementDates([])
+    setCalendarClaims(prev => {
+      const next = { ...prev }
+
+      entitlementCalendarDates.forEach(date => {
+        delete next[date]
+      })
+
+      return next
+    })
   }
 
   const saveSelectedEntitlementDates = () => {
     if (!selectedPerson) return
 
     const allowedDates = new Set(entitlementCalendarDates)
-    const dates = selectedEntitlementDates.filter(date => allowedDates.has(date))
+    const dayClaims = Object.entries(calendarClaims)
+      .filter(([date]) => allowedDates.has(date))
+      .map(([datum, claim]) => ({
+        datum,
+        obed: claim.obed,
+        vecera: claim.vecera
+      }))
+      .filter(item => item.obed || item.vecera)
+      .sort((a, b) => a.datum.localeCompare(b.datum))
 
-    if (dates.length === 0) {
-      setDetailMessage('Vyber aspoň jeden deň v kalendári.')
+    if (dayClaims.length === 0) {
+      setDetailMessage('Vyber aspoň jeden nárok v kalendári.')
       setDetailMessageType('error')
       return
     }
@@ -595,9 +650,9 @@ export default function PersonalistaClient({
       {
         userId: selectedPerson.id,
         mode: 'DATES',
-        dates,
-        obed: entitlementForm.obed,
-        vecera: entitlementForm.vecera
+        validFrom: entitlementForm.validFrom,
+        validTo: entitlementForm.validTo,
+        dayClaims
       },
       'Nároky podľa kalendára sa nepodarilo uložiť.'
     )
@@ -1708,23 +1763,50 @@ export default function PersonalistaClient({
                     ) : (
                       entitlementCalendarDates.map(date => {
                         const saved = entitlementByDate.get(date)
-                        const selected = selectedEntitlementDateSet.has(date)
+                        const claim = calendarClaims[date] || { obed: false, vecera: false }
+                        const selected = claim.obed || claim.vecera
 
                         return (
-                          <button
+                          <div
                             key={date}
-                            type="button"
                             style={{
                               ...styles.calendarDay,
                               ...(saved ? styles.calendarDaySaved : {}),
                               ...(selected ? styles.calendarDaySelected : {})
                             }}
-                            disabled={detailLoading}
-                            onClick={() => toggleEntitlementDate(date)}
                           >
                             <b>{shortDateLabel(date)}</b>
-                            <span>{saved ? `${saved.obed ? 'O' : '-'} / ${saved.vecera ? 'V' : '-'}` : '- / -'}</span>
-                          </button>
+                            <div style={styles.calendarMealButtons}>
+                              <button
+                                type="button"
+                                style={{
+                                  ...styles.calendarMealButton,
+                                  ...(claim.obed ? styles.calendarMealButtonActive : {})
+                                }}
+                                disabled={detailLoading}
+                                onClick={() => toggleEntitlementClaim(date, 'obed')}
+                              >
+                                O
+                              </button>
+
+                              <button
+                                type="button"
+                                style={{
+                                  ...styles.calendarMealButton,
+                                  ...(claim.vecera ? styles.calendarMealButtonActive : {})
+                                }}
+                                disabled={detailLoading}
+                                onClick={() => toggleEntitlementClaim(date, 'vecera')}
+                              >
+                                V
+                              </button>
+                            </div>
+                            {saved && (
+                              <span style={styles.calendarSavedText}>
+                                {saved.obed ? 'O' : '-'} / {saved.vecera ? 'V' : '-'}
+                              </span>
+                            )}
+                          </div>
                         )
                       })
                     )}
@@ -1751,10 +1833,10 @@ export default function PersonalistaClient({
                   <button
                     type="button"
                     style={styles.confirmButton}
-                    disabled={detailLoading || selectedEntitlementDates.length === 0}
+                    disabled={detailLoading}
                     onClick={saveSelectedEntitlementDates}
                   >
-                    Uložiť označené dni
+                    Uložiť kalendár
                   </button>
                 </div>
               )}
@@ -2465,17 +2547,17 @@ const styles: Record<string, CSSProperties> = {
     gap: 6
   },
   calendarDay: {
-    minHeight: 54,
+    minHeight: 70,
     border: '1px solid #e5e7eb',
     borderRadius: 12,
     background: '#fff',
     color: '#374151',
     display: 'grid',
-    gap: 2,
+    gap: 5,
     placeItems: 'center',
     fontSize: 11,
     fontWeight: 900,
-    cursor: 'pointer'
+    padding: 5
   },
   calendarDaySaved: {
     background: '#dcfce7',
@@ -2483,10 +2565,36 @@ const styles: Record<string, CSSProperties> = {
     color: '#166534'
   },
   calendarDaySelected: {
-    background: '#22c55e',
+    background: '#ecfdf5',
     borderColor: '#111827',
     color: '#052e16',
     boxShadow: '0 0 0 2px #111827 inset'
+  },
+  calendarMealButtons: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 4,
+    width: '100%'
+  },
+  calendarMealButton: {
+    minHeight: 28,
+    border: '1px solid #d1d5db',
+    borderRadius: 8,
+    background: '#f3f4f6',
+    color: '#6b7280',
+    fontSize: 12,
+    fontWeight: 950,
+    cursor: 'pointer'
+  },
+  calendarMealButtonActive: {
+    background: '#22c55e',
+    borderColor: '#166534',
+    color: '#052e16'
+  },
+  calendarSavedText: {
+    fontSize: 10,
+    fontWeight: 900,
+    color: '#166534'
   },
   selectedGroupList: {
     display: 'flex',

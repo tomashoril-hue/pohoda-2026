@@ -26,6 +26,12 @@ function dateRange(from: string, to: string) {
   return dates
 }
 
+type DayClaim = {
+  datum: string
+  obed: boolean
+  vecera: boolean
+}
+
 export async function POST(req: NextRequest) {
   try {
     const actor = await getCurrentUser()
@@ -42,11 +48,32 @@ export async function POST(req: NextRequest) {
     const requestedDates: string[] = Array.isArray(body.dates)
       ? Array.from(new Set<string>(body.dates.map((date: any) => cleanText(date)).filter(isIsoDate))).sort()
       : []
+    const rawDayClaims: DayClaim[] = Array.isArray(body.dayClaims)
+      ? body.dayClaims
+        .map((item: any) => ({
+          datum: cleanText(item?.datum),
+          obed: !!item?.obed,
+          vecera: !!item?.vecera
+        }))
+        .filter((item: DayClaim) => isIsoDate(item.datum) && (item.obed || item.vecera))
+        .sort((a: DayClaim, b: DayClaim) => a.datum.localeCompare(b.datum))
+      : []
+    const requestedDayClaims = Array.from(
+      rawDayClaims.reduce((map, item) => {
+        const existing = map.get(item.datum) || { datum: item.datum, obed: false, vecera: false }
+        map.set(item.datum, {
+          datum: item.datum,
+          obed: existing.obed || item.obed,
+          vecera: existing.vecera || item.vecera
+        })
+        return map
+      }, new Map<string, DayClaim>()).values()
+    ).sort((a, b) => a.datum.localeCompare(b.datum))
     const validFrom = mode === 'DATES'
-      ? requestedDates[0] || ''
+      ? cleanText(body.validFrom) || requestedDayClaims[0]?.datum || requestedDates[0] || ''
       : cleanText(body.validFrom)
     const validTo = mode === 'DATES'
-      ? requestedDates[requestedDates.length - 1] || ''
+      ? cleanText(body.validTo) || requestedDayClaims[requestedDayClaims.length - 1]?.datum || requestedDates[requestedDates.length - 1] || ''
       : cleanText(body.validTo)
 
     if (!userId) {
@@ -61,12 +88,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Zadaj platne obdobie.' }, { status: 400 })
     }
 
-    if ((mode === 'SET' || mode === 'DATES') && !obed && !vecera) {
+    if (mode === 'SET' && !obed && !vecera) {
       return NextResponse.json({ error: 'Vyber aspon jeden narok.' }, { status: 400 })
     }
 
+    if (mode === 'DATES' && requestedDayClaims.length === 0 && requestedDates.length === 0) {
+      return NextResponse.json({ error: 'Vyber aspon jeden den v kalendari.' }, { status: 400 })
+    }
+
     const dates = mode === 'DATES'
-      ? requestedDates
+      ? requestedDayClaims.length > 0
+        ? requestedDayClaims.map(item => item.datum)
+        : requestedDates
       : dateRange(validFrom, validTo)
 
     if (dates.length > 120) {
@@ -106,9 +139,19 @@ export async function POST(req: NextRequest) {
     }
 
     if (mode === 'SET' || mode === 'DATES') {
-      const { error: insertError } = await supabaseServer
-        .from('user_food_entitlements')
-        .insert(dates.map(datum => ({
+      const rows = mode === 'DATES' && requestedDayClaims.length > 0
+        ? requestedDayClaims.map(item => ({
+          user_id: userId,
+          datum: item.datum,
+          obed: item.obed,
+          vecera: item.vecera,
+          source: 'PERSONALISTA',
+          note: 'Rucna uprava v personalistike.',
+          created_by: actor.id,
+          updated_by: actor.id,
+          updated_at: now
+        }))
+        : dates.map(datum => ({
           user_id: userId,
           datum,
           obed,
@@ -118,7 +161,11 @@ export async function POST(req: NextRequest) {
           created_by: actor.id,
           updated_by: actor.id,
           updated_at: now
-        })))
+        }))
+
+      const { error: insertError } = await supabaseServer
+        .from('user_food_entitlements')
+        .insert(rows)
 
       if (insertError) {
         return NextResponse.json({ error: insertError.message }, { status: 500 })
@@ -157,15 +204,20 @@ export async function POST(req: NextRequest) {
           mode,
           days: dates.length,
           obed,
-          vecera
+          vecera,
+          day_claims: requestedDayClaims
         }
       })
 
     return NextResponse.json({
       ok: true,
       days: dates.length,
-      lunches: mode !== 'CLEAR' && obed ? dates.length : 0,
-      dinners: mode !== 'CLEAR' && vecera ? dates.length : 0,
+      lunches: mode === 'DATES' && requestedDayClaims.length > 0
+        ? requestedDayClaims.filter(item => item.obed).length
+        : mode !== 'CLEAR' && obed ? dates.length : 0,
+      dinners: mode === 'DATES' && requestedDayClaims.length > 0
+        ? requestedDayClaims.filter(item => item.vecera).length
+        : mode !== 'CLEAR' && vecera ? dates.length : 0,
       message: mode === 'CLEAR' ? 'Naroky v obdobi boli vymazane.' : 'Naroky boli ulozene.'
     })
   } catch (err: any) {
