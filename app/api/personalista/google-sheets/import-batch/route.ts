@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabaseServer'
 
+const EVENT_DAYS = ['2026-07-08', '2026-07-09', '2026-07-10', '2026-07-11']
+
 function text(value: any) {
   return String(value || '').trim()
 }
@@ -86,6 +88,27 @@ function authorized(req: NextRequest, body: any) {
   return Boolean(expected) && provided === expected
 }
 
+function normalizeEntitlementDays(value: any) {
+  if (!Array.isArray(value)) return []
+
+  return Array.from(new Set(
+    value
+      .map((item: any) => text(item))
+      .filter((item: string) => /^\d{4}-\d{2}-\d{2}$/.test(item))
+      .filter((item: string) => EVENT_DAYS.includes(item))
+  )).sort()
+}
+
+function resolveEntitlementDays(row: any, validFrom: string, validTo: string) {
+  const explicitDays = normalizeEntitlementDays(row.entitlementDays)
+
+  if (Array.isArray(row.entitlementDays)) {
+    return explicitDays
+  }
+
+  return dateRange(validFrom, validTo)
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
@@ -120,14 +143,22 @@ export async function POST(req: NextRequest) {
       const userEmail = email(row.email || row.mail)
       const telefon = text(row.telefon || row.phone || row.tel) || null
       const typStravy = food(row.typStravy || row.typ_stravy || row.strava || row.food)
-      const validFrom = dateValue(row.validFrom || row.od || row.datum_od, body.defaultFrom || defaultDate)
-      const validTo = dateValue(row.validTo || row.do || row.datum_do, body.defaultTo || validFrom)
+
+      const fallbackFrom = dateValue(row.validFrom || row.od || row.datum_od, body.defaultFrom || defaultDate)
+      const fallbackTo = dateValue(row.validTo || row.do || row.datum_do, body.defaultTo || fallbackFrom)
+
+      const dates = resolveEntitlementDays(row, fallbackFrom, fallbackTo)
+      const validFrom = dates[0] || fallbackFrom
+      const validTo = dates[dates.length - 1] || fallbackTo
+
       const obed = boolValue(row.obed || row.lunch, body.defaultObed !== false)
       const vecera = boolValue(row.vecera || row.dinner, body.defaultVecera === true)
+
       const assignQr = boolValue(
         row.registracia_qr || row.registraciaQr || row.qr || row.assignQr || row.assign_qr,
         body.defaultAssignQr !== false
       )
+
       const requestedGroupNames = groupNames(row.skupina || row.skupiny || row.group || row.groups)
       const groupIds = Array.from(new Set([
         ...(Array.isArray(row.groupIds) ? row.groupIds.map(text) : []),
@@ -136,6 +167,11 @@ export async function POST(req: NextRequest) {
 
       if (!meno || !priezvisko) {
         results.push({ rowNumber, status: 'ERROR', message: 'Chyba meno alebo priezvisko.' })
+        continue
+      }
+
+      if (!dates.length) {
+        results.push({ rowNumber, status: 'ERROR', message: 'Vyber aspon jeden narokovy den.' })
         continue
       }
 
@@ -148,8 +184,6 @@ export async function POST(req: NextRequest) {
         results.push({ rowNumber, status: 'ERROR', message: 'Chyba narok na obed alebo veceru.' })
         continue
       }
-
-      const dates = dateRange(validFrom, validTo)
 
       if (dates.length > 120) {
         results.push({ rowNumber, status: 'ERROR', message: 'Obdobie moze mat najviac 120 dni.' })
@@ -169,7 +203,12 @@ export async function POST(req: NextRequest) {
         }
 
         if (existingEmail) {
-          results.push({ rowNumber, status: 'ERROR', message: 'Pouzivatel s tymto emailom uz existuje.', userId: existingEmail.id })
+          results.push({
+            rowNumber,
+            status: 'ERROR',
+            message: 'Pouzivatel s tymto emailom uz existuje.',
+            userId: existingEmail.id
+          })
           continue
         }
       }
@@ -200,6 +239,9 @@ export async function POST(req: NextRequest) {
       }
 
       const rollbackUser = async () => {
+        await supabaseServer.from('user_food_entitlements').delete().eq('user_id', newUser.id)
+        await supabaseServer.from('personnel_work_periods').delete().eq('user_id', newUser.id)
+        await supabaseServer.from('group_members').delete().eq('user_id', newUser.id)
         await supabaseServer.from('user_qr_codes').delete().eq('user_id', newUser.id)
         await supabaseServer.from('users').delete().eq('id', newUser.id)
       }
@@ -297,6 +339,7 @@ export async function POST(req: NextRequest) {
             row_number: rowNumber,
             email: userEmail,
             group_ids: groupIds,
+            entitlement_days: dates,
             qr_assigned: !!assignedQrCode
           }
         })
@@ -307,7 +350,10 @@ export async function POST(req: NextRequest) {
         message: 'Osoba bola vytvorena.',
         userId: newUser.id,
         qrAssigned: !!assignedQrCode,
-        qrCode: assignedQrCode || ''
+        qrCode: assignedQrCode || '',
+        entitlementDays: dates,
+        lunchClaims: dates.filter(() => obed).length,
+        dinnerClaims: dates.filter(() => vecera).length
       })
     }
 

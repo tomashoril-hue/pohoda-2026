@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabaseServer'
 
+const EVENT_DAYS = ['2026-07-08', '2026-07-09', '2026-07-10', '2026-07-11']
+
 function text(value: any) {
   return String(value || '').trim()
 }
@@ -83,6 +85,17 @@ function fullName(user: any) {
   return `${user?.meno || ''} ${user?.priezvisko || ''}`.trim()
 }
 
+function normalizeEntitlementDays(value: any) {
+  if (!Array.isArray(value)) return []
+
+  return Array.from(new Set(
+    value
+      .map((item: any) => text(item))
+      .filter((item: string) => /^\d{4}-\d{2}-\d{2}$/.test(item))
+      .filter((item: string) => EVENT_DAYS.includes(item))
+  )).sort()
+}
+
 async function loadSyncData(userIds: string[]) {
   let qrByUserId = new Map<string, string>()
   const groupsByUserId = new Map<string, string[]>()
@@ -154,6 +167,7 @@ export async function POST(req: NextRequest) {
     }
 
     const actorUserId = text(process.env.GOOGLE_SHEETS_IMPORT_ACTOR_USER_ID) || null
+
     const { data: groups } = await supabaseServer
       .from('groups')
       .select('id, name')
@@ -243,6 +257,7 @@ export async function POST(req: NextRequest) {
       }
 
       const now = new Date().toISOString()
+
       const { error: updateUserError } = await supabaseServer
         .from('users')
         .update({
@@ -275,12 +290,15 @@ export async function POST(req: NextRequest) {
           const role = String(membership.role || '').toUpperCase()
           return role !== 'MEMBER'
         })
+
         const protectedGroupIds = new Set(protectedMemberships.map((membership: any) => membership.group_id))
+
         const currentMemberGroupIds = new Set(
           (currentMemberships || [])
             .filter((membership: any) => String(membership.role || '').toUpperCase() === 'MEMBER')
             .map((membership: any) => membership.group_id)
         )
+
         const targetGroupIdSet = new Set(targetGroupIds)
         const removeGroupIds = Array.from(currentMemberGroupIds).filter(groupId => !targetGroupIdSet.has(groupId))
         const addGroupIds = targetGroupIds.filter(groupId => {
@@ -317,12 +335,33 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      const explicitEntitlementDays = normalizeEntitlementDays(row.entitlementDays)
+      const hasExplicitEntitlementDays = Array.isArray(row.entitlementDays)
+
       const validFrom = dateValue(row.validFrom || row.od || row.datum_od)
       const validTo = dateValue(row.validTo || row.do || row.datum_do)
-      const shouldUpdateClaims = Boolean(validFrom && validTo)
+
+      let shouldUpdateClaims = false
+      let dates: string[] = []
+
+      if (hasExplicitEntitlementDays) {
+        shouldUpdateClaims = true
+        dates = explicitEntitlementDays
+      } else if (validFrom && validTo) {
+        shouldUpdateClaims = true
+        dates = dateRange(validFrom, validTo)
+      }
 
       if (shouldUpdateClaims) {
-        if (validTo < validFrom) {
+        if (!dates.length) {
+          rowResults.push({ rowNumber, status: 'ERROR', message: 'Vyber aspon jeden narokovy den.' })
+          continue
+        }
+
+        const firstDate = dates[0]
+        const lastDate = dates[dates.length - 1]
+
+        if (lastDate < firstDate) {
           rowResults.push({ rowNumber, status: 'ERROR', message: 'Neplatne obdobie narokov.' })
           continue
         }
@@ -335,19 +374,19 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        const dates = dateRange(validFrom, validTo)
-
         if (dates.length > 120) {
           rowResults.push({ rowNumber, status: 'ERROR', message: 'Obdobie moze mat najviac 120 dni.' })
           continue
         }
 
-        const { error: deleteClaimError } = await supabaseServer
+        const deleteQuery = supabaseServer
           .from('user_food_entitlements')
           .delete()
           .eq('user_id', userId)
-          .gte('datum', validFrom)
-          .lte('datum', validTo)
+
+        const { error: deleteClaimError } = hasExplicitEntitlementDays
+          ? await deleteQuery.in('datum', EVENT_DAYS)
+          : await deleteQuery.gte('datum', firstDate).lte('datum', lastDate)
 
         if (deleteClaimError) {
           rowResults.push({ rowNumber, status: 'ERROR', message: deleteClaimError.message })
@@ -372,6 +411,25 @@ export async function POST(req: NextRequest) {
           rowResults.push({ rowNumber, status: 'ERROR', message: insertClaimError.message })
           continue
         }
+
+        const { error: periodDeleteError } = await supabaseServer
+          .from('personnel_work_periods')
+          .delete()
+          .eq('user_id', userId)
+          .eq('source', 'GOOGLE_SHEETS')
+
+        if (!periodDeleteError) {
+          await supabaseServer
+            .from('personnel_work_periods')
+            .insert({
+              user_id: userId,
+              valid_from: firstDate,
+              valid_to: lastDate,
+              source: 'GOOGLE_SHEETS',
+              created_by: actorUserId,
+              updated_by: actorUserId
+            })
+        }
       }
 
       await supabaseServer
@@ -391,7 +449,8 @@ export async function POST(req: NextRequest) {
             telefon,
             typ_stravy: typStravy,
             email_updated: nextEmail !== before.email,
-            claims_updated: shouldUpdateClaims
+            claims_updated: shouldUpdateClaims,
+            entitlement_days: dates
           }
         })
 
@@ -400,12 +459,14 @@ export async function POST(req: NextRequest) {
     }
 
     const uniqueUpdatedUserIds = Array.from(new Set(updatedUserIds))
+
     const { data: updatedUsers } = uniqueUpdatedUserIds.length > 0
       ? await supabaseServer
           .from('users')
           .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, updated_at')
           .in('id', uniqueUpdatedUserIds)
       : { data: [] }
+
     const updatedUserById = new Map((updatedUsers || []).map((user: any) => [user.id, user]))
     const syncData = await loadSyncData(uniqueUpdatedUserIds)
 
@@ -416,6 +477,8 @@ export async function POST(req: NextRequest) {
       const claims = syncData.claimsByUserId.get(result.userId)
 
       if (!user) return result
+
+      const entitlementDays = Array.from(claims?.days || []).sort()
 
       return {
         ...result,
@@ -428,7 +491,8 @@ export async function POST(req: NextRequest) {
         aktivny: user.aktivny || '',
         groups: (syncData.groupsByUserId.get(result.userId) || []).join('|'),
         qrCode: syncData.qrByUserId.get(result.userId) || '',
-        entitlementDays: claims?.days.size || 0,
+        entitlementDays,
+        entitlementDaysCount: entitlementDays.length,
         lunchClaims: claims?.lunches || 0,
         dinnerClaims: claims?.dinners || 0,
         updatedAt: user.updated_at || ''

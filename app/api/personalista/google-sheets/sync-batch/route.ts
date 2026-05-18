@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     const userIds = Array.from(new Set(
       rows.map((row: any) => text(row.userId || row.user_id)).filter(Boolean)
     ))
+
     const emails = Array.from(new Set(
       rows.map((row: any) => text(row.email).toLowerCase()).filter(Boolean)
     ))
@@ -55,7 +56,10 @@ export async function POST(req: NextRequest) {
         .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, updated_at')
         .in('email', emails)
 
-      usersByEmail = new Map((usersByEmailData || []).map((user: any) => [String(user.email || '').toLowerCase(), user]))
+      usersByEmail = new Map((usersByEmailData || []).map((user: any) => [
+        String(user.email || '').toLowerCase(),
+        user
+      ]))
     }
 
     const foundUsers = Array.from(new Map([
@@ -64,6 +68,7 @@ export async function POST(req: NextRequest) {
     ]).values())
 
     const foundUserIds = foundUsers.map((user: any) => user.id)
+
     let qrByUserId = new Map<string, string>()
     const groupsByUserId = new Map<string, string[]>()
     const claimsByUserId = new Map<string, { days: Set<string>; lunches: number; dinners: number }>()
@@ -118,6 +123,7 @@ export async function POST(req: NextRequest) {
       const rowNumber = Number(row.rowNumber || row.row || 0) || null
       const userId = text(row.userId || row.user_id)
       const rowEmail = text(row.email).toLowerCase()
+
       const user = (userId && usersById.get(userId)) || (rowEmail && usersByEmail.get(rowEmail))
 
       if (!user) {
@@ -129,6 +135,7 @@ export async function POST(req: NextRequest) {
       }
 
       const claims = claimsByUserId.get(user.id)
+      const entitlementDays = Array.from(claims?.days || []).sort()
 
       return {
         rowNumber,
@@ -144,7 +151,8 @@ export async function POST(req: NextRequest) {
         aktivny: user.aktivny || '',
         groups: (groupsByUserId.get(user.id) || []).join('|'),
         qrCode: qrByUserId.get(user.id) || '',
-        entitlementDays: claims?.days.size || 0,
+        entitlementDays,
+        entitlementDaysCount: entitlementDays.length,
         lunchClaims: claims?.lunches || 0,
         dinnerClaims: claims?.dinners || 0,
         updatedAt: user.updated_at || ''
