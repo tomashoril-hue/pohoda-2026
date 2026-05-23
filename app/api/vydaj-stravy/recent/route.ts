@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
-import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
+import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function normalizeDate(value: any) {
@@ -22,21 +22,8 @@ function fullName(user: any) {
 async function issuerAccess(actorId: string) {
   const globalAccess = await getGlobalAccess(actorId)
 
-  const { data: memberships, error } = await supabaseServer
-    .from('group_members')
-    .select('group_id, role')
-    .eq('user_id', actorId)
-
-  if (error) throw new Error(error.message)
-
-  const groupIds = (memberships || [])
-    .filter((membership: any) => canIssueForGroupByRole(String(membership.role || '').toUpperCase(), globalAccess))
-    .map((membership: any) => membership.group_id)
-
   return {
-    global: globalAccess.canUsePersonalista,
-    groupIds,
-    canUse: globalAccess.canUsePersonalista || groupIds.length > 0
+    canUse: globalAccess.canAdminFoodIssue
   }
 }
 
@@ -63,67 +50,20 @@ export async function GET(req: NextRequest) {
     }
 
     const selectIssued = 'id, user_id, group_id, hromadny_vydaj_id, datum, typ_jedla, volba, sposob, issued_by, issued_at'
-    let issuedRows: any[] = []
+    const { data, error } = await supabaseServer
+      .from('vydaj_jedal')
+      .select(selectIssued)
+      .eq('datum', datum)
+      .eq('typ_jedla', typJedla)
+      .eq('status', 'VYDANE')
+      .order('issued_at', { ascending: false })
+      .limit(160)
 
-    if (access.global) {
-      const { data, error } = await supabaseServer
-        .from('vydaj_jedal')
-        .select(selectIssued)
-        .eq('datum', datum)
-        .eq('typ_jedla', typJedla)
-        .eq('status', 'VYDANE')
-        .order('issued_at', { ascending: false })
-        .limit(160)
-
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
-      }
-
-      issuedRows = data || []
-    } else {
-      const queries: any[] = [
-        supabaseServer
-          .from('vydaj_jedal')
-          .select(selectIssued)
-          .eq('datum', datum)
-          .eq('typ_jedla', typJedla)
-          .eq('status', 'VYDANE')
-          .eq('issued_by', actor.id)
-          .order('issued_at', { ascending: false })
-          .limit(80)
-      ]
-
-      if (access.groupIds.length > 0) {
-        queries.push(
-          supabaseServer
-            .from('vydaj_jedal')
-            .select(selectIssued)
-            .eq('datum', datum)
-            .eq('typ_jedla', typJedla)
-            .eq('status', 'VYDANE')
-            .in('group_id', access.groupIds)
-            .order('issued_at', { ascending: false })
-            .limit(160)
-        )
-      }
-
-      const results = await Promise.all(queries)
-      const queryError = results.find(result => result.error)?.error
-
-      if (queryError) {
-        return NextResponse.json({ error: queryError.message }, { status: 500 })
-      }
-
-      const rowMap = new Map<string, any>()
-      results.forEach(result => {
-        ;(result.data || []).forEach((row: any) => rowMap.set(row.id, row))
-      })
-      issuedRows = Array.from(rowMap.values())
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    const visibleBaseRows = issuedRows.filter((row: any) => {
-      return access.global || access.groupIds.includes(row.group_id) || row.issued_by === actor.id
-    })
+    const visibleBaseRows = data || []
     const bulkIssueIds = Array.from(
       new Set(
         visibleBaseRows
@@ -150,9 +90,6 @@ export async function GET(req: NextRequest) {
       const rowMap = new Map<string, any>()
       visibleBaseRows.forEach((row: any) => rowMap.set(row.id, row))
       ;(bulkRows || [])
-        .filter((row: any) => {
-          return access.global || access.groupIds.includes(row.group_id) || row.issued_by === actor.id
-        })
         .forEach((row: any) => rowMap.set(row.id, row))
       visibleRows = Array.from(rowMap.values())
     }

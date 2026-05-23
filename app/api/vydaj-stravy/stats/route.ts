@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
-import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
+import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 type FoodChoice = 'MASO' | 'VEGE' | 'DIETA' | 'NEZADANE'
@@ -51,21 +51,8 @@ async function fetchAll(buildQuery: (from: number, to: number) => any) {
 async function issuerAccess(actorId: string) {
   const globalAccess = await getGlobalAccess(actorId)
 
-  const memberships = await fetchAll((from, to) => supabaseServer
-    .from('group_members')
-    .select('group_id, role')
-    .eq('user_id', actorId)
-    .range(from, to)
-  )
-
-  const groupIds = memberships
-    .filter((membership: any) => canIssueForGroupByRole(String(membership.role || '').toUpperCase(), globalAccess))
-    .map((membership: any) => membership.group_id)
-
   return {
-    global: globalAccess.canUsePersonalista,
-    groupIds,
-    canUse: globalAccess.canUsePersonalista || groupIds.length > 0
+    canUse: globalAccess.canUseFoodIssue
   }
 }
 
@@ -103,46 +90,15 @@ export async function GET(req: NextRequest) {
 
     let userIds: string[] = []
 
-    if (!access.global) {
-      const membershipRows: any[] = []
-
-      for (const groupIdChunk of chunks(access.groupIds, 200)) {
-        const rows = await fetchAll((from, to) => supabaseServer
-          .from('group_members')
-          .select('user_id')
-          .in('group_id', groupIdChunk)
-          .range(from, to)
-        )
-
-        membershipRows.push(...rows)
-      }
-
-      userIds = Array.from(new Set(membershipRows.map((row: any) => row.user_id).filter(Boolean)))
-    }
-
     let entitlementRows: any[] = []
 
-    if (access.global) {
-      entitlementRows = await fetchAll((from, to) => supabaseServer
-        .from('user_food_entitlements')
-        .select('user_id, obed, vecera')
-        .eq('datum', datum)
-        .range(from, to)
-      )
-      userIds = Array.from(new Set(entitlementRows.map((row: any) => row.user_id).filter(Boolean)))
-    } else if (userIds.length > 0) {
-      for (const userIdChunk of chunks(userIds, 400)) {
-        const rows = await fetchAll((from, to) => supabaseServer
-          .from('user_food_entitlements')
-          .select('user_id, obed, vecera')
-          .eq('datum', datum)
-          .in('user_id', userIdChunk)
-          .range(from, to)
-        )
-
-        entitlementRows.push(...rows)
-      }
-    }
+    entitlementRows = await fetchAll((from, to) => supabaseServer
+      .from('user_food_entitlements')
+      .select('user_id, obed, vecera')
+      .eq('datum', datum)
+      .range(from, to)
+    )
+    userIds = Array.from(new Set(entitlementRows.map((row: any) => row.user_id).filter(Boolean)))
 
     if (userIds.length === 0) {
       return NextResponse.json({

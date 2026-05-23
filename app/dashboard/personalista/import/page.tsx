@@ -44,7 +44,7 @@ export default async function PersonalistaImportPage() {
   const manageableGroupIds = (memberships || [])
     .filter((membership: any) => {
       const role = String(membership.role || '').toUpperCase()
-      return membership.user_id === user.id && (role === 'MANAGER' || role === 'OWNER')
+      return membership.user_id === user.id && role === 'MANAGER'
     })
     .map((membership: any) => membership.group_id)
 

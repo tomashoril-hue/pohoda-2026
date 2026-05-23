@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getCurrentUser } from '@/lib/auth'
-import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
+import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import DashboardInvites from './DashboardInvites'
 
@@ -153,10 +153,7 @@ export default async function DashboardPage() {
   const hasEntitlementRow = !!entitlement
   const globalAccess = await getGlobalAccess(user.id)
   const canOpenPersonalista = globalAccess.canUsePersonalista
-  const canOpenFoodIssue = globalAccess.canUsePersonalista || (memberships || []).some((membership: any) => {
-    const role = String(membership.role || '').toUpperCase()
-    return canIssueForGroupByRole(role, globalAccess)
-  })
+  const canOpenFoodIssue = globalAccess.canUseFoodIssue
 
   const getSelection = (typJedla: string) => {
     return (selections || []).find((item: any) => item.typ_jedla === typJedla)
@@ -375,7 +372,7 @@ export default async function DashboardPage() {
                   const group = Array.isArray(m.groups) ? m.groups[0] : m.groups
                   const role = String(m.role || '').toUpperCase()
 
-                  const canOpenIssue = role === 'MANAGER' || role === 'POVERENY' || role === 'OWNER'
+                  const canOpenIssue = role === 'MANAGER' || role === 'POVERENY'
 
                   return (
                     <div key={m.group_id} style={styles.groupCard}>

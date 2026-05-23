@@ -55,7 +55,6 @@ export async function POST(req: NextRequest) {
 
     const myRole = String(membership?.role || '').toUpperCase()
 
-    // OWNER nechávame dočasne pre staré dáta. Nový model: skupinu spravuje MANAGER.
     const canCancelInvite = canManageGroupByRole(myRole, globalAccess)
 
     if (!canCancelInvite) {

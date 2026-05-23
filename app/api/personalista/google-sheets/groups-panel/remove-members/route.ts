@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     /**
      * Bezpečnostné pravidlo:
      * Cez Google Sheets odoberáme iba bežných MEMBER členov.
-     * OWNER/MANAGER členstvá nechávame nedotknuté.
+     * MANAGER členstvá nechávame nedotknuté.
      */
     const { data: membershipsBefore, error: countError } = await supabaseServer
       .from('group_members')

@@ -35,6 +35,7 @@ type Props = {
   canManage: boolean
   canInvite: boolean
   canIssue: boolean
+  canAssignManagers: boolean
 }
 
 type QrHistoryItem = {
@@ -53,7 +54,8 @@ export default function GroupDetailClient({
   invites,
   canManage,
   canInvite,
-  canIssue
+  canIssue,
+  canAssignManagers
 }: Props) {
   const router = useRouter()
   const qrInputRef = useRef<HTMLInputElement | null>(null)
@@ -697,7 +699,7 @@ export default function GroupDetailClient({
               >
                 <option value="MEMBER">MEMBER</option>
                 <option value="POVERENY">POVERENY</option>
-                <option value="MANAGER">MANAGER</option>
+                {canAssignManagers && <option value="MANAGER">MANAGER</option>}
               </select>
 
               <button
@@ -825,7 +827,7 @@ export default function GroupDetailClient({
                   >
                     <option value="MEMBER">MEMBER</option>
                     <option value="POVERENY">POVERENY</option>
-                    <option value="MANAGER">MANAGER</option>
+                    {canAssignManagers && <option value="MANAGER">MANAGER</option>}
                   </select>
                 ) : (
                   <span style={styles.roleBadge}>{member.role}</span>

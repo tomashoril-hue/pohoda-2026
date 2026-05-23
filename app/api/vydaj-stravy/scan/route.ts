@@ -88,28 +88,12 @@ function formatChoiceSummary(summary: { MASO: number; VEGE: number; DIETA: numbe
 }
 
 async function issuerAccess(actorId: string) {
-  const [globalAccess, membershipsResult] = await Promise.all([
-    getGlobalAccess(actorId),
-    supabaseServer
-      .from('group_members')
-      .select('group_id, role')
-      .eq('user_id', actorId)
-  ])
-
-  const { data: memberships, error } = membershipsResult
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  const groupIds = (memberships || [])
-    .filter((membership: any) => canIssueForGroupByRole(String(membership.role || '').toUpperCase(), globalAccess))
-    .map((membership: any) => membership.group_id)
+  const globalAccess = await getGlobalAccess(actorId)
 
   return {
-    global: globalAccess.canUsePersonalista,
-    groupIds,
-    canUse: globalAccess.canUsePersonalista || groupIds.length > 0
+    global: globalAccess.canUseFoodIssue,
+    groupIds: [] as string[],
+    canUse: globalAccess.canUseFoodIssue
   }
 }
 

@@ -51,7 +51,6 @@ export async function POST(req: NextRequest) {
     const effectiveGroupId = membership?.group_id || requestedGroupId
     const myRole = String(membership?.role || '').toUpperCase()
 
-    // OWNER nechávame dočasne pre staré dáta. Nový model: skupinu spravuje MANAGER.
     const canInvite = canManageGroupByRole(myRole, globalAccess)
 
     if (!canInvite) {

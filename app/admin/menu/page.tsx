@@ -27,7 +27,7 @@ export default async function AdminMenuPage() {
     .from('group_members')
     .select('role')
     .eq('user_id', user.id)
-    .in('role', ['OWNER', 'MANAGER'])
+    .eq('role', 'MANAGER')
     .limit(1)
     .maybeSingle()
 

@@ -17,9 +17,9 @@ export async function POST(req: NextRequest) {
 
     const access = await getGlobalAccess(actor.id)
 
-    if (!access.canUsePersonalista) {
+    if (!access.isAdmin) {
       return NextResponse.json(
-        { error: 'Globalne role moze menit iba ADMIN alebo PERSONALISTA.' },
+        { error: 'Globalne role moze menit iba ADMIN.' },
         { status: 403 }
       )
     }
@@ -34,15 +34,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Chyba osoba.' }, { status: 400 })
     }
 
-    const allowedRoles: string[] = access.isAdmin
-      ? ['ADMIN', 'PERSONALISTA']
-      : ['PERSONALISTA']
+    const allowedRoles = ['ADMIN', 'PERSONALISTA', 'ADMIN_VYDAJ', 'VYDAJ']
 
     const invalidRole = requestedRoles.find(role => !allowedRoles.includes(role))
 
     if (invalidRole) {
       return NextResponse.json(
-        { error: invalidRole === 'ADMIN' ? 'Rolu ADMIN moze menit iba ADMIN.' : 'Neplatna rola.' },
+        { error: 'Neplatna rola.' },
         { status: 403 }
       )
     }
@@ -56,18 +54,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: beforeError.message }, { status: 500 })
     }
 
-    const currentAdmin = (beforeRows || []).some((row: any) => row.role === 'ADMIN' && row.active)
     const nextRoles = new Set(requestedRoles)
-
-    if (!access.isAdmin && currentAdmin) {
-      nextRoles.add('ADMIN')
-    }
 
     const now = new Date().toISOString()
 
-    for (const role of ['ADMIN', 'PERSONALISTA']) {
-      if (role === 'ADMIN' && !access.isAdmin) continue
-
+    for (const role of allowedRoles) {
       const shouldBeActive = nextRoles.has(role)
 
       const { error: upsertError } = await supabaseServer
@@ -98,7 +89,7 @@ export async function POST(req: NextRequest) {
         entity_id: null,
         before_data: { rows: beforeRows || [] },
         after_data: {
-          roles: Array.from(nextRoles).filter(role => ['ADMIN', 'PERSONALISTA'].includes(role))
+          roles: Array.from(nextRoles).filter(role => allowedRoles.includes(role))
         }
       })
 

@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
 
     if (!canManageSource || !canManageTarget) {
       return NextResponse.json(
-        { error: 'Na presun členov musíš byť MANAGER alebo OWNER v oboch skupinách.' },
+        { error: 'Na presun členov musíš byť MANAGER v oboch skupinách.' },
         { status: 403 }
       )
     }
@@ -103,12 +103,12 @@ export async function POST(req: NextRequest) {
 
     const protectedUsers = movingMemberships.filter((item: any) => {
       const role = String(item.role || '').toUpperCase()
-      return role === 'MANAGER' || role === 'OWNER'
+      return role === 'MANAGER'
     })
 
     if (!globalAccess.isAdmin && protectedUsers.length > 0) {
       return NextResponse.json(
-        { error: 'Nie je možné presúvať členov s rolou MANAGER alebo OWNER cez tento rýchly presun.' },
+        { error: 'Nie je možné presúvať členov s rolou MANAGER cez tento rýchly presun.' },
         { status: 400 }
       )
     }

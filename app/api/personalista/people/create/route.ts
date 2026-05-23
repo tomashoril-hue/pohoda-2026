@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
         (myMemberships || [])
           .filter((membership: any) => {
             const role = String(membership.role || '').toUpperCase()
-            return role === 'MANAGER' || role === 'OWNER'
+            return role === 'MANAGER'
           })
           .map((membership: any) => membership.group_id)
       )
@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
 
       if (!hasAllPermissions) {
         return NextResponse.json(
-          { error: 'Na vytvorenie osoby musis byt MANAGER alebo OWNER vo vybranych skupinach.' },
+          { error: 'Na vytvorenie osoby musis byt MANAGER vo vybranych skupinach.' },
           { status: 403 }
         )
       }

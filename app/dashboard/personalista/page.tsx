@@ -107,7 +107,7 @@ export default async function PersonalistaPage() {
   const myManageableGroupIds = allMemberships
     .filter((membership: any) => {
       const role = String(membership.role || '').toUpperCase()
-      return membership.user_id === user.id && (role === 'MANAGER' || role === 'OWNER')
+      return membership.user_id === user.id && role === 'MANAGER'
     })
     .map((membership: any) => membership.group_id)
 
@@ -342,8 +342,8 @@ export default async function PersonalistaPage() {
   })
 
   const people = Array.from(personMap.values()).sort((a, b) => {
-    const aManager = a.groups.some((group: any) => group.role === 'MANAGER' || group.role === 'OWNER')
-    const bManager = b.groups.some((group: any) => group.role === 'MANAGER' || group.role === 'OWNER')
+    const aManager = a.groups.some((group: any) => group.role === 'MANAGER')
+    const bManager = b.groups.some((group: any) => group.role === 'MANAGER')
 
     if (aManager !== bManager) return aManager ? -1 : 1
 

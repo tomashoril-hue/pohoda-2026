@@ -13,23 +13,11 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const memberId = String(body.memberId || '').trim()
-    const action = String(body.action || '').trim()
-    const role = String(body.role || '').trim()
+    const action = String(body.action || '').trim().toUpperCase()
+    const role = String(body.role || '').trim().toUpperCase()
 
     if (!memberId) {
       return NextResponse.json({ error: 'Chýba člen.' }, { status: 400 })
-    }
-
-    const globalAccess = await getGlobalAccess(user.id)
-
-    const { data: myMembership } = await supabaseServer
-      .from('group_members')
-      .select('group_id, role')
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    if ((!myMembership && !globalAccess.isAdmin) || !canManageGroupByRole(myMembership?.role, globalAccess)) {
-      return NextResponse.json({ error: 'Nemáte oprávnenie.' }, { status: 403 })
     }
 
     const { data: targetMember } = await supabaseServer
@@ -42,14 +30,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Člen neexistuje.' }, { status: 404 })
     }
 
-    if (!globalAccess.isAdmin && targetMember.group_id !== myMembership?.group_id) {
-      return NextResponse.json({ error: 'Člen nie je vo vašej skupine.' }, { status: 403 })
+    const globalAccess = await getGlobalAccess(user.id)
+
+    const { data: myMembership, error: myMembershipError } = await supabaseServer
+      .from('group_members')
+      .select('group_id, role')
+      .eq('group_id', targetMember.group_id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (myMembershipError) {
+      return NextResponse.json({ error: myMembershipError.message }, { status: 500 })
+    }
+
+    if ((!myMembership && !globalAccess.isAdmin) || !canManageGroupByRole(myMembership?.role, globalAccess)) {
+      return NextResponse.json({ error: 'Nemáte oprávnenie.' }, { status: 403 })
     }
 
     if (action === 'REMOVE') {
-      if (targetMember.user_id === user.id) {
+      if (targetMember.user_id === user.id && !globalAccess.isAdmin) {
         return NextResponse.json(
-          { error: 'Nemôžete odobrať sám seba ako vlastníka.' },
+          { error: 'Nemôžete odobrať sám seba zo skupiny.' },
           { status: 400 }
         )
       }
@@ -67,8 +68,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'ROLE') {
-      if (!['MEMBER', 'MANAGER', 'OWNER'].includes(role)) {
+      if (!['MEMBER', 'POVERENY', 'MANAGER'].includes(role)) {
         return NextResponse.json({ error: 'Neplatná rola.' }, { status: 400 })
+      }
+
+      if (role === 'MANAGER' && !globalAccess.isAdmin) {
+        return NextResponse.json({ error: 'Rolu MANAGER môže nastaviť iba ADMIN.' }, { status: 403 })
       }
 
       const { error } = await supabaseServer

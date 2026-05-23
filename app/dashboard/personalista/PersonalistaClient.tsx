@@ -57,10 +57,9 @@ function foodLabel(value: string) {
 }
 
 function rolePriority(person: PersonItem) {
-  if (person.groups.some(group => group.role === 'OWNER')) return 0
-  if (person.groups.some(group => group.role === 'MANAGER')) return 1
-  if (person.groups.some(group => group.role === 'POVERENY')) return 2
-  return 3
+  if (person.groups.some(group => group.role === 'MANAGER')) return 0
+  if (person.groups.some(group => group.role === 'POVERENY')) return 1
+  return 2
 }
 
 function isoDateOffset(days: number) {
@@ -172,7 +171,9 @@ export default function PersonalistaClient({
   })
   const [roleForm, setRoleForm] = useState({
     admin: false,
-    personalista: false
+    personalista: false,
+    adminVydaj: false,
+    vydaj: false
   })
 
   const selectedPerson = selectedPersonId
@@ -218,7 +219,9 @@ export default function PersonalistaClient({
     setNfcForm({ tokenUid: '' })
     setRoleForm({
       admin: selectedPerson.globalRoles.includes('ADMIN'),
-      personalista: selectedPerson.globalRoles.includes('PERSONALISTA')
+      personalista: selectedPerson.globalRoles.includes('PERSONALISTA'),
+      adminVydaj: selectedPerson.globalRoles.includes('ADMIN_VYDAJ'),
+      vydaj: selectedPerson.globalRoles.includes('VYDAJ')
     })
     setDetailMessage('')
     setDetailMessageType('')
@@ -338,7 +341,7 @@ export default function PersonalistaClient({
       : ''
 
   const groupRoleOptions = canAssignSensitiveRoles
-    ? ['MEMBER', 'POVERENY', 'MANAGER', 'OWNER']
+    ? ['MEMBER', 'POVERENY', 'MANAGER']
     : ['MEMBER', 'POVERENY']
 
   const entitlementCalendarDates = useMemo(() => {
@@ -816,7 +819,9 @@ export default function PersonalistaClient({
 
     const roles = [
       ...(canAssignSensitiveRoles && roleForm.admin ? ['ADMIN'] : []),
-      ...(roleForm.personalista ? ['PERSONALISTA'] : [])
+      ...(roleForm.personalista ? ['PERSONALISTA'] : []),
+      ...(roleForm.adminVydaj ? ['ADMIN_VYDAJ'] : []),
+      ...(roleForm.vydaj ? ['VYDAJ'] : [])
     ]
 
     postDetailAction(
@@ -853,7 +858,7 @@ export default function PersonalistaClient({
 
       {!canManage && (
         <section style={styles.warningBox}>
-          Na túto obrazovku potrebuješ rolu MANAGER alebo OWNER aspoň v jednej skupine.
+          Na túto obrazovku potrebuješ rolu ADMIN alebo PERSONALISTA.
         </section>
       )}
 
@@ -1542,18 +1547,20 @@ export default function PersonalistaClient({
                   Upraviť skupiny
                 </button>
 
-                <button
-                  type="button"
-                  style={{
-                    ...styles.actionButton,
-                    borderColor: detailMode === 'roles' ? '#93c5fd' : '#e5e7eb',
+                {canAssignSensitiveRoles && (
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.actionButton,
+                      borderColor: detailMode === 'roles' ? '#93c5fd' : '#e5e7eb',
                     background: detailMode === 'roles' ? '#eff6ff' : '#fff'
-                  }}
-                  disabled={detailLoading}
-                  onClick={() => setDetailMode(detailMode === 'roles' ? '' : 'roles')}
-                >
+                    }}
+                    disabled={detailLoading}
+                    onClick={() => setDetailMode(detailMode === 'roles' ? '' : 'roles')}
+                  >
                   Globálne role
-                </button>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -1931,26 +1938,24 @@ export default function PersonalistaClient({
                 </div>
               )}
 
-              {detailMode === 'roles' && (
+              {detailMode === 'roles' && canAssignSensitiveRoles && (
                 <div style={styles.detailEditBox}>
                   <div style={styles.detailEditTitle}>Globálne role</div>
 
                   <div style={styles.checkList}>
-                    {canAssignSensitiveRoles && (
-                      <label style={styles.checkRow}>
-                        <input
-                          type="checkbox"
-                          checked={roleForm.admin}
-                          onChange={event => setRoleForm(prev => ({
-                            ...prev,
-                            admin: event.target.checked
-                          }))}
-                          disabled={detailLoading}
-                          style={styles.checkbox}
-                        />
-                        <span>ADMIN</span>
-                      </label>
-                    )}
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={roleForm.admin}
+                        onChange={event => setRoleForm(prev => ({
+                          ...prev,
+                          admin: event.target.checked
+                        }))}
+                        disabled={detailLoading}
+                        style={styles.checkbox}
+                      />
+                      <span>ADMIN</span>
+                    </label>
 
                     <label style={styles.checkRow}>
                       <input
@@ -1964,6 +1969,34 @@ export default function PersonalistaClient({
                         style={styles.checkbox}
                       />
                       <span>PERSONALISTA</span>
+                    </label>
+
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={roleForm.adminVydaj}
+                        onChange={event => setRoleForm(prev => ({
+                          ...prev,
+                          adminVydaj: event.target.checked
+                        }))}
+                        disabled={detailLoading}
+                        style={styles.checkbox}
+                      />
+                      <span>ADMIN_VYDAJ</span>
+                    </label>
+
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={roleForm.vydaj}
+                        onChange={event => setRoleForm(prev => ({
+                          ...prev,
+                          vydaj: event.target.checked
+                        }))}
+                        disabled={detailLoading}
+                        style={styles.checkbox}
+                      />
+                      <span>VYDAJ</span>
                     </label>
                   </div>
 

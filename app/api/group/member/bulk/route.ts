@@ -162,12 +162,19 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'ROLE') {
-      const allowedRoles = ['MEMBER', 'POVERENY', 'MANAGER', 'OWNER']
+      const allowedRoles = ['MEMBER', 'POVERENY', 'MANAGER']
 
       if (!allowedRoles.includes(role)) {
         return NextResponse.json(
           { error: 'Neplatná rola.' },
           { status: 400 }
+        )
+      }
+
+      if (role === 'MANAGER' && !globalAccess.isAdmin) {
+        return NextResponse.json(
+          { error: 'Rolu MANAGER moze nastavit iba ADMIN.' },
+          { status: 403 }
         )
       }
 

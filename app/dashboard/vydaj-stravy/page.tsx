@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
-import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
+import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import VydajStravyClient from './VydajStravyClient'
 
@@ -37,26 +37,7 @@ export default async function VydajStravyPage() {
 
   const access = await getGlobalAccess(user.id)
 
-  const { data: memberships, error: membershipsError } = await supabaseServer
-    .from('group_members')
-    .select('group_id, role, groups ( name )')
-    .eq('user_id', user.id)
-
-  if (membershipsError) {
-    return (
-      <main style={styles.page}>
-        <section style={styles.errorBox}>{membershipsError.message}</section>
-      </main>
-    )
-  }
-
-  const issueGroupIds = (memberships || [])
-    .filter((membership: any) => canIssueForGroupByRole(String(membership.role || '').toUpperCase(), access))
-    .map((membership: any) => membership.group_id)
-
-  const canUse = access.canUsePersonalista || issueGroupIds.length > 0
-
-  if (!canUse) {
+  if (!access.canUseFoodIssue) {
     return (
       <main style={styles.page}>
         <section style={styles.errorBox}>Nemáš oprávnenie vydávať stravu.</section>
@@ -66,19 +47,13 @@ export default async function VydajStravyPage() {
 
   const today = todayIsoDate()
 
-  let issuedQuery = supabaseServer
+  const { data: issuedToday } = await supabaseServer
     .from('vydaj_jedal')
     .select('typ_jedla, status')
     .eq('datum', today)
     .eq('status', 'VYDANE')
 
-  if (!access.canUsePersonalista) {
-    issuedQuery = issuedQuery.in('group_id', issueGroupIds)
-  }
-
-  const { data: issuedToday } = await issuedQuery
-
-  let activeIssuesQuery = supabaseServer
+  const { data: activeIssues } = await supabaseServer
     .from('hromadne_vydaje')
     .select(`
       id,
@@ -95,12 +70,6 @@ export default async function VydajStravyPage() {
     .in('status', ['READY', 'WAITING'])
     .order('typ_jedla', { ascending: true })
 
-  if (!access.canUsePersonalista) {
-    activeIssuesQuery = activeIssuesQuery.in('group_id', issueGroupIds)
-  }
-
-  const { data: activeIssues } = await activeIssuesQuery
-
   const counts = {
     obed: (issuedToday || []).filter((row: any) => row.typ_jedla === 'OBED').length,
     vecera: (issuedToday || []).filter((row: any) => row.typ_jedla === 'VECERA').length
@@ -112,6 +81,7 @@ export default async function VydajStravyPage() {
       initialDate={today}
       initialMeal={defaultMeal()}
       initialCounts={counts}
+      issueMode={access.canAdminFoodIssue ? 'FULL' : 'BASIC'}
       activeIssues={(activeIssues || []).map((issue: any) => {
         const group = Array.isArray(issue.groups) ? issue.groups[0] : issue.groups
 

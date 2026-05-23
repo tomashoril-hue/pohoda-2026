@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
-import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
+import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function normalizeChoice(value: any) {
@@ -11,24 +11,9 @@ function normalizeChoice(value: any) {
   return ''
 }
 
-async function canEditIssuedMeal(actorId: string, issuedMeal: any) {
-  if (issuedMeal.issued_by === actorId) return true
-
+async function canEditIssuedMeal(actorId: string) {
   const globalAccess = await getGlobalAccess(actorId)
-  if (globalAccess.canUsePersonalista) return true
-
-  if (!issuedMeal.group_id) return false
-
-  const { data: membership, error } = await supabaseServer
-    .from('group_members')
-    .select('role')
-    .eq('group_id', issuedMeal.group_id)
-    .eq('user_id', actorId)
-    .maybeSingle()
-
-  if (error) throw new Error(error.message)
-
-  return canIssueForGroupByRole(String(membership?.role || '').toUpperCase(), globalAccess)
+  return globalAccess.canAdminFoodIssue
 }
 
 export async function POST(req: NextRequest) {
@@ -65,7 +50,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Upravovať sa dá iba aktívny vydaný výdaj.' }, { status: 400 })
     }
 
-    const allowed = await canEditIssuedMeal(actor.id, issuedMeal)
+    const allowed = await canEditIssuedMeal(actor.id)
 
     if (!allowed) {
       return NextResponse.json({ error: 'Nemáš oprávnenie upraviť tento výdaj.' }, { status: 403 })

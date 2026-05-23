@@ -60,7 +60,7 @@ export default function GroupsClient({
       .filter(member => member.groupId === sourceGroupId)
       .filter(member => {
         const role = String(member.role || '').toUpperCase()
-        return role !== 'MANAGER' && role !== 'OWNER'
+        return role !== 'MANAGER'
       })
       .filter(member => {
         if (!q) return true

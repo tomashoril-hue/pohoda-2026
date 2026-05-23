@@ -40,16 +40,14 @@ export async function POST(req: NextRequest) {
 
     const myRole = String(membership.role || '').toUpperCase()
 
-    // Dočasne podporujeme aj OWNER, kým premigrujeme databázu.
-    // Po novom je hlavná rola MANAGER.
-    const isMainManager = myRole === 'MANAGER' || myRole === 'OWNER'
+    const isMainManager = myRole === 'MANAGER'
 
     if (isMainManager) {
       const { data: managers, error: managersError } = await supabaseServer
         .from('group_members')
         .select('id')
         .eq('group_id', membership.group_id)
-        .in('role', ['MANAGER', 'OWNER'])
+        .eq('role', 'MANAGER')
 
       if (managersError) {
         return NextResponse.json(

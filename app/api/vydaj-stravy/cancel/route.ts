@@ -1,26 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
-import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
+import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
-async function canCancelIssuedMeal(actorId: string, issuedMeal: any) {
-  if (issuedMeal.issued_by === actorId) return true
-
+async function canCancelIssuedMeal(actorId: string) {
   const globalAccess = await getGlobalAccess(actorId)
-  if (globalAccess.canUsePersonalista) return true
-
-  if (!issuedMeal.group_id) return false
-
-  const { data: membership, error } = await supabaseServer
-    .from('group_members')
-    .select('role')
-    .eq('group_id', issuedMeal.group_id)
-    .eq('user_id', actorId)
-    .maybeSingle()
-
-  if (error) throw new Error(error.message)
-
-  return canIssueForGroupByRole(String(membership?.role || '').toUpperCase(), globalAccess)
+  return globalAccess.canAdminFoodIssue
 }
 
 export async function POST(req: NextRequest) {
@@ -60,7 +45,7 @@ export async function POST(req: NextRequest) {
     }
 
     const allowedChecks = await Promise.all(
-      issuedMeals.map((issuedMeal: any) => canCancelIssuedMeal(actor.id, issuedMeal))
+      issuedMeals.map(() => canCancelIssuedMeal(actor.id))
     )
 
     if (allowedChecks.some(allowed => !allowed)) {

@@ -1,12 +1,16 @@
 import { supabaseServer } from '@/lib/supabaseServer'
 
-export type GlobalRole = 'ADMIN' | 'PERSONALISTA'
+export type GlobalRole = 'ADMIN' | 'PERSONALISTA' | 'VYDAJ' | 'ADMIN_VYDAJ'
 
 export type GlobalAccess = {
   roles: GlobalRole[]
   isAdmin: boolean
   isPersonalista: boolean
+  isVydaj: boolean
+  isAdminVydaj: boolean
   canUsePersonalista: boolean
+  canUseFoodIssue: boolean
+  canAdminFoodIssue: boolean
 }
 
 export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
@@ -18,23 +22,31 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
 
   const roles = (data || [])
     .map(item => String(item.role || '').toUpperCase())
-    .filter((role): role is GlobalRole => role === 'ADMIN' || role === 'PERSONALISTA')
+    .filter((role): role is GlobalRole => {
+      return role === 'ADMIN' || role === 'PERSONALISTA' || role === 'VYDAJ' || role === 'ADMIN_VYDAJ'
+    })
 
   const isAdmin = roles.includes('ADMIN')
   const isPersonalista = roles.includes('PERSONALISTA')
+  const isVydaj = roles.includes('VYDAJ')
+  const isAdminVydaj = roles.includes('ADMIN_VYDAJ')
 
   return {
     roles,
     isAdmin,
     isPersonalista,
-    canUsePersonalista: isAdmin || isPersonalista
+    isVydaj,
+    isAdminVydaj,
+    canUsePersonalista: isAdmin || isPersonalista,
+    canUseFoodIssue: isAdmin || isAdminVydaj || isVydaj,
+    canAdminFoodIssue: isAdmin || isAdminVydaj
   }
 }
 
 export function canManageGroupByRole(role: string, access?: Pick<GlobalAccess, 'isAdmin'>) {
   const normalized = String(role || '').toUpperCase()
 
-  return Boolean(access?.isAdmin) || normalized === 'MANAGER' || normalized === 'OWNER'
+  return Boolean(access?.isAdmin) || normalized === 'MANAGER'
 }
 
 export function canIssueForGroupByRole(role: string, access?: Pick<GlobalAccess, 'isAdmin'>) {
@@ -43,7 +55,6 @@ export function canIssueForGroupByRole(role: string, access?: Pick<GlobalAccess,
   return (
     Boolean(access?.isAdmin) ||
     normalized === 'MANAGER' ||
-    normalized === 'POVERENY' ||
-    normalized === 'OWNER'
+    normalized === 'POVERENY'
   )
 }

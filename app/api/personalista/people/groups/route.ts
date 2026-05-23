@@ -13,7 +13,6 @@ function cleanRole(value: any, isGlobalManager: boolean) {
   if (role === 'MEMBER') return 'MEMBER'
   if (role === 'POVERENY') return 'POVERENY'
   if (isGlobalManager && role === 'MANAGER') return 'MANAGER'
-  if (isGlobalManager && role === 'OWNER') return 'OWNER'
 
   return ''
 }
@@ -52,7 +51,7 @@ export async function POST(req: NextRequest) {
 
     if (!isGlobalManager && !access.manageableGroupIds.includes(groupId)) {
       return NextResponse.json(
-        { error: 'Tuto skupinu moze menit iba jej MANAGER alebo OWNER.' },
+        { error: 'Tuto skupinu moze menit iba jej MANAGER.' },
         { status: 403 }
       )
     }

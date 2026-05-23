@@ -41,7 +41,6 @@ export async function POST(req: Request) {
     const myRole = String(myMembership?.role || '').toUpperCase()
 
     // Pridať cez QR do skupiny môže iba MANAGER.
-    // OWNER nechávame dočasne, kým premigrujeme staré dáta v databáze.
     const canAddMemberByQr = canManageGroupByRole(myRole, globalAccess)
 
     if ((!myMembership && !globalAccess.isAdmin) || !canAddMemberByQr) {

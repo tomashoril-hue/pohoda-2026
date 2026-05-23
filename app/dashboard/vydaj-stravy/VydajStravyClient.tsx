@@ -113,6 +113,7 @@ export default function VydajStravyClient({
   initialDate,
   initialMeal,
   initialCounts,
+  issueMode,
   activeIssues
 }: {
   actorName: string
@@ -122,6 +123,7 @@ export default function VydajStravyClient({
     obed: number
     vecera: number
   }
+  issueMode: 'FULL' | 'BASIC'
   activeIssues: ActiveIssue[]
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -155,6 +157,7 @@ export default function VydajStravyClient({
   const [editLoading, setEditLoading] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
 
+  const fullMode = issueMode === 'FULL'
   const lastItem = history[0] || null
   const selectedCancelTopItems = recentIssued.filter(item => selectedCancelIds.includes(item.issuedId))
   const selectedCancelChildItems = recentIssued.flatMap(item => {
@@ -284,7 +287,7 @@ export default function VydajStravyClient({
 
   const refreshIssueDataInBackground = () => {
     Promise.all([
-      refreshRecentIssued(),
+      fullMode ? refreshRecentIssued() : Promise.resolve(),
       refreshStats()
     ]).catch(() => {
       // Obnova prehľadov nesmie blokovať ďalšie skenovanie.
@@ -356,9 +359,13 @@ export default function VydajStravyClient({
 
   useEffect(() => {
     setSelectedCancelIds([])
-    refreshRecentIssued()
+    if (fullMode) {
+      refreshRecentIssued()
+    } else {
+      setRecentIssued([])
+    }
     refreshStats()
-  }, [datum, typJedla])
+  }, [datum, typJedla, fullMode])
 
   const submitQr = async (manualValue?: string) => {
     const cleanQr = String(manualValue ?? qrValue).trim()
@@ -788,6 +795,7 @@ export default function VydajStravyClient({
         </div>
       </section>
 
+      {fullMode && (
       <section style={styles.actionsRow}>
         <button type="button" onClick={() => setCancelOpen(true)} style={styles.cancelButton}>
           Storno výdajov
@@ -918,8 +926,9 @@ export default function VydajStravyClient({
           </div>
         )}
       </section>
+      )}
 
-      {activeIssues.length > 0 && (
+      {fullMode && activeIssues.length > 0 && (
         <section style={styles.activeBox}>
           <h2 style={styles.sectionTitle}>Aktívne prípravy</h2>
           <div style={styles.activeList}>
