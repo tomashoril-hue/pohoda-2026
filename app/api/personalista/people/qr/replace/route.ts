@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Chyba osoba.' }, { status: 400 })
     }
 
-    if (mode !== 'FREE' && mode !== 'SPECIFIC') {
+    if (mode !== 'FREE' && mode !== 'SPECIFIC' && mode !== 'RESTORE') {
       return NextResponse.json({ error: 'Neplatny sposob priradenia QR.' }, { status: 400 })
     }
 
@@ -41,20 +41,47 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const rpcName =
+      mode === 'SPECIFIC'
+        ? 'replace_user_qr_any_code'
+        : mode === 'RESTORE'
+          ? 'restore_last_user_pool_qr'
+          : 'replace_user_qr_from_pool'
+
+    const rpcParams =
+      mode === 'SPECIFIC'
+        ? {
+            p_user_id: userId,
+            p_qr_code: qrCode,
+            p_assigned_by: actor.id,
+            p_note: 'QR bol vymeneny za nacitany kod.'
+          }
+        : mode === 'RESTORE'
+          ? {
+              p_user_id: userId,
+              p_assigned_by: actor.id,
+              p_note: 'Obnoveny posledny rezervovany databazovy QR.'
+            }
+          : {
+              p_user_id: userId,
+              p_qr_code: null,
+              p_assigned_by: actor.id,
+              p_note: 'QR bol vymeneny za novy volny kod z qr_codes.'
+            }
+
     const { data: assignedRows, error: assignError } = await supabaseServer
-      .rpc('replace_user_qr_from_pool', {
-        p_user_id: userId,
-        p_qr_code: mode === 'SPECIFIC' ? qrCode : null,
-        p_assigned_by: actor.id,
-        p_note: mode === 'SPECIFIC'
-          ? 'QR bol vymeneny za konkretny kod z qr_codes.'
-          : 'QR bol vymeneny za prvy volny kod z qr_codes.'
-      })
+      .rpc(rpcName, rpcParams)
 
     if (assignError) {
+      const alreadyAssigned = String(assignError.message || '').includes('QR_ALREADY_ASSIGNED')
+
       return NextResponse.json(
-        { error: assignError.message || 'QR kod sa nepodarilo priradit.' },
-        { status: 500 }
+        {
+          error: alreadyAssigned
+            ? 'Tento QR kod uz bol pouzity pri inej osobe.'
+            : assignError.message || 'QR kod sa nepodarilo priradit.'
+        },
+        { status: alreadyAssigned ? 409 : 500 }
       )
     }
 
@@ -66,8 +93,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error: mode === 'SPECIFIC'
-            ? 'Tento QR kod nie je volny v tabulke qr_codes alebo uz bol pouzity.'
-            : 'Nie je dostupny ziadny volny QR kod v tabulke qr_codes.'
+            ? 'Tento QR kod uz bol pouzity pri inej osobe.'
+            : mode === 'RESTORE'
+              ? 'Osoba nema rezervovany povodny databazovy QR kod na obnovenie.'
+              : 'Nie je dostupny ziadny volny QR kod v tabulke qr_codes.'
         },
         { status: 409 }
       )
@@ -78,7 +107,12 @@ export async function POST(req: NextRequest) {
       .insert({
         actor_user_id: actor.id,
         target_user_id: userId,
-        action: mode === 'SPECIFIC' ? 'PERSON_QR_REPLACED_SPECIFIC' : 'PERSON_QR_REPLACED_FREE',
+        action:
+          mode === 'SPECIFIC'
+            ? 'PERSON_QR_REPLACED_ANY'
+            : mode === 'RESTORE'
+              ? 'PERSON_QR_RESTORED_POOL'
+              : 'PERSON_QR_REPLACED_FREE',
         entity_table: 'user_qr_codes',
         entity_id: null,
         after_data: {
@@ -91,7 +125,9 @@ export async function POST(req: NextRequest) {
       ok: true,
       message: mode === 'SPECIFIC'
         ? 'QR bol vymeneny za nacitany kod.'
-        : 'QR bol vymeneny za volny kod zo zoznamu.'
+        : mode === 'RESTORE'
+          ? 'Povodny databazovy QR bol obnoveny.'
+          : 'QR bol vymeneny za novy volny kod z databazy.'
     })
   } catch (err: any) {
     return NextResponse.json(

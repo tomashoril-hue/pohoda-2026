@@ -775,7 +775,7 @@ export default function PersonalistaClient({
     )
   }
 
-  const replaceQr = (mode: 'FREE' | 'SPECIFIC') => {
+  const replaceQr = (mode: 'FREE' | 'SPECIFIC' | 'RESTORE') => {
     if (!selectedPerson) return
 
     if (mode === 'SPECIFIC' && !qrForm.qrCode.trim()) {
@@ -784,11 +784,16 @@ export default function PersonalistaClient({
       return
     }
 
-    const ok = window.confirm(
-      selectedPerson.activeQrCount > 0
-        ? 'Aktívny QR tejto osoby sa zneplatní a nahradí novým. Pokračovať?'
-        : 'Osobe sa priradí nový QR. Pokračovať?'
-    )
+    const confirmText =
+      mode === 'RESTORE'
+        ? 'Obnoviť posledný rezervovaný databázový QR tejto osoby? Aktuálny QR sa deaktivuje.'
+        : mode === 'FREE'
+          ? 'Priradiť nový voľný QR z databázy? Aktuálny QR sa deaktivuje a databázový QR zostane pri osobe rezervovaný.'
+          : selectedPerson.activeQrCount > 0
+            ? 'Aktívny QR tejto osoby sa deaktivuje a nahradí načítaným QR. Ak bol pôvodný QR z databázy, zostane rezervovaný pre túto osobu. Pokračovať?'
+            : 'Osobe sa priradí načítaný QR. Pokračovať?'
+
+    const ok = window.confirm(confirmText)
 
     if (!ok) return
 
@@ -2205,7 +2210,7 @@ export default function PersonalistaClient({
                 <div style={styles.detailEditBox}>
                   <div style={styles.detailEditTitle}>QR zo zoznamu</div>
                   <div style={styles.optionHint}>
-                    Používa sa iba voľný kód z tabuľky qr_codes. Hodnotu aktuálneho QR nezobrazujeme.
+                    Databázové QR zostáva po prepnutí na náramok rezervované pre tú istú osobu.
                   </div>
 
                   <button
@@ -2214,7 +2219,16 @@ export default function PersonalistaClient({
                     disabled={detailLoading}
                     onClick={() => replaceQr('FREE')}
                   >
-                    Priradiť prvý voľný QR
+                    Priradiť nový voľný QR z databázy
+                  </button>
+
+                  <button
+                    type="button"
+                    style={styles.lightButton}
+                    disabled={detailLoading}
+                    onClick={() => replaceQr('RESTORE')}
+                  >
+                    Obnoviť pôvodný databázový QR
                   </button>
 
                   <button
