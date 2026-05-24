@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { CSSProperties } from 'react'
+import jsQR from 'jsqr'
 
 type Member = {
   id: string
@@ -47,6 +48,47 @@ type QrHistoryItem = {
   time: string
 }
 
+function makeCanvasImage(video: HTMLVideoElement, canvas: HTMLCanvasElement, maxWidth = 720) {
+  const videoWidth = video.videoWidth || 1280
+  const videoHeight = video.videoHeight || 720
+  const scale = Math.min(1, maxWidth / videoWidth)
+  const width = Math.max(1, Math.round(videoWidth * scale))
+  const height = Math.max(1, Math.round(videoHeight * scale))
+
+  canvas.width = width
+  canvas.height = height
+
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) return null
+
+  ctx.drawImage(video, 0, 0, width, height)
+  return ctx.getImageData(0, 0, width, height)
+}
+
+function thresholdImage(imageData: ImageData) {
+  const source = imageData.data
+  const output = new Uint8ClampedArray(source.length)
+  let total = 0
+  const pixels = source.length / 4
+
+  for (let index = 0; index < source.length; index += 4) {
+    total += source[index] * 0.299 + source[index + 1] * 0.587 + source[index + 2] * 0.114
+  }
+
+  const threshold = total / pixels
+
+  for (let index = 0; index < source.length; index += 4) {
+    const luminance = source[index] * 0.299 + source[index + 1] * 0.587 + source[index + 2] * 0.114
+    const value = luminance >= threshold ? 255 : 0
+    output[index] = value
+    output[index + 1] = value
+    output[index + 2] = value
+    output[index + 3] = 255
+  }
+
+  return output
+}
+
 export default function GroupDetailClient({
   group,
   myRole,
@@ -60,11 +102,15 @@ export default function GroupDetailClient({
   const router = useRouter()
   const qrInputRef = useRef<HTMLInputElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const controlsRef = useRef<{ stop: () => void } | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const scanLoopRef = useRef<number | null>(null)
+  const zxingReaderRef = useRef<BrowserQRCodeReader | null>(null)
   const cancelledRef = useRef(false)
   const qrBusyRef = useRef(false)
   const lastScanTextRef = useRef('')
   const lastScanTimeRef = useRef(0)
+  const scanAttemptRef = useRef(0)
   const audioCtxRef = useRef<AudioContext | null>(null)
 
   const [search, setSearch] = useState('')
@@ -398,12 +444,19 @@ export default function GroupDetailClient({
     cancelledRef.current = true
 
     try {
-      controlsRef.current?.stop()
+      if (scanLoopRef.current) {
+        window.clearTimeout(scanLoopRef.current)
+        scanLoopRef.current = null
+      }
+
+      streamRef.current?.getTracks().forEach(track => track.stop())
+      streamRef.current = null
+      zxingReaderRef.current = null
     } catch {
       // Ignorujeme vypnutie už zastavenej kamery.
     }
 
-    controlsRef.current = null
+    streamRef.current = null
 
     if (videoRef.current) {
       videoRef.current.srcObject = null
@@ -497,6 +550,66 @@ export default function GroupDetailClient({
     }
   }
 
+  const tryZxingQr = () => {
+    const video = videoRef.current
+    if (!video || video.readyState < 2) return ''
+
+    try {
+      if (!zxingReaderRef.current) {
+        zxingReaderRef.current = new BrowserQRCodeReader()
+      }
+
+      const result = zxingReaderRef.current.decode(video)
+      return String(result?.getText?.() || '').trim()
+    } catch {
+      return ''
+    }
+  }
+
+  const tryPreprocessedQr = () => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+
+    if (!video || !canvas || video.readyState < 2) return ''
+
+    const image = makeCanvasImage(video, canvas)
+    if (!image) return ''
+
+    const processed = thresholdImage(image)
+    const result = jsQR(processed, image.width, image.height, { inversionAttempts: 'attemptBoth' })
+
+    return String(result?.data || '').trim()
+  }
+
+  const scanCameraFrame = async () => {
+    if (cancelledRef.current || qrBusyRef.current) return
+
+    scanAttemptRef.current += 1
+
+    const zxingValue = tryZxingQr()
+    if (zxingValue) {
+      await submitGroupQr(zxingValue, true)
+      return
+    }
+
+    // Preprocessing je drahší, preto ho púšťame občas ako fallback pre tmavé a inverzné QR.
+    if (scanAttemptRef.current % 3 !== 0) return
+
+    const processedValue = tryPreprocessedQr()
+    if (processedValue) {
+      await submitGroupQr(processedValue, true)
+    }
+  }
+
+  const scheduleCameraScan = () => {
+    if (cancelledRef.current) return
+
+    scanLoopRef.current = window.setTimeout(async () => {
+      await scanCameraFrame()
+      scheduleCameraScan()
+    }, 80)
+  }
+
   const startCamera = async () => {
     setCameraReady(false)
     setCameraStatus('Spúšťam kameru...')
@@ -508,24 +621,23 @@ export default function GroupDetailClient({
         return
       }
 
-      const reader = new BrowserQRCodeReader()
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      })
 
-      const controls = await reader.decodeFromVideoDevice(
-        undefined,
-        videoRef.current,
-        async result => {
-          if (cancelledRef.current) return
+      streamRef.current = stream
+      videoRef.current.srcObject = stream
+      await videoRef.current.play()
 
-          const text = String(result?.getText?.() || '').trim()
-          if (!text) return
-
-          await submitGroupQr(text, true)
-        }
-      )
-
-      controlsRef.current = controls
+      scanAttemptRef.current = 0
       setCameraReady(true)
       setCameraStatus('Kamera je zapnutá. Skenuj QR kódy postupne.')
+      scheduleCameraScan()
     } catch (err) {
       const text = err instanceof Error ? err.message : 'Kameru sa nepodarilo zapnúť.'
       setCameraReady(false)
@@ -916,6 +1028,7 @@ export default function GroupDetailClient({
                 muted
                 autoPlay
               />
+              <canvas ref={canvasRef} style={styles.hiddenCanvas} />
 
               <div
                 style={{
@@ -1501,5 +1614,8 @@ const styles: Record<string, CSSProperties> = {
     gap: 2,
     fontSize: 12,
     fontWeight: 850
+  },
+  hiddenCanvas: {
+    display: 'none'
   }
 }
