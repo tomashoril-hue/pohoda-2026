@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { CSSProperties } from 'react'
+import { BrowserQRCodeReader } from '@zxing/browser'
+import jsQR from 'jsqr'
 
 type GroupItem = {
   id: string
@@ -98,6 +100,47 @@ function shortDateLabel(value: string) {
   })
 }
 
+function makeCanvasImage(video: HTMLVideoElement, canvas: HTMLCanvasElement, maxWidth = 720) {
+  const videoWidth = video.videoWidth || 1280
+  const videoHeight = video.videoHeight || 720
+  const scale = Math.min(1, maxWidth / videoWidth)
+  const width = Math.max(1, Math.round(videoWidth * scale))
+  const height = Math.max(1, Math.round(videoHeight * scale))
+
+  canvas.width = width
+  canvas.height = height
+
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) return null
+
+  ctx.drawImage(video, 0, 0, width, height)
+  return ctx.getImageData(0, 0, width, height)
+}
+
+function thresholdImage(imageData: ImageData) {
+  const source = imageData.data
+  const output = new Uint8ClampedArray(source.length)
+  let total = 0
+  const pixels = source.length / 4
+
+  for (let index = 0; index < source.length; index += 4) {
+    total += source[index] * 0.299 + source[index + 1] * 0.587 + source[index + 2] * 0.114
+  }
+
+  const threshold = total / pixels
+
+  for (let index = 0; index < source.length; index += 4) {
+    const luminance = source[index] * 0.299 + source[index + 1] * 0.587 + source[index + 2] * 0.114
+    const value = luminance >= threshold ? 255 : 0
+    output[index] = value
+    output[index + 1] = value
+    output[index + 2] = value
+    output[index + 3] = 255
+  }
+
+  return output
+}
+
 export default function PersonalistaClient({
   people,
   groups,
@@ -114,6 +157,13 @@ export default function PersonalistaClient({
   canAssignSensitiveRoles: boolean
 }) {
   const router = useRouter()
+  const qrScannerVideoRef = useRef<HTMLVideoElement | null>(null)
+  const qrScannerCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const qrScannerStreamRef = useRef<MediaStream | null>(null)
+  const qrScannerLoopRef = useRef<number | null>(null)
+  const qrScannerReaderRef = useRef<BrowserQRCodeReader | null>(null)
+  const qrScannerCancelledRef = useRef(false)
+  const qrScannerAttemptRef = useRef(0)
 
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState('ALL')
@@ -162,6 +212,9 @@ export default function PersonalistaClient({
   const [qrForm, setQrForm] = useState({
     qrCode: ''
   })
+  const [qrScannerOpen, setQrScannerOpen] = useState(false)
+  const [qrScannerReady, setQrScannerReady] = useState(false)
+  const [qrScannerStatus, setQrScannerStatus] = useState('Kamera je vypnutá.')
   const [groupForm, setGroupForm] = useState({
     groupId: '',
     role: 'MEMBER'
@@ -749,6 +802,143 @@ export default function PersonalistaClient({
       'QR sa nepodarilo vymeniť.'
     )
   }
+
+  const stopQrScanner = () => {
+    qrScannerCancelledRef.current = true
+
+    if (qrScannerLoopRef.current) {
+      window.clearTimeout(qrScannerLoopRef.current)
+      qrScannerLoopRef.current = null
+    }
+
+    qrScannerStreamRef.current?.getTracks().forEach(track => track.stop())
+    qrScannerStreamRef.current = null
+    qrScannerReaderRef.current = null
+
+    if (qrScannerVideoRef.current) {
+      qrScannerVideoRef.current.srcObject = null
+    }
+
+    setQrScannerReady(false)
+    setQrScannerStatus('Kamera je vypnutá.')
+  }
+
+  const acceptScannedQr = (value: string) => {
+    const cleanQr = value.trim()
+    if (!cleanQr) return
+
+    setQrForm({ qrCode: cleanQr })
+    setQrScannerStatus('QR bol načítaný do poľa.')
+    setDetailMessage('QR bol načítaný. Výmenu potvrď tlačidlom.')
+    setDetailMessageType('ok')
+    setQrScannerOpen(false)
+    stopQrScanner()
+  }
+
+  const tryQrScannerZxing = () => {
+    const video = qrScannerVideoRef.current
+    if (!video || video.readyState < 2) return ''
+
+    try {
+      if (!qrScannerReaderRef.current) {
+        qrScannerReaderRef.current = new BrowserQRCodeReader()
+      }
+
+      const result = qrScannerReaderRef.current.decode(video)
+      return String(result?.getText?.() || '').trim()
+    } catch {
+      return ''
+    }
+  }
+
+  const tryQrScannerPreprocessed = () => {
+    const video = qrScannerVideoRef.current
+    const canvas = qrScannerCanvasRef.current
+
+    if (!video || !canvas || video.readyState < 2) return ''
+
+    const image = makeCanvasImage(video, canvas)
+    if (!image) return ''
+
+    const processed = thresholdImage(image)
+    const result = jsQR(processed, image.width, image.height, { inversionAttempts: 'attemptBoth' })
+
+    return String(result?.data || '').trim()
+  }
+
+  const scanQrScannerFrame = () => {
+    if (qrScannerCancelledRef.current || detailLoading) return
+
+    qrScannerAttemptRef.current += 1
+
+    const zxingValue = tryQrScannerZxing()
+    if (zxingValue) {
+      acceptScannedQr(zxingValue)
+      return
+    }
+
+    if (qrScannerAttemptRef.current % 3 !== 0) return
+
+    const processedValue = tryQrScannerPreprocessed()
+    if (processedValue) {
+      acceptScannedQr(processedValue)
+    }
+  }
+
+  const scheduleQrScanner = () => {
+    if (qrScannerCancelledRef.current) return
+
+    qrScannerLoopRef.current = window.setTimeout(() => {
+      scanQrScannerFrame()
+      scheduleQrScanner()
+    }, 80)
+  }
+
+  const startQrScanner = async () => {
+    setQrScannerReady(false)
+    setQrScannerStatus('Spúšťam kameru...')
+    qrScannerCancelledRef.current = false
+
+    try {
+      if (!qrScannerVideoRef.current) {
+        setQrScannerStatus('Video prvok nie je pripravený.')
+        return
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      })
+
+      qrScannerStreamRef.current = stream
+      qrScannerVideoRef.current.srcObject = stream
+      await qrScannerVideoRef.current.play()
+
+      qrScannerAttemptRef.current = 0
+      setQrScannerReady(true)
+      setQrScannerStatus('Kamera je zapnutá. Skenuj QR kód.')
+      scheduleQrScanner()
+    } catch (err) {
+      const text = err instanceof Error ? err.message : 'Kameru sa nepodarilo zapnúť.'
+      setQrScannerReady(false)
+      setQrScannerStatus(text)
+    }
+  }
+
+  useEffect(() => {
+    if (!qrScannerOpen) {
+      stopQrScanner()
+      return
+    }
+
+    startQrScanner()
+
+    return () => stopQrScanner()
+  }, [qrScannerOpen])
 
   const updateStatus = (active: boolean) => {
     if (!selectedPerson) return
@@ -2027,6 +2217,15 @@ export default function PersonalistaClient({
                     Priradiť prvý voľný QR
                   </button>
 
+                  <button
+                    type="button"
+                    style={styles.lightButton}
+                    disabled={detailLoading}
+                    onClick={() => setQrScannerOpen(true)}
+                  >
+                    Spustiť scanner QR
+                  </button>
+
                   <label style={styles.field}>
                     <span>Nový QR z náramku alebo zo zoznamu</span>
                     <input
@@ -2106,6 +2305,61 @@ export default function PersonalistaClient({
           )}
         </aside>
       </section>
+
+      {qrScannerOpen && (
+        <div style={styles.qrScannerOverlay} onClick={() => setQrScannerOpen(false)}>
+          <div style={styles.qrScannerModal} onClick={event => event.stopPropagation()}>
+            <div style={styles.qrScannerHeader}>
+              <div>
+                <b>Načítať nový QR</b>
+                <span>Skenuj QR kód z náramku alebo zo zoznamu.</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setQrScannerOpen(false)}
+                style={styles.qrScannerCloseButton}
+                disabled={detailLoading}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={styles.qrScannerCameraBox}>
+              <video
+                ref={qrScannerVideoRef}
+                style={styles.qrScannerVideo}
+                playsInline
+                muted
+                autoPlay
+              />
+              <canvas ref={qrScannerCanvasRef} style={styles.hiddenCanvas} />
+
+              <div
+                style={{
+                  ...styles.qrScannerFrame,
+                  borderColor: qrScannerReady ? '#22c55e' : '#f97316'
+                }}
+              />
+
+              {!qrScannerReady && (
+                <div style={styles.qrScannerCameraOverlay}>
+                  {qrScannerStatus}
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{
+                ...styles.qrScannerStatus,
+                color: qrScannerReady ? '#166534' : '#9a3412'
+              }}
+            >
+              {qrScannerStatus}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
@@ -2868,6 +3122,87 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950,
     textDecoration: 'none',
     cursor: 'pointer'
+  },
+  qrScannerOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(17, 24, 39, 0.55)',
+    zIndex: 80,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16
+  },
+  qrScannerModal: {
+    width: '100%',
+    maxWidth: 460,
+    maxHeight: '90vh',
+    overflow: 'auto',
+    background: '#fff',
+    borderRadius: 18,
+    padding: 14,
+    boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
+    display: 'grid',
+    gap: 12
+  },
+  qrScannerHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 10,
+    alignItems: 'flex-start'
+  },
+  qrScannerCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    border: '1px solid #e5e7eb',
+    background: '#f3f4f6',
+    color: '#111827',
+    fontSize: 22,
+    fontWeight: 900,
+    lineHeight: 1,
+    cursor: 'pointer'
+  },
+  qrScannerCameraBox: {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: '1 / 1',
+    background: '#111827',
+    borderRadius: 16,
+    overflow: 'hidden'
+  },
+  qrScannerVideo: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover'
+  },
+  qrScannerFrame: {
+    position: 'absolute',
+    inset: 28,
+    border: '4px solid',
+    borderRadius: 18,
+    pointerEvents: 'none',
+    boxShadow: '0 0 0 999px rgba(0,0,0,0.22)'
+  },
+  qrScannerCameraOverlay: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textAlign: 'center',
+    padding: 16,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 900,
+    background: 'rgba(17,24,39,0.55)'
+  },
+  qrScannerStatus: {
+    fontSize: 12,
+    fontWeight: 850
+  },
+  hiddenCanvas: {
+    display: 'none'
   },
   emptyState: {
     padding: 18,
