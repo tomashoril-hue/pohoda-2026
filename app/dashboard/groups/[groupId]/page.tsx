@@ -137,7 +137,7 @@ export default async function GroupDetailPage({
       canManage={canManage}
       canInvite={canInvite}
       canIssue={canIssue}
-      canAssignManagers={globalAccess.isAdmin}
+      canAssignManagers={globalAccess.canUsePersonalista}
     />
   )
 }

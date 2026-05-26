@@ -49,6 +49,12 @@ export function canManageGroupByRole(role: string, access?: Pick<GlobalAccess, '
   return Boolean(access?.isAdmin) || normalized === 'MANAGER'
 }
 
+export function canCreateGroupByRole(role: string, access?: Pick<GlobalAccess, 'canUsePersonalista'>) {
+  const normalized = String(role || '').toUpperCase()
+
+  return Boolean(access?.canUsePersonalista) || normalized === 'MANAGER'
+}
+
 export function canIssueForGroupByRole(role: string, access?: Pick<GlobalAccess, 'isAdmin'>) {
   const normalized = String(role || '').toUpperCase()
 

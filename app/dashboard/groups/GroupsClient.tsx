@@ -25,10 +25,12 @@ type MemberItem = {
 
 export default function GroupsClient({
   groups,
-  members
+  members,
+  canCreateGroup
 }: {
   groups: GroupItem[]
   members: MemberItem[]
+  canCreateGroup: boolean
 }) {
   const router = useRouter()
 
@@ -305,6 +307,7 @@ export default function GroupsClient({
         </div>
       </section>
 
+      {canCreateGroup && (
       <section style={styles.createSection}>
         {!createOpen ? (
           <button
@@ -384,6 +387,7 @@ export default function GroupsClient({
           </div>
         )}
       </section>
+      )}
 
       {groups.length === 0 ? (
         <section style={styles.emptyBox}>

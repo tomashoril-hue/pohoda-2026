@@ -171,9 +171,9 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      if (role === 'MANAGER' && !globalAccess.isAdmin) {
+      if (role === 'MANAGER' && !globalAccess.canUsePersonalista) {
         return NextResponse.json(
-          { error: 'Rolu MANAGER moze nastavit iba ADMIN.' },
+          { error: 'Rolu MANAGER moze nastavit iba ADMIN alebo PERSONALISTA.' },
           { status: 403 }
         )
       }

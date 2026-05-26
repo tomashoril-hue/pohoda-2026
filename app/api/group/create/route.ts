@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function POST(req: NextRequest) {
@@ -19,6 +20,28 @@ export async function POST(req: NextRequest) {
 
     if (!name) {
       return NextResponse.json({ error: 'Zadajte názov skupiny.' }, { status: 400 })
+    }
+
+    const globalAccess = await getGlobalAccess(user.id)
+
+    const { data: managerMemberships, error: managerMembershipsError } = await supabaseServer
+      .from('group_members')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('role', 'MANAGER')
+      .limit(1)
+
+    if (managerMembershipsError) {
+      return NextResponse.json({ error: managerMembershipsError.message }, { status: 500 })
+    }
+
+    const canCreateGroup = globalAccess.canUsePersonalista || (managerMemberships || []).length > 0
+
+    if (!canCreateGroup) {
+      return NextResponse.json(
+        { error: 'Skupinu môže vytvoriť iba ADMIN, PERSONALISTA alebo existujúci MANAGER.' },
+        { status: 403 }
+      )
     }
 
     const { data: group, error: groupError } = await supabaseServer
@@ -56,6 +79,22 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       )
     }
+
+    await supabaseServer
+      .from('personnel_audit_log')
+      .insert({
+        actor_user_id: user.id,
+        target_user_id: user.id,
+        group_id: group.id,
+        action: 'GROUP_CREATED',
+        entity_table: 'groups',
+        entity_id: group.id,
+        after_data: {
+          group_id: group.id,
+          group_name: group.name,
+          creator_role: globalAccess.canUsePersonalista ? 'GLOBAL' : 'MANAGER'
+        }
+      })
 
     return NextResponse.json({
       ok: true,

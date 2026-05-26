@@ -72,8 +72,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Neplatná rola.' }, { status: 400 })
       }
 
-      if (role === 'MANAGER' && !globalAccess.isAdmin) {
-        return NextResponse.json({ error: 'Rolu MANAGER môže nastaviť iba ADMIN.' }, { status: 403 })
+      if (role === 'MANAGER' && !globalAccess.canUsePersonalista) {
+        return NextResponse.json({ error: 'Rolu MANAGER môže nastaviť iba ADMIN alebo PERSONALISTA.' }, { status: 403 })
       }
 
       const { error } = await supabaseServer
