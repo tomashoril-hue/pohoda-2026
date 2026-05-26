@@ -51,47 +51,47 @@ function getResendClient() {
   return resendClient
 }
 
-export async function sendAppEmail(input: SendAppEmailInput): Promise<SendAppEmailResult> {
+async function sendWithSes(input: SendAppEmailInput): Promise<SendAppEmailResult> {
   const toAddresses = Array.isArray(input.to) ? input.to : [input.to]
 
-  if (hasSesConfig()) {
-    const command = new SendEmailCommand({
-      Source: input.from,
-      Destination: {
-        ToAddresses: toAddresses
+  const command = new SendEmailCommand({
+    Source: input.from,
+    Destination: {
+      ToAddresses: toAddresses
+    },
+    Message: {
+      Subject: {
+        Data: input.subject,
+        Charset: 'UTF-8'
       },
-      Message: {
-        Subject: {
-          Data: input.subject,
+      Body: {
+        Html: {
+          Data: input.html,
           Charset: 'UTF-8'
         },
-        Body: {
-          Html: {
-            Data: input.html,
-            Charset: 'UTF-8'
-          },
-          ...(input.text
-            ? {
-                Text: {
-                  Data: input.text,
-                  Charset: 'UTF-8'
-                }
+        ...(input.text
+          ? {
+              Text: {
+                Data: input.text,
+                Charset: 'UTF-8'
               }
-            : {})
-        }
+            }
+          : {})
       }
-    })
-
-    const data = await getSesClient().send(command)
-
-    return {
-      provider: 'ses',
-      messageId: data.MessageId
     }
-  }
+  })
 
+  const data = await getSesClient().send(command)
+
+  return {
+    provider: 'ses',
+    messageId: data.MessageId
+  }
+}
+
+async function sendWithResend(input: SendAppEmailInput): Promise<SendAppEmailResult> {
   if (!process.env.RESEND_API_KEY) {
-    throw new Error('Chyba konfiguracia e-mailu. Nastav AWS SES alebo RESEND_API_KEY.')
+    throw new Error('RESEND_API_KEY nie je nastaveny.')
   }
 
   const { data, error } = await getResendClient().emails.send({
@@ -110,4 +110,20 @@ export async function sendAppEmail(input: SendAppEmailInput): Promise<SendAppEma
     provider: 'resend',
     messageId: data?.id
   }
+}
+
+export async function sendAppEmail(input: SendAppEmailInput): Promise<SendAppEmailResult> {
+  if (hasSesConfig()) {
+    try {
+      return await sendWithSes(input)
+    } catch (sesError) {
+      if (!process.env.RESEND_API_KEY) {
+        throw sesError
+      }
+
+      console.warn('Amazon SES email failed, falling back to Resend.', sesError)
+    }
+  }
+
+  return sendWithResend(input)
 }
