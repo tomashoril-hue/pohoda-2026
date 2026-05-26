@@ -34,3 +34,23 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## E-mail Provider
+
+Systemove e-maily sa odosielaju cez `lib/email.ts`.
+
+Primarne sa pouzije Amazon SES, ak su nastavene tieto serverove env premenne:
+
+```env
+AWS_SES_REGION=eu-central-1
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+```
+
+Ak AWS SES nie je nastavene, aplikacia pouzije povodny Resend fallback:
+
+```env
+RESEND_API_KEY=...
+```
+
+Odosielacie adresy musia byt overene v pouzitom e-mail provideri.

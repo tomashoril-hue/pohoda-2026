@@ -1,6 +1,4 @@
-import { Resend } from 'resend'
-
-const resend = new Resend(process.env.RESEND_API_KEY)
+import { sendAppEmail } from '@/lib/email'
 
 export async function POST(req: Request) {
   try {
@@ -14,20 +12,16 @@ export async function POST(req: Request) {
 
     const confirmLink = `${baseUrl}/confirm?token=${token}`
 
-    const { data, error } = await resend.emails.send({
+    const data = await sendAppEmail({
       from: 'POHODA 2026 <registracia@pohodapass.sk>',
       to: email,
-      subject: 'Potvrdenie registrácie – POHODA 2026',
+      subject: 'Potvrdenie registrácie - POHODA 2026',
       html: `
         <h2>Potvrď registráciu</h2>
         <p>Klikni na link:</p>
         <a href="${confirmLink}">${confirmLink}</a>
       `
     })
-
-    if (error) {
-      return Response.json({ error }, { status: 400 })
-    }
 
     return Response.json({ data })
   } catch (err: any) {

@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { getCurrentUser } from '@/lib/auth'
 import { canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
+import { sendAppEmail } from '@/lib/email'
 import { supabaseServer } from '@/lib/supabaseServer'
-import { Resend } from 'resend'
-
-const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function POST(req: NextRequest) {
   try {
@@ -149,7 +147,7 @@ export async function POST(req: NextRequest) {
 
     const inviteLink = `${baseUrl}/dashboard/groups/accept?token=${token}`
 
-    const emailResult = await resend.emails.send({
+    await sendAppEmail({
       from: 'POHODA Strava <noreply@pohodapass.sk>',
       to: email,
       subject: `Pozvánka do skupiny ${group?.name || ''}`,
@@ -174,13 +172,6 @@ export async function POST(req: NextRequest) {
         </div>
       `
     })
-
-    if (emailResult.error) {
-      return NextResponse.json(
-        { error: emailResult.error.message },
-        { status: 500 }
-      )
-    }
 
     return NextResponse.json({
       ok: true,
