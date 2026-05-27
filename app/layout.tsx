@@ -15,9 +15,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "POHODA PASS",
   description: "Stravovací systém POHODA 2026",
-  icons: {
-    icon: "/favicon.png",
-  },
 };
 
 export default function RootLayout({
