@@ -102,9 +102,9 @@ export async function POST(req: NextRequest) {
         : requestedDates
       : dateRange(validFrom, validTo)
 
-    if (dates.length > 120) {
+    if (dates.length > 370) {
       return NextResponse.json(
-        { error: 'Jedna uprava narokov moze mat najviac 120 dni.' },
+        { error: 'Jedna uprava narokov moze mat najviac 370 dni.' },
         { status: 400 }
       )
     }

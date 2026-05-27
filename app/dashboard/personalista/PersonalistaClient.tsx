@@ -100,6 +100,34 @@ function shortDateLabel(value: string) {
   })
 }
 
+function calendarClaimsFromEntitlements(
+  entitlements: PersonEntitlement[],
+  validFrom: string,
+  validTo: string,
+  defaultClaim: CalendarClaim
+) {
+  const claims: Record<string, CalendarClaim> = Object.fromEntries(
+    entitlements.map(item => [
+      item.datum,
+      {
+        obed: item.obed,
+        vecera: item.vecera
+      }
+    ])
+  )
+
+  dateRangeIso(validFrom, validTo).forEach(date => {
+    if (!claims[date]) {
+      claims[date] = {
+        obed: defaultClaim.obed,
+        vecera: defaultClaim.vecera
+      }
+    }
+  })
+
+  return claims
+}
+
 function makeCanvasImage(video: HTMLVideoElement, canvas: HTMLCanvasElement, maxWidth = 720) {
   const videoWidth = video.videoWidth || 1280
   const videoHeight = video.videoHeight || 720
@@ -206,7 +234,7 @@ export default function PersonalistaClient({
     validFrom: fromDate,
     validTo: toDate,
     obed: true,
-    vecera: false
+    vecera: true
   })
   const [calendarClaims, setCalendarClaims] = useState<Record<string, CalendarClaim>>({})
   const [qrForm, setQrForm] = useState({
@@ -251,20 +279,22 @@ export default function PersonalistaClient({
       typStravy: selectedPerson.typStravy || 'MASO'
     })
 
-    setEntitlementForm({
+    const nextEntitlementForm = {
       validFrom: fromDate,
       validTo: toDate,
-      obed: selectedPerson.lunchClaims > 0 || selectedPerson.mealClaims === 0,
-      vecera: selectedPerson.dinnerClaims > 0
-    })
-    setCalendarClaims(Object.fromEntries(
-      selectedPerson.entitlements.map(item => [
-        item.datum,
-        {
-          obed: item.obed,
-          vecera: item.vecera
-        }
-      ])
+      obed: true,
+      vecera: true
+    }
+
+    setEntitlementForm(nextEntitlementForm)
+    setCalendarClaims(calendarClaimsFromEntitlements(
+      selectedPerson.entitlements,
+      nextEntitlementForm.validFrom,
+      nextEntitlementForm.validTo,
+      {
+        obed: nextEntitlementForm.obed,
+        vecera: nextEntitlementForm.vecera
+      }
     ))
 
     setQrForm({ qrCode: '' })
@@ -398,7 +428,7 @@ export default function PersonalistaClient({
     : ['MEMBER', 'POVERENY']
 
   const entitlementCalendarDates = useMemo(() => {
-    return dateRangeIso(entitlementForm.validFrom, entitlementForm.validTo).slice(0, 120)
+    return dateRangeIso(entitlementForm.validFrom, entitlementForm.validTo)
   }, [entitlementForm.validFrom, entitlementForm.validTo])
 
   const entitlementByDate = useMemo(() => {
@@ -521,10 +551,42 @@ export default function PersonalistaClient({
   }
 
   const updateEntitlementForm = (key: string, value: any) => {
-    setEntitlementForm(prev => ({
-      ...prev,
+    const nextForm = {
+      ...entitlementForm,
       [key]: value
-    }))
+    }
+
+    setEntitlementForm(nextForm)
+
+    if (key === 'validFrom' || key === 'validTo' || key === 'obed' || key === 'vecera') {
+      setCalendarClaims(prev => {
+        const next = { ...prev }
+        const defaultClaim = {
+          obed: !!nextForm.obed,
+          vecera: !!nextForm.vecera
+        }
+
+        dateRangeIso(nextForm.validFrom, nextForm.validTo).forEach(date => {
+          const saved = entitlementByDate.get(date)
+
+          if (saved) {
+            next[date] = {
+              obed: saved.obed,
+              vecera: saved.vecera
+            }
+            return
+          }
+
+          if (defaultClaim.obed || defaultClaim.vecera) {
+            next[date] = defaultClaim
+          } else {
+            delete next[date]
+          }
+        })
+
+        return next
+      })
+    }
   }
 
   const postDetailAction = async (url: string, payload: any, fallbackMessage: string) => {
@@ -593,40 +655,6 @@ export default function PersonalistaClient({
     )
   }
 
-  const saveEntitlements = () => {
-    if (!selectedPerson) return
-
-    postDetailAction(
-      '/api/personalista/people/update-entitlements',
-      {
-        userId: selectedPerson.id,
-        mode: 'SET',
-        ...entitlementForm
-      },
-      'Nároky sa nepodarilo uložiť.'
-    )
-  }
-
-  const clearEntitlements = () => {
-    if (!selectedPerson) return
-
-    const ok = window.confirm('Vymazať nároky v zadanom období?')
-    if (!ok) return
-
-    postDetailAction(
-      '/api/personalista/people/update-entitlements',
-      {
-        userId: selectedPerson.id,
-        mode: 'CLEAR',
-        validFrom: entitlementForm.validFrom,
-        validTo: entitlementForm.validTo,
-        obed: false,
-        vecera: false
-      },
-      'Nároky sa nepodarilo vymazať.'
-    )
-  }
-
   const toggleEntitlementClaim = (date: string, meal: 'obed' | 'vecera') => {
     setCalendarClaims(prev => {
       const current = prev[date] || { obed: false, vecera: false }
@@ -645,27 +673,6 @@ export default function PersonalistaClient({
         ...prev,
         [date]: next
       }
-    })
-  }
-
-  const selectEntitlementRange = () => {
-    if (!entitlementForm.obed && !entitlementForm.vecera) {
-      setDetailMessage('Vyber obed alebo večeru.')
-      setDetailMessageType('error')
-      return
-    }
-
-    setCalendarClaims(prev => {
-      const next = { ...prev }
-
-      entitlementCalendarDates.forEach(date => {
-        next[date] = {
-          obed: entitlementForm.obed,
-          vecera: entitlementForm.vecera
-        }
-      })
-
-      return next
     })
   }
 
@@ -696,8 +703,21 @@ export default function PersonalistaClient({
       .sort((a, b) => a.datum.localeCompare(b.datum))
 
     if (dayClaims.length === 0) {
-      setDetailMessage('Vyber aspoň jeden nárok v kalendári.')
-      setDetailMessageType('error')
+      const ok = window.confirm('V období nie je vybraný žiadny nárok. Vymazať nároky v tomto období?')
+      if (!ok) return
+
+      postDetailAction(
+        '/api/personalista/people/update-entitlements',
+        {
+          userId: selectedPerson.id,
+          mode: 'CLEAR',
+          validFrom: entitlementForm.validFrom,
+          validTo: entitlementForm.validTo,
+          obed: false,
+          vecera: false
+        },
+        'Nároky sa nepodarilo vymazať.'
+      )
       return
     }
 
@@ -1080,7 +1100,7 @@ export default function PersonalistaClient({
 
         <div style={styles.summaryCardOrange}>
           <b>{stats.totalClaims}</b>
-          <span>Nároky {fromDate} - {toDate}</span>
+          <span>Aktuálne nároky</span>
           <small>{stats.totalLunches} obed / {stats.totalDinners} večera / {stats.totalDays} dní</small>
         </div>
 
@@ -1686,7 +1706,7 @@ export default function PersonalistaClient({
                 ))}
               </div>
 
-              <div style={styles.sectionTitle}>Nároky v zobrazenom období</div>
+              <div style={styles.sectionTitle}>Aktuálne nároky</div>
 
               <div style={styles.entitlementList}>
                 {selectedPerson.entitlements.length === 0 ? (
@@ -1943,15 +1963,6 @@ export default function PersonalistaClient({
                     <button
                       type="button"
                       style={styles.lightButton}
-                      disabled={detailLoading || entitlementCalendarDates.length === 0}
-                      onClick={selectEntitlementRange}
-                    >
-                      Označiť celé obdobie
-                    </button>
-
-                    <button
-                      type="button"
-                      style={styles.lightButton}
                       disabled={detailLoading}
                       onClick={clearEntitlementCalendarSelection}
                     >
@@ -2018,27 +2029,9 @@ export default function PersonalistaClient({
                     type="button"
                     style={styles.confirmButton}
                     disabled={detailLoading}
-                    onClick={saveEntitlements}
-                  >
-                    {detailLoading ? 'Ukladám...' : 'Uložiť nároky'}
-                  </button>
-
-                  <button
-                    type="button"
-                    style={styles.dangerButton}
-                    disabled={detailLoading}
-                    onClick={clearEntitlements}
-                  >
-                    Vymazať nároky v období
-                  </button>
-
-                  <button
-                    type="button"
-                    style={styles.confirmButton}
-                    disabled={detailLoading}
                     onClick={saveSelectedEntitlementDates}
                   >
-                    Uložiť kalendár
+                    {detailLoading ? 'Ukladám...' : 'Uložiť nároky'}
                   </button>
                 </div>
               )}

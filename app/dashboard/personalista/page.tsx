@@ -76,6 +76,29 @@ async function fetchAllUsers() {
   }
 }
 
+async function fetchEntitlementsForUsers(userIds: string[], fromDate: string) {
+  const rows: any[] = []
+  const pageSize = 1000
+
+  if (userIds.length === 0) return rows
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabaseServer
+      .from('user_food_entitlements')
+      .select('user_id, datum, obed, vecera')
+      .in('user_id', userIds)
+      .gte('datum', fromDate)
+      .order('datum', { ascending: true })
+      .range(from, from + pageSize - 1)
+
+    if (error) return rows
+
+    rows.push(...(data || []))
+
+    if (!data || data.length < pageSize) return rows
+  }
+}
+
 export default async function PersonalistaPage() {
   const user = await getCurrentUser()
 
@@ -201,14 +224,7 @@ export default async function PersonalistaPage() {
 
     roleRows = roleData || []
 
-    const { data: entitlementData } = await supabaseServer
-      .from('user_food_entitlements')
-      .select('user_id, datum, obed, vecera')
-      .in('user_id', userIds)
-      .gte('datum', fromDate)
-      .lte('datum', toDate)
-
-    entitlementRows = entitlementData || []
+    entitlementRows = await fetchEntitlementsForUsers(userIds, fromDate)
   }
 
   const activeQrByUserId = new Map<string, number>()
