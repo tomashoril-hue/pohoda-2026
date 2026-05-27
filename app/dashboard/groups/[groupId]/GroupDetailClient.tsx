@@ -131,6 +131,9 @@ export default function GroupDetailClient({
   const [qrMessageType, setQrMessageType] = useState<'ok' | 'error' | ''>('')
   const [cameraStatus, setCameraStatus] = useState('Spúšťam kameru...')
   const [cameraReady, setCameraReady] = useState(false)
+  const [torchAvailable, setTorchAvailable] = useState(false)
+  const [torchOn, setTorchOn] = useState(false)
+  const [torchChanging, setTorchChanging] = useState(false)
   const [qrHistory, setQrHistory] = useState<QrHistoryItem[]>([])
 
   const filteredMembers = useMemo(() => {
@@ -463,6 +466,47 @@ export default function GroupDetailClient({
     }
 
     setCameraReady(false)
+    setTorchAvailable(false)
+    setTorchOn(false)
+    setTorchChanging(false)
+  }
+
+  const getCameraVideoTrack = () => {
+    return streamRef.current?.getVideoTracks?.()[0] || null
+  }
+
+  const updateTorchSupport = () => {
+    const track = getCameraVideoTrack() as any
+    const capabilities = track?.getCapabilities?.()
+    setTorchAvailable(Boolean(capabilities?.torch))
+  }
+
+  const setCameraTorch = async (enabled: boolean) => {
+    const track = getCameraVideoTrack() as any
+
+    if (!track?.applyConstraints) {
+      setTorchAvailable(false)
+      setTorchOn(false)
+      setCameraStatus('Svetlo nie je na tomto zariadení dostupné.')
+      return
+    }
+
+    setTorchChanging(true)
+
+    try {
+      await track.applyConstraints({
+        advanced: [{ torch: enabled }]
+      })
+
+      setTorchOn(enabled)
+      setCameraStatus(enabled ? 'Svetlo je zapnuté. Skenuj QR kódy postupne.' : 'Svetlo je vypnuté. Skenuj QR kódy postupne.')
+    } catch {
+      setTorchAvailable(false)
+      setTorchOn(false)
+      setCameraStatus('Svetlo nie je na tomto zariadení dostupné.')
+    } finally {
+      setTorchChanging(false)
+    }
   }
 
   const submitGroupQr = async (manualValue?: string, fromCamera = false) => {
@@ -612,6 +656,9 @@ export default function GroupDetailClient({
 
   const startCamera = async () => {
     setCameraReady(false)
+    setTorchAvailable(false)
+    setTorchOn(false)
+    setTorchChanging(false)
     setCameraStatus('Spúšťam kameru...')
     cancelledRef.current = false
 
@@ -636,6 +683,7 @@ export default function GroupDetailClient({
 
       scanAttemptRef.current = 0
       setCameraReady(true)
+      updateTorchSupport()
       setCameraStatus('Kamera je zapnutá. Skenuj QR kódy postupne.')
       scheduleCameraScan()
     } catch (err) {
@@ -1042,6 +1090,20 @@ export default function GroupDetailClient({
                   {cameraStatus}
                 </div>
               )}
+
+              <button
+                type="button"
+                style={{
+                  ...styles.torchButton,
+                  opacity: cameraReady && torchAvailable && !torchChanging ? 1 : 0.55,
+                  background: torchOn ? '#facc15' : '#111827',
+                  color: torchOn ? '#111827' : '#fff'
+                }}
+                onClick={() => setCameraTorch(!torchOn)}
+                disabled={!cameraReady || !torchAvailable || torchChanging}
+              >
+                {torchChanging ? '...' : torchOn ? 'Svetlo zap.' : 'Svetlo'}
+              </button>
             </div>
 
             <div
@@ -1574,6 +1636,18 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 13,
     fontWeight: 900,
     background: 'rgba(17,24,39,0.55)'
+  },
+  torchButton: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    border: '2px solid rgba(255,255,255,0.85)',
+    borderRadius: 999,
+    padding: '10px 13px',
+    fontSize: 13,
+    fontWeight: 950,
+    cursor: 'pointer',
+    boxShadow: '0 10px 24px rgba(0,0,0,0.24)'
   },
   cameraStatus: {
     fontSize: 12,
