@@ -8,26 +8,33 @@ type Props = {
   priezvisko: string
   email: string
   qrCode: string
+  qrKind: 'NONE' | 'DATABASE' | 'WRISTBAND'
 }
 
-export default function QrClient({ meno, priezvisko, email, qrCode }: Props) {
+export default function QrClient({ meno, priezvisko, email, qrCode, qrKind }: Props) {
   const [qrImage, setQrImage] = useState<string | null>(null)
+  const isDatabaseQr = qrKind === 'DATABASE'
+  const isWristbandQr = qrKind === 'WRISTBAND'
 
   useEffect(() => {
     const generate = async () => {
-      if (!qrCode) return
+      if (!qrCode || !isDatabaseQr) {
+        setQrImage(null)
+        return
+      }
+
       const img = await QRCode.toDataURL(qrCode)
       setQrImage(img)
     }
 
     generate()
-  }, [qrCode])
+  }, [qrCode, isDatabaseQr])
 
   return (
     <main style={styles.page}>
       <div style={styles.topBar}>
         <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
-        <div style={styles.date}>8. & 9. – 11. 7. 2026</div>
+        <div style={styles.date}>8. & 9. - 11. 7. 2026</div>
       </div>
 
       <section style={styles.card}>
@@ -48,7 +55,9 @@ export default function QrClient({ meno, priezvisko, email, qrCode }: Props) {
 
             <p style={styles.email}>{email}</p>
 
-            <div style={styles.qrCodeText}>{qrCode}</div>
+            <div style={styles.qrCodeText}>
+              {isWristbandQr ? 'Náramok aktívny' : 'QR kód aktívny'}
+            </div>
 
             {qrImage && (
               <div style={styles.qrImageWrap}>
@@ -56,9 +65,18 @@ export default function QrClient({ meno, priezvisko, email, qrCode }: Props) {
               </div>
             )}
 
+            {isWristbandQr && (
+              <div style={styles.qrImageWrap}>
+                <div style={styles.wristbandState}>
+                  <b>Náramok aktívny</b>
+                  <span>Identifikácia je v platnosti.</span>
+                </div>
+              </div>
+            )}
+
             <div style={styles.buttons}>
               {qrImage && (
-                <a href={qrImage} download={`qr-${qrCode}.png`} style={styles.link}>
+                <a href={qrImage} download="qr-pohoda-pass.png" style={styles.link}>
                   <button style={styles.primaryButton}>
                     Stiahnuť QR kód
                   </button>
@@ -183,6 +201,19 @@ const styles: Record<string, React.CSSProperties> = {
   qrImage: {
     width: '100%',
     height: '100%'
+  },
+  wristbandState: {
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    background: '#56db3f',
+    borderRadius: 12,
+    color: '#000',
+    fontWeight: 900
   },
   buttons: {
     marginTop: 26,
