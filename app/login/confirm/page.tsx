@@ -51,7 +51,7 @@ function LoginConfirmContent() {
     <main style={styles.page}>
       <div style={styles.topBar}>
         <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
-        <div style={styles.date}>8. & 9. – 11. 7. 2026</div>
+        <div style={styles.date}>8. & 9. - 11. 7. 2026</div>
       </div>
 
       <section style={styles.card}>

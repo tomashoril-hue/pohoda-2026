@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import crypto from 'crypto'
+import { createSessionResponse } from '@/lib/sessionResponse'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function GET(req: NextRequest) {
@@ -48,43 +48,30 @@ export async function GET(req: NextRequest) {
 
   if (!user || String(user.aktivny || '').toUpperCase() !== 'ANO') {
     return NextResponse.json(
-      { error: 'Tento ucet je zablokovany.' },
+      { error: 'Tento účet je zablokovaný.' },
       { status: 403 }
     )
   }
 
-  const sessionToken = crypto.randomBytes(32).toString('hex')
-
-  const expiresAt = new Date()
-  expiresAt.setDate(expiresAt.getDate() + 14)
-
-  const { error: sessionError } = await supabaseServer
-    .from('app_sessions')
-    .insert({
-      user_id: loginToken.user_id,
-      session_token: sessionToken,
-      expires_at: expiresAt.toISOString(),
-      last_seen_at: new Date().toISOString()
-    })
-
-  if (sessionError) {
-    return NextResponse.json({ error: sessionError.message }, { status: 500 })
-  }
-
-  await supabaseServer
+  const { data: usedToken, error: usedError } = await supabaseServer
     .from('login_tokens')
     .update({ used_at: new Date().toISOString() })
     .eq('id', loginToken.id)
+    .is('used_at', null)
+    .gt('expires_at', new Date().toISOString())
+    .select('id')
+    .maybeSingle()
 
-  const response = NextResponse.json({ ok: true })
+  if (usedError) {
+    return NextResponse.json({ error: usedError.message }, { status: 500 })
+  }
 
-  response.cookies.set('pohoda_session', sessionToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 60 * 60 * 24 * 14
-  })
+  if (!usedToken) {
+    return NextResponse.json(
+      { error: 'Prihlasovací link už bol použitý alebo expiroval.' },
+      { status: 400 }
+    )
+  }
 
-  return response
+  return createSessionResponse(loginToken.user_id)
 }

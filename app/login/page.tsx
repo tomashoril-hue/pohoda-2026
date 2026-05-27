@@ -5,12 +5,16 @@ import Link from 'next/link'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
+  const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
+  const [codeLoading, setCodeLoading] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
 
+  const cleanEmail = email.trim().toLowerCase()
+
   const handleLogin = async () => {
-    if (!email.trim()) {
+    if (!cleanEmail) {
       alert('Zadaj e-mail')
       return
     }
@@ -22,7 +26,7 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/login/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() })
+        body: JSON.stringify({ email: cleanEmail })
       })
 
       const json = await res.json()
@@ -33,6 +37,7 @@ export default function LoginPage() {
       }
 
       setSent(true)
+      setCode('')
     } catch (err: any) {
       setError('Chyba: ' + err.message)
     } finally {
@@ -40,11 +45,53 @@ export default function LoginPage() {
     }
   }
 
+  const handleCodeLogin = async () => {
+    if (!cleanEmail) {
+      setError('Chýba e-mail. Pošli si nový prihlasovací kód.')
+      return
+    }
+
+    if (code.length !== 6) {
+      setError('Zadaj 6-miestny kód.')
+      return
+    }
+
+    setCodeLoading(true)
+    setError('')
+
+    try {
+      const res = await fetch('/api/auth/login/code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, code })
+      })
+
+      const json = await res.json()
+
+      if (!res.ok || json.error) {
+        setError(json.error || 'Prihlásenie kódom zlyhalo.')
+        return
+      }
+
+      window.location.href = '/dashboard'
+    } catch (err: any) {
+      setError('Chyba: ' + err.message)
+    } finally {
+      setCodeLoading(false)
+    }
+  }
+
+  const resetLogin = () => {
+    setSent(false)
+    setCode('')
+    setError('')
+  }
+
   return (
     <main style={styles.page}>
       <div style={styles.topBar}>
         <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
-        <div style={styles.date}>8. & 9. – 11. 7. 2026</div>
+        <div style={styles.date}>8. & 9. - 11. 7. 2026</div>
       </div>
 
       <section style={styles.card}>
@@ -55,7 +102,7 @@ export default function LoginPage() {
         {!sent ? (
           <>
             <p style={styles.subtitle}>
-              Zadaj svoj registračný e-mail. Pošleme ti prihlasovací link.
+              Zadaj svoj registračný e-mail. Pošleme ti prihlasovací link aj 6-miestny kód.
             </p>
 
             <input
@@ -64,6 +111,7 @@ export default function LoginPage() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               type="email"
+              autoComplete="email"
             />
 
             <button
@@ -75,7 +123,7 @@ export default function LoginPage() {
               onClick={handleLogin}
               disabled={loading}
             >
-              {loading ? 'Odosielam...' : 'Poslať prihlasovací link'}
+              {loading ? 'Odosielam...' : 'Poslať prihlasenie'}
             </button>
 
             {error && (
@@ -92,11 +140,49 @@ export default function LoginPage() {
           <div style={styles.success}>
             <h2 style={styles.messageTitle}>E-mail bol odoslaný</h2>
             <p>
-              Na adresu <b>{email}</b> sme poslali prihlasovací link.
+              Na adresu <b>{cleanEmail}</b> sme poslali prihlasovací link aj 6-miestny kód.
             </p>
             <p>
-              Kliknutím na link sa prihlásiš do systému.
+              Ak používaš aplikáciu z plochy, zadaj kód priamo sem.
             </p>
+
+            <input
+              style={styles.codeInput}
+              placeholder="000000"
+              value={code}
+              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="one-time-code"
+              maxLength={6}
+            />
+
+            <button
+              style={{
+                ...styles.button,
+                marginTop: 14,
+                opacity: codeLoading ? 0.65 : 1,
+                cursor: codeLoading ? 'not-allowed' : 'pointer'
+              }}
+              onClick={handleCodeLogin}
+              disabled={codeLoading}
+            >
+              {codeLoading ? 'Prihlasujem...' : 'Prihlásiť kódom'}
+            </button>
+
+            <button
+              style={styles.secondaryButton}
+              onClick={resetLogin}
+              type="button"
+            >
+              Zadať iný e-mail
+            </button>
+
+            {error && (
+              <div style={styles.error}>
+                {error}
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -175,6 +261,20 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#000',
     fontWeight: 700
   },
+  codeInput: {
+    width: '100%',
+    boxSizing: 'border-box',
+    border: '3px solid #000',
+    borderRadius: 18,
+    padding: '15px 17px',
+    fontSize: 28,
+    outline: 'none',
+    background: '#fff',
+    color: '#000',
+    fontWeight: 900,
+    letterSpacing: 8,
+    textAlign: 'center'
+  },
   button: {
     width: '100%',
     marginTop: 22,
@@ -184,6 +284,17 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 999,
     padding: '16px 22px',
     fontSize: 19,
+    fontWeight: 900
+  },
+  secondaryButton: {
+    width: '100%',
+    marginTop: 12,
+    background: '#fff',
+    color: '#000',
+    border: '3px solid #000',
+    borderRadius: 999,
+    padding: '13px 20px',
+    fontSize: 16,
     fontWeight: 900
   },
   error: {

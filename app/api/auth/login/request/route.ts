@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
+import { createLoginCode, hashLoginCode } from '@/lib/loginCode'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function POST(req: NextRequest) {
@@ -25,20 +26,28 @@ export async function POST(req: NextRequest) {
 
   if (String(user.aktivny || '').toUpperCase() !== 'ANO') {
     return NextResponse.json(
-      { error: 'Tento ucet je zablokovany.' },
+      { error: 'Tento účet je zablokovaný.' },
       { status: 403 }
     )
   }
 
   const token = crypto.randomBytes(32).toString('hex')
+  const loginCode = createLoginCode()
+  const loginCodeHash = hashLoginCode(user.email, loginCode)
 
   const expiresAt = new Date()
-  expiresAt.setMinutes(expiresAt.getMinutes() + 30)
+  expiresAt.setMinutes(expiresAt.getMinutes() + 15)
 
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     req.headers.get('x-real-ip') ||
     null
+
+  await supabaseServer
+    .from('login_tokens')
+    .update({ expires_at: new Date().toISOString() })
+    .eq('user_id', user.id)
+    .is('used_at', null)
 
   const { error: tokenError } = await supabaseServer
     .from('login_tokens')
@@ -46,6 +55,8 @@ export async function POST(req: NextRequest) {
       user_id: user.id,
       email: user.email,
       token,
+      login_code_hash: loginCodeHash,
+      login_code_attempts: 0,
       expires_at: expiresAt.toISOString(),
       ip
     })
@@ -54,7 +65,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: tokenError.message }, { status: 500 })
   }
 
-  const loginUrl = `${req.nextUrl.origin}/login/confirm?token=${token}`
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin
+  const loginUrl = `${baseUrl}/login/confirm?token=${token}`
 
   const emailRes = await fetch(`${req.nextUrl.origin}/api/send-login-email`, {
     method: 'POST',
@@ -62,7 +74,8 @@ export async function POST(req: NextRequest) {
     body: JSON.stringify({
       email: user.email,
       meno: user.meno,
-      loginUrl
+      loginUrl,
+      loginCode
     })
   })
 
