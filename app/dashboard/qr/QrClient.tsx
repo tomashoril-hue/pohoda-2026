@@ -210,7 +210,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    background: '#56db3f',
+    background: '#fff',
     borderRadius: 12,
     color: '#000',
     fontWeight: 900
