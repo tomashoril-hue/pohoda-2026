@@ -336,6 +336,7 @@ export default async function DashboardPage() {
         </section>
 
         <div style={styles.menuGrid}>
+          <Link href="/dashboard/naroky" style={styles.menuButtonGreen}>Nároky na stravu</Link>
           <a href="/menu" style={styles.menuButton}>Výber stravy</a>
           <a href="/dashboard/qr" style={styles.menuButton}>Môj QR kód</a>
           <Link href="/dashboard/groups" style={styles.menuButtonPink}>Skupiny</Link>
