@@ -464,27 +464,40 @@ const styles: Record<string, React.CSSProperties> = {
   },
   mealTags: {
     display: 'flex',
-    gap: 4,
+    gap: 3,
     flexWrap: 'wrap',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    minWidth: 0
   },
   lunchTag: {
-    minWidth: 24,
-    textAlign: 'center',
+    width: 20,
+    height: 20,
+    boxSizing: 'border-box',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     background: '#f25be6',
     border: '2px solid #000',
     borderRadius: 999,
-    padding: '2px 5px',
-    fontSize: 12
+    padding: 0,
+    fontSize: 11,
+    lineHeight: 1
   },
   dinnerTag: {
-    minWidth: 24,
-    textAlign: 'center',
+    width: 20,
+    height: 20,
+    boxSizing: 'border-box',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     background: '#56db3f',
     border: '2px solid #000',
     borderRadius: 999,
-    padding: '2px 5px',
-    fontSize: 12
+    padding: 0,
+    fontSize: 11,
+    lineHeight: 1
   },
   rangeBox: {
     marginTop: 18,
