@@ -465,7 +465,8 @@ const styles: Record<string, React.CSSProperties> = {
   mealTags: {
     display: 'flex',
     gap: 4,
-    flexWrap: 'wrap'
+    flexWrap: 'wrap',
+    justifyContent: 'center'
   },
   lunchTag: {
     minWidth: 24,
