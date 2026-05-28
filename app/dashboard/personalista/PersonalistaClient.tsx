@@ -778,6 +778,11 @@ export default function PersonalistaClient({
       return
     }
 
+    if (dayClaims.some(item => item.datum < isoDateOffset(0))) {
+      const ok = window.confirm('Pokúšaš sa uložiť nárok do minulosti. Naozaj chceš tieto nároky uložiť?')
+      if (!ok) return
+    }
+
     postDetailAction(
       '/api/personalista/people/update-entitlements',
       {
