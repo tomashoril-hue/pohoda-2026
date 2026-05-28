@@ -1969,6 +1969,9 @@ export default function PersonalistaClient({
                         const saved = entitlementByDate.get(date)
                         const claim = calendarClaims[date] || { obed: false, vecera: false }
                         const selected = claim.obed || claim.vecera
+                        const changed = saved
+                          ? claim.obed !== saved.obed || claim.vecera !== saved.vecera
+                          : selected
 
                         return (
                           <div
@@ -1976,7 +1979,8 @@ export default function PersonalistaClient({
                             style={{
                               ...styles.calendarDay,
                               ...(saved ? styles.calendarDaySaved : {}),
-                              ...(selected ? styles.calendarDaySelected : {})
+                              ...(selected ? styles.calendarDaySelected : {}),
+                              ...(changed ? styles.calendarDayChanged : {})
                             }}
                           >
                             <b>{shortDateLabel(date)}</b>
@@ -2008,6 +2012,11 @@ export default function PersonalistaClient({
                             {saved && (
                               <span style={styles.calendarSavedText}>
                                 {saved.obed ? 'O' : '-'} / {saved.vecera ? 'V' : '-'}
+                              </span>
+                            )}
+                            {changed && (
+                              <span style={styles.calendarChangedText}>
+                                Zmena
                               </span>
                             )}
                           </div>
@@ -2855,6 +2864,12 @@ const styles: Record<string, CSSProperties> = {
     color: '#052e16',
     boxShadow: '0 0 0 2px #111827 inset'
   },
+  calendarDayChanged: {
+    background: '#fff7ed',
+    borderColor: '#fb923c',
+    color: '#7c2d12',
+    boxShadow: '0 0 0 2px #fb923c inset'
+  },
   calendarMealButtons: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
@@ -2880,6 +2895,11 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 900,
     color: '#166534'
+  },
+  calendarChangedText: {
+    fontSize: 10,
+    fontWeight: 950,
+    color: '#c2410c'
   },
   selectedGroupList: {
     display: 'flex',
