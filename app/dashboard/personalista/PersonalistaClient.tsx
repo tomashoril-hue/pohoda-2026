@@ -778,7 +778,17 @@ export default function PersonalistaClient({
       return
     }
 
-    if (dayClaims.some(item => item.datum < isoDateOffset(0))) {
+    const today = isoDateOffset(0)
+    const changesPastEntitlements = entitlementCalendarDates.some(date => {
+      if (date >= today) return false
+
+      const saved = entitlementByDate.get(date) || { obed: false, vecera: false }
+      const claim = calendarClaims[date] || { obed: false, vecera: false }
+
+      return claim.obed !== saved.obed || claim.vecera !== saved.vecera
+    })
+
+    if (changesPastEntitlements) {
       const ok = window.confirm('Pokúšaš sa uložiť nárok do minulosti. Naozaj chceš tieto nároky uložiť?')
       if (!ok) return
     }
