@@ -680,6 +680,17 @@ export default function PersonalistaClient({
     })
   }
 
+  const restoreEntitlementCalendarSelection = () => {
+    if (!selectedPerson) return
+
+    setCalendarClaims(calendarClaimsFromEntitlements(selectedPerson.entitlements))
+    setEntitlementForm(prev => ({
+      ...prev,
+      obed: false,
+      vecera: false
+    }))
+  }
+
   const saveSelectedEntitlementDates = () => {
     if (!selectedPerson) return
 
@@ -1959,6 +1970,15 @@ export default function PersonalistaClient({
                       onClick={clearEntitlementCalendarSelection}
                     >
                       Zrušiť výber dní
+                    </button>
+
+                    <button
+                      type="button"
+                      style={styles.lightButton}
+                      disabled={detailLoading}
+                      onClick={restoreEntitlementCalendarSelection}
+                    >
+                      Obnoviť aktuálne nároky
                     </button>
                   </div>
 
