@@ -556,16 +556,17 @@ export default function PersonalistaClient({
     }
 
     if (key === 'obed' || key === 'vecera') {
+      if (!value) return
+
       setCalendarClaims(prev => {
         const next = { ...prev }
         const meal = key as 'obed' | 'vecera'
-        const checked = !!value
 
         dateRangeIso(nextForm.validFrom, nextForm.validTo).forEach(date => {
           const current = next[date] || { obed: false, vecera: false }
           const updated = {
             ...current,
-            [meal]: checked
+            [meal]: true
           }
 
           if (updated.obed || updated.vecera) {
