@@ -28,6 +28,11 @@ type CalendarClaim = {
   vecera: boolean
 }
 
+type BulkEntitlementClaims = {
+  obed: string[]
+  vecera: string[]
+}
+
 type PersonItem = {
   id: string
   fullName: string
@@ -237,6 +242,10 @@ export default function PersonalistaClient({
     vecera: false
   })
   const [calendarClaims, setCalendarClaims] = useState<Record<string, CalendarClaim>>({})
+  const [bulkEntitlementClaims, setBulkEntitlementClaims] = useState<BulkEntitlementClaims>({
+    obed: [],
+    vecera: []
+  })
   const [qrForm, setQrForm] = useState({
     qrCode: ''
   })
@@ -289,6 +298,7 @@ export default function PersonalistaClient({
 
     setEntitlementForm(nextEntitlementForm)
     setCalendarClaims(calendarClaimsFromEntitlements(selectedPerson.entitlements))
+    setBulkEntitlementClaims({ obed: [], vecera: [] })
 
     setQrForm({ qrCode: '' })
     setGroupForm({ groupId: '', role: 'MEMBER' })
@@ -556,28 +566,56 @@ export default function PersonalistaClient({
     }
 
     if (key === 'obed' || key === 'vecera') {
-      if (!value) return
+      const meal = key as 'obed' | 'vecera'
 
-      setCalendarClaims(prev => {
-        const next = { ...prev }
-        const meal = key as 'obed' | 'vecera'
+      if (value) {
+        const next = { ...calendarClaims }
+        const addedDates: string[] = []
 
         dateRangeIso(nextForm.validFrom, nextForm.validTo).forEach(date => {
           const current = next[date] || { obed: false, vecera: false }
-          const updated = {
-            ...current,
-            [meal]: true
-          }
 
-          if (updated.obed || updated.vecera) {
-            next[date] = updated
-          } else {
-            delete next[date]
+          if (!current[meal]) {
+            next[date] = {
+              ...current,
+              [meal]: true
+            }
+            addedDates.push(date)
           }
         })
 
-        return next
+        setCalendarClaims(next)
+        setBulkEntitlementClaims(prev => ({
+          ...prev,
+          [meal]: Array.from(new Set([...prev[meal], ...addedDates]))
+        }))
+        return
+      }
+
+      const datesToRemove = new Set(bulkEntitlementClaims[meal])
+      const next = { ...calendarClaims }
+
+      datesToRemove.forEach(date => {
+        const current = next[date]
+        if (!current) return
+
+        const updated = {
+          ...current,
+          [meal]: false
+        }
+
+        if (updated.obed || updated.vecera) {
+          next[date] = updated
+        } else {
+          delete next[date]
+        }
       })
+
+      setCalendarClaims(next)
+      setBulkEntitlementClaims(prev => ({
+        ...prev,
+        [meal]: []
+      }))
     }
   }
 
@@ -648,6 +686,11 @@ export default function PersonalistaClient({
   }
 
   const toggleEntitlementClaim = (date: string, meal: 'obed' | 'vecera') => {
+    setBulkEntitlementClaims(prev => ({
+      ...prev,
+      [meal]: prev[meal].filter(item => item !== date)
+    }))
+
     setCalendarClaims(prev => {
       const current = prev[date] || { obed: false, vecera: false }
       const next = {
@@ -669,6 +712,13 @@ export default function PersonalistaClient({
   }
 
   const clearEntitlementCalendarSelection = () => {
+    const visibleDates = new Set(entitlementCalendarDates)
+
+    setBulkEntitlementClaims(prev => ({
+      obed: prev.obed.filter(date => !visibleDates.has(date)),
+      vecera: prev.vecera.filter(date => !visibleDates.has(date))
+    }))
+
     setCalendarClaims(prev => {
       const next = { ...prev }
 
@@ -684,6 +734,7 @@ export default function PersonalistaClient({
     if (!selectedPerson) return
 
     setCalendarClaims(calendarClaimsFromEntitlements(selectedPerson.entitlements))
+    setBulkEntitlementClaims({ obed: [], vecera: [] })
     setEntitlementForm(prev => ({
       ...prev,
       obed: false,
