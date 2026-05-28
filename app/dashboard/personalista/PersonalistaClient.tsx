@@ -100,13 +100,24 @@ function shortDateLabel(value: string) {
   })
 }
 
-function calendarClaimsFromEntitlements(
-  entitlements: PersonEntitlement[],
-  validFrom: string,
-  validTo: string,
-  defaultClaim: CalendarClaim
-) {
-  const claims: Record<string, CalendarClaim> = Object.fromEntries(
+function entitlementBounds(entitlements: PersonEntitlement[], fallbackFrom: string, fallbackTo: string) {
+  const dates = entitlements.map(item => item.datum).sort()
+
+  if (dates.length === 0) {
+    return {
+      validFrom: fallbackFrom,
+      validTo: fallbackTo
+    }
+  }
+
+  return {
+    validFrom: dates[0],
+    validTo: dates[dates.length - 1]
+  }
+}
+
+function calendarClaimsFromEntitlements(entitlements: PersonEntitlement[]) {
+  return Object.fromEntries(
     entitlements.map(item => [
       item.datum,
       {
@@ -115,17 +126,6 @@ function calendarClaimsFromEntitlements(
       }
     ])
   )
-
-  dateRangeIso(validFrom, validTo).forEach(date => {
-    if (!claims[date]) {
-      claims[date] = {
-        obed: defaultClaim.obed,
-        vecera: defaultClaim.vecera
-      }
-    }
-  })
-
-  return claims
 }
 
 function makeCanvasImage(video: HTMLVideoElement, canvas: HTMLCanvasElement, maxWidth = 720) {
@@ -233,8 +233,8 @@ export default function PersonalistaClient({
   const [entitlementForm, setEntitlementForm] = useState({
     validFrom: fromDate,
     validTo: toDate,
-    obed: true,
-    vecera: true
+    obed: false,
+    vecera: false
   })
   const [calendarClaims, setCalendarClaims] = useState<Record<string, CalendarClaim>>({})
   const [qrForm, setQrForm] = useState({
@@ -279,23 +279,16 @@ export default function PersonalistaClient({
       typStravy: selectedPerson.typStravy || 'MASO'
     })
 
+    const bounds = entitlementBounds(selectedPerson.entitlements, fromDate, toDate)
     const nextEntitlementForm = {
-      validFrom: fromDate,
-      validTo: toDate,
-      obed: true,
-      vecera: true
+      validFrom: bounds.validFrom,
+      validTo: bounds.validTo,
+      obed: false,
+      vecera: false
     }
 
     setEntitlementForm(nextEntitlementForm)
-    setCalendarClaims(calendarClaimsFromEntitlements(
-      selectedPerson.entitlements,
-      nextEntitlementForm.validFrom,
-      nextEntitlementForm.validTo,
-      {
-        obed: nextEntitlementForm.obed,
-        vecera: nextEntitlementForm.vecera
-      }
-    ))
+    setCalendarClaims(calendarClaimsFromEntitlements(selectedPerson.entitlements))
 
     setQrForm({ qrCode: '' })
     setGroupForm({ groupId: '', role: 'MEMBER' })
@@ -558,27 +551,25 @@ export default function PersonalistaClient({
 
     setEntitlementForm(nextForm)
 
-    if (key === 'validFrom' || key === 'validTo' || key === 'obed' || key === 'vecera') {
+    if (key === 'validFrom' || key === 'validTo') {
+      return
+    }
+
+    if (key === 'obed' || key === 'vecera') {
       setCalendarClaims(prev => {
         const next = { ...prev }
-        const defaultClaim = {
-          obed: !!nextForm.obed,
-          vecera: !!nextForm.vecera
-        }
+        const meal = key as 'obed' | 'vecera'
+        const checked = !!value
 
         dateRangeIso(nextForm.validFrom, nextForm.validTo).forEach(date => {
-          const saved = entitlementByDate.get(date)
-
-          if (saved) {
-            next[date] = {
-              obed: saved.obed,
-              vecera: saved.vecera
-            }
-            return
+          const current = next[date] || { obed: false, vecera: false }
+          const updated = {
+            ...current,
+            [meal]: checked
           }
 
-          if (defaultClaim.obed || defaultClaim.vecera) {
-            next[date] = defaultClaim
+          if (updated.obed || updated.vecera) {
+            next[date] = updated
           } else {
             delete next[date]
           }
