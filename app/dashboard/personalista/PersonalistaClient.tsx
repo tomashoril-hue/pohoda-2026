@@ -733,13 +733,16 @@ export default function PersonalistaClient({
   const restoreEntitlementCalendarSelection = () => {
     if (!selectedPerson) return
 
+    const bounds = entitlementBounds(selectedPerson.entitlements, fromDate, toDate)
+
     setCalendarClaims(calendarClaimsFromEntitlements(selectedPerson.entitlements))
     setBulkEntitlementClaims({ obed: [], vecera: [] })
-    setEntitlementForm(prev => ({
-      ...prev,
+    setEntitlementForm({
+      validFrom: bounds.validFrom,
+      validTo: bounds.validTo,
       obed: false,
       vecera: false
-    }))
+    })
   }
 
   const saveSelectedEntitlementDates = () => {
@@ -1760,7 +1763,7 @@ export default function PersonalistaClient({
                 ))}
               </div>
 
-              <div style={styles.sectionTitle}>Aktuálne nároky</div>
+              <div style={styles.sectionTitle}>Všetky nároky</div>
 
               <div style={styles.entitlementList}>
                 {selectedPerson.entitlements.length === 0 ? (

@@ -76,7 +76,7 @@ async function fetchAllUsers() {
   }
 }
 
-async function fetchEntitlementsForUsers(userIds: string[], fromDate: string) {
+async function fetchEntitlementsForUsers(userIds: string[]) {
   const rows: any[] = []
   const pageSize = 1000
 
@@ -87,7 +87,6 @@ async function fetchEntitlementsForUsers(userIds: string[], fromDate: string) {
       .from('user_food_entitlements')
       .select('user_id, datum, obed, vecera')
       .in('user_id', userIds)
-      .gte('datum', fromDate)
       .order('datum', { ascending: true })
       .range(from, from + pageSize - 1)
 
@@ -224,7 +223,7 @@ export default async function PersonalistaPage() {
 
     roleRows = roleData || []
 
-    entitlementRows = await fetchEntitlementsForUsers(userIds, fromDate)
+    entitlementRows = await fetchEntitlementsForUsers(userIds)
   }
 
   const activeQrByUserId = new Map<string, number>()
@@ -286,8 +285,9 @@ export default async function PersonalistaPage() {
     }
 
     const rows = entitlementsByUserId.get(membership.user_id) || []
-    const lunchClaims = rows.filter(row => row.obed).length
-    const dinnerClaims = rows.filter(row => row.vecera).length
+    const currentRows = rows.filter(row => String(row.datum) >= fromDate)
+    const lunchClaims = currentRows.filter(row => row.obed).length
+    const dinnerClaims = currentRows.filter(row => row.vecera).length
     const mealClaims = lunchClaims + dinnerClaims
 
     personMap.set(membership.user_id, {
@@ -302,7 +302,7 @@ export default async function PersonalistaPage() {
       activeQrCount: activeQrByUserId.get(membership.user_id) || 0,
       activeNfcCount: activeNfcByUserId.get(membership.user_id) || 0,
       globalRoles: globalRolesByUserId.get(membership.user_id) || [],
-      entitlementDays: rows.length,
+      entitlementDays: currentRows.length,
       lunchClaims,
       dinnerClaims,
       mealClaims,
@@ -322,8 +322,9 @@ export default async function PersonalistaPage() {
       if (personMap.has(profile.id)) return
 
       const rows = entitlementsByUserId.get(profile.id) || []
-      const lunchClaims = rows.filter(row => row.obed).length
-      const dinnerClaims = rows.filter(row => row.vecera).length
+      const currentRows = rows.filter(row => String(row.datum) >= fromDate)
+      const lunchClaims = currentRows.filter(row => row.obed).length
+      const dinnerClaims = currentRows.filter(row => row.vecera).length
 
       personMap.set(profile.id, {
         id: profile.id,
@@ -337,7 +338,7 @@ export default async function PersonalistaPage() {
         activeQrCount: activeQrByUserId.get(profile.id) || 0,
         activeNfcCount: activeNfcByUserId.get(profile.id) || 0,
         globalRoles: globalRolesByUserId.get(profile.id) || [],
-        entitlementDays: rows.length,
+        entitlementDays: currentRows.length,
         lunchClaims,
         dinnerClaims,
         mealClaims: lunchClaims + dinnerClaims,
