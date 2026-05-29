@@ -4,12 +4,19 @@ import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import DashboardInvites from './DashboardInvites'
+import DashboardDatePicker from './DashboardDatePicker'
 
 function todayIsoDate() {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Bratislava',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date())
+
+  const year = parts.find(part => part.type === 'year')?.value
+  const month = parts.find(part => part.type === 'month')?.value
+  const day = parts.find(part => part.type === 'day')?.value
 
   return `${year}-${month}-${day}`
 }
@@ -20,10 +27,26 @@ function formatDate(value: string) {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
-    }).format(new Date(value))
+    }).format(new Date(`${value}T12:00:00`))
   } catch {
     return value
   }
+}
+
+function normalizeDateParam(value: string | string[] | undefined, fallback: string) {
+  const rawValue = Array.isArray(value) ? value[0] : value
+
+  if (!rawValue || !/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) {
+    return fallback
+  }
+
+  const parsed = new Date(`${rawValue}T12:00:00`)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return fallback
+  }
+
+  return rawValue
 }
 
 function mealLabel(value: string) {
@@ -64,7 +87,11 @@ function bulkLabel(value: any) {
   return value.status || 'NIE'
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ datum?: string | string[] | undefined }>
+}) {
   const user = await getCurrentUser()
 
   if (!user) {
@@ -72,6 +99,9 @@ export default async function DashboardPage() {
   }
 
   const today = todayIsoDate()
+  const resolvedSearchParams = searchParams ? await searchParams : {}
+  const selectedDate = normalizeDateParam(resolvedSearchParams.datum, today)
+  const isTodaySelected = selectedDate === today
 
   const { data: memberships } = await supabaseServer
     .from('group_members')
@@ -105,19 +135,19 @@ export default async function DashboardPage() {
     .from('user_food_entitlements')
     .select('datum, obed, vecera')
     .eq('user_id', user.id)
-    .eq('datum', today)
+    .eq('datum', selectedDate)
     .maybeSingle()
 
   const { data: selections } = await supabaseServer
     .from('vyber_jedal')
     .select('typ_jedla, volba')
     .eq('user_id', user.id)
-    .eq('datum', today)
+    .eq('datum', selectedDate)
 
   const { data: menuItems } = await supabaseServer
     .from('jedalny_listok')
     .select('typ_jedla, varianta, nazov, popis')
-    .eq('datum', today)
+    .eq('datum', selectedDate)
     .eq('aktivne', true)
     .order('typ_jedla', { ascending: true })
     .order('poradie', { ascending: true })
@@ -126,7 +156,7 @@ export default async function DashboardPage() {
     .from('vydaj_jedal')
     .select('typ_jedla, status, sposob, issued_at')
     .eq('user_id', user.id)
-    .eq('datum', today)
+    .eq('datum', selectedDate)
     .order('issued_at', { ascending: false })
 
   const { data: bulkItems } = await supabaseServer
@@ -195,7 +225,7 @@ export default async function DashboardPage() {
         : item.hromadne_vydaje
 
       return (
-        issue?.datum === today &&
+        issue?.datum === selectedDate &&
         issue?.typ_jedla === typJedla &&
         (issue?.status === 'READY' || issue?.status === 'WAITING')
       )
@@ -242,6 +272,7 @@ export default async function DashboardPage() {
           .dashboard-info p { margin: 4px 0 !important; }
           .dashboard-today-box { border: 0 !important; background: transparent !important; padding: 0 !important; margin-top: 18px !important; }
           .dashboard-today-title { font-size: 22px !important; }
+          .dashboard-date-picker { font-size: 12px !important; padding: 7px 10px !important; }
           .dashboard-today-meal { border: 2px solid rgba(0,0,0,0.32) !important; background: rgba(255,255,255,0.84) !important; border-radius: 18px !important; padding: 12px !important; }
           .dashboard-meal-title { font-size: 18px !important; }
           .dashboard-entitlement { border-width: 2px !important; font-size: 10px !important; padding: 5px 8px !important; }
@@ -279,13 +310,17 @@ export default async function DashboardPage() {
         <section className="dashboard-today-box" style={styles.todayBox}>
           <div style={styles.todayHeader}>
             <div>
-              <div style={styles.todaySmall}>Dnes</div>
-              <h2 className="dashboard-today-title" style={styles.todayTitle}>Dnešná strava</h2>
+              <div style={styles.todaySmall}>{isTodaySelected ? 'Dnes' : 'Vybraný deň'}</div>
+              <h2 className="dashboard-today-title" style={styles.todayTitle}>
+                {isTodaySelected ? 'Dnešná strava' : 'Strava na deň'}
+              </h2>
             </div>
 
-            <div style={styles.todayDate}>
-              {formatDate(today)}
-            </div>
+            <DashboardDatePicker
+              selectedDate={selectedDate}
+              today={today}
+              formattedDate={formatDate(selectedDate)}
+            />
           </div>
 
           <div style={styles.todayGrid}>
