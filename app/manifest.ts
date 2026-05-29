@@ -1,5 +1,7 @@
 import type { MetadataRoute } from 'next'
 
+const pohodaPurple = '#7417e8'
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: '/dashboard',
@@ -9,8 +11,8 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: '/dashboard',
     scope: '/',
     display: 'standalone',
-    background_color: '#7417e8',
-    theme_color: '#56db3f',
+    background_color: pohodaPurple,
+    theme_color: pohodaPurple,
     icons: [
       {
         src: '/pwa-icon-192.png',

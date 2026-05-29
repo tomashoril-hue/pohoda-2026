@@ -1,6 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+
+const pohodaPurple = "#7417e8";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,6 +26,10 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: pohodaPurple,
 };
 
 export default function RootLayout({
