@@ -31,17 +31,31 @@ export default function QrClient({ meno, priezvisko, email, qrCode, qrKind }: Pr
   }, [qrCode, isDatabaseQr])
 
   return (
-    <main style={styles.page}>
-      <div style={styles.topBar}>
-        <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
-        <div style={styles.date}>8. & 9. - 11. 7. 2026</div>
+    <main className="qr-page" style={styles.page}>
+      <style>{`
+        @media (max-width: 720px) {
+          .qr-page { padding: 12px !important; }
+          .qr-top-bar { margin-bottom: 12px !important; gap: 10px !important; }
+          .qr-logo { height: 42px !important; max-width: 190px !important; }
+          .qr-date { font-size: 12px !important; padding: 7px 10px !important; }
+          .qr-card { padding: 18px !important; border-radius: 22px !important; box-shadow: 7px 7px 0 #000 !important; }
+          .qr-badge { display: none !important; }
+          .qr-title { font-size: 34px !important; }
+          .qr-subtitle { font-size: 19px !important; white-space: nowrap !important; margin-bottom: 14px !important; }
+        }
+      `}</style>
+      <div className="qr-top-bar" style={styles.topBar}>
+        <a href="/dashboard" style={styles.logoLink} aria-label="Späť na dashboard">
+          <img className="qr-logo" src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
+        </a>
+        <div className="qr-date" style={styles.date}>8. & 9. - 11. 7. 2026</div>
       </div>
 
-      <section style={styles.card}>
-        <div style={styles.badge}>Môj QR kód</div>
+      <section className="qr-card" style={styles.card}>
+        <div className="qr-badge" style={styles.badge}>Môj QR kód</div>
 
-        <h1 style={styles.title}>POHODA 2026</h1>
-        <h2 style={styles.subtitle}>Identifikácia stravníka</h2>
+        <h1 className="qr-title" style={styles.title}>POHODA 2026</h1>
+        <h2 className="qr-subtitle" style={styles.subtitle}>Identifikácia stravníka</h2>
 
         {!qrCode ? (
           <p style={styles.status}>
@@ -111,6 +125,11 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 20
+  },
+  logoLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    textDecoration: 'none'
   },
   logo: {
     height: 54,

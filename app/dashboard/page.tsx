@@ -226,39 +226,61 @@ export default async function DashboardPage() {
   ]
 
   return (
-    <main style={styles.page}>
-      <div style={styles.topBar}>
-        <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
-        <div style={styles.date}>8. & 9. – 11. 7. 2026</div>
+    <main className="dashboard-page" style={styles.page}>
+      <style>{`
+        @media (max-width: 720px) {
+          .dashboard-page { padding: 12px !important; }
+          .dashboard-top-bar { margin-bottom: 12px !important; gap: 10px !important; }
+          .dashboard-logo { height: 42px !important; max-width: 190px !important; }
+          .dashboard-date { font-size: 12px !important; padding: 7px 10px !important; }
+          .dashboard-card { padding: 18px !important; border-radius: 22px !important; box-shadow: 7px 7px 0 #000 !important; }
+          .dashboard-badge { display: none !important; }
+          .dashboard-title { font-size: 34px !important; }
+          .dashboard-name { font-size: 20px !important; margin-top: 6px !important; }
+          .dashboard-logout { min-width: 0 !important; height: 38px !important; padding: 0 13px !important; font-size: 12px !important; box-shadow: 3px 3px 0 #000 !important; }
+          .dashboard-info { margin-top: 14px !important; padding: 12px !important; font-size: 13px !important; line-height: 1.35 !important; }
+          .dashboard-info p { margin: 4px 0 !important; }
+          .dashboard-today-box { border: 0 !important; background: transparent !important; padding: 0 !important; margin-top: 18px !important; }
+          .dashboard-today-title { font-size: 22px !important; }
+          .dashboard-today-meal { border: 0 !important; background: rgba(255,255,255,0.82) !important; border-radius: 18px !important; padding: 12px !important; }
+          .dashboard-meal-title { font-size: 18px !important; }
+          .dashboard-entitlement { border-width: 2px !important; font-size: 10px !important; padding: 5px 8px !important; }
+        }
+      `}</style>
+      <div className="dashboard-top-bar" style={styles.topBar}>
+        <Link href="/dashboard" style={styles.logoLink} aria-label="Späť na dashboard">
+          <img className="dashboard-logo" src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
+        </Link>
+        <div className="dashboard-date" style={styles.date}>8. & 9. – 11. 7. 2026</div>
       </div>
 
-      <section style={styles.card}>
-        <div style={styles.badge}>Moja aplikácia</div>
+      <section className="dashboard-card" style={styles.card}>
+        <div className="dashboard-badge" style={styles.badge}>Moja aplikácia</div>
 
         <div style={styles.titleRow}>
           <div>
-            <h1 style={styles.title}>Vitaj</h1>
+            <h1 className="dashboard-title" style={styles.title}>Vitaj</h1>
 
-            <p style={styles.name}>
+            <p className="dashboard-name" style={styles.name}>
               {user.meno} {user.priezvisko}
             </p>
           </div>
 
-          <a href="/logout" style={styles.logoutCircle} title="Odhlásiť sa">
-            ⏻
+          <a className="dashboard-logout" href="/logout" style={styles.logoutCircle} title="Odhlásiť sa">
+            Odhlásiť
           </a>
         </div>
 
-        <div style={styles.infoBox}>
+        <div className="dashboard-info" style={styles.infoBox}>
           <p><b>E-mail:</b> {user.email || '-'}</p>
           <p><b>Typ stravy:</b> {user.typ_stravy || user.typStravy || '-'}</p>
         </div>
 
-        <section style={styles.todayBox}>
+        <section className="dashboard-today-box" style={styles.todayBox}>
           <div style={styles.todayHeader}>
             <div>
               <div style={styles.todaySmall}>Dnes</div>
-              <h2 style={styles.todayTitle}>Dnešná strava</h2>
+              <h2 className="dashboard-today-title" style={styles.todayTitle}>Dnešná strava</h2>
             </div>
 
             <div style={styles.todayDate}>
@@ -286,13 +308,14 @@ export default async function DashboardPage() {
               const issuedText = issuedLabel(meal.issued?.status)
 
               return (
-                <div key={meal.typJedla} style={styles.todayMealCard}>
+                <div className="dashboard-today-meal" key={meal.typJedla} style={styles.todayMealCard}>
                   <div style={styles.todayMealTop}>
-                    <h3 style={styles.todayMealTitle}>
+                    <h3 className="dashboard-meal-title" style={styles.todayMealTitle}>
                       {mealLabel(meal.typJedla)}
                     </h3>
 
                     <span
+                      className="dashboard-entitlement"
                       style={{
                         ...styles.entitlementBadge,
                         background: entitlementIsYes
@@ -429,6 +452,11 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     gap: 20
   },
+  logoLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    textDecoration: 'none'
+  },
   logo: {
     height: 54,
     maxWidth: 260,
@@ -467,17 +495,18 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 16
   },
   logoutCircle: {
-    width: 54,
-    height: 54,
-    minWidth: 54,
-    borderRadius: '50%',
-    background: '#ff3b30',
-    color: '#fff',
+    width: 'auto',
+    height: 46,
+    minWidth: 96,
+    borderRadius: 999,
+    background: '#000',
+    color: '#56db3f',
     border: '3px solid #000',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 24,
+    padding: '0 16px',
+    fontSize: 14,
     fontWeight: 900,
     textDecoration: 'none',
     boxShadow: '4px 4px 0 #000'
@@ -498,8 +527,8 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#f25be6',
     border: '3px solid #000',
     borderRadius: 20,
-    padding: 18,
-    fontSize: 18,
+    padding: 14,
+    fontSize: 15,
     fontWeight: 700
   },
   todayBox: {
