@@ -179,7 +179,7 @@ export default async function DashboardPage() {
 
     return items
       .map((item: any) => `${item.varianta}: ${item.nazov}`)
-      .join(' / ')
+      .join('\n')
   }
 
   const getIssued = (typJedla: string) => {
@@ -242,7 +242,7 @@ export default async function DashboardPage() {
           .dashboard-info p { margin: 4px 0 !important; }
           .dashboard-today-box { border: 0 !important; background: transparent !important; padding: 0 !important; margin-top: 18px !important; }
           .dashboard-today-title { font-size: 22px !important; }
-          .dashboard-today-meal { border: 0 !important; background: rgba(255,255,255,0.82) !important; border-radius: 18px !important; padding: 12px !important; }
+          .dashboard-today-meal { border: 2px solid rgba(0,0,0,0.32) !important; background: rgba(255,255,255,0.84) !important; border-radius: 18px !important; padding: 12px !important; }
           .dashboard-meal-title { font-size: 18px !important; }
           .dashboard-entitlement { border-width: 2px !important; font-size: 10px !important; padding: 5px 8px !important; }
         }
@@ -337,7 +337,7 @@ export default async function DashboardPage() {
 
                     <div style={styles.todayRowWide}>
                       <span>Jedlo</span>
-                      <b>{meal.menuText}</b>
+                      <b style={styles.todayMenuText}>{meal.menuText}</b>
                     </div>
 
                     <div style={styles.todayRow}>
@@ -614,6 +614,10 @@ const styles: Record<string, React.CSSProperties> = {
     borderTop: '2px solid #000',
     paddingTop: 8,
     fontSize: 14
+  },
+  todayMenuText: {
+    whiteSpace: 'pre-line',
+    lineHeight: 1.35
   },
   menuGrid: {
     marginTop: 28,
