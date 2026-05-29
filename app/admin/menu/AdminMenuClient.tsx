@@ -193,7 +193,7 @@ try {
             border: '3px solid #000',
           }}
         >
-          ADMIN MENU
+          MENU DEADLINE
         </div>
       </div>
 
@@ -216,7 +216,7 @@ try {
             letterSpacing: -1,
           }}
         >
-          Uzávierky výberu jedál
+          Menu deadline
         </h1>
 
         <p

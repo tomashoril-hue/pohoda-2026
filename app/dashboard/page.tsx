@@ -154,6 +154,7 @@ export default async function DashboardPage() {
   const globalAccess = await getGlobalAccess(user.id)
   const canOpenPersonalista = globalAccess.canUsePersonalista
   const canOpenFoodIssue = globalAccess.canUseFoodIssue
+  const canOpenMenuDeadline = globalAccess.isAdmin
 
   const getSelection = (typJedla: string) => {
     return (selections || []).find((item: any) => item.typ_jedla === typJedla)
@@ -346,7 +347,9 @@ export default async function DashboardPage() {
           {canOpenPersonalista && (
             <Link href="/dashboard/personalista" style={styles.menuButtonGreen}>Personalista</Link>
           )}
-          <a href="/admin/menu" style={styles.menuButtonGreen}>Admin menu</a>
+          {canOpenMenuDeadline && (
+            <a href="/admin/menu" style={styles.menuButtonGreen}>Menu deadline</a>
+          )}
         </div>
 
         <div style={styles.groupsBox}>

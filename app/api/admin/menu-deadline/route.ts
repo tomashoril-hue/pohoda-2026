@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function POST(req: Request) {
@@ -8,6 +9,15 @@ export async function POST(req: Request) {
 
     if (!user) {
       return NextResponse.json({ error: 'Nie si prihlásený.' }, { status: 401 })
+    }
+
+    const access = await getGlobalAccess(user.id)
+
+    if (!access.isAdmin) {
+      return NextResponse.json(
+        { error: 'Menu deadline môže upravovať iba ADMIN.' },
+        { status: 403 }
+      )
     }
 
     const body = await req.json()

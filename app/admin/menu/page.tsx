@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
+import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import AdminMenuClient from './AdminMenuClient'
 
@@ -23,15 +24,9 @@ export default async function AdminMenuPage() {
 
   if (!user) redirect('/')
 
-  const { data: membership } = await supabaseServer
-    .from('group_members')
-    .select('role')
-    .eq('user_id', user.id)
-    .eq('role', 'MANAGER')
-    .limit(1)
-    .maybeSingle()
+  const access = await getGlobalAccess(user.id)
 
-  if (!membership) redirect('/menu')
+  if (!access.isAdmin) redirect('/menu')
 
   const today = todayBratislavaIsoDate()
 
