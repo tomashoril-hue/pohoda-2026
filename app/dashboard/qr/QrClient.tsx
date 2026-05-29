@@ -80,11 +80,8 @@ export default function QrClient({ meno, priezvisko, email, qrCode, qrKind }: Pr
             )}
 
             {isWristbandQr && (
-              <div style={styles.qrImageWrap}>
-                <div style={styles.wristbandState}>
-                  <b>Náramok aktívny</b>
-                  <span>Identifikácia je v platnosti.</span>
-                </div>
+              <div style={styles.wristbandImageWrap}>
+                <img src="/icon.png" alt="Náramok aktívny" style={styles.wristbandImage} />
               </div>
             )}
 
@@ -221,18 +218,20 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     height: '100%'
   },
-  wristbandState: {
+  wristbandImageWrap: {
+    width: 250,
+    height: 250,
+    margin: '0 auto',
+    background: '#000',
+    border: '4px solid #000',
+    borderRadius: 24,
+    overflow: 'hidden'
+  },
+  wristbandImage: {
     width: '100%',
     height: '100%',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    background: '#fff',
-    borderRadius: 12,
-    color: '#000',
-    fontWeight: 900
+    display: 'block',
+    objectFit: 'cover'
   },
   buttons: {
     marginTop: 26,
