@@ -50,7 +50,9 @@ function LoginConfirmContent() {
   return (
     <main style={styles.page}>
       <div style={styles.topBar}>
-        <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
+        <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
+          <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
+        </a>
         <div style={styles.date}>8. & 9. - 11. 7. 2026</div>
       </div>
 

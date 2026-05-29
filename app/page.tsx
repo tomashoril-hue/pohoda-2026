@@ -12,7 +12,9 @@ export default async function HomePage() {
   return (
     <main style={styles.page}>
       <div style={styles.topBar}>
-        <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
+        <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
+          <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
+        </a>
 
         <div style={styles.chefIconWrap}>
           <img

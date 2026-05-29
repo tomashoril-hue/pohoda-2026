@@ -181,7 +181,9 @@ try {
           gap: 16,
         }}
       >
-        <img src="/pohoda-30.svg" alt="POHODA" style={{ height: 46 }} />
+        <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
+          <img src="/pohoda-30.svg" alt="POHODA" style={{ height: 46 }} />
+        </a>
 
         <div
           style={{

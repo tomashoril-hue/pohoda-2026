@@ -248,9 +248,9 @@ export default async function DashboardPage() {
         }
       `}</style>
       <div className="dashboard-top-bar" style={styles.topBar}>
-        <Link href="/dashboard" style={styles.logoLink} aria-label="Späť na dashboard">
+        <a href="/dashboard" style={styles.logoLink} aria-label="Späť na dashboard">
           <img className="dashboard-logo" src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
-        </Link>
+        </a>
         <div className="dashboard-date" style={styles.date}>8. & 9. – 11. 7. 2026</div>
       </div>
 
