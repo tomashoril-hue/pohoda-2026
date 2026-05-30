@@ -25,6 +25,34 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+.pwa-ios-status-bar {
+  position: fixed;
+  inset: 0 0 auto;
+  height: env(safe-area-inset-top);
+  background: #7417e8;
+  pointer-events: none;
+  z-index: 10000;
+}
+
+.pwa-pull-refresh {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 8px);
+  left: 50%;
+  z-index: 10001;
+  border: 2px solid #000;
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: #fff;
+  color: #000;
+  box-shadow: 3px 3px 0 #000;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+  white-space: nowrap;
+}
+
 @media (max-width: 768px) {
   input,
   select,
