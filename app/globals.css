@@ -25,6 +25,12 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+.pwa-ios-standalone body {
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top);
+  background: #7417e8;
+}
+
 .pwa-ios-status-bar {
   position: fixed;
   inset: 0 0 auto;

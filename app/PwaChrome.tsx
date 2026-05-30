@@ -28,6 +28,7 @@ export default function PwaChrome() {
   useEffect(() => {
     if (!isIosStandalone()) return
 
+    document.documentElement.classList.add('pwa-ios-standalone')
     setActive(true)
 
     const resetPull = () => {
@@ -85,6 +86,7 @@ export default function PwaChrome() {
     document.addEventListener('touchcancel', resetPull, { passive: true })
 
     return () => {
+      document.documentElement.classList.remove('pwa-ios-standalone')
       document.removeEventListener('touchstart', handleTouchStart)
       document.removeEventListener('touchmove', handleTouchMove)
       document.removeEventListener('touchend', handleTouchEnd)
