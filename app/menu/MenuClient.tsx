@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 type MealType = 'OBED' | 'VECERA'
-type Variant = 'MASO' | 'VEGE'
+type Variant = 'MASO' | 'VEGE' | 'DIETA'
 
 type MenuItem = {
   id: string
@@ -37,6 +37,20 @@ type DeadlineState = {
   showCountdown: boolean
   danger: boolean
   label: string
+}
+
+function normalizeVariant(value: string | null | undefined): Variant | null {
+  const normalized = String(value || '').trim().toUpperCase()
+
+  if (normalized === 'MASO') return 'MASO'
+  if (normalized === 'VEGE') return 'VEGE'
+  if (normalized === 'DIETA' || normalized === 'DIÉTA') return 'DIETA'
+
+  return null
+}
+
+function variantLabel(value: string | null | undefined) {
+  return normalizeVariant(value) === 'DIETA' ? 'DIÉTA' : value
 }
 
 export default function MenuClient({
@@ -77,12 +91,14 @@ export default function MenuClient({
   }, [menu])
 
   const defaultFoodLabel = useMemo(() => {
-    const normalized = String(defaultFood || '').trim().toUpperCase()
+    const normalized = normalizeVariant(defaultFood)
     if (normalized === 'MASO') return 'MASO'
     if (normalized === 'VEGE') return 'VEGE'
-    if (normalized === 'DIETA' || normalized === 'DIÉTA') return 'DIÉTA'
+    if (normalized === 'DIETA') return 'DIÉTA'
     return 'nenastavená'
   }, [defaultFood])
+
+  const canSelectDiet = normalizeVariant(defaultFood) === 'DIETA'
 
   const emptyDeadlineState = (): DeadlineState => ({
     locked: false,
@@ -271,7 +287,10 @@ export default function MenuClient({
 
   const renderMealSection = (typ: MealType) => {
     const items = menu.filter(
-      (m) => m.datum === selectedDate && m.typ_jedla === typ
+      (m) =>
+        m.datum === selectedDate &&
+        m.typ_jedla === typ &&
+        (normalizeVariant(m.varianta) !== 'DIETA' || canSelectDiet)
     )
 
     const selected = getSelected(selectedDate, typ)
@@ -346,10 +365,10 @@ export default function MenuClient({
           >
             {state.locked
               ? state.label
-              : state.showCountdown
-                ? `UZÁVIERKA ${state.countdown}`
-                : selected
-                  ? `Vybrané: ${selected}`
+                : state.showCountdown
+                  ? `UZÁVIERKA ${state.countdown}`
+                  : selected
+                  ? `Vybrané: ${variantLabel(selected)}`
                   : `Predvolené: ${defaultFoodLabel}`}
           </div>
         </div>
@@ -362,7 +381,7 @@ export default function MenuClient({
           }}
         >
           {items.map((item) => {
-            const active = selected === item.varianta
+            const active = normalizeVariant(selected) === normalizeVariant(item.varianta)
 
             return (
               <button
@@ -396,7 +415,7 @@ export default function MenuClient({
                     marginBottom: 12,
                   }}
                 >
-                  {item.varianta}
+                  {variantLabel(item.varianta)}
                 </div>
 
                 <div

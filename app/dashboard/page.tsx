@@ -311,7 +311,7 @@ export default async function DashboardPage({
 
         <div className="dashboard-info" style={styles.infoBox}>
           <p><b>E-mail:</b> {user.email || '-'}</p>
-          <p><b>Typ stravy:</b> {user.typ_stravy || user.typStravy || '-'}</p>
+          <p><b>Typ stravy:</b> {menuVariantLabel(defaultFood) || '-'}</p>
         </div>
 
         <section className="dashboard-today-box" style={styles.todayBox}>

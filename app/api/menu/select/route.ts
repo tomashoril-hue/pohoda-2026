@@ -2,6 +2,16 @@ import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
 
+function normalizeChoice(value: unknown) {
+  const normalized = String(value || '').trim().toUpperCase()
+
+  if (normalized === 'MASO') return 'MASO'
+  if (normalized === 'VEGE') return 'VEGE'
+  if (normalized === 'DIETA' || normalized === 'DIÉTA') return 'DIETA'
+
+  return null
+}
+
 function bratislavaLocalToUtcIso(datum: string, hour: number) {
   const localGuess = new Date(`${datum}T${String(hour).padStart(2, '0')}:00:00.000Z`)
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -43,10 +53,40 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json()
-  const { datum, typ_jedla, volba } = body
+  const datum = String(body.datum || '').trim()
+  const typ_jedla = String(body.typ_jedla || '').trim().toUpperCase()
+  const volba = normalizeChoice(body.volba)
 
   if (!datum || !typ_jedla || !volba) {
     return NextResponse.json({ error: 'Chýbajú údaje.' }, { status: 400 })
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datum) || !['OBED', 'VECERA'].includes(typ_jedla)) {
+    return NextResponse.json({ error: 'Neplatný dátum alebo typ jedla.' }, { status: 400 })
+  }
+
+  if (volba === 'DIETA' && normalizeChoice(user.typ_stravy) !== 'DIETA') {
+    return NextResponse.json(
+      { error: 'Diétu môže vybrať iba osoba s nastavenou diétou.' },
+      { status: 403 }
+    )
+  }
+
+  const { data: menuItem, error: menuError } = await supabaseServer
+    .from('jedalny_listok')
+    .select('id')
+    .eq('datum', datum)
+    .eq('typ_jedla', typ_jedla)
+    .eq('varianta', volba)
+    .eq('aktivne', true)
+    .maybeSingle()
+
+  if (menuError) {
+    return NextResponse.json({ error: menuError.message }, { status: 500 })
+  }
+
+  if (!menuItem) {
+    return NextResponse.json({ error: 'Táto možnosť nie je v jedálnom lístku.' }, { status: 400 })
   }
 
   const { data: deadline } = await supabaseServer
