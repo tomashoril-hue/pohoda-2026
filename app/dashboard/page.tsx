@@ -58,11 +58,22 @@ function mealLabel(value: string) {
 function choiceLabel(value: string | null | undefined, defaultValue?: string | null) {
   if (value === 'MASO') return 'MASO'
   if (value === 'VEGE') return 'VEGE'
+  if (isDietFood(value)) return 'DIÉTA'
 
   if (defaultValue === 'MASO') return 'PREDVOLENÉ MASO'
   if (defaultValue === 'VEGE') return 'PREDVOLENÉ VEGE'
+  if (isDietFood(defaultValue)) return 'PREDVOLENÁ DIÉTA'
 
   return 'NEZADANÉ'
+}
+
+function isDietFood(value: string | null | undefined) {
+  const normalized = String(value || '').trim().toUpperCase()
+  return normalized === 'DIETA' || normalized === 'DIÉTA'
+}
+
+function menuVariantLabel(value: string | null | undefined) {
+  return isDietFood(value) ? 'DIÉTA' : value
 }
 
 function entitlementLabel(value: boolean | null | undefined, hasRow: boolean) {
@@ -190,25 +201,20 @@ export default async function DashboardPage({
     return (selections || []).find((item: any) => item.typ_jedla === typJedla)
   }
 
-  const getMenuText = (typJedla: string, volba: string | null | undefined) => {
+  const getMenuText = (typJedla: string, showDiet: boolean) => {
     const items = (menuItems || []).filter((item: any) => {
-      return item.typ_jedla === typJedla
+      const variant = String(item.varianta || '').trim().toUpperCase()
+
+      return (
+        item.typ_jedla === typJedla &&
+        (variant === 'MASO' || variant === 'VEGE' || (showDiet && isDietFood(variant)))
+      )
     })
 
     if (!items.length) return 'Jedlo nie je zadané'
 
-    if (volba === 'MASO' || volba === 'VEGE') {
-      const selectedItem = items.find((item: any) => item.varianta === volba)
-
-      if (!selectedItem) return 'Jedlo nie je zadané'
-
-      return selectedItem.popis
-        ? `${selectedItem.nazov} – ${selectedItem.popis}`
-        : selectedItem.nazov
-    }
-
     return items
-      .map((item: any) => `${item.varianta}: ${item.nazov}`)
+      .map((item: any) => `${menuVariantLabel(item.varianta)}: ${item.nazov}`)
       .join('\n')
   }
 
@@ -235,13 +241,14 @@ export default async function DashboardPage({
   const obedSelection = getSelection('OBED')
   const veceraSelection = getSelection('VECERA')
   const defaultFood = user.typ_stravy || user.typStravy || null
+  const showDiet = isDietFood(defaultFood)
 
   const todayMeals = [
     {
       typJedla: 'OBED',
       entitlement: entitlementLabel(entitlement?.obed, hasEntitlementRow),
       selection: obedSelection,
-      menuText: getMenuText('OBED', obedSelection?.volba),
+      menuText: getMenuText('OBED', showDiet),
       issued: getIssued('OBED'),
       bulk: getBulk('OBED')
     },
@@ -249,7 +256,7 @@ export default async function DashboardPage({
       typJedla: 'VECERA',
       entitlement: entitlementLabel(entitlement?.vecera, hasEntitlementRow),
       selection: veceraSelection,
-      menuText: getMenuText('VECERA', veceraSelection?.volba),
+      menuText: getMenuText('VECERA', showDiet),
       issued: getIssued('VECERA'),
       bulk: getBulk('VECERA')
     }
