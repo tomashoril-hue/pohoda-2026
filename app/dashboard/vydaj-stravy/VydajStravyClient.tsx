@@ -108,6 +108,34 @@ function toneOf(status: string, ok: boolean): Tone {
   return 'error'
 }
 
+function historyStatusLabel(item: ScanItem) {
+  if (item.status === 'ISSUED' && item.method === 'HROMADNE') {
+    return 'Vydané hromadne'
+  }
+
+  return item.message
+}
+
+function historyDetail(item: ScanItem) {
+  const name = item.personName || item.email || '-'
+
+  if (item.method === 'HROMADNE') {
+    const summary = item.summary
+    const counts = summary
+      ? [
+          summary.MASO ? `${summary.MASO} x MASO` : '',
+          summary.VEGE ? `${summary.VEGE} x VEGE` : '',
+          summary.DIETA ? `${summary.DIETA} x DIÉTA` : '',
+          summary.NEZADANE ? `${summary.NEZADANE} x NEZADANÉ` : ''
+        ].filter(Boolean).join(' · ')
+      : ''
+
+    return `${name} (hromadný výdaj)${counts ? ` · ${counts}` : ''}`
+  }
+
+  return `${name}${item.choice ? ` · 1 x ${choiceLabel(item.choice)}` : ''}`
+}
+
 export default function VydajStravyClient({
   actorName,
   initialDate,
@@ -408,7 +436,8 @@ export default function VydajStravyClient({
         method: String(json.method || ''),
         groupName: String(json.groupName || ''),
         issuedId: String(json.issuedId || ''),
-        issuedAt: String(json.issuedAt || new Date().toISOString())
+        issuedAt: String(json.issuedAt || new Date().toISOString()),
+        summary: json.bulkSummary || undefined
       }
 
       addHistory(item)
@@ -991,9 +1020,9 @@ export default function VydajStravyClient({
                     ? styles.historyWarning
                     : styles.historyError)
               }}>
-                <div>
-                  <b>{item.message}</b>
-                  <span>{item.personName || item.email || '-'}</span>
+                <div style={styles.historyText}>
+                  <b>{historyStatusLabel(item)}</b>
+                  <span>{historyDetail(item)}</span>
                 </div>
                 <em>{formatTime(item.issuedAt)}</em>
               </div>
@@ -1514,6 +1543,10 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 8,
     padding: 10,
     fontSize: 13
+  },
+  historyText: {
+    display: 'grid',
+    gap: 3
   },
   historySuccess: {
     background: '#dcfce7'
