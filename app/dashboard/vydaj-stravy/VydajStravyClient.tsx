@@ -52,6 +52,7 @@ type BulkIssueOption = {
   groupName: string
   count: number
   summary: ChoiceSummary
+  includesScannedPerson: boolean
 }
 
 type IssueDecision = {
@@ -527,7 +528,8 @@ export default function VydajStravyClient({
               VEGE: 0,
               DIETA: 0,
               NEZADANE: 0
-            }
+            },
+            includesScannedPerson: Boolean(issue.includesScannedPerson)
           }))
         })
         setQrValue('')
@@ -973,6 +975,13 @@ export default function VydajStravyClient({
                   <span style={styles.decisionSummary}>
                     {personCountLabel(issue.count)}
                     {choiceSummaryLabel(issue.summary) ? ` · ${choiceSummaryLabel(issue.summary)}` : ''}
+                  </span>
+                  <span style={issue.includesScannedPerson
+                    ? styles.decisionIncluded
+                    : styles.decisionExcluded}
+                  >
+                    {issue.includesScannedPerson ? 'Vrátane porcie: ' : 'Bez porcie: '}
+                    {issueDecision.personName || issueDecision.email || 'Bez mena'}
                   </span>
                 </button>
               ))}
@@ -1593,6 +1602,16 @@ const styles: Record<string, CSSProperties> = {
   decisionSummary: {
     fontSize: 15,
     fontWeight: 850
+  },
+  decisionIncluded: {
+    color: '#166534',
+    fontSize: 15,
+    fontWeight: 950
+  },
+  decisionExcluded: {
+    color: '#b91c1c',
+    fontSize: 15,
+    fontWeight: 950
   },
   statsModal: {
     background: '#fff',

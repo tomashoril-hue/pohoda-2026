@@ -681,7 +681,7 @@ export async function POST(req: NextRequest) {
       if (activeCandidateIds.length > 0) {
         const { data: candidateItems, error: candidateItemsError } = await supabaseServer
           .from('hromadny_vydaj_polozky')
-          .select('id, hromadny_vydaj_id, volba')
+          .select('id, hromadny_vydaj_id, user_id, volba')
           .in('hromadny_vydaj_id', activeCandidateIds)
           .eq('status', 'PLANNED')
 
@@ -689,27 +689,100 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: candidateItemsError.message }, { status: 500 })
         }
 
-        const itemsByIssue = new Map<string, any[]>()
+        const candidateUserIds = Array.from(new Set(
+          (candidateItems || []).map((item: any) => item.user_id).filter(Boolean)
+        ))
+        if (candidateUserIds.length > 0) {
+          const [
+            candidateIssuedResult,
+            candidateProfilesResult,
+            candidateEntitlementsResult,
+            candidateSelectionsResult
+          ] = await Promise.all([
+            supabaseServer
+              .from('vydaj_jedal')
+              .select('user_id')
+              .eq('datum', datum)
+              .eq('typ_jedla', typJedla)
+              .eq('status', 'VYDANE')
+              .in('user_id', candidateUserIds),
+            supabaseServer
+              .from('users')
+              .select('id, aktivny, typ_stravy')
+              .in('id', candidateUserIds),
+            supabaseServer
+              .from('user_food_entitlements')
+              .select('user_id, obed, vecera')
+              .eq('datum', datum)
+              .in('user_id', candidateUserIds),
+            supabaseServer
+              .from('vyber_jedal')
+              .select('user_id, volba')
+              .eq('datum', datum)
+              .eq('typ_jedla', typJedla)
+              .in('user_id', candidateUserIds)
+          ])
 
-        for (const item of candidateItems || []) {
-          const items = itemsByIssue.get(item.hromadny_vydaj_id) || []
-          items.push(item)
-          itemsByIssue.set(item.hromadny_vydaj_id, items)
+          if (candidateIssuedResult.error) {
+            return NextResponse.json({ error: candidateIssuedResult.error.message }, { status: 500 })
+          }
+
+          if (candidateProfilesResult.error) {
+            return NextResponse.json({ error: candidateProfilesResult.error.message }, { status: 500 })
+          }
+
+          if (candidateEntitlementsResult.error) {
+            return NextResponse.json({ error: candidateEntitlementsResult.error.message }, { status: 500 })
+          }
+
+          if (candidateSelectionsResult.error) {
+            return NextResponse.json({ error: candidateSelectionsResult.error.message }, { status: 500 })
+          }
+
+          const candidateIssuedIds = new Set(
+            (candidateIssuedResult.data || []).map((row: any) => row.user_id)
+          )
+          const candidateProfileMap = new Map(
+            (candidateProfilesResult.data || []).map((row: any) => [row.id, row])
+          )
+          const candidateEntitlementMap = new Map(
+            (candidateEntitlementsResult.data || []).map((row: any) => [row.user_id, row])
+          )
+          const candidateSelectionMap = new Map(
+            (candidateSelectionsResult.data || []).map((row: any) => [row.user_id, normalizeChoice(row.volba)])
+          )
+          const itemsByIssue = new Map<string, any[]>()
+
+          for (const item of candidateItems || []) {
+            const profileRow = candidateProfileMap.get(item.user_id)
+
+            if (!isActiveUser(profileRow)) continue
+            if (!entitlementOk(candidateEntitlementMap.get(item.user_id), typJedla)) continue
+            if (candidateIssuedIds.has(item.user_id)) continue
+
+            const items = itemsByIssue.get(item.hromadny_vydaj_id) || []
+            items.push({
+              ...item,
+              volba: candidateSelectionMap.get(item.user_id) || normalizeChoice(profileRow?.typ_stravy) || null
+            })
+            itemsByIssue.set(item.hromadny_vydaj_id, items)
+          }
+
+          bulkIssueOptions = activeCandidateIssues.flatMap((issue: any) => {
+            const items = itemsByIssue.get(issue.id) || []
+            if (items.length === 0) return []
+
+            return [{
+              issue,
+              id: issue.id,
+              groupId: issue.group_id,
+              groupName: groupOf(issue)?.name || '',
+              count: items.length,
+              summary: choiceSummary(items),
+              includesScannedPerson: items.some((item: any) => item.user_id === targetUserId)
+            }]
+          })
         }
-
-        bulkIssueOptions = activeCandidateIssues.flatMap((issue: any) => {
-          const items = itemsByIssue.get(issue.id) || []
-          if (items.length === 0) return []
-
-          return [{
-            issue,
-            id: issue.id,
-            groupId: issue.group_id,
-            groupName: groupOf(issue)?.name || '',
-            count: items.length,
-            summary: choiceSummary(items)
-          }]
-        })
       }
     }
 
@@ -734,7 +807,8 @@ export async function POST(req: NextRequest) {
           groupId: option.groupId,
           groupName: option.groupName,
           count: option.count,
-          summary: option.summary
+          summary: option.summary,
+          includesScannedPerson: option.includesScannedPerson
         })),
         message: 'Vyber spôsob výdaja.'
       })
