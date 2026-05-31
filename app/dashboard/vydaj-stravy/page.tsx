@@ -47,12 +47,6 @@ export default async function VydajStravyPage() {
 
   const today = todayIsoDate()
 
-  const { data: issuedToday } = await supabaseServer
-    .from('vydaj_jedal')
-    .select('typ_jedla, status')
-    .eq('datum', today)
-    .eq('status', 'VYDANE')
-
   const { data: activeIssues } = await supabaseServer
     .from('hromadne_vydaje')
     .select(`
@@ -70,17 +64,11 @@ export default async function VydajStravyPage() {
     .in('status', ['READY', 'WAITING'])
     .order('typ_jedla', { ascending: true })
 
-  const counts = {
-    obed: (issuedToday || []).filter((row: any) => row.typ_jedla === 'OBED').length,
-    vecera: (issuedToday || []).filter((row: any) => row.typ_jedla === 'VECERA').length
-  }
-
   return (
     <VydajStravyClient
       actorName={`${user.meno || ''} ${user.priezvisko || ''}`.trim() || user.email || ''}
       initialDate={today}
       initialMeal={defaultMeal()}
-      initialCounts={counts}
       issueMode={access.canAdminFoodIssue ? 'FULL' : 'BASIC'}
       activeIssues={(activeIssues || []).map((issue: any) => {
         const group = Array.isArray(issue.groups) ? issue.groups[0] : issue.groups

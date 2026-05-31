@@ -25,6 +25,7 @@ function normalizeChoice(value: any) {
 
   if (text === 'MASO') return 'MASO'
   if (text === 'VEGE') return 'VEGE'
+  if (text === 'DIETA' || text === 'DIÉTA') return 'DIETA'
 
   return null
 }

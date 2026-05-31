@@ -112,17 +112,12 @@ export default function VydajStravyClient({
   actorName,
   initialDate,
   initialMeal,
-  initialCounts,
   issueMode,
   activeIssues
 }: {
   actorName: string
   initialDate: string
   initialMeal: string
-  initialCounts: {
-    obed: number
-    vecera: number
-  }
   issueMode: 'FULL' | 'BASIC'
   activeIssues: ActiveIssue[]
 }) {
@@ -145,11 +140,13 @@ export default function VydajStravyClient({
   const [history, setHistory] = useState<ScanItem[]>([])
   const [successCount, setSuccessCount] = useState(0)
   const [errorCount, setErrorCount] = useState(0)
-  const [, setDayCounts] = useState(initialCounts)
   const [mealStats, setMealStats] = useState<Record<Meal, MealStats>>({
-    OBED: emptyMealStats(initialCounts.obed),
-    VECERA: emptyMealStats(initialCounts.vecera)
+    OBED: emptyMealStats(),
+    VECERA: emptyMealStats()
   })
+  const [statsOpen, setStatsOpen] = useState(false)
+  const [statsLoading, setStatsLoading] = useState(false)
+  const [statsError, setStatsError] = useState('')
   const [recentIssued, setRecentIssued] = useState<ScanItem[]>([])
   const [selectedCancelIds, setSelectedCancelIds] = useState<string[]>([])
   const [editChoices, setEditChoices] = useState<Record<string, string>>({})
@@ -285,11 +282,10 @@ export default function VydajStravyClient({
     setHistory(prev => [item, ...prev].slice(0, 24))
   }
 
-  const refreshIssueDataInBackground = () => {
-    Promise.all([
-      fullMode ? refreshRecentIssued() : Promise.resolve(),
-      refreshStats()
-    ]).catch(() => {
+  const refreshRecentIssuedInBackground = () => {
+    if (!fullMode) return
+
+    refreshRecentIssued().catch(() => {
       // Obnova prehľadov nesmie blokovať ďalšie skenovanie.
     })
   }
@@ -344,17 +340,30 @@ export default function VydajStravyClient({
   }
 
   const refreshStats = async () => {
-    const params = new URLSearchParams({ datum })
-    const res = await fetch(`/api/vydaj-stravy/stats?${params.toString()}`)
-    const json = await res.json().catch(() => ({}))
+    setStatsLoading(true)
+    setStatsError('')
 
-    if (!res.ok || !json.ok || !json.stats) return
+    try {
+      const params = new URLSearchParams({ datum })
+      const res = await fetch(`/api/vydaj-stravy/stats?${params.toString()}`)
+      const json = await res.json().catch(() => ({}))
 
-    setMealStats(json.stats)
-    setDayCounts({
-      obed: Number(json.stats.OBED?.issued || 0),
-      vecera: Number(json.stats.VECERA?.issued || 0)
-    })
+      if (!res.ok || !json.ok || !json.stats) {
+        setStatsError(json.error || 'Prehľad sa nepodarilo načítať.')
+        return
+      }
+
+      setMealStats(json.stats)
+    } catch {
+      setStatsError('Prehľad sa nepodarilo načítať.')
+    } finally {
+      setStatsLoading(false)
+    }
+  }
+
+  const openStats = () => {
+    setStatsOpen(true)
+    refreshStats()
   }
 
   useEffect(() => {
@@ -364,7 +373,6 @@ export default function VydajStravyClient({
     } else {
       setRecentIssued([])
     }
-    refreshStats()
   }, [datum, typJedla, fullMode])
 
   const submitQr = async (manualValue?: string) => {
@@ -412,11 +420,7 @@ export default function VydajStravyClient({
         if (item.issuedId) {
           setSelectedCancelIds([item.issuedId])
         }
-        setDayCounts(prev => ({
-          ...prev,
-          [typJedla === 'OBED' ? 'obed' : 'vecera']: prev[typJedla === 'OBED' ? 'obed' : 'vecera'] + issuedCount
-        }))
-        refreshIssueDataInBackground()
+        refreshRecentIssuedInBackground()
       } else {
         playBeep('error')
         setErrorCount(prev => prev + 1)
@@ -525,7 +529,6 @@ export default function VydajStravyClient({
         issuedAt: new Date().toISOString()
       })
       await refreshRecentIssued()
-      await refreshStats()
     } catch (err: any) {
       playBeep('error')
       addHistory({
@@ -592,16 +595,8 @@ export default function VydajStravyClient({
         })
       })
 
-      itemsToCancel.forEach(item => {
-        setDayCounts(prev => ({
-          ...prev,
-          [item.typJedla === 'OBED' ? 'obed' : 'vecera']: Math.max(0, prev[item.typJedla === 'OBED' ? 'obed' : 'vecera'] - 1)
-        }))
-      })
-
       playBeep('ok')
       await refreshRecentIssued()
-      await refreshStats()
       setSelectedCancelIds([])
     } catch (err: any) {
       playBeep('error')
@@ -621,7 +616,6 @@ export default function VydajStravyClient({
       })
       if (cancelledIds.length > 0) {
         await refreshRecentIssued()
-        await refreshStats()
       }
     } finally {
       setCancelLoading(false)
@@ -765,26 +759,6 @@ export default function VydajStravyClient({
       </section>
 
       <section style={styles.statsGrid}>
-        <div style={styles.statBoxWide}>
-          <span>Dnes obed</span>
-          <b>{mealStats.OBED.issued} / {mealStats.OBED.total}</b>
-          <div style={styles.foodBreakdown}>
-            <em>MASO {mealStats.OBED.MASO.issued}/{mealStats.OBED.MASO.total}</em>
-            <em>VEGE {mealStats.OBED.VEGE.issued}/{mealStats.OBED.VEGE.total}</em>
-            <em>DIÉTA {mealStats.OBED.DIETA.issued}/{mealStats.OBED.DIETA.total}</em>
-            <em>NEZADANÉ {mealStats.OBED.NEZADANE?.issued || 0}/{mealStats.OBED.NEZADANE?.total || 0}</em>
-          </div>
-        </div>
-        <div style={styles.statBoxWide}>
-          <span>Dnes večera</span>
-          <b>{mealStats.VECERA.issued} / {mealStats.VECERA.total}</b>
-          <div style={styles.foodBreakdown}>
-            <em>MASO {mealStats.VECERA.MASO.issued}/{mealStats.VECERA.MASO.total}</em>
-            <em>VEGE {mealStats.VECERA.VEGE.issued}/{mealStats.VECERA.VEGE.total}</em>
-            <em>DIÉTA {mealStats.VECERA.DIETA.issued}/{mealStats.VECERA.DIETA.total}</em>
-            <em>NEZADANÉ {mealStats.VECERA.NEZADANE?.issued || 0}/{mealStats.VECERA.NEZADANE?.total || 0}</em>
-          </div>
-        </div>
         <div style={styles.statBoxGreen}>
           <span>Vydané teraz</span>
           <b>{successCount}</b>
@@ -793,7 +767,66 @@ export default function VydajStravyClient({
           <span>Kontroly stop</span>
           <b>{errorCount}</b>
         </div>
+        <button type="button" onClick={openStats} style={styles.statsButton}>
+          Prehľad stravy
+        </button>
       </section>
+
+      {statsOpen && (
+        <div style={styles.modalBackdrop} onClick={() => setStatsOpen(false)}>
+          <div style={styles.statsModal} onClick={event => event.stopPropagation()}>
+            <div style={styles.statsModalHeader}>
+              <div>
+                <h2 style={styles.sectionTitle}>Prehľad stravy</h2>
+                <p style={styles.cancelHint}>{datum} · všetky terminály</p>
+              </div>
+              <button type="button" onClick={() => setStatsOpen(false)} style={styles.closeButton}>
+                Zavrieť
+              </button>
+            </div>
+
+            {statsLoading ? (
+              <div style={styles.emptyHistory}>Načítavam aktuálny stav...</div>
+            ) : statsError ? (
+              <div style={styles.statsError}>{statsError}</div>
+            ) : (
+              <div style={styles.statsMealGrid}>
+                {(['OBED', 'VECERA'] as Meal[]).map(meal => (
+                  <section key={meal} style={styles.statsMealBox}>
+                    <div style={styles.statsMealHeader}>
+                      <h3 style={styles.statsMealTitle}>{mealLabel(meal)}</h3>
+                      <b>{mealStats[meal].issued} / {mealStats[meal].total}</b>
+                    </div>
+                    <div style={styles.statsTableHeader}>
+                      <span>Strava</span>
+                      <span>Nárok</span>
+                      <span>Vydané</span>
+                    </div>
+                    {(['MASO', 'VEGE', 'DIETA'] as const).map(choice => (
+                      <div key={choice} style={styles.statsTableRow}>
+                        <b>{choiceLabel(choice)}</b>
+                        <span>{mealStats[meal][choice].total}</span>
+                        <span>{mealStats[meal][choice].issued}</span>
+                      </div>
+                    ))}
+                    {(mealStats[meal].NEZADANE.total > 0 || mealStats[meal].NEZADANE.issued > 0) && (
+                      <div style={styles.statsTableRow}>
+                        <b>NEZADANÉ</b>
+                        <span>{mealStats[meal].NEZADANE.total}</span>
+                        <span>{mealStats[meal].NEZADANE.issued}</span>
+                      </div>
+                    )}
+                  </section>
+                ))}
+              </div>
+            )}
+
+            <button type="button" onClick={refreshStats} disabled={statsLoading} style={styles.secondaryButton}>
+              {statsLoading ? 'Načítavam...' : 'Obnoviť stav'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {fullMode && (
       <section style={styles.actionsRow}>
@@ -1216,31 +1249,8 @@ const styles: Record<string, CSSProperties> = {
   },
   statsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
     gap: 10
-  },
-  statBox: {
-    background: '#fff',
-    border: '1px solid #e5e7eb',
-    borderRadius: 8,
-    padding: 12,
-    display: 'grid',
-    gap: 6
-  },
-  statBoxWide: {
-    background: '#fff',
-    border: '1px solid #e5e7eb',
-    borderRadius: 8,
-    padding: 12,
-    display: 'grid',
-    gap: 6
-  },
-  foodBreakdown: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 6,
-    fontSize: 12,
-    fontWeight: 850
   },
   statBoxGreen: {
     background: '#dcfce7',
@@ -1258,6 +1268,13 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gap: 6
   },
+  statsButton: {
+    ...baseButton,
+    background: '#2563eb',
+    borderColor: '#1d4ed8',
+    color: '#fff',
+    padding: '0 14px'
+  },
   actionsRow: {
     display: 'grid'
   },
@@ -1270,6 +1287,76 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 12
+  },
+  statsModal: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 12,
+    display: 'grid',
+    gap: 12,
+    width: 'min(720px, 100%)',
+    maxHeight: '86vh',
+    overflowY: 'auto'
+  },
+  statsModalHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12
+  },
+  closeButton: {
+    ...baseButton,
+    minHeight: 44,
+    background: '#fff',
+    color: '#111827',
+    padding: '0 12px'
+  },
+  statsMealGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gap: 10
+  },
+  statsMealBox: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 10,
+    display: 'grid',
+    gap: 8
+  },
+  statsMealHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8
+  },
+  statsMealTitle: {
+    margin: 0,
+    fontSize: 18
+  },
+  statsTableHeader: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 72px 72px',
+    gap: 8,
+    color: '#64748b',
+    fontSize: 12,
+    fontWeight: 850
+  },
+  statsTableRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 72px 72px',
+    gap: 8,
+    borderTop: '1px solid #e5e7eb',
+    paddingTop: 8,
+    fontSize: 15
+  },
+  statsError: {
+    background: '#fee2e2',
+    border: '1px solid #fecaca',
+    borderRadius: 8,
+    color: '#991b1b',
+    padding: 10,
+    fontWeight: 800
   },
   cancelBox: {
     background: '#fff',

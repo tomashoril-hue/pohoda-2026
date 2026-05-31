@@ -65,6 +65,7 @@ function statusLabel(value: string) {
 function choiceLabel(value: string | null) {
   if (value === 'MASO') return 'MASO'
   if (value === 'VEGE') return 'VEGE'
+  if (value === 'DIETA') return 'DIÉTA'
   return 'NEZADANÉ'
 }
 
@@ -259,7 +260,7 @@ export default function GroupIssueClient({
   const [datum, setDatum] = useState(initialDate)
   const [typJedla, setTypJedla] = useState(initialMeal)
   const [search, setSearch] = useState('')
-  const [choiceFilter, setChoiceFilter] = useState<'ALL' | 'MASO' | 'VEGE' | 'UNKNOWN'>('ALL')
+  const [choiceFilter, setChoiceFilter] = useState<'ALL' | 'MASO' | 'VEGE' | 'DIETA' | 'UNKNOWN'>('ALL')
   const [selected, setSelected] = useState<string[]>(
     initialIssue ? initialIssue.userIds || [] : availableMemberIdsFor(initialDate, initialMeal)
   )
@@ -662,7 +663,8 @@ export default function GroupIssueClient({
         choiceFilter === 'ALL' ||
         (choiceFilter === 'MASO' && rowChoice === 'MASO') ||
         (choiceFilter === 'VEGE' && rowChoice === 'VEGE') ||
-        (choiceFilter === 'UNKNOWN' && rowChoice !== 'MASO' && rowChoice !== 'VEGE')
+        (choiceFilter === 'DIETA' && rowChoice === 'DIETA') ||
+        (choiceFilter === 'UNKNOWN' && !['MASO', 'VEGE', 'DIETA'].includes(rowChoice))
 
       return matchesSearch && matchesChoice
     })
@@ -720,8 +722,12 @@ export default function GroupIssueClient({
   }).length
 
   const selectedDietCount = selectedRows.filter((row: any) => {
+    return String(row.typStravy || row.volba || '').toUpperCase() === 'DIETA'
+  }).length
+
+  const selectedUnknownCount = selectedRows.filter((row: any) => {
     const choice = String(row.typStravy || row.volba || '').toUpperCase()
-    return choice !== 'MASO' && choice !== 'VEGE'
+    return !['MASO', 'VEGE', 'DIETA'].includes(choice)
   }).length
 
   const allRowsCount = rows.length
@@ -1557,8 +1563,12 @@ export default function GroupIssueClient({
                 }).length
 
                 const activeDietCount = plannedItems.filter((row: any) => {
+                  return String(row.typStravy || row.volba || '').toUpperCase() === 'DIETA'
+                }).length
+
+                const activeUnknownCount = plannedItems.filter((row: any) => {
                   const choice = String(row.typStravy || row.volba || '').toUpperCase()
-                  return choice !== 'MASO' && choice !== 'VEGE'
+                  return !['MASO', 'VEGE', 'DIETA'].includes(choice)
                 }).length
 
                 return (
@@ -1587,6 +1597,7 @@ export default function GroupIssueClient({
                       <small>MASO {activeMasoCount}</small>
                       <small>VEGE {activeVegeCount}</small>
                       <small>DIÉTA {activeDietCount}</small>
+                      {activeUnknownCount > 0 && <small>NEZADANÉ {activeUnknownCount}</small>}
                     </div>
 
                     {item.withoutEntitlementCount > 0 && (
@@ -1653,12 +1664,26 @@ export default function GroupIssueClient({
               type="button"
               style={{
                 ...styles.filterButton,
+                ...(choiceFilter === 'DIETA' ? styles.filterButtonActive : {})
+              }}
+              onClick={() => setChoiceFilter('DIETA')}
+            >
+              <b>{selectedDietCount}</b>
+              <span>DIÉTA</span>
+            </button>
+          )}
+
+          {selectedUnknownCount > 0 && (
+            <button
+              type="button"
+              style={{
+                ...styles.filterButton,
                 ...(choiceFilter === 'UNKNOWN' ? styles.filterButtonActive : {})
               }}
               onClick={() => setChoiceFilter('UNKNOWN')}
             >
-              <b>{selectedDietCount}</b>
-              <span>DIÉTA</span>
+              <b>{selectedUnknownCount}</b>
+              <span>NEZADANÉ</span>
             </button>
           )}
         </div>
@@ -1714,6 +1739,7 @@ export default function GroupIssueClient({
           <option value="ALL">Všetci</option>
           <option value="MASO">MASO</option>
           <option value="VEGE">VEGE</option>
+          <option value="DIETA">DIÉTA</option>
           <option value="UNKNOWN">Nezadané</option>
         </select>
       </section>

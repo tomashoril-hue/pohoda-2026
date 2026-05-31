@@ -49,6 +49,7 @@ function mealLabel(value: string) {
 function choiceLabel(value: string | null) {
   if (value === 'MASO') return 'MASO'
   if (value === 'VEGE') return 'VEGE'
+  if (value === 'DIETA') return 'DIÉTA'
   return 'NEZADANÉ'
 }
 
@@ -91,7 +92,7 @@ export default function IssueDetailClient({
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
 
   const [search, setSearch] = useState('')
-  const [choiceFilter, setChoiceFilter] = useState<'ALL' | 'MASO' | 'VEGE' | 'UNKNOWN'>('ALL')
+  const [choiceFilter, setChoiceFilter] = useState<'ALL' | 'MASO' | 'VEGE' | 'DIETA' | 'UNKNOWN'>('ALL')
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PLANNED' | 'TAKEN'>('ALL')
 
   useEffect(() => {
@@ -110,7 +111,8 @@ export default function IssueDetailClient({
   const takenItems = activeItems.filter(item => isTakenStatus(item.status))
   const masoItems = activeItems.filter(item => item.volba === 'MASO')
   const vegeItems = activeItems.filter(item => item.volba === 'VEGE')
-  const unknownItems = activeItems.filter(item => item.volba !== 'MASO' && item.volba !== 'VEGE')
+  const dietItems = activeItems.filter(item => item.volba === 'DIETA')
+  const unknownItems = activeItems.filter(item => !['MASO', 'VEGE', 'DIETA'].includes(item.volba))
 
   const visibleItems = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -126,7 +128,8 @@ export default function IssueDetailClient({
         choiceFilter === 'ALL' ||
         (choiceFilter === 'MASO' && item.volba === 'MASO') ||
         (choiceFilter === 'VEGE' && item.volba === 'VEGE') ||
-        (choiceFilter === 'UNKNOWN' && item.volba !== 'MASO' && item.volba !== 'VEGE')
+        (choiceFilter === 'DIETA' && item.volba === 'DIETA') ||
+        (choiceFilter === 'UNKNOWN' && !['MASO', 'VEGE', 'DIETA'].includes(item.volba))
 
       const matchesStatus =
         statusFilter === 'ALL' ||
@@ -420,6 +423,18 @@ export default function IssueDetailClient({
           type="button"
           style={{
             ...styles.statCard,
+            ...(choiceFilter === 'DIETA' ? styles.statActive : {})
+          }}
+          onClick={() => setChoiceFilter(choiceFilter === 'DIETA' ? 'ALL' : 'DIETA')}
+        >
+          <b>{dietItems.length}</b>
+          <span>DIÉTA</span>
+        </button>
+
+        <button
+          type="button"
+          style={{
+            ...styles.statCard,
             ...(choiceFilter === 'UNKNOWN' ? styles.statActive : {})
           }}
           onClick={() => setChoiceFilter(choiceFilter === 'UNKNOWN' ? 'ALL' : 'UNKNOWN')}
@@ -456,6 +471,7 @@ export default function IssueDetailClient({
           <option value="ALL">Všetky jedlá</option>
           <option value="MASO">MASO</option>
           <option value="VEGE">VEGE</option>
+          <option value="DIETA">DIÉTA</option>
           <option value="UNKNOWN">Nezadané</option>
         </select>
 
