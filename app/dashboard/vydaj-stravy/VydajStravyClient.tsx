@@ -21,6 +21,7 @@ type ScanItem = {
   groupName: string
   issuedId: string
   issuedAt: string
+  detail?: string
   summary?: {
     MASO: number
     VEGE: number
@@ -117,6 +118,8 @@ function historyStatusLabel(item: ScanItem) {
 }
 
 function historyDetail(item: ScanItem) {
+  if (item.detail) return item.detail
+
   const name = item.personName || item.email || '-'
 
   if (item.method === 'HROMADNE') {
@@ -134,6 +137,39 @@ function historyDetail(item: ScanItem) {
   }
 
   return `${name}${item.choice ? ` · 1 x ${choiceLabel(item.choice)}` : ''}`
+}
+
+function changedIssueDetail(items: ScanItem[], nextChoices: Record<string, string>) {
+  const changes = items.map(item => {
+    const name = item.personName || item.email || 'Bez mena'
+    const from = choiceLabel(item.choice || 'NEZADANE')
+    const to = choiceLabel(nextChoices[item.issuedId] || 'NEZADANE')
+
+    return { name, from, to }
+  })
+
+  if (changes.length <= 5) {
+    return changes
+      .map(change => `${change.name}: ${change.from} → ${change.to}`)
+      .join(' · ')
+  }
+
+  const counts = new Map<string, number>()
+
+  changes.forEach(change => {
+    const key = `${change.from} → ${change.to}`
+    counts.set(key, (counts.get(key) || 0) + 1)
+  })
+
+  return Array.from(counts.entries())
+    .map(([change, count]) => `${change}: ${count}`)
+    .join(' · ')
+}
+
+function personCountLabel(count: number) {
+  if (count === 1) return '1 osoba'
+  if (count >= 2 && count <= 4) return `${count} osoby`
+  return `${count} osôb`
 }
 
 export default function VydajStravyClient({
@@ -548,14 +584,17 @@ export default function VydajStravyClient({
         typJedla,
         status: 'UPDATED',
         tone: 'success',
-        message: `Upravené výdaje (${changedItems.length})`,
+        message: changedItems.length === 1
+          ? 'Upravený výdaj'
+          : `Upravené výdaje · ${personCountLabel(changedItems.length)}`,
         personName: '',
         email: '',
         choice: '',
         method: '',
         groupName: '',
         issuedId: '',
-        issuedAt: new Date().toISOString()
+        issuedAt: new Date().toISOString(),
+        detail: changedIssueDetail(changedItems, editChoices)
       })
       await refreshRecentIssued()
     } catch (err: any) {
