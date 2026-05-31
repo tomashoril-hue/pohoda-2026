@@ -162,7 +162,11 @@ function historyDetail(item: ScanItem) {
         ].filter(Boolean).join(' · ')
       : ''
 
-    return `${name} (hromadný výdaj)${counts ? ` · ${counts}` : ''}`
+    const group = item.groupName
+      ? `${item.groupName} (hromadný výdaj)`
+      : 'Hromadný výdaj'
+
+    return `${name} · ${group}${counts ? ` · ${counts}` : ''}`
   }
 
   return `${name}${item.choice ? ` · 1 x ${choiceLabel(item.choice)}` : ''}`
