@@ -435,10 +435,26 @@ export async function POST(req: NextRequest) {
     const qrCode = clean(body.qrCode)
     const datum = normalizeDate(body.datum)
     const typJedla = normalizeMeal(body.typJedla)
+    const issueAction = clean(body.issueAction).toUpperCase()
+    const bulkIssueId = clean(body.bulkIssueId)
 
     if (!qrCode || !datum || !typJedla) {
       return NextResponse.json(
         { error: 'Chýba QR kód, dátum alebo typ jedla.' },
+        { status: 400 }
+      )
+    }
+
+    if (issueAction && issueAction !== 'INDIVIDUAL' && issueAction !== 'BULK') {
+      return NextResponse.json(
+        { error: 'Neplatná voľba spôsobu výdaja.' },
+        { status: 400 }
+      )
+    }
+
+    if (issueAction === 'BULK' && !bulkIssueId) {
+      return NextResponse.json(
+        { error: 'Chýba vybraná hromadná príprava.' },
         { status: 400 }
       )
     }
@@ -558,13 +574,6 @@ export async function POST(req: NextRequest) {
       return access.global || access.groupIds.includes(membership.group_id)
     })
 
-    const targetRoleByGroup = new Map(
-      (targetMemberships || []).map((membership: any) => [
-        membership.group_id,
-        String(membership.role || '').toUpperCase()
-      ])
-    )
-
     if (!access.global && allowedTargetGroups.length === 0) {
       return NextResponse.json({
         ok: false,
@@ -599,41 +608,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: alreadyIssuedError.message }, { status: 500 })
     }
 
-    if (alreadyIssued) {
-      return NextResponse.json({
-        ok: false,
-        status: 'ALREADY_ISSUED',
-        tone: 'error',
-        issuedId: alreadyIssued.id,
-        issuedAt: alreadyIssued.issued_at,
-        person: {
-          id: profile.id,
-          fullName: fullName(profile) || profile.email || '',
-          email: profile.email || ''
-        },
-        choice: alreadyIssued.volba || normalizeChoice(profile.typ_stravy),
-        message: 'Už vydané'
-      }, { status: 409 })
-    }
-
     const { data: entitlement, error: entitlementError } = entitlementResult
 
     if (entitlementError) {
       return NextResponse.json({ error: entitlementError.message }, { status: 500 })
-    }
-
-    if (!entitlementOk(entitlement, typJedla)) {
-      return NextResponse.json({
-        ok: false,
-        status: 'NO_ENTITLEMENT',
-        tone: 'error',
-        person: {
-          id: profile.id,
-          fullName: fullName(profile) || profile.email || '',
-          email: profile.email || ''
-        },
-        message: 'Bez nároku'
-      }, { status: 403 })
     }
 
     const { data: selection, error: selectionError } = selectionResult
@@ -662,27 +640,166 @@ export async function POST(req: NextRequest) {
     })
 
     const now = new Date()
-    const validBulkItem = matchingPlannedItems.find((item: any) => {
-      const issue = issueOf(item)
-      if (!issue) return false
+    const authorizedGroupIds = Array.from(new Set(
+      (targetMemberships || [])
+        .filter((membership: any) => {
+          return canIssueForGroupByRole(String(membership.role || '').toUpperCase(), { isAdmin: false })
+        })
+        .map((membership: any) => membership.group_id)
+        .filter(Boolean)
+    ))
+    let bulkIssueOptions: any[] = []
 
-      const targetRole = targetRoleByGroup.get(issue.group_id) || ''
-      if (!canIssueForGroupByRole(targetRole, { isAdmin: false })) return false
+    if (authorizedGroupIds.length > 0) {
+      const { data: candidateIssues, error: candidateIssuesError } = await supabaseServer
+        .from('hromadne_vydaje')
+        .select(`
+          id,
+          group_id,
+          datum,
+          typ_jedla,
+          status,
+          valid_after,
+          groups (
+            name
+          )
+        `)
+        .in('group_id', authorizedGroupIds)
+        .eq('datum', datum)
+        .eq('typ_jedla', typJedla)
+        .in('status', ['READY', 'WAITING'])
 
-      return isActiveIssue(issue, now)
-    }) || null
+      if (candidateIssuesError) {
+        return NextResponse.json({ error: candidateIssuesError.message }, { status: 500 })
+      }
 
-    const relatedPlannedItem = validBulkItem || matchingPlannedItems[0] || null
-    const relatedIssue = issueOf(relatedPlannedItem)
+      const activeCandidateIssues = (candidateIssues || []).filter((issue: any) => {
+        return isActiveIssue(issue, now)
+      })
+      const activeCandidateIds = activeCandidateIssues.map((issue: any) => issue.id)
+
+      if (activeCandidateIds.length > 0) {
+        const { data: candidateItems, error: candidateItemsError } = await supabaseServer
+          .from('hromadny_vydaj_polozky')
+          .select('id, hromadny_vydaj_id, volba')
+          .in('hromadny_vydaj_id', activeCandidateIds)
+          .eq('status', 'PLANNED')
+
+        if (candidateItemsError) {
+          return NextResponse.json({ error: candidateItemsError.message }, { status: 500 })
+        }
+
+        const itemsByIssue = new Map<string, any[]>()
+
+        for (const item of candidateItems || []) {
+          const items = itemsByIssue.get(item.hromadny_vydaj_id) || []
+          items.push(item)
+          itemsByIssue.set(item.hromadny_vydaj_id, items)
+        }
+
+        bulkIssueOptions = activeCandidateIssues.flatMap((issue: any) => {
+          const items = itemsByIssue.get(issue.id) || []
+          if (items.length === 0) return []
+
+          return [{
+            issue,
+            id: issue.id,
+            groupId: issue.group_id,
+            groupName: groupOf(issue)?.name || '',
+            count: items.length,
+            summary: choiceSummary(items)
+          }]
+        })
+      }
+    }
+
+    if (!issueAction && bulkIssueOptions.length > 0) {
+      return NextResponse.json({
+        ok: false,
+        status: 'ISSUE_DECISION_REQUIRED',
+        tone: 'warning',
+        person: {
+          id: profile.id,
+          fullName: fullName(profile) || profile.email || '',
+          email: profile.email || ''
+        },
+        choice: normalizeChoice(alreadyIssued?.volba) || choice,
+        individual: {
+          available: !alreadyIssued && entitlementOk(entitlement, typJedla),
+          alreadyIssued: Boolean(alreadyIssued),
+          hasEntitlement: entitlementOk(entitlement, typJedla)
+        },
+        bulkIssues: bulkIssueOptions.map(option => ({
+          id: option.id,
+          groupId: option.groupId,
+          groupName: option.groupName,
+          count: option.count,
+          summary: option.summary
+        })),
+        message: 'Vyber spôsob výdaja.'
+      })
+    }
+
+    const selectedBulkOption = issueAction === 'BULK'
+      ? bulkIssueOptions.find(option => option.id === bulkIssueId) || null
+      : null
+
+    if (issueAction === 'BULK' && !selectedBulkOption) {
+      return NextResponse.json({
+        ok: false,
+        status: 'BULK_NOT_AVAILABLE',
+        tone: 'error',
+        person: {
+          id: profile.id,
+          fullName: fullName(profile) || profile.email || '',
+          email: profile.email || ''
+        },
+        message: 'Vybraná hromadná príprava už nie je dostupná.'
+      }, { status: 409 })
+    }
+
+    if (!selectedBulkOption && alreadyIssued) {
+      return NextResponse.json({
+        ok: false,
+        status: 'ALREADY_ISSUED',
+        tone: 'error',
+        issuedId: alreadyIssued.id,
+        issuedAt: alreadyIssued.issued_at,
+        person: {
+          id: profile.id,
+          fullName: fullName(profile) || profile.email || '',
+          email: profile.email || ''
+        },
+        choice: normalizeChoice(alreadyIssued.volba) || choice,
+        message: 'Už vydané'
+      }, { status: 409 })
+    }
+
+    if (!selectedBulkOption && !entitlementOk(entitlement, typJedla)) {
+      return NextResponse.json({
+        ok: false,
+        status: 'NO_ENTITLEMENT',
+        tone: 'error',
+        person: {
+          id: profile.id,
+          fullName: fullName(profile) || profile.email || '',
+          email: profile.email || ''
+        },
+        message: 'Bez nároku'
+      }, { status: 403 })
+    }
+
+    const relatedPlannedItem = matchingPlannedItems[0] || null
+    const relatedIssue = selectedBulkOption?.issue || issueOf(relatedPlannedItem)
     const relatedGroup = groupOf(relatedIssue)
     const fallbackGroupId =
       relatedIssue?.group_id ||
       allowedTargetGroups[0]?.group_id ||
       null
 
-    const sposob = validBulkItem ? 'HROMADNE' : 'INDIVIDUALNE'
+    const sposob = selectedBulkOption ? 'HROMADNE' : 'INDIVIDUALNE'
 
-    if (validBulkItem && relatedIssue?.id) {
+    if (selectedBulkOption && relatedIssue?.id) {
       const { data: bulkItems, error: bulkItemsError } = await supabaseServer
         .from('hromadny_vydaj_polozky')
         .select('id, user_id, volba')
@@ -922,11 +1039,9 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const individualNote = validBulkItem
-      ? 'Hromadný výdaj cez QR oprávnenej osoby.'
-      : relatedPlannedItem
-        ? 'Individuálny výdaj cez QR z hromadnej prípravy.'
-        : 'Individuálny výdaj cez QR.'
+    const individualNote = relatedPlannedItem
+      ? 'Individuálny výdaj cez QR z hromadnej prípravy.'
+      : 'Individuálny výdaj cez QR.'
     const plannedItemIds = matchingPlannedItems.map((item: any) => item.id)
     const { issued, issueError, stateChangedMessage } = await issueIndividualMealAtomicOrFallback({
       targetUserId,

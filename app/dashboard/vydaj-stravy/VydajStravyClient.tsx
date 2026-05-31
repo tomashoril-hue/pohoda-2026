@@ -39,6 +39,34 @@ type ActiveIssue = {
   validAfter: string
 }
 
+type ChoiceSummary = {
+  MASO: number
+  VEGE: number
+  DIETA: number
+  NEZADANE?: number
+}
+
+type BulkIssueOption = {
+  id: string
+  groupId: string
+  groupName: string
+  count: number
+  summary: ChoiceSummary
+}
+
+type IssueDecision = {
+  qrCode: string
+  personName: string
+  email: string
+  choice: string
+  individual: {
+    available: boolean
+    alreadyIssued: boolean
+    hasEntitlement: boolean
+  }
+  bulkIssues: BulkIssueOption[]
+}
+
 type ChoiceStats = {
   total: number
   issued: number
@@ -172,6 +200,15 @@ function personCountLabel(count: number) {
   return `${count} osôb`
 }
 
+function choiceSummaryLabel(summary: ChoiceSummary) {
+  return [
+    summary.MASO ? `${summary.MASO} x MASO` : '',
+    summary.VEGE ? `${summary.VEGE} x VEGE` : '',
+    summary.DIETA ? `${summary.DIETA} x DIÉTA` : '',
+    summary.NEZADANE ? `${summary.NEZADANE} x NEZADANÉ` : ''
+  ].filter(Boolean).join(' · ')
+}
+
 export default function VydajStravyClient({
   actorName,
   initialDate,
@@ -193,6 +230,7 @@ export default function VydajStravyClient({
   const lastScanTextRef = useRef('')
   const lastScanTimeRef = useRef(0)
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const decisionOpenRef = useRef(false)
 
   const [datum, setDatum] = useState(initialDate)
   const [typJedla, setTypJedla] = useState<Meal>(initialMeal === 'VECERA' ? 'VECERA' : 'OBED')
@@ -217,6 +255,7 @@ export default function VydajStravyClient({
   const [cancelLoading, setCancelLoading] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
+  const [issueDecision, setIssueDecision] = useState<IssueDecision | null>(null)
 
   const fullMode = issueMode === 'FULL'
   const lastItem = history[0] || null
@@ -317,6 +356,7 @@ export default function VydajStravyClient({
           if (!text) return
 
           const nowMs = Date.now()
+          if (decisionOpenRef.current) return
           if (busyRef.current) return
           if (lastScanTextRef.current === text && nowMs - lastScanTimeRef.current < 1200) return
           if (nowMs - lastScanTimeRef.current < 300) return
@@ -439,9 +479,13 @@ export default function VydajStravyClient({
     }
   }, [datum, typJedla, fullMode])
 
-  const submitQr = async (manualValue?: string) => {
+  const submitQr = async (
+    manualValue?: string,
+    issueAction?: 'INDIVIDUAL' | 'BULK',
+    bulkIssueId?: string
+  ) => {
     const cleanQr = String(manualValue ?? qrValue).trim()
-    if (!cleanQr || busyRef.current) return
+    if (!cleanQr || busyRef.current || (decisionOpenRef.current && !issueAction)) return
 
     busyRef.current = true
     setLoading(true)
@@ -453,11 +497,43 @@ export default function VydajStravyClient({
         body: JSON.stringify({
           qrCode: cleanQr,
           datum,
-          typJedla
+          typJedla,
+          issueAction,
+          bulkIssueId
         })
       })
 
       const json = await res.json().catch(() => ({}))
+
+      if (json.status === 'ISSUE_DECISION_REQUIRED') {
+        decisionOpenRef.current = true
+        setIssueDecision({
+          qrCode: cleanQr,
+          personName: String(json.person?.fullName || ''),
+          email: String(json.person?.email || ''),
+          choice: String(json.choice || ''),
+          individual: {
+            available: Boolean(json.individual?.available),
+            alreadyIssued: Boolean(json.individual?.alreadyIssued),
+            hasEntitlement: Boolean(json.individual?.hasEntitlement)
+          },
+          bulkIssues: (json.bulkIssues || []).map((issue: any) => ({
+            id: String(issue.id || ''),
+            groupId: String(issue.groupId || ''),
+            groupName: String(issue.groupName || ''),
+            count: Number(issue.count || 0),
+            summary: issue.summary || {
+              MASO: 0,
+              VEGE: 0,
+              DIETA: 0,
+              NEZADANE: 0
+            }
+          }))
+        })
+        setQrValue('')
+        return
+      }
+
       const ok = !!json.ok && res.ok
       const tone = toneOf(String(json.status || ''), ok)
       const item: ScanItem = {
@@ -512,8 +588,30 @@ export default function VydajStravyClient({
     } finally {
       busyRef.current = false
       setLoading(false)
-      setTimeout(() => inputRef.current?.focus(), 70)
+      if (!decisionOpenRef.current) {
+        setTimeout(() => inputRef.current?.focus(), 70)
+      }
     }
+  }
+
+  const closeIssueDecision = () => {
+    if (loading) return
+
+    decisionOpenRef.current = false
+    setIssueDecision(null)
+    setTimeout(() => inputRef.current?.focus(), 70)
+  }
+
+  const confirmIssueDecision = async (
+    issueAction: 'INDIVIDUAL' | 'BULK',
+    bulkIssueId?: string
+  ) => {
+    if (!issueDecision || loading) return
+
+    const qrCode = issueDecision.qrCode
+    decisionOpenRef.current = false
+    setIssueDecision(null)
+    await submitQr(qrCode, issueAction, bulkIssueId)
   }
 
   const toggleCancelSelection = (issuedId: string) => {
@@ -757,16 +855,16 @@ export default function VydajStravyClient({
             inputMode="text"
             autoComplete="off"
             style={styles.qrInput}
-            disabled={loading}
+            disabled={loading || Boolean(issueDecision)}
           />
 
           <button
             type="button"
             onClick={() => submitQr()}
-            disabled={loading || !qrValue.trim()}
+            disabled={loading || Boolean(issueDecision) || !qrValue.trim()}
             style={{
               ...styles.primaryButton,
-              opacity: loading || !qrValue.trim() ? 0.55 : 1
+              opacity: loading || issueDecision || !qrValue.trim() ? 0.55 : 1
             }}
           >
             {loading ? 'Kontrolujem...' : 'Vydať stravu'}
@@ -839,6 +937,73 @@ export default function VydajStravyClient({
           Prehľad stravy
         </button>
       </section>
+
+      {issueDecision && (
+        <div style={styles.modalBackdrop}>
+          <div style={styles.decisionModal}>
+            <div style={styles.decisionHeader}>
+              <div>
+                <div style={styles.decisionKicker}>OPRÁVNENÁ OSOBA</div>
+                <h2 style={styles.decisionTitle}>Vyber spôsob výdaja</h2>
+                <p style={styles.decisionPerson}>
+                  {issueDecision.personName || issueDecision.email || 'Bez mena'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeIssueDecision}
+                disabled={loading}
+                style={styles.closeButton}
+              >
+                Zavrieť
+              </button>
+            </div>
+
+            <div style={styles.decisionList}>
+              {issueDecision.bulkIssues.map(issue => (
+                <button
+                  key={issue.id}
+                  type="button"
+                  onClick={() => confirmIssueDecision('BULK', issue.id)}
+                  disabled={loading}
+                  style={styles.bulkDecisionButton}
+                >
+                  <span style={styles.decisionAction}>VYDAŤ HROMADNE</span>
+                  <b style={styles.decisionGroup}>{issue.groupName || 'Skupina'}</b>
+                  <span style={styles.decisionSummary}>
+                    {personCountLabel(issue.count)}
+                    {choiceSummaryLabel(issue.summary) ? ` · ${choiceSummaryLabel(issue.summary)}` : ''}
+                  </span>
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => confirmIssueDecision('INDIVIDUAL')}
+                disabled={loading || !issueDecision.individual.available}
+                style={{
+                  ...styles.individualDecisionButton,
+                  opacity: loading || !issueDecision.individual.available ? 0.5 : 1
+                }}
+              >
+                <span style={styles.decisionAction}>
+                  {issueDecision.individual.available
+                    ? 'VYDAŤ IBA OSOBNE'
+                    : issueDecision.individual.alreadyIssued
+                      ? 'UŽ VYDANÉ OSOBNE'
+                      : 'BEZ OSOBNÉHO NÁROKU'}
+                </span>
+                <b style={styles.decisionGroup}>
+                  {issueDecision.personName || issueDecision.email || 'Bez mena'}
+                </b>
+                {issueDecision.choice && (
+                  <span style={styles.decisionSummary}>1 x {choiceLabel(issueDecision.choice)}</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {statsOpen && (
         <div style={styles.modalBackdrop} onClick={() => setStatsOpen(false)}>
@@ -1355,6 +1520,79 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 12
+  },
+  decisionModal: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 14,
+    display: 'grid',
+    gap: 14,
+    width: 'min(720px, 100%)',
+    maxHeight: '92vh',
+    overflowY: 'auto'
+  },
+  decisionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'start',
+    gap: 12
+  },
+  decisionKicker: {
+    color: '#166534',
+    fontSize: 12,
+    fontWeight: 950
+  },
+  decisionTitle: {
+    margin: '3px 0 0',
+    fontSize: 27,
+    fontWeight: 950
+  },
+  decisionPerson: {
+    margin: '6px 0 0',
+    color: '#475569',
+    fontSize: 16,
+    fontWeight: 850
+  },
+  decisionList: {
+    display: 'grid',
+    gap: 10
+  },
+  bulkDecisionButton: {
+    minHeight: 112,
+    border: '2px solid #15803d',
+    borderRadius: 8,
+    background: '#dcfce7',
+    color: '#14532d',
+    padding: 14,
+    display: 'grid',
+    gap: 5,
+    textAlign: 'left',
+    cursor: 'pointer'
+  },
+  individualDecisionButton: {
+    minHeight: 96,
+    border: '2px solid #1d4ed8',
+    borderRadius: 8,
+    background: '#dbeafe',
+    color: '#1e3a8a',
+    padding: 14,
+    display: 'grid',
+    gap: 5,
+    textAlign: 'left',
+    cursor: 'pointer'
+  },
+  decisionAction: {
+    fontSize: 19,
+    fontWeight: 950
+  },
+  decisionGroup: {
+    fontSize: 25,
+    lineHeight: 1.05
+  },
+  decisionSummary: {
+    fontSize: 15,
+    fontWeight: 850
   },
   statsModal: {
     background: '#fff',
