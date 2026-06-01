@@ -3,6 +3,48 @@
 import { useMemo, useState, useEffect, useRef, type KeyboardEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { BrowserQRCodeReader } from '@zxing/browser'
+import jsQR from 'jsqr'
+
+function makeCanvasImage(video: HTMLVideoElement, canvas: HTMLCanvasElement, maxWidth = 720) {
+  const videoWidth = video.videoWidth || 1280
+  const videoHeight = video.videoHeight || 720
+  const scale = Math.min(1, maxWidth / videoWidth)
+  const width = Math.max(1, Math.round(videoWidth * scale))
+  const height = Math.max(1, Math.round(videoHeight * scale))
+
+  canvas.width = width
+  canvas.height = height
+
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) return null
+
+  ctx.drawImage(video, 0, 0, width, height)
+  return ctx.getImageData(0, 0, width, height)
+}
+
+function thresholdImage(imageData: ImageData) {
+  const source = imageData.data
+  const output = new Uint8ClampedArray(source.length)
+  let total = 0
+  const pixels = source.length / 4
+
+  for (let index = 0; index < source.length; index += 4) {
+    total += source[index] * 0.299 + source[index + 1] * 0.587 + source[index + 2] * 0.114
+  }
+
+  const threshold = total / pixels
+
+  for (let index = 0; index < source.length; index += 4) {
+    const luminance = source[index] * 0.299 + source[index + 1] * 0.587 + source[index + 2] * 0.114
+    const value = luminance >= threshold ? 255 : 0
+    output[index] = value
+    output[index + 1] = value
+    output[index + 2] = value
+    output[index + 3] = 255
+  }
+
+  return output
+}
 
 function todayIsoDate() {
   const now = new Date()
@@ -239,13 +281,16 @@ export default function GroupIssueClient({
 
   const qrInputRef = useRef<HTMLInputElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const readerRef = useRef<BrowserQRCodeReader | null>(null)
-  const controlsRef = useRef<any>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const scanLoopRef = useRef<number | null>(null)
+  const zxingReaderRef = useRef<BrowserQRCodeReader | null>(null)
   const cancelledRef = useRef(false)
   const qrBusyRef = useRef(false)
   const activeListTouchStartYRef = useRef<number | null>(null)
   const lastScanTextRef = useRef('')
   const lastScanTimeRef = useRef(0)
+  const scanAttemptRef = useRef(0)
   const audioCtxRef = useRef<AudioContext | null>(null)
 
   const [datum, setDatum] = useState(initialDate)
@@ -273,6 +318,9 @@ export default function GroupIssueClient({
   const [qrMessageType, setQrMessageType] = useState<'ok' | 'error' | ''>('')
   const [cameraStatus, setCameraStatus] = useState('Spúšťam kameru...')
   const [cameraReady, setCameraReady] = useState(false)
+  const [torchAvailable, setTorchAvailable] = useState(false)
+  const [torchOn, setTorchOn] = useState(false)
+  const [torchChanging, setTorchChanging] = useState(false)
   const [qrAddedRows, setQrAddedRows] = useState<any[]>([])
 
   useEffect(() => {
@@ -326,25 +374,144 @@ export default function GroupIssueClient({
     cancelledRef.current = true
 
     try {
-      if (controlsRef.current) {
-        controlsRef.current.stop()
-        controlsRef.current = null
+      if (scanLoopRef.current) {
+        window.clearTimeout(scanLoopRef.current)
+        scanLoopRef.current = null
       }
+
+      streamRef.current?.getTracks().forEach(track => track.stop())
+      streamRef.current = null
+      zxingReaderRef.current = null
     } catch {
-      // ignorujeme
+      // Ignorujeme vypnutie už zastavenej kamery.
     }
 
-    readerRef.current = null
+    streamRef.current = null
 
     if (videoRef.current) {
       videoRef.current.srcObject = null
     }
 
     setCameraReady(false)
+    setTorchAvailable(false)
+    setTorchOn(false)
+    setTorchChanging(false)
+  }
+
+  const getCameraVideoTrack = () => {
+    return streamRef.current?.getVideoTracks?.()[0] || null
+  }
+
+  const updateTorchSupport = () => {
+    const track = getCameraVideoTrack() as any
+    const capabilities = track?.getCapabilities?.()
+    setTorchAvailable(Boolean(capabilities?.torch))
+  }
+
+  const setCameraTorch = async (enabled: boolean) => {
+    const track = getCameraVideoTrack() as any
+
+    if (!track?.applyConstraints) {
+      setTorchAvailable(false)
+      setTorchOn(false)
+      setCameraStatus('Svetlo nie je na tomto zariadení dostupné.')
+      return
+    }
+
+    setTorchChanging(true)
+
+    try {
+      await track.applyConstraints({
+        advanced: [{ torch: enabled }]
+      })
+
+      setTorchOn(enabled)
+      setCameraStatus(enabled ? 'Svetlo je zapnuté. Skenujte QR kódy postupne.' : 'Svetlo je vypnuté. Skenujte QR kódy postupne.')
+    } catch {
+      setTorchAvailable(false)
+      setTorchOn(false)
+      setCameraStatus('Svetlo nie je na tomto zariadení dostupné.')
+    } finally {
+      setTorchChanging(false)
+    }
+  }
+
+  const tryZxingQr = () => {
+    const video = videoRef.current
+    if (!video || video.readyState < 2) return ''
+
+    try {
+      if (!zxingReaderRef.current) {
+        zxingReaderRef.current = new BrowserQRCodeReader()
+      }
+
+      const result = zxingReaderRef.current.decode(video)
+      return String(result?.getText?.() || '').trim()
+    } catch {
+      return ''
+    }
+  }
+
+  const tryPreprocessedQr = () => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+
+    if (!video || !canvas || video.readyState < 2) return ''
+
+    const image = makeCanvasImage(video, canvas)
+    if (!image) return ''
+
+    const processed = thresholdImage(image)
+    const result = jsQR(processed, image.width, image.height, { inversionAttempts: 'attemptBoth' })
+
+    return String(result?.data || '').trim()
+  }
+
+  const scanCameraFrame = async () => {
+    if (cancelledRef.current || qrBusyRef.current) return
+
+    scanAttemptRef.current += 1
+
+    let value = tryZxingQr()
+
+    // Preprocessing je drahší, preto ho púšťame občas ako fallback pre tmavé a inverzné QR.
+    if (!value && scanAttemptRef.current % 3 === 0) {
+      value = tryPreprocessedQr()
+    }
+
+    if (!value) return
+
+    const nowMs = Date.now()
+
+    if (nowMs - lastScanTimeRef.current < 1000) return
+
+    if (
+      lastScanTextRef.current === value &&
+      nowMs - lastScanTimeRef.current < 2500
+    ) {
+      return
+    }
+
+    lastScanTextRef.current = value
+    lastScanTimeRef.current = nowMs
+
+    await submitExpressQr(value, true)
+  }
+
+  const scheduleCameraScan = () => {
+    if (cancelledRef.current) return
+
+    scanLoopRef.current = window.setTimeout(async () => {
+      await scanCameraFrame()
+      scheduleCameraScan()
+    }, 80)
   }
 
   const startCamera = async () => {
     setCameraReady(false)
+    setTorchAvailable(false)
+    setTorchOn(false)
+    setTorchChanging(false)
     setCameraStatus('Spúšťam kameru...')
     cancelledRef.current = false
 
@@ -354,42 +521,24 @@ export default function GroupIssueClient({
         return
       }
 
-      const reader = new BrowserQRCodeReader()
-      readerRef.current = reader
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      })
 
-      const controls = await reader.decodeFromVideoDevice(
-        undefined,
-        videoRef.current,
-        async (result) => {
-          if (cancelledRef.current) return
+      streamRef.current = stream
+      videoRef.current.srcObject = stream
+      await videoRef.current.play()
 
-          const text = String(result?.getText?.() || '').trim()
-          if (!text) return
-
-          const nowMs = Date.now()
-
-          if (nowMs - lastScanTimeRef.current < 1000) return
-
-          if (
-            lastScanTextRef.current === text &&
-            nowMs - lastScanTimeRef.current < 2500
-          ) {
-            return
-          }
-
-          if (qrBusyRef.current) return
-
-          lastScanTextRef.current = text
-          lastScanTimeRef.current = nowMs
-
-          await submitExpressQr(text, true)
-        }
-      )
-
-      controlsRef.current = controls
-
+      scanAttemptRef.current = 0
       setCameraReady(true)
+      updateTorchSupport()
       setCameraStatus('Kamera je zapnutá. Skenujte QR kódy postupne.')
+      scheduleCameraScan()
     } catch (err: any) {
       setCameraReady(false)
       setCameraStatus(
@@ -1996,6 +2145,7 @@ export default function GroupIssueClient({
                 muted
                 autoPlay
               />
+              <canvas ref={canvasRef} style={styles.hiddenCanvas} />
 
               <div
                 style={{
@@ -2009,6 +2159,20 @@ export default function GroupIssueClient({
                   {cameraStatus}
                 </div>
               )}
+
+              <button
+                type="button"
+                style={{
+                  ...styles.torchButton,
+                  opacity: cameraReady && torchAvailable && !torchChanging ? 1 : 0.55,
+                  background: torchOn ? '#facc15' : '#111827',
+                  color: torchOn ? '#111827' : '#fff'
+                }}
+                onClick={() => setCameraTorch(!torchOn)}
+                disabled={!cameraReady || !torchAvailable || torchChanging}
+              >
+                {torchChanging ? '...' : torchOn ? 'Svetlo zap.' : 'Svetlo'}
+              </button>
             </div>
 
             <div
@@ -2724,6 +2888,9 @@ const styles: Record<string, React.CSSProperties> = {
     height: '100%',
     objectFit: 'cover'
   },
+  hiddenCanvas: {
+    display: 'none'
+  },
   cameraFrame: {
     position: 'absolute',
     inset: 28,
@@ -2744,6 +2911,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 900,
     background: 'rgba(17,24,39,0.55)'
+  },
+  torchButton: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    border: '2px solid rgba(255,255,255,0.85)',
+    borderRadius: 999,
+    padding: '10px 13px',
+    fontSize: 13,
+    fontWeight: 950,
+    cursor: 'pointer',
+    boxShadow: '0 10px 24px rgba(0,0,0,0.24)'
   },
   cameraStatus: {
     fontSize: 12,
