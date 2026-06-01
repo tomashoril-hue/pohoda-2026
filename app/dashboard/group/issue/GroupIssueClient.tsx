@@ -755,8 +755,6 @@ export default function GroupIssueClient({
     ? '#166534'
     : '#9a3412'
 
-  const qrBlockedByActiveIssue = !!currentIssue
-
   const getSelectedQrExtraUserIds = () => {
     return rows
       .filter((row: any) => selected.includes(row.userId))
@@ -904,12 +902,6 @@ export default function GroupIssueClient({
   }
 
   const openQrModal = () => {
-    if (currentIssue) {
-      setMessage('Najprv zruš prípravu. Potom môžeš pridať osobu cez QR do nového návrhu.')
-      setMessageType('error')
-      return
-    }
-
     setQrValue('')
     setQrMessage('')
     setQrMessageType('')
@@ -1761,10 +1753,7 @@ export default function GroupIssueClient({
         <div style={styles.actionRight}>
           <button
             type="button"
-            style={{
-              ...styles.qrButton,
-              ...(qrBlockedByActiveIssue ? styles.disabledButton : {})
-            }}
+            style={styles.qrButton}
             onClick={openQrModal}
           >
             Cez QR
