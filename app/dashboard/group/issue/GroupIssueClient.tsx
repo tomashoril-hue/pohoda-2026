@@ -98,10 +98,6 @@ function itemStatusLabel(item: any, selectedIds: string[], savedPreparedIds: str
     return 'PRESUN DO INÉHO VÝDAJA'
   }
 
-  if (item.status === 'REMOVED' && item.removeReason === 'MANUAL') {
-    return 'VYRADENÝ'
-  }
-
   if (item.status === 'REMOVED' && item.removeReason === 'GROUP_CANCELLED') {
     return 'SKUPINA ZRUŠENÁ'
   }
@@ -150,10 +146,6 @@ function itemStatusNote(item: any) {
     return 'Položka bola vyradená pri zrušení skupiny.'
   }
 
-  if (item.removeReason === 'MANUAL') {
-    return 'Osoba bola vyradená ručne.'
-  }
-
   return ''
 }
 
@@ -166,7 +158,6 @@ function canSelectRow(item: any, _currentIssue: any) {
   if (item.status === 'REMOVED' && item.removeReason === 'REMOVED_FROM_GROUP') return false
   if (item.status === 'REMOVED' && item.removeReason === 'MOVED_TO_OTHER_GROUP') return false
   if (item.status === 'REMOVED' && item.removeReason === 'MOVED_TO_OTHER_ISSUE') return false
-  if (item.status === 'REMOVED' && item.removeReason === 'MANUAL') return false
   if (item.status === 'REMOVED' && item.removeReason === 'GROUP_CANCELLED') return false
 
   return true
@@ -679,7 +670,6 @@ export default function GroupIssueClient({
           row.removeReason === 'MOVED_TO_OTHER_ISSUE' ||
           row.removeReason === 'IN_OTHER_ISSUE' ||
           row.removeReason === 'USER_BLOCKED' ||
-          row.removeReason === 'MANUAL' ||
           row.removeReason === 'GROUP_CANCELLED'
 
         return isSpecial ? 2 : 1

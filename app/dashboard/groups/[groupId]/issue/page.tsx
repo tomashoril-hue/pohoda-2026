@@ -436,7 +436,9 @@ export default async function GroupIssuePage({
       `)
       .in('hromadny_vydaj_id', activeIssueIds)
 
-    const rawItems = itemsData || []
+    const rawItems = (itemsData || []).filter((item: any) => {
+      return !(item.status === 'REMOVED' && item.remove_reason === 'MANUAL')
+    })
     const userIds = Array.from(new Set(rawItems.map((item: any) => item.user_id).filter(Boolean)))
 
     let usersMap = new Map<string, any>()

@@ -276,26 +276,25 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const plannedToRemove = currentItemsSafe
+    const itemsToDelete = currentItemsSafe
       .filter((item: any) => {
-        return item.status === 'PLANNED' && !selectedSet.has(item.user_id)
+        if (selectedSet.has(item.user_id)) return false
+
+        return (
+          item.status === 'PLANNED' ||
+          (item.status === 'REMOVED' && item.remove_reason === 'MANUAL')
+        )
       })
       .map((item: any) => item.id)
 
-    if (plannedToRemove.length > 0) {
-      const { error: removeError } = await supabaseServer
+    if (itemsToDelete.length > 0) {
+      const { error: deleteError } = await supabaseServer
         .from('hromadny_vydaj_polozky')
-        .update({
-          status: 'REMOVED',
-          remove_reason: 'MANUAL',
-          removed_at: now,
-          removed_by: user.id,
-          updated_at: now
-        })
-        .in('id', plannedToRemove)
+        .delete()
+        .in('id', itemsToDelete)
 
-      if (removeError) {
-        return NextResponse.json({ error: removeError.message }, { status: 500 })
+      if (deleteError) {
+        return NextResponse.json({ error: deleteError.message }, { status: 500 })
       }
     }
 

@@ -85,25 +85,20 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const now = new Date().toISOString()
-
-    const { error: updateError } = await supabaseServer
+    const { error: deleteError } = await supabaseServer
       .from('hromadny_vydaj_polozky')
-      .update({
-        status: 'REMOVED',
-        updated_at: now
-      })
+      .delete()
       .eq('hromadny_vydaj_id', issue.id)
       .eq('status', 'PLANNED')
       .in('id', itemIds)
 
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 })
+    if (deleteError) {
+      return NextResponse.json({ error: deleteError.message }, { status: 500 })
     }
 
     return NextResponse.json({
       ok: true,
-      message: 'Označené osoby boli vyradené z prípravy hromadného výdaja.'
+      message: 'Označené osoby boli odobraté z prípravy hromadného výdaja.'
     })
   } catch (err: any) {
     return NextResponse.json(
