@@ -1386,6 +1386,15 @@ export default function GroupIssueClient({
         </a>
       </header>
 
+      <section style={styles.groupFocusBar}>
+        <span style={styles.groupFocusLabel}>
+          {currentIssue
+            ? 'Upravujete hromadný výdaj pre skupinu'
+            : 'Pripravujete hromadný výdaj pre skupinu'}
+        </span>
+        <strong style={styles.groupFocusName}>{group.name}</strong>
+      </section>
+
       <section
         style={{
           ...styles.modeBar,
@@ -2132,6 +2141,27 @@ const styles: Record<string, React.CSSProperties> = {
     gridTemplateColumns: 'minmax(0, 1fr) auto',
     gap: 10,
     alignItems: 'center'
+  },
+  groupFocusBar: {
+    background: '#111827',
+    color: '#fff',
+    borderRadius: 16,
+    padding: '13px 14px',
+    display: 'grid',
+    gap: 5,
+    border: '2px solid #111827',
+    boxShadow: '0 6px 18px rgba(15, 23, 42, 0.15)'
+  },
+  groupFocusLabel: {
+    color: '#86efac',
+    fontSize: 11,
+    fontWeight: 950,
+    textTransform: 'uppercase'
+  },
+  groupFocusName: {
+    fontSize: 24,
+    lineHeight: 1.05,
+    overflowWrap: 'anywhere'
   },
   modeMain: {
     minWidth: 0,
