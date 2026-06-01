@@ -602,6 +602,20 @@ export default function GroupIssueClient({
 
   const currentIssue = selectedActiveIssue || matchingIssue || null
 
+  useEffect(() => {
+    if (!currentIssue || qrAddedRows.length === 0) return
+
+    const persistedQrUserIds = new Set(
+      (currentIssue.items || [])
+        .filter((item: any) => item.source === 'QR_EXTRA')
+        .map((item: any) => item.userId)
+    )
+
+    if (qrAddedRows.every((row: any) => persistedQrUserIds.has(row.userId))) {
+      setQrAddedRows([])
+    }
+  }, [currentIssue, qrAddedRows])
+
   const savedPreparedIds: string[] = currentIssue
     ? savedSelectedOverride || currentIssue.userIds || []
     : []
@@ -1354,7 +1368,6 @@ export default function GroupIssueClient({
       setMessage(json.message || 'Príprava hromadného výdaja bola potvrdená.')
       setMessageType('ok')
       setSavedSelectedOverride([...selected])
-      setQrAddedRows([])
       router.refresh()
     } catch (err: any) {
       setMessage('Chyba spojenia so serverom: ' + err.message)
@@ -1431,7 +1444,6 @@ export default function GroupIssueClient({
       setMessage(json.message || 'Úprava prípravy bola potvrdená.')
       setMessageType('ok')
       setSavedSelectedOverride([...selected])
-      setQrAddedRows([])
       router.refresh()
     } catch (err: any) {
       setMessage('Chyba spojenia so serverom: ' + err.message)
