@@ -1,20 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hashLoginCode, isValidLoginCodeFormat, normalizeLoginCode } from '@/lib/loginCode'
+import { isFormSubmission, readLoginBody, redirectToLogin } from '@/lib/loginForm'
 import { createSessionResponse } from '@/lib/sessionResponse'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 const MAX_LOGIN_CODE_ATTEMPTS = 5
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  const formSubmission = isFormSubmission(req)
+  const body = await readLoginBody(req, formSubmission)
   const email = String(body.email || '').trim().toLowerCase()
   const code = normalizeLoginCode(body.code)
 
   if (!email) {
+    if (formSubmission) {
+      return redirectToLogin(req, {
+        sent: true,
+        error: 'Chýba e-mail. Pošli si nový prihlasovací kód.'
+      })
+    }
+
     return NextResponse.json({ error: 'Chýba e-mail.' }, { status: 400 })
   }
 
   if (!isValidLoginCodeFormat(code)) {
+    if (formSubmission) {
+      return redirectToLogin(req, {
+        email,
+        sent: true,
+        error: 'Zadaj 6-miestny kód.'
+      })
+    }
+
     return NextResponse.json({ error: 'Zadaj 6-miestny kód.' }, { status: 400 })
   }
 
@@ -29,10 +46,26 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (tokenError) {
+    if (formSubmission) {
+      return redirectToLogin(req, {
+        email,
+        sent: true,
+        error: tokenError.message
+      })
+    }
+
     return NextResponse.json({ error: tokenError.message }, { status: 500 })
   }
 
   if (!loginToken || !loginToken.login_code_hash) {
+    if (formSubmission) {
+      return redirectToLogin(req, {
+        email,
+        sent: true,
+        error: 'Prihlasovací kód je neplatný alebo expiroval.'
+      })
+    }
+
     return NextResponse.json(
       { error: 'Prihlasovací kód je neplatný alebo expiroval.' },
       { status: 400 }
@@ -42,6 +75,14 @@ export async function POST(req: NextRequest) {
   const attempts = Number(loginToken.login_code_attempts || 0)
 
   if (attempts >= MAX_LOGIN_CODE_ATTEMPTS) {
+    if (formSubmission) {
+      return redirectToLogin(req, {
+        email,
+        sent: true,
+        error: 'Príliš veľa pokusov. Požiadaj o nový prihlasovací kód.'
+      })
+    }
+
     return NextResponse.json(
       { error: 'Príliš veľa pokusov. Požiadaj o nový prihlasovací kód.' },
       { status: 429 }
@@ -59,6 +100,14 @@ export async function POST(req: NextRequest) {
       })
       .eq('id', loginToken.id)
 
+    if (formSubmission) {
+      return redirectToLogin(req, {
+        email,
+        sent: true,
+        error: 'Prihlasovací kód je nesprávny.'
+      })
+    }
+
     return NextResponse.json(
       { error: 'Prihlasovací kód je nesprávny.' },
       { status: 400 }
@@ -72,10 +121,26 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (userError) {
+    if (formSubmission) {
+      return redirectToLogin(req, {
+        email,
+        sent: true,
+        error: userError.message
+      })
+    }
+
     return NextResponse.json({ error: userError.message }, { status: 500 })
   }
 
   if (!user || String(user.aktivny || '').toUpperCase() !== 'ANO') {
+    if (formSubmission) {
+      return redirectToLogin(req, {
+        email,
+        sent: true,
+        error: 'Tento účet je zablokovaný.'
+      })
+    }
+
     return NextResponse.json(
       { error: 'Tento účet je zablokovaný.' },
       { status: 403 }
@@ -92,15 +157,34 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (usedError) {
+    if (formSubmission) {
+      return redirectToLogin(req, {
+        email,
+        sent: true,
+        error: usedError.message
+      })
+    }
+
     return NextResponse.json({ error: usedError.message }, { status: 500 })
   }
 
   if (!usedToken) {
+    if (formSubmission) {
+      return redirectToLogin(req, {
+        email,
+        sent: true,
+        error: 'Prihlasovací kód už bol použitý alebo expiroval.'
+      })
+    }
+
     return NextResponse.json(
       { error: 'Prihlasovací kód už bol použitý alebo expiroval.' },
       { status: 400 }
     )
   }
 
-  return createSessionResponse(loginToken.user_id)
+  return createSessionResponse(
+    loginToken.user_id,
+    formSubmission ? new URL('/dashboard', req.url) : undefined
+  )
 }

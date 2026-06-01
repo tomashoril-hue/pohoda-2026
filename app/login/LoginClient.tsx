@@ -3,13 +3,21 @@
 import { useState, type FormEvent } from 'react'
 import Link from 'next/link'
 
-export default function LoginPage() {
-  const [email, setEmail] = useState('')
+export default function LoginPage({
+  initialEmail = '',
+  initialSent = false,
+  initialError = ''
+}: {
+  initialEmail?: string
+  initialSent?: boolean
+  initialError?: string
+}) {
+  const [email, setEmail] = useState(initialEmail)
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [codeLoading, setCodeLoading] = useState(false)
-  const [sent, setSent] = useState(false)
-  const [error, setError] = useState('')
+  const [sent, setSent] = useState(initialSent)
+  const [error, setError] = useState(initialError)
 
   const cleanEmail = email.trim().toLowerCase()
 
@@ -106,7 +114,7 @@ export default function LoginPage() {
         <h1 style={styles.title}>Vitaj späť</h1>
 
         {!sent ? (
-          <form onSubmit={handleLogin}>
+          <form action="/api/auth/login/request" method="post" onSubmit={handleLogin}>
             <p style={styles.subtitle}>
               Zadaj svoj registračný e-mail. Pošleme ti prihlasovací link aj 6-miestny kód.
             </p>
@@ -117,7 +125,9 @@ export default function LoginPage() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               type="email"
+              name="email"
               autoComplete="email"
+              required
             />
 
             <button
@@ -152,7 +162,8 @@ export default function LoginPage() {
               Ak používaš aplikáciu z plochy, zadaj kód priamo sem.
             </p>
 
-            <form onSubmit={handleCodeLogin}>
+            <form action="/api/auth/login/code" method="post" onSubmit={handleCodeLogin}>
+              <input type="hidden" name="email" value={cleanEmail} />
               <input
                 style={styles.codeInput}
                 placeholder="000000"
@@ -162,6 +173,8 @@ export default function LoginPage() {
                 pattern="[0-9]*"
                 autoComplete="one-time-code"
                 maxLength={6}
+                name="code"
+                required
               />
 
               <button

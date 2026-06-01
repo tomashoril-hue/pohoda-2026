@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createLoginCode, hashLoginCode } from '@/lib/loginCode'
+import { isFormSubmission, readLoginBody, redirectToLogin } from '@/lib/loginForm'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  const formSubmission = isFormSubmission(req)
+  const body = await readLoginBody(req, formSubmission)
   const email = String(body.email || '').trim().toLowerCase()
 
   if (!email) {
+    if (formSubmission) {
+      return redirectToLogin(req, { error: 'Chýba e-mail.' })
+    }
+
     return NextResponse.json({ error: 'Chýba e-mail.' }, { status: 400 })
   }
 
@@ -18,6 +24,13 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (userError || !user) {
+    if (formSubmission) {
+      return redirectToLogin(req, {
+        email,
+        error: 'Tento e-mail nie je registrovaný.'
+      })
+    }
+
     return NextResponse.json(
       { error: 'Tento e-mail nie je registrovaný.' },
       { status: 404 }
@@ -25,6 +38,13 @@ export async function POST(req: NextRequest) {
   }
 
   if (String(user.aktivny || '').toUpperCase() !== 'ANO') {
+    if (formSubmission) {
+      return redirectToLogin(req, {
+        email,
+        error: 'Tento účet je zablokovaný.'
+      })
+    }
+
     return NextResponse.json(
       { error: 'Tento účet je zablokovaný.' },
       { status: 403 }
@@ -62,6 +82,13 @@ export async function POST(req: NextRequest) {
     })
 
   if (tokenError) {
+    if (formSubmission) {
+      return redirectToLogin(req, {
+        email,
+        error: tokenError.message
+      })
+    }
+
     return NextResponse.json({ error: tokenError.message }, { status: 500 })
   }
 
@@ -82,10 +109,21 @@ export async function POST(req: NextRequest) {
   const emailJson = await emailRes.json().catch(() => ({}))
 
   if (!emailRes.ok || emailJson.error) {
+    if (formSubmission) {
+      return redirectToLogin(req, {
+        email,
+        error: 'Token bol vytvorený, ale e-mail sa nepodarilo odoslať.'
+      })
+    }
+
     return NextResponse.json(
       { error: 'Token bol vytvorený, ale e-mail sa nepodarilo odoslať.' },
       { status: 500 }
     )
+  }
+
+  if (formSubmission) {
+    return redirectToLogin(req, { email: user.email, sent: true })
   }
 
   return NextResponse.json({ ok: true })
