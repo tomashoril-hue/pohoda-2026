@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import Link from 'next/link'
 
 export default function LoginPage() {
@@ -13,7 +13,9 @@ export default function LoginPage() {
 
   const cleanEmail = email.trim().toLowerCase()
 
-  const handleLogin = async () => {
+  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
     if (!cleanEmail) {
       alert('Zadaj e-mail')
       return
@@ -45,7 +47,9 @@ export default function LoginPage() {
     }
   }
 
-  const handleCodeLogin = async () => {
+  const handleCodeLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
     if (!cleanEmail) {
       setError('Chýba e-mail. Pošli si nový prihlasovací kód.')
       return
@@ -102,7 +106,7 @@ export default function LoginPage() {
         <h1 style={styles.title}>Vitaj späť</h1>
 
         {!sent ? (
-          <>
+          <form onSubmit={handleLogin}>
             <p style={styles.subtitle}>
               Zadaj svoj registračný e-mail. Pošleme ti prihlasovací link aj 6-miestny kód.
             </p>
@@ -117,12 +121,12 @@ export default function LoginPage() {
             />
 
             <button
+              type="submit"
               style={{
                 ...styles.button,
                 opacity: loading ? 0.65 : 1,
                 cursor: loading ? 'not-allowed' : 'pointer'
               }}
-              onClick={handleLogin}
               disabled={loading}
             >
               {loading ? 'Odosielam...' : 'Poslať prihlasenie'}
@@ -137,7 +141,7 @@ export default function LoginPage() {
             <Link href="/register" style={styles.registerLink}>
               Ešte nemám registráciu
             </Link>
-          </>
+          </form>
         ) : (
           <div style={styles.success}>
             <h2 style={styles.messageTitle}>E-mail bol odoslaný</h2>
@@ -148,29 +152,31 @@ export default function LoginPage() {
               Ak používaš aplikáciu z plochy, zadaj kód priamo sem.
             </p>
 
-            <input
-              style={styles.codeInput}
-              placeholder="000000"
-              value={code}
-              onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              inputMode="numeric"
-              pattern="[0-9]*"
-              autoComplete="one-time-code"
-              maxLength={6}
-            />
+            <form onSubmit={handleCodeLogin}>
+              <input
+                style={styles.codeInput}
+                placeholder="000000"
+                value={code}
+                onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="one-time-code"
+                maxLength={6}
+              />
 
-            <button
-              style={{
-                ...styles.button,
-                marginTop: 14,
-                opacity: codeLoading ? 0.65 : 1,
-                cursor: codeLoading ? 'not-allowed' : 'pointer'
-              }}
-              onClick={handleCodeLogin}
-              disabled={codeLoading}
-            >
-              {codeLoading ? 'Prihlasujem...' : 'Prihlásiť kódom'}
-            </button>
+              <button
+                type="submit"
+                style={{
+                  ...styles.button,
+                  marginTop: 14,
+                  opacity: codeLoading ? 0.65 : 1,
+                  cursor: codeLoading ? 'not-allowed' : 'pointer'
+                }}
+                disabled={codeLoading}
+              >
+                {codeLoading ? 'Prihlasujem...' : 'Prihlásiť kódom'}
+              </button>
+            </form>
 
             <button
               style={styles.secondaryButton}
