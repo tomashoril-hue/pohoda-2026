@@ -1130,9 +1130,9 @@ export default function GroupIssueClient({
         })
 
         playBeep('ok')
-        setQrMessage(`Pridaný cez QR: ${name}`)
+        setQrMessage(`Pripravený na pridanie cez QR: ${name}. Potvrď úpravu.`)
         setQrMessageType('ok')
-        setMessage(`Pridaný cez QR: ${name}`)
+        setMessage(`Pripravený na pridanie cez QR: ${name}. Potvrď úpravu.`)
         setMessageType('ok')
         setQrValue('')
 
@@ -1173,7 +1173,6 @@ export default function GroupIssueClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           groupId: group.id,
-          issueId: '',
           datum,
           typJedla,
           qrCode: cleanQr
@@ -1261,9 +1260,9 @@ export default function GroupIssueClient({
           return [...prev, member.userId]
         })
 
-        setQrMessage(`Presunutý cez QR: ${member.fullName || member.email || cleanQr}`)
+        setQrMessage(`Pripravený presun cez QR: ${member.fullName || member.email || cleanQr}. Potvrď úpravu.`)
         setQrMessageType('ok')
-        setMessage(`Presunutý cez QR do tejto prípravy: ${member.fullName || member.email || cleanQr}`)
+        setMessage(`Pripravený presun cez QR do tejto prípravy: ${member.fullName || member.email || cleanQr}. Potvrď úpravu.`)
         setMessageType('ok')
       } else {
         playBeep('ok')
@@ -1272,9 +1271,9 @@ export default function GroupIssueClient({
           return [...prev, member.userId]
         })
 
-        setQrMessage(`Pridaný: ${member.fullName || member.email || cleanQr}`)
+        setQrMessage(`Pripravený na pridanie: ${member.fullName || member.email || cleanQr}. Potvrď úpravu.`)
         setQrMessageType('ok')
-        setMessage(`Pridaný cez QR: ${member.fullName || member.email || cleanQr}`)
+        setMessage(`Pripravený na pridanie cez QR: ${member.fullName || member.email || cleanQr}. Potvrď úpravu.`)
         setMessageType('ok')
       }
 
