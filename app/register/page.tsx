@@ -8,6 +8,7 @@ export default function RegisterPage() {
   const [registrationGroupId, setRegistrationGroupId] = useState('')
   const [registrationGroupNote, setRegistrationGroupNote] = useState('')
   const [registrationGroupSearch, setRegistrationGroupSearch] = useState('')
+  const [registrationGroupOpen, setRegistrationGroupOpen] = useState(false)
   const [meno, setMeno] = useState('')
   const [priezvisko, setPriezvisko] = useState('')
   const [email, setEmail] = useState('')
@@ -28,7 +29,7 @@ export default function RegisterPage() {
 
     if (!query) return registrationGroups
 
-    return registrationGroups.filter(group => normalizeSearch(group.name).includes(query))
+    return registrationGroups.filter(group => normalizeSearch(group.name).startsWith(query))
   }, [registrationGroups, registrationGroupSearch])
 
   const clearForm = () => {
@@ -40,6 +41,7 @@ export default function RegisterPage() {
     setRegistrationGroupId('')
     setRegistrationGroupNote('')
     setRegistrationGroupSearch('')
+    setRegistrationGroupOpen(false)
   }
 
   const sendConfirmationEmail = async (email: string, token: string) => {
@@ -146,26 +148,51 @@ export default function RegisterPage() {
           <div style={styles.groupPicker}>
             <input
               style={styles.input}
-              placeholder="Hľadať registračnú skupinu..."
+              placeholder="Patrím pod skupinu..."
               value={registrationGroupSearch}
-              onChange={e => setRegistrationGroupSearch(e.target.value)}
+              onFocus={() => setRegistrationGroupOpen(true)}
+              onBlur={() => setTimeout(() => setRegistrationGroupOpen(false), 120)}
+              onChange={e => {
+                setRegistrationGroupSearch(e.target.value)
+                setRegistrationGroupId('')
+                setRegistrationGroupNote('')
+                setRegistrationGroupOpen(true)
+              }}
             />
 
-            <select
-              style={styles.groupList}
-              size={6}
-              value={registrationGroupId}
-              onChange={e => {
-                setRegistrationGroupId(e.target.value)
-                if (e.target.value !== 'OTHER') setRegistrationGroupNote('')
-              }}
-            >
-              <option value="">Patrím pod skupinu...</option>
-              {filteredRegistrationGroups.map(group => (
-                <option key={group.id} value={group.id}>{group.name}</option>
-              ))}
-              <option value="OTHER">Iné</option>
-            </select>
+            {registrationGroupOpen && (
+              <div style={styles.groupList}>
+                {filteredRegistrationGroups.map(group => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    style={styles.groupOption}
+                    onMouseDown={event => event.preventDefault()}
+                    onClick={() => {
+                      setRegistrationGroupId(group.id)
+                      setRegistrationGroupSearch(group.name)
+                      setRegistrationGroupNote('')
+                      setRegistrationGroupOpen(false)
+                    }}
+                  >
+                    {group.name}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  style={styles.groupOption}
+                  onMouseDown={event => event.preventDefault()}
+                  onClick={() => {
+                    setRegistrationGroupId('OTHER')
+                    setRegistrationGroupSearch('Iné')
+                    setRegistrationGroupOpen(false)
+                  }}
+                >
+                  Iné
+                </button>
+              </div>
+            )}
           </div>
 
           {registrationGroupId === 'OTHER' && (
@@ -299,18 +326,35 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700
   },
   groupPicker: {
+    position: 'relative',
     display: 'grid',
-    gap: 8
+    zIndex: 2
   },
   groupList: {
+    position: 'absolute',
+    top: 'calc(100% + 6px)',
+    left: 0,
+    right: 0,
     width: '100%',
-    height: 188,
+    maxHeight: 190,
+    overflowY: 'auto',
     border: '3px solid #000',
     borderRadius: 18,
-    padding: 8,
-    fontSize: 16,
+    padding: 5,
     background: '#fff',
-    fontWeight: 700
+    boxShadow: '6px 6px 0 #000'
+  },
+  groupOption: {
+    width: '100%',
+    border: 0,
+    borderRadius: 12,
+    padding: '10px 12px',
+    background: '#fff',
+    color: '#000',
+    textAlign: 'left',
+    fontSize: 16,
+    fontWeight: 700,
+    cursor: 'pointer'
   },
   button: {
     width: '100%',
