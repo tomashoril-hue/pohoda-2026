@@ -190,7 +190,8 @@ export default function PersonalistaClient({
   fromDate,
   toDate,
   canManage,
-  canAssignSensitiveRoles
+  canAssignSensitiveRoles,
+  canDeregisterUsers
 }: {
   people: PersonItem[]
   groups: GroupItem[]
@@ -199,6 +200,7 @@ export default function PersonalistaClient({
   toDate: string
   canManage: boolean
   canAssignSensitiveRoles: boolean
+  canDeregisterUsers: boolean
 }) {
   const router = useRouter()
   const qrScannerVideoRef = useRef<HTMLVideoElement | null>(null)
@@ -1156,6 +1158,45 @@ export default function PersonalistaClient({
         reason
       },
       active ? 'Osobu sa nepodarilo odblokovat.' : 'Osobu sa nepodarilo zablokovat.'
+    )
+  }
+
+  const resetUserForRegistration = () => {
+    if (!selectedPerson) return
+
+    const email = selectedPerson.email || ''
+    const typedEmail = window.prompt(
+      `Tato akcia odregistruje osobu a uvolni email pre novu registraciu.\n\nPre potvrdenie napis email osoby: ${email}`
+    )
+
+    if (typedEmail === null) return
+
+    if (typedEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
+      setDetailMessage('Email nesedi. Odregistrovanie nebolo spustene.')
+      setDetailMessageType('error')
+      return
+    }
+
+    const reason = window.prompt(
+      'Dovod odregistrovania:',
+      'Odregistrovanie pre novu registraciu.'
+    )
+
+    if (reason === null) return
+
+    const ok = window.confirm(
+      'Naozaj odregistrovat tuto osobu? Email sa uvolni pre novu registraciu, stare historicke zaznamy ostanu v audite.'
+    )
+
+    if (!ok) return
+
+    postDetailAction(
+      '/api/personalista/people/reset-registration',
+      {
+        userId: selectedPerson.id,
+        reason
+      },
+      'Odregistrovanie sa nepodarilo.'
     )
   }
 
@@ -2127,6 +2168,20 @@ export default function PersonalistaClient({
                 >
                   {String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? 'Odblokovat' : 'Zablokovat'}
                 </button>
+
+                {canDeregisterUsers && (
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.dangerButton,
+                      opacity: detailLoading ? 0.6 : 1
+                    }}
+                    disabled={detailLoading}
+                    onClick={resetUserForRegistration}
+                  >
+                    Odregistrovat pre novu registraciu
+                  </button>
+                )}
 
                 {printPersonHref && (
                   <a

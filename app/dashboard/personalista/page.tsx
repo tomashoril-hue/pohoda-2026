@@ -394,6 +394,7 @@ export default async function PersonalistaPage() {
       toDate={toDate}
       canManage={isGlobalPersonalista}
       canAssignSensitiveRoles={globalAccess.isAdmin}
+      canDeregisterUsers={globalAccess.isAdmin}
     />
   )
 }
