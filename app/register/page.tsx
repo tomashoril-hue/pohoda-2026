@@ -29,7 +29,7 @@ export default function RegisterPage() {
 
     if (!query) return registrationGroups
 
-    return registrationGroups.filter(group => normalizeSearch(group.name).startsWith(query))
+    return registrationGroups.filter(group => normalizeSearch(group.name).includes(query))
   }, [registrationGroups, registrationGroupSearch])
 
   const selectedRegistrationGroupName = useMemo(() => {
