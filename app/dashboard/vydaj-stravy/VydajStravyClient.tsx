@@ -256,6 +256,10 @@ function thresholdImage(imageData: ImageData) {
   return output
 }
 
+function makeScanId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 export default function VydajStravyClient({
   actorName,
   initialDate,
@@ -310,9 +314,11 @@ export default function VydajStravyClient({
   const [editLoading, setEditLoading] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [issueDecision, setIssueDecision] = useState<IssueDecision | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
 
   const fullMode = issueMode === 'FULL'
   const lastItem = history[0] || null
+  const showManualQrControls = !isMobile || !cameraOpen
   const selectedCancelTopItems = recentIssued.filter(item => selectedCancelIds.includes(item.issuedId))
   const selectedCancelChildItems = recentIssued.flatMap(item => {
     if (!item.children?.length || selectedCancelIds.includes(item.issuedId)) return []
@@ -329,6 +335,21 @@ export default function VydajStravyClient({
   useEffect(() => {
     const timer = setTimeout(() => inputRef.current?.focus(), 100)
     return () => clearTimeout(timer)
+  }, [])
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 720px)')
+    const updateMobileState = () => setIsMobile(query.matches)
+
+    updateMobileState()
+
+    if (typeof query.addEventListener === 'function') {
+      query.addEventListener('change', updateMobileState)
+      return () => query.removeEventListener('change', updateMobileState)
+    }
+
+    query.addListener(updateMobileState)
+    return () => query.removeListener(updateMobileState)
   }, [])
 
   const playBeep = (type: 'ok' | 'error') => {
@@ -706,7 +727,7 @@ export default function VydajStravyClient({
       const ok = !!json.ok && res.ok
       const tone = toneOf(String(json.status || ''), ok)
       const item: ScanItem = {
-        id: `${Date.now()}-${cleanQr}`,
+        id: makeScanId(),
         typJedla,
         status: String(json.status || (ok ? 'ISSUED' : 'ERROR')),
         tone,
@@ -965,18 +986,18 @@ export default function VydajStravyClient({
   }
 
   return (
-    <main style={styles.page}>
-      <header style={styles.header}>
+    <main style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
+      <header style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
         <div>
           <div style={styles.kicker}>POHODA 2026</div>
-          <h1 style={styles.title}>Výdaj stravy</h1>
+          <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Výdaj stravy</h1>
           <div style={styles.actor}>{actorName}</div>
         </div>
 
-        <Link href="/dashboard" style={styles.backButton}>Späť</Link>
+        <Link href="/dashboard" style={{ ...styles.backButton, ...(isMobile ? styles.backButtonMobile : {}) }}>Späť</Link>
       </header>
 
-      <section style={styles.toolbar}>
+      <section style={{ ...styles.toolbar, ...(isMobile ? styles.toolbarMobile : {}) }}>
         <label style={styles.field}>
           <span>Dátum</span>
           <input
@@ -1004,58 +1025,67 @@ export default function VydajStravyClient({
         </div>
       </section>
 
-      <section style={styles.scanGrid}>
-        <div style={styles.scanPanel}>
-          <div style={styles.scanTop}>
+      <section style={{ ...styles.scanGrid, ...(isMobile ? styles.scanGridMobile : {}) }}>
+        <div style={{ ...styles.scanPanel, ...(isMobile ? styles.scanPanelMobile : {}) }}>
+          <div style={{ ...styles.scanTop, ...(isMobile ? styles.scanTopMobile : {}) }}>
             <div>
               <div style={styles.scanLabel}>Aktuálny výdaj</div>
-              <h2 style={styles.scanMeal}>{mealLabel(typJedla)}</h2>
+              <h2 style={{ ...styles.scanMeal, ...(isMobile ? styles.scanMealMobile : {}) }}>{mealLabel(typJedla)}</h2>
             </div>
 
-            <div style={styles.liveBadge}>{loading ? 'Spracúvam' : 'Pripravené'}</div>
+            <div style={{ ...styles.liveBadge, ...(isMobile ? styles.liveBadgeMobile : {}) }}>{loading ? 'Spracúvam' : 'Pripravené'}</div>
           </div>
 
-          <input
-            ref={inputRef}
-            value={qrValue}
-            onChange={event => setQrValue(event.target.value)}
-            onKeyDown={onInputKeyDown}
-            placeholder="Načítaj alebo zadaj QR"
-            inputMode="text"
-            autoComplete="off"
-            style={styles.qrInput}
-            disabled={loading || Boolean(issueDecision)}
-          />
+          {showManualQrControls && (
+            <>
+              <input
+                ref={inputRef}
+                type="password"
+                value={qrValue}
+                onChange={event => setQrValue(event.target.value)}
+                onKeyDown={onInputKeyDown}
+                placeholder="Načítaj QR"
+                inputMode="text"
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                aria-label="QR kód"
+                style={{ ...styles.qrInput, ...(isMobile ? styles.qrInputMobile : {}) }}
+                disabled={loading || Boolean(issueDecision)}
+              />
 
-          <button
-            type="button"
-            onClick={() => submitQr()}
-            disabled={loading || Boolean(issueDecision) || !qrValue.trim()}
-            style={{
-              ...styles.primaryButton,
-              opacity: loading || issueDecision || !qrValue.trim() ? 0.55 : 1
-            }}
-          >
-            {loading ? 'Kontrolujem...' : 'Vydať stravu'}
-          </button>
+              <button
+                type="button"
+                onClick={() => submitQr()}
+                disabled={loading || Boolean(issueDecision) || !qrValue.trim()}
+                style={{
+                  ...styles.primaryButton,
+                  ...(isMobile ? styles.primaryButtonMobile : {}),
+                  opacity: loading || issueDecision || !qrValue.trim() ? 0.55 : 1
+                }}
+              >
+                {loading ? 'Kontrolujem...' : 'Vydať stravu'}
+              </button>
+            </>
+          )}
 
-          <div style={styles.cameraActions}>
+          <div style={{ ...styles.cameraActions, ...(isMobile ? styles.cameraActionsMobile : {}) }}>
             <button
               type="button"
               onClick={() => setCameraOpen(prev => !prev)}
-              style={styles.secondaryButton}
+              style={{ ...styles.secondaryButton, ...(isMobile ? styles.cameraToggleMobile : {}) }}
             >
               {cameraOpen ? 'Vypnúť kameru' : 'Zapnúť kameru'}
             </button>
 
-            <span style={styles.cameraStatus}>
+            <span style={{ ...styles.cameraStatus, ...(isMobile ? styles.cameraStatusMobile : {}) }}>
               {cameraReady ? '● ' : ''}
               {cameraStatus}
             </span>
           </div>
 
           {cameraOpen && (
-            <div style={styles.cameraBox}>
+            <div style={{ ...styles.cameraBox, ...(isMobile ? styles.cameraBoxMobile : {}) }}>
               <video
                 ref={videoRef}
                 muted
@@ -1097,17 +1127,18 @@ export default function VydajStravyClient({
 
         <aside style={{
           ...styles.resultPanel,
+          ...(isMobile ? styles.resultPanelMobile : {}),
           ...(lastItem ? styles[`tone_${lastItem.tone}`] : {})
         }}>
           {!lastItem ? (
             <>
-              <div style={styles.resultEmpty}>Čaká sa na prvý QR kód.</div>
-              <div style={styles.resultHint}>Systém najprv overí blokovanie, nárok, duplicitu výdaja a prípadnú hromadnú prípravu.</div>
+              <div style={{ ...styles.resultEmpty, ...(isMobile ? styles.resultEmptyMobile : {}) }}>Čaká sa na prvý QR kód.</div>
+              <div style={{ ...styles.resultHint, ...(isMobile ? styles.resultHintMobile : {}) }}>Systém najprv overí blokovanie, nárok, duplicitu výdaja a prípadnú hromadnú prípravu.</div>
             </>
           ) : (
             <>
-              <div style={styles.resultStatus}>{lastItem.message}</div>
-              <div style={styles.resultName}>{lastItem.personName || 'Bez mena'}</div>
+              <div style={{ ...styles.resultStatus, ...(isMobile ? styles.resultStatusMobile : {}) }}>{lastItem.message}</div>
+              <div style={{ ...styles.resultName, ...(isMobile ? styles.resultNameMobile : {}) }}>{lastItem.personName || 'Bez mena'}</div>
               {lastItem.email && <div style={styles.resultSub}>{lastItem.email}</div>}
 
               <div style={styles.badges}>
@@ -1124,7 +1155,7 @@ export default function VydajStravyClient({
         </aside>
       </section>
 
-      <section style={styles.statsGrid}>
+      <section style={{ ...styles.statsGrid, ...(isMobile ? styles.statsGridMobile : {}) }}>
         <div style={styles.statBoxGreen}>
           <span>Vydané teraz</span>
           <b>{successCount}</b>
@@ -1406,7 +1437,7 @@ export default function VydajStravyClient({
           <h2 style={styles.sectionTitle}>Aktívne prípravy</h2>
           <div style={styles.activeList}>
             {activeIssues.map(issue => (
-              <div key={issue.id} style={styles.activeIssue}>
+              <div key={issue.id} style={{ ...styles.activeIssue, ...(isMobile ? styles.activeIssueMobile : {}) }}>
                 <b>{mealLabel(issue.typJedla)}</b>
                 <span>{issue.groupName}</span>
                 <em>{issueStatusLabel(issue.status)}</em>
@@ -1425,6 +1456,7 @@ export default function VydajStravyClient({
             {history.map(item => (
               <div key={item.id} style={{
                 ...styles.historyItem,
+                ...(isMobile ? styles.historyItemMobile : {}),
                 ...(item.tone === 'success'
                   ? styles.historySuccess
                   : item.tone === 'warning'
@@ -1466,6 +1498,11 @@ const styles: Record<string, CSSProperties> = {
     maxWidth: 1120,
     margin: '0 auto'
   },
+  pageMobile: {
+    padding: 8,
+    gap: 8,
+    maxWidth: '100%'
+  },
   header: {
     display: 'flex',
     alignItems: 'center',
@@ -1475,6 +1512,10 @@ const styles: Record<string, CSSProperties> = {
     color: '#fff',
     borderRadius: 8,
     padding: 16
+  },
+  headerMobile: {
+    alignItems: 'stretch',
+    padding: 12
   },
   kicker: {
     color: '#86efac',
@@ -1487,6 +1528,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 34,
     lineHeight: 1.05,
     fontWeight: 950
+  },
+  titleMobile: {
+    fontSize: 28
   },
   actor: {
     marginTop: 6,
@@ -1505,11 +1549,19 @@ const styles: Record<string, CSSProperties> = {
     textDecoration: 'none',
     padding: '0 16px'
   },
+  backButtonMobile: {
+    width: '100%',
+    minHeight: 44
+  },
   toolbar: {
     display: 'grid',
     gridTemplateColumns: 'minmax(170px, 230px) 1fr',
     gap: 10,
     alignItems: 'end'
+  },
+  toolbarMobile: {
+    gridTemplateColumns: '1fr',
+    gap: 8
   },
   field: {
     display: 'grid',
@@ -1547,6 +1599,10 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: 'minmax(0, 1.15fr) minmax(280px, 0.85fr)',
     gap: 12
   },
+  scanGridMobile: {
+    gridTemplateColumns: '1fr',
+    gap: 8
+  },
   scanPanel: {
     background: '#fff',
     borderRadius: 8,
@@ -1555,11 +1611,18 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gap: 12
   },
+  scanPanelMobile: {
+    padding: 10,
+    gap: 10
+  },
   scanTop: {
     display: 'flex',
     justifyContent: 'space-between',
     gap: 10,
     alignItems: 'center'
+  },
+  scanTopMobile: {
+    alignItems: 'flex-start'
   },
   scanLabel: {
     fontSize: 13,
@@ -1571,6 +1634,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 36,
     fontWeight: 950
   },
+  scanMealMobile: {
+    fontSize: 30
+  },
   liveBadge: {
     borderRadius: 999,
     background: '#dcfce7',
@@ -1578,6 +1644,10 @@ const styles: Record<string, CSSProperties> = {
     padding: '8px 12px',
     fontSize: 13,
     fontWeight: 950
+  },
+  liveBadgeMobile: {
+    padding: '7px 10px',
+    fontSize: 12
   },
   qrInput: {
     width: '100%',
@@ -1590,6 +1660,10 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 900,
     outline: 'none'
   },
+  qrInputMobile: {
+    height: 58,
+    fontSize: 18
+  },
   primaryButton: {
     ...baseButton,
     minHeight: 64,
@@ -1598,11 +1672,20 @@ const styles: Record<string, CSSProperties> = {
     color: '#fff',
     fontSize: 20
   },
+  primaryButtonMobile: {
+    minHeight: 58,
+    fontSize: 18
+  },
   cameraActions: {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
     flexWrap: 'wrap'
+  },
+  cameraActionsMobile: {
+    display: 'grid',
+    gridTemplateColumns: '1fr',
+    gap: 8
   },
   secondaryButton: {
     ...baseButton,
@@ -1610,10 +1693,18 @@ const styles: Record<string, CSSProperties> = {
     color: '#fff',
     padding: '0 14px'
   },
+  cameraToggleMobile: {
+    width: '100%',
+    minHeight: 58,
+    fontSize: 18
+  },
   cameraStatus: {
     color: '#475569',
     fontSize: 13,
     fontWeight: 750
+  },
+  cameraStatusMobile: {
+    fontSize: 12
   },
   cameraBox: {
     position: 'relative',
@@ -1622,6 +1713,10 @@ const styles: Record<string, CSSProperties> = {
     background: '#020617',
     borderRadius: 8,
     overflow: 'hidden'
+  },
+  cameraBoxMobile: {
+    height: 'min(56vh, 430px)',
+    minHeight: 260
   },
   cameraVideo: {
     width: '100%',
@@ -1674,6 +1769,11 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: 'center',
     gap: 10
   },
+  resultPanelMobile: {
+    minHeight: 136,
+    padding: 14,
+    gap: 7
+  },
   tone_success: {
     background: '#dcfce7',
     borderColor: '#22c55e',
@@ -1693,19 +1793,32 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 28,
     fontWeight: 950
   },
+  resultEmptyMobile: {
+    fontSize: 22
+  },
   resultHint: {
     fontSize: 14,
     fontWeight: 750,
     color: '#475569'
+  },
+  resultHintMobile: {
+    fontSize: 12
   },
   resultStatus: {
     fontSize: 36,
     fontWeight: 950,
     lineHeight: 1
   },
+  resultStatusMobile: {
+    fontSize: 28,
+    lineHeight: 1.05
+  },
   resultName: {
     fontSize: 26,
     fontWeight: 950
+  },
+  resultNameMobile: {
+    fontSize: 22
   },
   resultSub: {
     fontSize: 15,
@@ -1732,6 +1845,10 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
     gap: 10
+  },
+  statsGridMobile: {
+    gridTemplateColumns: '1fr',
+    gap: 8
   },
   statBoxGreen: {
     background: '#dcfce7',
@@ -2055,6 +2172,10 @@ const styles: Record<string, CSSProperties> = {
     padding: 10,
     fontSize: 14
   },
+  activeIssueMobile: {
+    gridTemplateColumns: '1fr',
+    gap: 6
+  },
   historyBox: {
     background: '#fff',
     border: '1px solid #e5e7eb',
@@ -2078,6 +2199,11 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 8,
     padding: 10,
     fontSize: 13
+  },
+  historyItemMobile: {
+    alignItems: 'flex-start',
+    flexDirection: 'column',
+    gap: 6
   },
   historyText: {
     display: 'grid',
