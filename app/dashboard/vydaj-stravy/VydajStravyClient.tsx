@@ -145,6 +145,18 @@ function methodLabel(value: string) {
   return ''
 }
 
+function scanFlashColor(tone: Tone) {
+  if (tone === 'success') return '#22c55e'
+  if (tone === 'warning') return '#f59e0b'
+  return '#ef4444'
+}
+
+function scanFlashLabel(tone: Tone) {
+  if (tone === 'success') return 'VYDANÉ'
+  if (tone === 'warning') return 'ROZPOZNANÉ'
+  return 'ZAMIETNUTÉ'
+}
+
 function issueStatusLabel(value: string) {
   if (value === 'READY') return 'aktívna'
   if (value === 'WAITING') return 'čaká'
@@ -314,6 +326,7 @@ export default function VydajStravyClient({
   const [torchAvailable, setTorchAvailable] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
   const [torchChanging, setTorchChanging] = useState(false)
+  const [scanFlash, setScanFlash] = useState<Tone | null>(null)
   const [loading, setLoading] = useState(false)
   const [history, setHistory] = useState<ScanItem[]>([])
   const [successCount, setSuccessCount] = useState(0)
@@ -334,6 +347,7 @@ export default function VydajStravyClient({
   const [issueDecision, setIssueDecision] = useState<IssueDecision | null>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const flashTimerRef = useRef<number | null>(null)
 
   const fullMode = issueMode === 'FULL'
   const lastItem = history[0] || null
@@ -357,6 +371,14 @@ export default function VydajStravyClient({
   }, [])
 
   useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) {
+        window.clearTimeout(flashTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     const query = window.matchMedia('(max-width: 720px)')
     const updateMobileState = () => setIsMobile(query.matches)
 
@@ -371,6 +393,18 @@ export default function VydajStravyClient({
     return () => query.removeListener(updateMobileState)
   }, [])
 
+  const triggerScanFlash = (tone: Tone) => {
+    if (flashTimerRef.current) {
+      window.clearTimeout(flashTimerRef.current)
+    }
+
+    setScanFlash(tone)
+    flashTimerRef.current = window.setTimeout(() => {
+      setScanFlash(null)
+      flashTimerRef.current = null
+    }, 360)
+  }
+
   const playBeep = (type: 'ok' | 'error') => {
     try {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
@@ -380,19 +414,29 @@ export default function VydajStravyClient({
       }
 
       const ctx = audioCtxRef.current
+      void ctx.resume?.()
       const oscillator = ctx.createOscillator()
+      const filter = ctx.createBiquadFilter()
       const gain = ctx.createGain()
 
-      oscillator.type = 'sine'
-      oscillator.frequency.value = type === 'ok' ? 980 : 220
+      oscillator.type = type === 'ok' ? 'square' : 'sawtooth'
+      oscillator.frequency.setValueAtTime(type === 'ok' ? 1320 : 185, ctx.currentTime)
+      if (type === 'error') {
+        oscillator.frequency.exponentialRampToValueAtTime(115, ctx.currentTime + 0.24)
+      }
 
-      const duration = type === 'ok' ? 0.18 : 0.34
+      const duration = type === 'ok' ? 0.14 : 0.32
+      const peak = type === 'ok' ? 0.9 : 0.82
+
+      filter.type = type === 'ok' ? 'highpass' : 'lowpass'
+      filter.frequency.value = type === 'ok' ? 620 : 540
 
       gain.gain.setValueAtTime(0.0001, ctx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.24, ctx.currentTime + 0.02)
+      gain.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + 0.015)
       gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration)
 
-      oscillator.connect(gain)
+      oscillator.connect(filter)
+      filter.connect(gain)
       gain.connect(ctx.destination)
       oscillator.start(ctx.currentTime)
       oscillator.stop(ctx.currentTime + duration + 0.02)
@@ -429,6 +473,7 @@ export default function VydajStravyClient({
     setTorchAvailable(false)
     setTorchOn(false)
     setTorchChanging(false)
+    setScanFlash(null)
     setCameraStatus('Kamera je vypnutá.')
   }
 
@@ -715,6 +760,7 @@ export default function VydajStravyClient({
 
       if (json.status === 'ISSUE_DECISION_REQUIRED') {
         decisionOpenRef.current = true
+        triggerScanFlash('warning')
         setIssueDecision({
           qrCode: cleanQr,
           personName: String(json.person?.fullName || ''),
@@ -765,6 +811,7 @@ export default function VydajStravyClient({
 
       if (ok) {
         const issuedCount = Math.max(1, Number(json.issuedCount || 1))
+        triggerScanFlash('success')
         playBeep('ok')
         setSuccessCount(prev => prev + issuedCount)
         if (item.issuedId) {
@@ -772,12 +819,14 @@ export default function VydajStravyClient({
         }
         refreshRecentIssuedInBackground()
       } else {
+        triggerScanFlash('error')
         playBeep('error')
         setErrorCount(prev => prev + 1)
       }
 
       setQrValue('')
     } catch (err: any) {
+      triggerScanFlash('error')
       playBeep('error')
       setErrorCount(prev => prev + 1)
       addHistory({
@@ -1123,9 +1172,23 @@ export default function VydajStravyClient({
               <div
                 style={{
                   ...styles.cameraFrame,
-                  borderColor: cameraReady ? '#22c55e' : '#f97316'
+                  borderColor: scanFlash ? scanFlashColor(scanFlash) : cameraReady ? '#22c55e' : '#f97316',
+                  boxShadow: scanFlash
+                    ? `0 0 0 999px ${scanFlashColor(scanFlash)}55, 0 0 26px ${scanFlashColor(scanFlash)}`
+                    : styles.cameraFrame.boxShadow
                 }}
               />
+
+              {scanFlash && (
+                <div
+                  style={{
+                    ...styles.scanFlashOverlay,
+                    background: `${scanFlashColor(scanFlash)}d9`
+                  }}
+                >
+                  {scanFlashLabel(scanFlash)}
+                </div>
+              )}
 
               {!cameraReady && (
                 <div style={styles.cameraOverlay}>
@@ -1876,8 +1939,23 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 900,
     background: 'rgba(2,6,23,0.58)'
   },
+  scanFlashOverlay: {
+    position: 'absolute',
+    inset: 0,
+    zIndex: 2,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#fff',
+    fontSize: 34,
+    fontWeight: 950,
+    letterSpacing: 0,
+    textShadow: '0 2px 12px rgba(0,0,0,0.45)',
+    pointerEvents: 'none'
+  },
   torchButton: {
     position: 'absolute',
+    zIndex: 3,
     right: 10,
     bottom: 10,
     border: 0,
