@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
   const { data: userRow, error: userError } = await supabaseServer
     .from('users')
-    .select('id, email, meno, priezvisko, qr_code')
+    .select('id, email, meno, priezvisko, qr_code, review_status')
     .eq('email', user.email)
     .single()
 
@@ -70,7 +70,8 @@ export async function GET(req: NextRequest) {
     ok: true,
     user: userRow,
     qrCode: user.qr_code,
-    status: user.status
+    status: user.status,
+    reviewStatus: userRow.review_status || 'APPROVED'
   })
 
   response.cookies.set('pohoda_session', sessionToken, {

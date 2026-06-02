@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
-import { getCurrentUser } from '@/lib/auth'
+import { getSessionUser } from '@/lib/auth'
 import { loginEmailCookieName } from '@/lib/loginForm'
 import LoginClient from './LoginClient'
 
@@ -9,10 +9,11 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ sent?: string; error?: string }>
 }) {
-  const user = await getCurrentUser()
+  const user = await getSessionUser()
 
   if (user) {
-    redirect('/dashboard')
+    const reviewStatus = String(user.review_status || 'APPROVED').toUpperCase()
+    redirect(reviewStatus === 'APPROVED' ? '/dashboard' : '/pending-approval')
   }
 
   const params = await searchParams

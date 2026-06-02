@@ -3,7 +3,7 @@ import { supabaseServer } from '@/lib/supabaseServer'
 
 const SESSION_ACTIVITY_WRITE_INTERVAL_MS = 5 * 60 * 1000
 
-export async function getCurrentUser() {
+export async function getSessionUser() {
   const cookieStore = await cookies()
   const sessionToken = cookieStore.get('pohoda_session')?.value
 
@@ -47,6 +47,15 @@ export async function getCurrentUser() {
 
   if (userError || !user) return null
   if (String(user.aktivny || '').toUpperCase() !== 'ANO') return null
+
+  return user
+}
+
+export async function getCurrentUser() {
+  const user = await getSessionUser()
+
+  if (!user) return null
+  if (String(user.review_status || 'APPROVED').toUpperCase() !== 'APPROVED') return null
 
   return user
 }

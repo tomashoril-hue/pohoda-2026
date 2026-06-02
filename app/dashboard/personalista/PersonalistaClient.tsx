@@ -11,6 +11,11 @@ type GroupItem = {
   name: string
 }
 
+type RegistrationGroupItem = {
+  id: string
+  name: string
+}
+
 type PersonGroup = {
   id: string
   name: string
@@ -42,6 +47,10 @@ type PersonItem = {
   telefon: string
   typStravy: string
   aktivny: string
+  reviewStatus: string
+  registrationGroupId: string
+  registrationGroupName: string
+  registrationGroupNote: string
   activeQrCount: number
   activeNfcCount: number
   globalRoles: string[]
@@ -177,6 +186,7 @@ function thresholdImage(imageData: ImageData) {
 export default function PersonalistaClient({
   people,
   groups,
+  registrationGroups,
   fromDate,
   toDate,
   canManage,
@@ -184,6 +194,7 @@ export default function PersonalistaClient({
 }: {
   people: PersonItem[]
   groups: GroupItem[]
+  registrationGroups: RegistrationGroupItem[]
   fromDate: string
   toDate: string
   canManage: boolean
@@ -211,6 +222,11 @@ export default function PersonalistaClient({
   const [createMessage, setCreateMessage] = useState('')
   const [createMessageType, setCreateMessageType] = useState<'ok' | 'error' | ''>('')
   const [createGroupSelectId, setCreateGroupSelectId] = useState('')
+  const [registrationGroupsOpen, setRegistrationGroupsOpen] = useState(false)
+  const [registrationGroupName, setRegistrationGroupName] = useState('')
+  const [registrationGroupLoading, setRegistrationGroupLoading] = useState(false)
+  const [registrationGroupMessage, setRegistrationGroupMessage] = useState('')
+  const [registrationGroupMessageType, setRegistrationGroupMessageType] = useState<'ok' | 'error' | ''>('')
   const [detailMode, setDetailMode] = useState<'profile' | 'entitlements' | 'groups' | 'roles' | 'qr' | 'nfc' | ''>('')
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailMessage, setDetailMessage] = useState('')
@@ -221,6 +237,7 @@ export default function PersonalistaClient({
     email: '',
     telefon: '',
     typStravy: 'MASO',
+    registrationGroupId: '',
     groupIds: [] as string[],
     validFrom: isoDateOffset(0),
     validTo: isoDateOffset(0),
@@ -233,7 +250,9 @@ export default function PersonalistaClient({
     priezvisko: '',
     email: '',
     telefon: '',
-    typStravy: 'MASO'
+    typStravy: 'MASO',
+    registrationGroupId: '',
+    registrationGroupNote: ''
   })
   const [entitlementForm, setEntitlementForm] = useState({
     validFrom: fromDate,
@@ -263,7 +282,8 @@ export default function PersonalistaClient({
     admin: false,
     personalista: false,
     adminVydaj: false,
-    vydaj: false
+    vydaj: false,
+    groupCreator: false
   })
 
   const selectedPerson = selectedPersonId
@@ -285,7 +305,9 @@ export default function PersonalistaClient({
       priezvisko: selectedPerson.priezvisko || '',
       email: selectedPerson.email || '',
       telefon: selectedPerson.telefon || '',
-      typStravy: selectedPerson.typStravy || 'MASO'
+      typStravy: selectedPerson.typStravy || 'MASO',
+      registrationGroupId: selectedPerson.registrationGroupId || '',
+      registrationGroupNote: selectedPerson.registrationGroupNote || ''
     })
 
     const bounds = entitlementBounds(selectedPerson.entitlements, fromDate, toDate)
@@ -307,7 +329,8 @@ export default function PersonalistaClient({
       admin: selectedPerson.globalRoles.includes('ADMIN'),
       personalista: selectedPerson.globalRoles.includes('PERSONALISTA'),
       adminVydaj: selectedPerson.globalRoles.includes('ADMIN_VYDAJ'),
-      vydaj: selectedPerson.globalRoles.includes('VYDAJ')
+      vydaj: selectedPerson.globalRoles.includes('VYDAJ'),
+      groupCreator: selectedPerson.globalRoles.includes('GROUP_CREATOR')
     })
     setDetailMessage('')
     setDetailMessageType('')
@@ -342,15 +365,20 @@ export default function PersonalistaClient({
       })
       .filter(person => {
         const blocked = String(person.aktivny || '').toUpperCase() !== 'ANO'
+        const pendingReview = String(person.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
 
         if (statusFilter === 'ALL') return true
+        if (statusFilter === 'PENDING_REVIEW') return pendingReview
         if (statusFilter === 'BLOCKED') return blocked
-        return !blocked
+        return !blocked && !pendingReview
       })
       .sort((a, b) => {
+        const aPendingReview = String(a.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
+        const bPendingReview = String(b.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
         const aBlocked = String(a.aktivny || '').toUpperCase() !== 'ANO'
         const bBlocked = String(b.aktivny || '').toUpperCase() !== 'ANO'
 
+        if (aPendingReview !== bPendingReview) return aPendingReview ? -1 : 1
         if (aBlocked !== bBlocked) return aBlocked ? 1 : -1
 
         const priority = rolePriority(a) - rolePriority(b)
@@ -385,6 +413,7 @@ export default function PersonalistaClient({
     const activeQr = people.filter(person => person.activeQrCount > 0).length
     const withoutQr = people.length - activeQr
     const blocked = people.filter(person => String(person.aktivny || '').toUpperCase() !== 'ANO').length
+    const pendingReview = people.filter(person => String(person.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW').length
     const withDiet = people.filter(person => foodLabel(person.typStravy) === 'DIÉTA').length
     const totalClaims = people.reduce((sum, person) => sum + person.mealClaims, 0)
     const totalLunches = people.reduce((sum, person) => sum + person.lunchClaims, 0)
@@ -395,6 +424,7 @@ export default function PersonalistaClient({
       activeQr,
       withoutQr,
       blocked,
+      pendingReview,
       withDiet,
       totalClaims,
       totalLunches,
@@ -483,6 +513,7 @@ export default function PersonalistaClient({
       email: '',
       telefon: '',
       typStravy: 'MASO',
+      registrationGroupId: '',
       groupIds: [] as string[],
       validFrom: isoDateOffset(0),
       validTo: isoDateOffset(0),
@@ -683,6 +714,69 @@ export default function PersonalistaClient({
       },
       'Detail osoby sa nepodarilo uložiť.'
     )
+  }
+
+  const approveRegistration = () => {
+    if (!selectedPerson) return
+
+    if (!profileForm.registrationGroupId) {
+      setDetailMessage('Vyber registracnu skupinu.')
+      setDetailMessageType('error')
+      return
+    }
+
+    const ok = window.confirm('Schvalit registraciu a priradit prvy volny QR kod?')
+    if (!ok) return
+
+    postDetailAction(
+      '/api/personalista/people/approve-registration',
+      {
+        userId: selectedPerson.id,
+        registrationGroupId: profileForm.registrationGroupId,
+        registrationGroupNote: profileForm.registrationGroupNote
+      },
+      'Registraciu sa nepodarilo schvalit.'
+    )
+  }
+
+  const createRegistrationGroup = async () => {
+    const name = registrationGroupName.trim()
+
+    if (!name) {
+      setRegistrationGroupMessage('Zadaj nazov registracnej skupiny.')
+      setRegistrationGroupMessageType('error')
+      return
+    }
+
+    setRegistrationGroupLoading(true)
+    setRegistrationGroupMessage('')
+    setRegistrationGroupMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/registration-groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      })
+      const json = await res.json()
+
+      if (!res.ok || json.error) {
+        setRegistrationGroupMessage(json.error || 'Registracnu skupinu sa nepodarilo vytvorit.')
+        setRegistrationGroupMessageType('error')
+        return
+      }
+
+      setRegistrationGroupName('')
+      setRegistrationGroupMessage(json.message || 'Registracna skupina bola vytvorena.')
+      setRegistrationGroupMessageType('ok')
+      router.refresh()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setRegistrationGroupMessage('Chyba spojenia so serverom: ' + message)
+      setRegistrationGroupMessageType('error')
+    } finally {
+      setRegistrationGroupLoading(false)
+    }
   }
 
   const toggleEntitlementClaim = (date: string, meal: 'obed' | 'vecera') => {
@@ -1108,7 +1202,8 @@ export default function PersonalistaClient({
       ...(canAssignSensitiveRoles && roleForm.admin ? ['ADMIN'] : []),
       ...(roleForm.personalista ? ['PERSONALISTA'] : []),
       ...(roleForm.adminVydaj ? ['ADMIN_VYDAJ'] : []),
-      ...(roleForm.vydaj ? ['VYDAJ'] : [])
+      ...(roleForm.vydaj ? ['VYDAJ'] : []),
+      ...(roleForm.groupCreator ? ['GROUP_CREATOR'] : [])
     ]
 
     postDetailAction(
@@ -1158,6 +1253,11 @@ export default function PersonalistaClient({
         <div style={styles.summaryCardRed}>
           <b>{stats.blocked}</b>
           <span>Blokovaní</span>
+        </div>
+
+        <div style={styles.summaryCardYellow}>
+          <b>{stats.pendingReview}</b>
+          <span>Na schvalenie</span>
         </div>
 
         <div style={styles.summaryCardBlue}>
@@ -1230,6 +1330,27 @@ export default function PersonalistaClient({
           Google Sheets
         </a>
 
+        <button
+          type="button"
+          style={styles.lightButton}
+          disabled={!canManage}
+          onClick={() => {
+            setRegistrationGroupsOpen(prev => !prev)
+            setRegistrationGroupMessage('')
+            setRegistrationGroupMessageType('')
+          }}
+        >
+          Registracne skupiny
+        </button>
+
+        <button
+          type="button"
+          style={styles.lightButton}
+          onClick={() => setStatusFilter('PENDING_REVIEW')}
+        >
+          Na schvalenie ({stats.pendingReview})
+        </button>
+
         {printGroupHref ? (
           <a href={printGroupHref} style={styles.lightButton}>
             Tlač QR skupiny
@@ -1244,6 +1365,69 @@ export default function PersonalistaClient({
           QR/NFC párovanie
         </button>
       </section>
+
+      {registrationGroupsOpen && (
+        <section style={styles.createPanel}>
+          <div style={styles.createHeader}>
+            <div>
+              <b>Registracne skupiny</b>
+              <span>Samostatny administrativny zoznam pre registracie a reporty.</span>
+            </div>
+
+            <button
+              type="button"
+              style={styles.closeButton}
+              disabled={registrationGroupLoading}
+              onClick={() => setRegistrationGroupsOpen(false)}
+            >
+              x
+            </button>
+          </div>
+
+          <div style={styles.registrationGroupList}>
+            {registrationGroups.length === 0 ? (
+              <span style={styles.emptyGroupSelection}>Zatial bez registracnych skupin</span>
+            ) : (
+              registrationGroups.map(group => (
+                <span key={group.id} style={styles.selectedGroupPill}>
+                  {group.name}
+                </span>
+              ))
+            )}
+          </div>
+
+          <div style={styles.groupSelectRow}>
+            <input
+              value={registrationGroupName}
+              onChange={event => setRegistrationGroupName(event.target.value)}
+              style={styles.input}
+              placeholder="Nazov novej registracnej skupiny"
+              disabled={registrationGroupLoading}
+            />
+            <button
+              type="button"
+              style={styles.confirmButton}
+              disabled={registrationGroupLoading}
+              onClick={createRegistrationGroup}
+            >
+              {registrationGroupLoading ? 'Ukladam...' : 'Pridat'}
+            </button>
+          </div>
+
+          {registrationGroupMessage && (
+            <div
+              style={{
+                ...styles.message,
+                background: registrationGroupMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                color: registrationGroupMessageType === 'ok' ? '#166534' : '#991b1b',
+                borderColor: registrationGroupMessageType === 'ok' ? '#86efac' : '#fecaca'
+              }}
+            >
+              {registrationGroupMessage}
+            </div>
+          )}
+        </section>
+      )}
 
       {createOpen && (
         <section style={styles.createPanel}>
@@ -1325,6 +1509,23 @@ export default function PersonalistaClient({
                 <option value="MASO">MASO</option>
                 <option value="VEGE">VEGE</option>
                 <option value="DIETA">DIÉTA</option>
+              </select>
+            </label>
+
+            <label style={styles.field}>
+              <span>Registracna skupina</span>
+              <select
+                value={createForm.registrationGroupId}
+                onChange={event => updateCreateForm('registrationGroupId', event.target.value)}
+                style={styles.input}
+                disabled={createLoading}
+              >
+                <option value="">Bez registracnej skupiny</option>
+                {registrationGroups.map(group => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
               </select>
             </label>
 
@@ -1556,6 +1757,7 @@ export default function PersonalistaClient({
               <option value="ALL">Všetky stavy</option>
               <option value="ACTIVE">Aktívni</option>
               <option value="BLOCKED">Blokovaní</option>
+              <option value="PENDING_REVIEW">Na schvalenie</option>
             </select>
           </section>
 
@@ -1577,6 +1779,7 @@ export default function PersonalistaClient({
               pagedPeople.map(person => {
                 const selected = selectedPerson?.id === person.id
                 const blocked = String(person.aktivny || '').toUpperCase() !== 'ANO'
+                const pendingReview = String(person.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
 
                 return (
                   <button
@@ -1584,8 +1787,8 @@ export default function PersonalistaClient({
                     type="button"
                     style={{
                       ...styles.personRow,
-                      background: selected ? '#eff6ff' : blocked ? '#fef2f2' : '#fff',
-                      borderColor: selected ? '#93c5fd' : blocked ? '#fecaca' : '#e5e7eb'
+                      background: selected ? '#eff6ff' : blocked ? '#fef2f2' : pendingReview ? '#fffbeb' : '#fff',
+                      borderColor: selected ? '#93c5fd' : blocked ? '#fecaca' : pendingReview ? '#fde68a' : '#e5e7eb'
                     }}
                     onClick={() => setSelectedPersonId(person.id)}
                   >
@@ -1601,15 +1804,21 @@ export default function PersonalistaClient({
                       <span
                         style={{
                           ...styles.statusBadge,
-                          background: blocked ? '#fee2e2' : '#dcfce7',
-                          color: blocked ? '#991b1b' : '#166534'
+                          background: blocked ? '#fee2e2' : pendingReview ? '#fef3c7' : '#dcfce7',
+                          color: blocked ? '#991b1b' : pendingReview ? '#92400e' : '#166534'
                         }}
                       >
-                        {blocked ? 'Blokovaný' : 'Aktívny'}
+                        {blocked ? 'Blokovaný' : pendingReview ? 'Kontrola' : 'Aktívny'}
                       </span>
                     </div>
 
                     <div style={styles.groupBadges}>
+                      {person.registrationGroupName && (
+                        <span style={styles.registrationGroupBadge}>
+                          Reg.: {person.registrationGroupName}
+                        </span>
+                      )}
+
                       {person.groups.length === 0 && (
                         <span style={styles.groupBadge}>
                           Bez skupiny
@@ -1719,6 +1928,10 @@ export default function PersonalistaClient({
                     {foodLabel(selectedPerson.typStravy)}
                   </span>
 
+                  {String(selectedPerson.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW' && (
+                    <span style={styles.pendingBadge}>Na schvalenie</span>
+                  )}
+
                   {selectedPerson.globalRoles.map(role => (
                     <span key={role} style={styles.globalRoleBadge}>
                       {role}
@@ -1741,6 +1954,12 @@ export default function PersonalistaClient({
                 <div style={styles.detailRow}>
                   <span>Telefón</span>
                   <b>{selectedPerson.telefon || '-'}</b>
+                </div>
+
+                <div style={styles.detailRow}>
+                  <span>Registracna skupina</span>
+                  <b>{selectedPerson.registrationGroupName || '-'}</b>
+                  {selectedPerson.registrationGroupNote && <small>{selectedPerson.registrationGroupNote}</small>}
                 </div>
 
                 <div style={styles.detailRow}>
@@ -1793,6 +2012,21 @@ export default function PersonalistaClient({
               </div>
 
               <div style={styles.sectionTitle}>Akcie</div>
+
+              {String(selectedPerson.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW' && (
+                <div style={styles.pendingApprovalBox}>
+                  <b>Registracia caka na kontrolu</b>
+                  <span>Skontroluj profil, vyber registracnu skupinu a schval registraciu. QR sa prideli automaticky.</span>
+                  <button
+                    type="button"
+                    style={styles.confirmButton}
+                    disabled={detailLoading || !profileForm.registrationGroupId}
+                    onClick={approveRegistration}
+                  >
+                    {detailLoading ? 'Schvalujem...' : 'Schvalit a priradit QR'}
+                  </button>
+                </div>
+              )}
 
               <div style={styles.detailActions}>
                 <button
@@ -1965,6 +2199,34 @@ export default function PersonalistaClient({
                         <option value="VEGE">VEGE</option>
                         <option value="DIETA">DIÉTA</option>
                       </select>
+                    </label>
+
+                    <label style={styles.field}>
+                      <span>Registracna skupina</span>
+                      <select
+                        value={profileForm.registrationGroupId}
+                        onChange={event => updateProfileForm('registrationGroupId', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                      >
+                        <option value="">Vyber registracnu skupinu</option>
+                        {registrationGroups.map(group => (
+                          <option key={group.id} value={group.id}>
+                            {group.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={styles.field}>
+                      <span>Poznamka k registracnej skupine</span>
+                      <input
+                        value={profileForm.registrationGroupNote}
+                        onChange={event => updateProfileForm('registrationGroupNote', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                        autoComplete="off"
+                      />
                     </label>
                   </div>
 
@@ -2276,6 +2538,20 @@ export default function PersonalistaClient({
                       />
                       <span>VYDAJ</span>
                     </label>
+
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={roleForm.groupCreator}
+                        onChange={event => setRoleForm(prev => ({
+                          ...prev,
+                          groupCreator: event.target.checked
+                        }))}
+                        disabled={detailLoading}
+                        style={styles.checkbox}
+                      />
+                      <span>Moze vytvarat skupiny</span>
+                    </label>
                   </div>
 
                   <button
@@ -2561,6 +2837,16 @@ const styles: Record<string, CSSProperties> = {
     color: '#991b1b',
     boxShadow: '0 5px 16px rgba(0,0,0,0.04)'
   },
+  summaryCardYellow: {
+    background: '#fffbeb',
+    border: '1px solid #fde68a',
+    borderRadius: 16,
+    padding: 12,
+    display: 'grid',
+    gap: 3,
+    color: '#92400e',
+    boxShadow: '0 5px 16px rgba(0,0,0,0.04)'
+  },
   summaryCardOrange: {
     background: '#fff7ed',
     border: '1px solid #fdba74',
@@ -2695,6 +2981,19 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 900
   },
+  registrationGroupBadge: {
+    maxWidth: 180,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    borderRadius: 999,
+    padding: '4px 7px',
+    background: '#fffbeb',
+    color: '#92400e',
+    border: '1px solid #fde68a',
+    fontSize: 10,
+    fontWeight: 900
+  },
   moreBadge: {
     borderRadius: 999,
     padding: '4px 7px',
@@ -2724,6 +3023,18 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 950,
     whiteSpace: 'nowrap'
+  },
+  pendingBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    padding: '5px 7px',
+    fontSize: 10,
+    fontWeight: 950,
+    whiteSpace: 'nowrap',
+    background: '#fef3c7',
+    color: '#92400e'
   },
   qrBadge: {
     display: 'inline-flex',
@@ -2804,6 +3115,15 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     gap: 8
+  },
+  pendingApprovalBox: {
+    border: '1px solid #fde68a',
+    borderRadius: 12,
+    padding: 10,
+    display: 'grid',
+    gap: 8,
+    background: '#fffbeb',
+    color: '#92400e'
   },
   detailHeaderBadges: {
     display: 'flex',
@@ -2996,6 +3316,11 @@ const styles: Record<string, CSSProperties> = {
     flexWrap: 'wrap',
     gap: 6,
     minHeight: 30
+  },
+  registrationGroupList: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6
   },
   emptyGroupSelection: {
     borderRadius: 999,

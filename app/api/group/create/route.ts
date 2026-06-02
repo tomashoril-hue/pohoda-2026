@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
-import { getGlobalAccess } from '@/lib/globalRoles'
+import { canCreateGroup, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function POST(req: NextRequest) {
@@ -24,22 +24,9 @@ export async function POST(req: NextRequest) {
 
     const globalAccess = await getGlobalAccess(user.id)
 
-    const { data: managerMemberships, error: managerMembershipsError } = await supabaseServer
-      .from('group_members')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('role', 'MANAGER')
-      .limit(1)
-
-    if (managerMembershipsError) {
-      return NextResponse.json({ error: managerMembershipsError.message }, { status: 500 })
-    }
-
-    const canCreateGroup = globalAccess.canUsePersonalista || (managerMemberships || []).length > 0
-
-    if (!canCreateGroup) {
+    if (!canCreateGroup(globalAccess)) {
       return NextResponse.json(
-        { error: 'Skupinu môže vytvoriť iba ADMIN, PERSONALISTA alebo existujúci MANAGER.' },
+        { error: 'Skupinu môže vytvoriť iba ADMIN, PERSONALISTA alebo poverený tvorca skupín.' },
         { status: 403 }
       )
     }

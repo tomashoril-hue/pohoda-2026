@@ -50,8 +50,15 @@ function ConfirmContent() {
           return
         }
 
+        const reviewStatus = String(json.reviewStatus || json.user?.review_status || 'APPROVED').toUpperCase()
         const qr = json.qrCode || json.user?.qr_code
         const mail = json.user?.email || ''
+
+        if (reviewStatus !== 'APPROVED') {
+          setEmail(mail)
+          setStatus('E-mail je potvrdený. Registrácia čaká na schválenie personalistom.')
+          return
+        }
 
         const qrImg = await QRCode.toDataURL(qr)
 
@@ -108,6 +115,15 @@ function ConfirmContent() {
                 <button style={styles.secondaryButton}>Pokračovať do aplikácie</button>
               </a>
             </div>
+          </div>
+        )}
+
+        {!loading && !qrImage && email && (
+          <div style={styles.qrBox}>
+            <p style={styles.email}>{email}</p>
+            <a href="/pending-approval" style={styles.link}>
+              <button style={styles.secondaryButton}>Zobraziť stav registrácie</button>
+            </a>
           </div>
         )}
       </section>

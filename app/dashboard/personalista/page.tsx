@@ -43,7 +43,10 @@ async function fetchAllMemberships() {
           email,
           telefon,
           typ_stravy,
-          aktivny
+          aktivny,
+          registration_group_id,
+          registration_group_note,
+          review_status
         )
       `)
       .order('created_at', { ascending: true })
@@ -64,7 +67,7 @@ async function fetchAllUsers() {
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabaseServer
       .from('users')
-      .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny')
+      .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, registration_group_id, registration_group_note, review_status')
       .order('created_at', { ascending: false })
       .range(from, from + pageSize - 1)
 
@@ -150,6 +153,15 @@ export default async function PersonalistaPage() {
   }
 
   const groupsById = new Map<string, any>()
+  const { data: registrationGroupsData } = await supabaseServer
+    .from('registration_groups')
+    .select('id, name, active')
+    .order('name', { ascending: true })
+
+  const registrationGroups = registrationGroupsData || []
+  const registrationGroupById = new Map(
+    registrationGroups.map((group: any) => [group.id, group])
+  )
 
   visibleMemberships.forEach((membership: any) => {
     const group = Array.isArray(membership.groups)
@@ -298,6 +310,10 @@ export default async function PersonalistaPage() {
       telefon: memberUser?.telefon || '',
       typStravy: memberUser?.typ_stravy || '',
       aktivny: memberUser?.aktivny || 'ANO',
+      reviewStatus: memberUser?.review_status || 'APPROVED',
+      registrationGroupId: memberUser?.registration_group_id || '',
+      registrationGroupName: registrationGroupById.get(memberUser?.registration_group_id)?.name || '',
+      registrationGroupNote: memberUser?.registration_group_note || '',
       activeQrCount: activeQrByUserId.get(membership.user_id) || 0,
       activeNfcCount: activeNfcByUserId.get(membership.user_id) || 0,
       globalRoles: globalRolesByUserId.get(membership.user_id) || [],
@@ -333,6 +349,10 @@ export default async function PersonalistaPage() {
         telefon: profile.telefon || '',
         typStravy: profile.typ_stravy || '',
         aktivny: profile.aktivny || 'ANO',
+        reviewStatus: profile.review_status || 'APPROVED',
+        registrationGroupId: profile.registration_group_id || '',
+        registrationGroupName: registrationGroupById.get(profile.registration_group_id)?.name || '',
+        registrationGroupNote: profile.registration_group_note || '',
         activeQrCount: activeQrByUserId.get(profile.id) || 0,
         activeNfcCount: activeNfcByUserId.get(profile.id) || 0,
         globalRoles: globalRolesByUserId.get(profile.id) || [],
@@ -369,6 +389,7 @@ export default async function PersonalistaPage() {
     <PersonalistaClient
       people={people}
       groups={groups}
+      registrationGroups={registrationGroups.filter((group: any) => group.active)}
       fromDate={fromDate}
       toDate={toDate}
       canManage={isGlobalPersonalista}

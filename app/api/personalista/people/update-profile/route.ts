@@ -37,6 +37,8 @@ export async function POST(req: NextRequest) {
     const email = cleanEmail(body.email)
     const telefon = cleanText(body.telefon) || null
     const typStravy = cleanFood(body.typStravy)
+    const registrationGroupId = cleanText(body.registrationGroupId) || null
+    const registrationGroupNote = cleanText(body.registrationGroupNote) || null
 
     if (!userId) {
       return NextResponse.json({ error: 'Chyba osoba.' }, { status: 400 })
@@ -57,6 +59,23 @@ export async function POST(req: NextRequest) {
         { error: access.error || 'Nemate opravnenie.' },
         { status: access.status || 403 }
       )
+    }
+
+    if (registrationGroupId) {
+      const { data: registrationGroup, error: registrationGroupError } = await supabaseServer
+        .from('registration_groups')
+        .select('id')
+        .eq('id', registrationGroupId)
+        .eq('active', true)
+        .maybeSingle()
+
+      if (registrationGroupError) {
+        return NextResponse.json({ error: registrationGroupError.message }, { status: 500 })
+      }
+
+      if (!registrationGroup) {
+        return NextResponse.json({ error: 'Registracna skupina neexistuje.' }, { status: 400 })
+      }
     }
 
     if (email) {
@@ -81,7 +100,7 @@ export async function POST(req: NextRequest) {
 
     const { data: before } = await supabaseServer
       .from('users')
-      .select('meno, priezvisko, email, telefon, typ_stravy')
+      .select('meno, priezvisko, email, telefon, typ_stravy, registration_group_id, registration_group_note')
       .eq('id', userId)
       .maybeSingle()
 
@@ -95,6 +114,8 @@ export async function POST(req: NextRequest) {
         email,
         telefon,
         typ_stravy: typStravy,
+        registration_group_id: registrationGroupId,
+        registration_group_note: registrationGroupNote,
         updated_at: now
       })
       .eq('id', userId)
@@ -117,7 +138,9 @@ export async function POST(req: NextRequest) {
           priezvisko,
           email,
           telefon,
-          typ_stravy: typStravy
+          typ_stravy: typStravy,
+          registration_group_id: registrationGroupId,
+          registration_group_note: registrationGroupNote
         }
       })
 

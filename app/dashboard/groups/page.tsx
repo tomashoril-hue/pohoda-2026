@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
-import { canCreateGroupByRole, canIssueForGroupByRole, canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
+import { canCreateGroup, canIssueForGroupByRole, canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import GroupsClient from './GroupsClient'
 
@@ -51,9 +51,7 @@ export default async function GroupsPage() {
     return membership.user_id === user.id
   })
 
-  const canCreateGroup = globalAccess.canUsePersonalista || myMemberships.some((membership: any) => {
-    return canCreateGroupByRole(membership.role, globalAccess)
-  })
+  const userCanCreateGroup = canCreateGroup(globalAccess)
 
   const myGroupIds = myMemberships.map((membership: any) => membership.group_id)
 
@@ -149,7 +147,7 @@ export default async function GroupsPage() {
     <GroupsClient
       groups={groups}
       members={members}
-      canCreateGroup={canCreateGroup}
+      canCreateGroup={userCanCreateGroup}
     />
   )
 }

@@ -1,9 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 
 export default function RegisterPage() {
+  const [registrationGroups, setRegistrationGroups] = useState<{ id: string; name: string }[]>([])
+  const [registrationGroupId, setRegistrationGroupId] = useState('')
+  const [registrationGroupNote, setRegistrationGroupNote] = useState('')
   const [meno, setMeno] = useState('')
   const [priezvisko, setPriezvisko] = useState('')
   const [email, setEmail] = useState('')
@@ -12,12 +15,21 @@ export default function RegisterPage() {
   const [result, setResult] = useState<any>(null)
   const [loading, setLoading] = useState(false)
 
+  useEffect(() => {
+    fetch('/api/registration-groups')
+      .then(response => response.json())
+      .then(json => setRegistrationGroups(json.groups || []))
+      .catch(() => setRegistrationGroups([]))
+  }, [])
+
   const clearForm = () => {
     setMeno('')
     setPriezvisko('')
     setEmail('')
     setTelefon('')
     setTypStravy('MASO')
+    setRegistrationGroupId('')
+    setRegistrationGroupNote('')
   }
 
   const sendConfirmationEmail = async (email: string, token: string) => {
@@ -46,6 +58,8 @@ export default function RegisterPage() {
     if (!meno.trim()) return alert('Zadaj meno')
     if (!priezvisko.trim()) return alert('Zadaj priezvisko')
     if (!email.trim()) return alert('Zadaj email')
+    if (!registrationGroupId) return alert('Vyber registračnú skupinu alebo možnosť Iné')
+    if (registrationGroupId === 'OTHER' && !registrationGroupNote.trim()) return alert('Doplň, pod koho patríš')
 
     setLoading(true)
 
@@ -60,6 +74,8 @@ export default function RegisterPage() {
         p_telefon: telefon.trim(),
         p_typ_stravy: typStravy,
         p_skupina: null,
+        p_registration_group_id: registrationGroupId === 'OTHER' ? null : registrationGroupId,
+        p_registration_group_note: registrationGroupId === 'OTHER' ? registrationGroupNote.trim() : null,
         p_zdroj: 'WEBAPP',
         p_ip: ipData.ip
       })
@@ -116,6 +132,27 @@ export default function RegisterPage() {
             <option value="MASO">MASO</option>
             <option value="VEGE">VEGE</option>
           </select>
+
+          <select
+            style={styles.input}
+            value={registrationGroupId}
+            onChange={e => setRegistrationGroupId(e.target.value)}
+          >
+            <option value="">Patrím pod skupinu...</option>
+            {registrationGroups.map(group => (
+              <option key={group.id} value={group.id}>{group.name}</option>
+            ))}
+            <option value="OTHER">Iné</option>
+          </select>
+
+          {registrationGroupId === 'OTHER' && (
+            <input
+              style={styles.input}
+              placeholder="Napíš, pod koho patríš"
+              value={registrationGroupNote}
+              onChange={e => setRegistrationGroupNote(e.target.value)}
+            />
+          )}
         </div>
 
         <button
@@ -134,7 +171,7 @@ export default function RegisterPage() {
           <div style={styles.success}>
             <h2 style={styles.messageTitle}>Registrácia prijatá</h2>
             <p>Na e-mail <b>{result.email}</b> sme odoslali potvrdzovací link.</p>
-            <p>Po potvrdení vám bude pridelený QR kód.</p>
+            <p>Po potvrdení e-mailu registráciu skontroluje personalista. QR kód vám príde po schválení.</p>
           </div>
         )}
 
@@ -150,7 +187,7 @@ export default function RegisterPage() {
           <div style={styles.success}>
             <h2 style={styles.messageTitle}>Už ste registrovaný</h2>
             <p>E-mail <b>{result.email}</b> už má potvrdenú registráciu.</p>
-            <p>QR kód sme poslali znova.</p>
+            <p>{result.qr_code ? 'QR kód sme poslali znova.' : 'Registrácia ešte čaká na kontrolu personalistom.'}</p>
           </div>
         )}
       </section>

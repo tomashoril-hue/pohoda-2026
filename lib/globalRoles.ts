@@ -1,6 +1,6 @@
 import { supabaseServer } from '@/lib/supabaseServer'
 
-export type GlobalRole = 'ADMIN' | 'PERSONALISTA' | 'VYDAJ' | 'ADMIN_VYDAJ'
+export type GlobalRole = 'ADMIN' | 'PERSONALISTA' | 'VYDAJ' | 'ADMIN_VYDAJ' | 'GROUP_CREATOR'
 
 export type GlobalAccess = {
   roles: GlobalRole[]
@@ -8,6 +8,7 @@ export type GlobalAccess = {
   isPersonalista: boolean
   isVydaj: boolean
   isAdminVydaj: boolean
+  isGroupCreator: boolean
   canUsePersonalista: boolean
   canUseFoodIssue: boolean
   canAdminFoodIssue: boolean
@@ -23,13 +24,14 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
   const roles = (data || [])
     .map(item => String(item.role || '').toUpperCase())
     .filter((role): role is GlobalRole => {
-      return role === 'ADMIN' || role === 'PERSONALISTA' || role === 'VYDAJ' || role === 'ADMIN_VYDAJ'
+      return role === 'ADMIN' || role === 'PERSONALISTA' || role === 'VYDAJ' || role === 'ADMIN_VYDAJ' || role === 'GROUP_CREATOR'
     })
 
   const isAdmin = roles.includes('ADMIN')
   const isPersonalista = roles.includes('PERSONALISTA')
   const isVydaj = roles.includes('VYDAJ')
   const isAdminVydaj = roles.includes('ADMIN_VYDAJ')
+  const isGroupCreator = roles.includes('GROUP_CREATOR')
 
   return {
     roles,
@@ -37,6 +39,7 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
     isPersonalista,
     isVydaj,
     isAdminVydaj,
+    isGroupCreator,
     canUsePersonalista: isAdmin || isPersonalista,
     canUseFoodIssue: isAdmin || isAdminVydaj || isVydaj,
     canAdminFoodIssue: isAdmin || isAdminVydaj
@@ -49,10 +52,8 @@ export function canManageGroupByRole(role: string, access?: Pick<GlobalAccess, '
   return Boolean(access?.isAdmin) || normalized === 'MANAGER'
 }
 
-export function canCreateGroupByRole(role: string, access?: Pick<GlobalAccess, 'canUsePersonalista'>) {
-  const normalized = String(role || '').toUpperCase()
-
-  return Boolean(access?.canUsePersonalista) || normalized === 'MANAGER'
+export function canCreateGroup(access?: Pick<GlobalAccess, 'canUsePersonalista' | 'isGroupCreator'>) {
+  return Boolean(access?.canUsePersonalista) || Boolean(access?.isGroupCreator)
 }
 
 export function canIssueForGroupByRole(role: string, access?: Pick<GlobalAccess, 'isAdmin'>) {

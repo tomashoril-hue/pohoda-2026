@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
     const typStravy = normalizeFood(body.typStravy)
     const validFrom = normalizeText(body.validFrom)
     const validTo = normalizeText(body.validTo)
+    const registrationGroupId = normalizeText(body.registrationGroupId) || null
     const obed = !!body.obed
     const vecera = !!body.vecera
     const assignQr = body.assignQr !== false
@@ -113,6 +114,23 @@ export async function POST(req: NextRequest) {
         { error: 'Personalistiku moze pouzivat iba ADMIN alebo PERSONALISTA.' },
         { status: 403 }
       )
+    }
+
+    if (registrationGroupId) {
+      const { data: registrationGroup, error: registrationGroupError } = await supabaseServer
+        .from('registration_groups')
+        .select('id')
+        .eq('id', registrationGroupId)
+        .eq('active', true)
+        .maybeSingle()
+
+      if (registrationGroupError) {
+        return NextResponse.json({ error: registrationGroupError.message }, { status: 500 })
+      }
+
+      if (!registrationGroup) {
+        return NextResponse.json({ error: 'Registracna skupina neexistuje.' }, { status: 400 })
+      }
     }
 
     let selectedGroups: any[] = []
@@ -216,6 +234,7 @@ export async function POST(req: NextRequest) {
         qr_code: null,
         zdroj: 'PERSONALISTA',
         aktivny: 'ANO',
+        registration_group_id: registrationGroupId,
         manual_created_by: currentUser.id,
         updated_at: now
       })
@@ -350,6 +369,7 @@ export async function POST(req: NextRequest) {
           email,
           telefon,
           typ_stravy: typStravy,
+          registration_group_id: registrationGroupId,
           group_ids: groupIds,
           valid_from: validFrom,
           valid_to: validTo,

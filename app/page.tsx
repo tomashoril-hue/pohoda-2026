@@ -1,12 +1,13 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { getCurrentUser } from '@/lib/auth'
+import { getSessionUser } from '@/lib/auth'
 
 export default async function HomePage() {
-  const user = await getCurrentUser()
+  const user = await getSessionUser()
 
   if (user) {
-    redirect('/dashboard')
+    const reviewStatus = String(user.review_status || 'APPROVED').toUpperCase()
+    redirect(reviewStatus === 'APPROVED' ? '/dashboard' : '/pending-approval')
   }
 
   return (
