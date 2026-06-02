@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 
 export default function RegisterPage() {
   const [registrationGroups, setRegistrationGroups] = useState<{ id: string; name: string }[]>([])
   const [registrationGroupId, setRegistrationGroupId] = useState('')
   const [registrationGroupNote, setRegistrationGroupNote] = useState('')
+  const [registrationGroupSearch, setRegistrationGroupSearch] = useState('')
   const [meno, setMeno] = useState('')
   const [priezvisko, setPriezvisko] = useState('')
   const [email, setEmail] = useState('')
@@ -22,6 +23,14 @@ export default function RegisterPage() {
       .catch(() => setRegistrationGroups([]))
   }, [])
 
+  const filteredRegistrationGroups = useMemo(() => {
+    const query = normalizeSearch(registrationGroupSearch)
+
+    if (!query) return registrationGroups
+
+    return registrationGroups.filter(group => normalizeSearch(group.name).includes(query))
+  }, [registrationGroups, registrationGroupSearch])
+
   const clearForm = () => {
     setMeno('')
     setPriezvisko('')
@@ -30,6 +39,7 @@ export default function RegisterPage() {
     setTypStravy('MASO')
     setRegistrationGroupId('')
     setRegistrationGroupNote('')
+    setRegistrationGroupSearch('')
   }
 
   const sendConfirmationEmail = async (email: string, token: string) => {
@@ -133,17 +143,30 @@ export default function RegisterPage() {
             <option value="VEGE">VEGE</option>
           </select>
 
-          <select
-            style={styles.input}
-            value={registrationGroupId}
-            onChange={e => setRegistrationGroupId(e.target.value)}
-          >
-            <option value="">Patrím pod skupinu...</option>
-            {registrationGroups.map(group => (
-              <option key={group.id} value={group.id}>{group.name}</option>
-            ))}
-            <option value="OTHER">Iné</option>
-          </select>
+          <div style={styles.groupPicker}>
+            <input
+              style={styles.input}
+              placeholder="Hľadať registračnú skupinu..."
+              value={registrationGroupSearch}
+              onChange={e => setRegistrationGroupSearch(e.target.value)}
+            />
+
+            <select
+              style={styles.groupList}
+              size={6}
+              value={registrationGroupId}
+              onChange={e => {
+                setRegistrationGroupId(e.target.value)
+                if (e.target.value !== 'OTHER') setRegistrationGroupNote('')
+              }}
+            >
+              <option value="">Patrím pod skupinu...</option>
+              {filteredRegistrationGroups.map(group => (
+                <option key={group.id} value={group.id}>{group.name}</option>
+              ))}
+              <option value="OTHER">Iné</option>
+            </select>
+          </div>
 
           {registrationGroupId === 'OTHER' && (
             <input
@@ -193,6 +216,14 @@ export default function RegisterPage() {
       </section>
     </main>
   )
+}
+
+function normalizeSearch(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -264,6 +295,20 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 18,
     padding: '15px 17px',
     fontSize: 17,
+    background: '#fff',
+    fontWeight: 700
+  },
+  groupPicker: {
+    display: 'grid',
+    gap: 8
+  },
+  groupList: {
+    width: '100%',
+    height: 188,
+    border: '3px solid #000',
+    borderRadius: 18,
+    padding: 8,
+    fontSize: 16,
     background: '#fff',
     fontWeight: 700
   },
