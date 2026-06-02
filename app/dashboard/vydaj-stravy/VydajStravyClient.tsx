@@ -315,6 +315,7 @@ export default function VydajStravyClient({
   const [cancelOpen, setCancelOpen] = useState(false)
   const [issueDecision, setIssueDecision] = useState<IssueDecision | null>(null)
   const [isMobile, setIsMobile] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const fullMode = issueMode === 'FULL'
   const lastItem = history[0] || null
@@ -988,42 +989,86 @@ export default function VydajStravyClient({
   return (
     <main style={{ ...styles.page, ...(isMobile ? styles.pageMobile : {}) }}>
       <header style={{ ...styles.header, ...(isMobile ? styles.headerMobile : {}) }}>
-        <div>
+        <div style={isMobile ? styles.mobileHeaderText : undefined}>
           <div style={styles.kicker}>POHODA 2026</div>
           <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Výdaj stravy</h1>
           <div style={styles.actor}>{actorName}</div>
         </div>
 
-        <Link href="/dashboard" style={{ ...styles.backButton, ...(isMobile ? styles.backButtonMobile : {}) }}>Späť</Link>
+        {!isMobile && <Link href="/dashboard" style={styles.backButton}>Späť</Link>}
       </header>
 
-      <section style={{ ...styles.toolbar, ...(isMobile ? styles.toolbarMobile : {}) }}>
-        <label style={styles.field}>
-          <span>Dátum</span>
-          <input
-            type="date"
-            value={datum}
-            onChange={event => setDatum(event.target.value)}
-            style={styles.dateInput}
-          />
-        </label>
+      {isMobile ? (
+        <section style={styles.mobileNavStack}>
+          <Link href="/dashboard" style={styles.mobileBackButton}>Späť</Link>
 
-        <div style={styles.mealSwitch}>
-          {(['OBED', 'VECERA'] as Meal[]).map(meal => (
-            <button
-              key={meal}
-              type="button"
-              onClick={() => setTypJedla(meal)}
-              style={{
-                ...styles.mealButton,
-                ...(typJedla === meal ? styles.mealButtonActive : {})
-              }}
-            >
-              {mealLabel(meal)}
-            </button>
-          ))}
-        </div>
-      </section>
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(prev => !prev)}
+            style={styles.mobileSettingsButton}
+          >
+            Nastavenie výdaja · {datum} · {mealLabel(typJedla)}
+          </button>
+
+          {settingsOpen && (
+            <div style={styles.mobileSettingsPanel}>
+              <label style={styles.field}>
+                <span>Dátum</span>
+                <input
+                  type="date"
+                  value={datum}
+                  onChange={event => setDatum(event.target.value)}
+                  style={styles.dateInput}
+                />
+              </label>
+
+              <div style={styles.mealSwitch}>
+                {(['OBED', 'VECERA'] as Meal[]).map(meal => (
+                  <button
+                    key={meal}
+                    type="button"
+                    onClick={() => setTypJedla(meal)}
+                    style={{
+                      ...styles.mealButton,
+                      ...(typJedla === meal ? styles.mealButtonActive : {})
+                    }}
+                  >
+                    {mealLabel(meal)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      ) : (
+        <section style={styles.toolbar}>
+          <label style={styles.field}>
+            <span>Dátum</span>
+            <input
+              type="date"
+              value={datum}
+              onChange={event => setDatum(event.target.value)}
+              style={styles.dateInput}
+            />
+          </label>
+
+          <div style={styles.mealSwitch}>
+            {(['OBED', 'VECERA'] as Meal[]).map(meal => (
+              <button
+                key={meal}
+                type="button"
+                onClick={() => setTypJedla(meal)}
+                style={{
+                  ...styles.mealButton,
+                  ...(typJedla === meal ? styles.mealButtonActive : {})
+                }}
+              >
+                {mealLabel(meal)}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section style={{ ...styles.scanGrid, ...(isMobile ? styles.scanGridMobile : {}) }}>
         <div style={{ ...styles.scanPanel, ...(isMobile ? styles.scanPanelMobile : {}) }}>
@@ -1501,7 +1546,9 @@ const styles: Record<string, CSSProperties> = {
   pageMobile: {
     padding: 8,
     gap: 8,
-    maxWidth: '100%'
+    maxWidth: '100%',
+    width: '100%',
+    boxSizing: 'border-box'
   },
   header: {
     display: 'flex',
@@ -1514,8 +1561,12 @@ const styles: Record<string, CSSProperties> = {
     padding: 16
   },
   headerMobile: {
-    alignItems: 'stretch',
-    padding: 12
+    alignItems: 'flex-start',
+    padding: '9px 10px',
+    gap: 4
+  },
+  mobileHeaderText: {
+    minWidth: 0
   },
   kicker: {
     color: '#86efac',
@@ -1530,7 +1581,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950
   },
   titleMobile: {
-    fontSize: 28
+    fontSize: 24
   },
   actor: {
     marginTop: 6,
@@ -1549,19 +1600,52 @@ const styles: Record<string, CSSProperties> = {
     textDecoration: 'none',
     padding: '0 16px'
   },
-  backButtonMobile: {
-    width: '100%',
-    minHeight: 44
-  },
   toolbar: {
     display: 'grid',
     gridTemplateColumns: 'minmax(170px, 230px) 1fr',
     gap: 10,
     alignItems: 'end'
   },
-  toolbarMobile: {
-    gridTemplateColumns: '1fr',
-    gap: 8
+  mobileNavStack: {
+    display: 'grid',
+    gap: 8,
+    width: '100%',
+    minWidth: 0
+  },
+  mobileBackButton: {
+    ...baseButton,
+    minHeight: 48,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#f59e0b',
+    borderColor: '#d97706',
+    color: '#111827',
+    textDecoration: 'none',
+    padding: '0 14px',
+    width: '100%',
+    boxSizing: 'border-box'
+  },
+  mobileSettingsButton: {
+    ...baseButton,
+    minHeight: 48,
+    background: '#111827',
+    color: '#fff',
+    padding: '0 12px',
+    width: '100%',
+    boxSizing: 'border-box',
+    textAlign: 'center'
+  },
+  mobileSettingsPanel: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 10,
+    display: 'grid',
+    gap: 10,
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box'
   },
   field: {
     display: 'grid',
@@ -1601,7 +1685,9 @@ const styles: Record<string, CSSProperties> = {
   },
   scanGridMobile: {
     gridTemplateColumns: '1fr',
-    gap: 8
+    gap: 8,
+    width: '100%',
+    minWidth: 0
   },
   scanPanel: {
     background: '#fff',
@@ -1613,7 +1699,10 @@ const styles: Record<string, CSSProperties> = {
   },
   scanPanelMobile: {
     padding: 10,
-    gap: 10
+    gap: 10,
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box'
   },
   scanTop: {
     display: 'flex',
@@ -1716,7 +1805,9 @@ const styles: Record<string, CSSProperties> = {
   },
   cameraBoxMobile: {
     height: 'min(56vh, 430px)',
-    minHeight: 260
+    minHeight: 260,
+    width: '100%',
+    minWidth: 0
   },
   cameraVideo: {
     width: '100%',
@@ -1772,7 +1863,10 @@ const styles: Record<string, CSSProperties> = {
   resultPanelMobile: {
     minHeight: 136,
     padding: 14,
-    gap: 7
+    gap: 7,
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box'
   },
   tone_success: {
     background: '#dcfce7',

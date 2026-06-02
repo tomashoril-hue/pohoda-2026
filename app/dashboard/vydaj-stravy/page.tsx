@@ -19,13 +19,15 @@ function todayIsoDate() {
 }
 
 function defaultMeal() {
-  const hour = Number(new Intl.DateTimeFormat('sk-SK', {
+  const hourPart = new Intl.DateTimeFormat('sk-SK', {
     timeZone: 'Europe/Bratislava',
     hour: '2-digit',
-    hour12: false
-  }).format(new Date()))
+    hour12: false,
+    hourCycle: 'h23'
+  }).formatToParts(new Date()).find(part => part.type === 'hour')?.value || '0'
+  const hour = Number(hourPart) % 24
 
-  return hour < 15 ? 'OBED' : 'VECERA'
+  return hour < 16 ? 'OBED' : 'VECERA'
 }
 
 export default async function VydajStravyPage() {
