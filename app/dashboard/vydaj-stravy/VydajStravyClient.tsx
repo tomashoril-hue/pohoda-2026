@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import Link from 'next/link'
 import { BrowserQRCodeReader } from '@zxing/browser'
+import jsQR from 'jsqr'
 
 type Meal = 'OBED' | 'VECERA'
 type Tone = 'success' | 'error' | 'warning'
@@ -214,6 +215,47 @@ function choiceSummaryLabel(summary: ChoiceSummary) {
   ].filter(Boolean).join(' · ')
 }
 
+function makeCanvasImage(video: HTMLVideoElement, canvas: HTMLCanvasElement, maxWidth = 720) {
+  const videoWidth = video.videoWidth || 1280
+  const videoHeight = video.videoHeight || 720
+  const scale = Math.min(1, maxWidth / videoWidth)
+  const width = Math.max(1, Math.round(videoWidth * scale))
+  const height = Math.max(1, Math.round(videoHeight * scale))
+
+  canvas.width = width
+  canvas.height = height
+
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) return null
+
+  ctx.drawImage(video, 0, 0, width, height)
+  return ctx.getImageData(0, 0, width, height)
+}
+
+function thresholdImage(imageData: ImageData) {
+  const source = imageData.data
+  const output = new Uint8ClampedArray(source.length)
+  let total = 0
+  const pixels = source.length / 4
+
+  for (let index = 0; index < source.length; index += 4) {
+    total += source[index] * 0.299 + source[index + 1] * 0.587 + source[index + 2] * 0.114
+  }
+
+  const threshold = total / pixels
+
+  for (let index = 0; index < source.length; index += 4) {
+    const luminance = source[index] * 0.299 + source[index + 1] * 0.587 + source[index + 2] * 0.114
+    const value = luminance >= threshold ? 255 : 0
+    output[index] = value
+    output[index + 1] = value
+    output[index + 2] = value
+    output[index + 3] = 255
+  }
+
+  return output
+}
+
 export default function VydajStravyClient({
   actorName,
   initialDate,
@@ -229,11 +271,15 @@ export default function VydajStravyClient({
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const controlsRef = useRef<any>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const scanLoopRef = useRef<number | null>(null)
+  const zxingReaderRef = useRef<BrowserQRCodeReader | null>(null)
   const cancelledRef = useRef(false)
   const busyRef = useRef(false)
   const lastScanTextRef = useRef('')
   const lastScanTimeRef = useRef(0)
+  const scanAttemptRef = useRef(0)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const decisionOpenRef = useRef(false)
 
@@ -243,6 +289,9 @@ export default function VydajStravyClient({
   const [cameraOpen, setCameraOpen] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
   const [cameraStatus, setCameraStatus] = useState('Kamera je vypnutá.')
+  const [torchAvailable, setTorchAvailable] = useState(false)
+  const [torchOn, setTorchOn] = useState(false)
+  const [torchChanging, setTorchChanging] = useState(false)
   const [loading, setLoading] = useState(false)
   const [history, setHistory] = useState<ScanItem[]>([])
   const [successCount, setSuccessCount] = useState(0)
@@ -323,24 +372,139 @@ export default function VydajStravyClient({
   const stopCamera = () => {
     cancelledRef.current = true
 
-    try {
-      controlsRef.current?.stop?.()
-      controlsRef.current = null
-    } catch {
-      // ignorujeme
+    if (scanLoopRef.current) {
+      window.clearTimeout(scanLoopRef.current)
+      scanLoopRef.current = null
     }
+
+    streamRef.current?.getTracks().forEach(track => track.stop())
+    streamRef.current = null
+    zxingReaderRef.current = null
 
     if (videoRef.current) {
       videoRef.current.srcObject = null
     }
 
     setCameraReady(false)
+    setTorchAvailable(false)
+    setTorchOn(false)
+    setTorchChanging(false)
     setCameraStatus('Kamera je vypnutá.')
   }
 
+  const getCameraVideoTrack = () => {
+    return streamRef.current?.getVideoTracks?.()[0] || null
+  }
+
+  const updateTorchSupport = () => {
+    const track = getCameraVideoTrack() as any
+    const capabilities = track?.getCapabilities?.()
+    setTorchAvailable(Boolean(capabilities?.torch))
+  }
+
+  const setCameraTorch = async (enabled: boolean) => {
+    const track = getCameraVideoTrack() as any
+
+    if (!track?.applyConstraints) {
+      setTorchAvailable(false)
+      setTorchOn(false)
+      setCameraStatus('Svetlo nie je na tomto zariadení dostupné.')
+      return
+    }
+
+    setTorchChanging(true)
+
+    try {
+      await track.applyConstraints({
+        advanced: [{ torch: enabled }]
+      })
+
+      setTorchOn(enabled)
+      setCameraStatus(enabled ? 'Svetlo je zapnuté. Skenujte QR kódy postupne.' : 'Svetlo je vypnuté. Skenujte QR kódy postupne.')
+    } catch {
+      setTorchAvailable(false)
+      setTorchOn(false)
+      setCameraStatus('Svetlo nie je na tomto zariadení dostupné.')
+    } finally {
+      setTorchChanging(false)
+    }
+  }
+
+  const tryZxingQr = () => {
+    const video = videoRef.current
+    if (!video || video.readyState < 2) return ''
+
+    try {
+      if (!zxingReaderRef.current) {
+        zxingReaderRef.current = new BrowserQRCodeReader()
+      }
+
+      const result = zxingReaderRef.current.decode(video)
+      return String(result?.getText?.() || '').trim()
+    } catch {
+      return ''
+    }
+  }
+
+  const tryPreprocessedQr = () => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+
+    if (!video || !canvas || video.readyState < 2) return ''
+
+    const image = makeCanvasImage(video, canvas)
+    if (!image) return ''
+
+    const processed = thresholdImage(image)
+    const result = jsQR(processed, image.width, image.height, { inversionAttempts: 'attemptBoth' })
+
+    return String(result?.data || '').trim()
+  }
+
+  const scanCameraFrame = async () => {
+    if (cancelledRef.current || decisionOpenRef.current || busyRef.current) return
+
+    scanAttemptRef.current += 1
+
+    let value = tryZxingQr()
+
+    if (!value && scanAttemptRef.current % 3 === 0) {
+      value = tryPreprocessedQr()
+    }
+
+    if (!value) return
+
+    const nowMs = Date.now()
+
+    if (nowMs - lastScanTimeRef.current < 300) return
+
+    if (
+      lastScanTextRef.current === value &&
+      nowMs - lastScanTimeRef.current < 2500
+    ) {
+      return
+    }
+
+    lastScanTextRef.current = value
+    lastScanTimeRef.current = nowMs
+
+    await submitQr(value)
+  }
+
+  const scheduleCameraScan = () => {
+    if (cancelledRef.current) return
+
+    scanLoopRef.current = window.setTimeout(async () => {
+      await scanCameraFrame()
+      scheduleCameraScan()
+    }, 80)
+  }
+
   const startCamera = async () => {
-    setCameraOpen(true)
     setCameraReady(false)
+    setTorchAvailable(false)
+    setTorchOn(false)
+    setTorchChanging(false)
     setCameraStatus('Spúšťam kameru...')
     cancelledRef.current = false
 
@@ -350,32 +514,24 @@ export default function VydajStravyClient({
         return
       }
 
-      const reader = new BrowserQRCodeReader()
-      const controls = await reader.decodeFromVideoDevice(
-        undefined,
-        videoRef.current,
-        async (result) => {
-          if (cancelledRef.current) return
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      })
 
-          const text = String(result?.getText?.() || '').trim()
-          if (!text) return
+      streamRef.current = stream
+      videoRef.current.srcObject = stream
+      await videoRef.current.play()
 
-          const nowMs = Date.now()
-          if (decisionOpenRef.current) return
-          if (busyRef.current) return
-          if (lastScanTextRef.current === text && nowMs - lastScanTimeRef.current < 1200) return
-          if (nowMs - lastScanTimeRef.current < 300) return
-
-          lastScanTextRef.current = text
-          lastScanTimeRef.current = nowMs
-
-          await submitQr(text)
-        }
-      )
-
-      controlsRef.current = controls
+      scanAttemptRef.current = 0
       setCameraReady(true)
-      setCameraStatus('Kamera je zapnutá.')
+      updateTorchSupport()
+      setCameraStatus('Kamera je zapnutá. Skenujte QR kódy postupne.')
+      scheduleCameraScan()
     } catch (err: any) {
       setCameraReady(false)
       setCameraStatus(err?.message || 'Kamera sa nepodarila zapnúť. Použi manuálne pole.')
@@ -384,8 +540,15 @@ export default function VydajStravyClient({
   }
 
   useEffect(() => {
+    if (!cameraOpen) {
+      stopCamera()
+      return
+    }
+
+    startCamera()
+
     return () => stopCamera()
-  }, [])
+  }, [cameraOpen])
 
   const addHistory = (item: ScanItem) => {
     setHistory(prev => [item, ...prev].slice(0, 24))
@@ -879,7 +1042,7 @@ export default function VydajStravyClient({
           <div style={styles.cameraActions}>
             <button
               type="button"
-              onClick={() => cameraOpen ? (setCameraOpen(false), stopCamera()) : startCamera()}
+              onClick={() => setCameraOpen(prev => !prev)}
               style={styles.secondaryButton}
             >
               {cameraOpen ? 'Vypnúť kameru' : 'Zapnúť kameru'}
@@ -892,12 +1055,43 @@ export default function VydajStravyClient({
           </div>
 
           {cameraOpen && (
-            <video
-              ref={videoRef}
-              muted
-              playsInline
-              style={styles.video}
-            />
+            <div style={styles.cameraBox}>
+              <video
+                ref={videoRef}
+                muted
+                playsInline
+                autoPlay
+                style={styles.cameraVideo}
+              />
+              <canvas ref={canvasRef} style={styles.hiddenCanvas} />
+
+              <div
+                style={{
+                  ...styles.cameraFrame,
+                  borderColor: cameraReady ? '#22c55e' : '#f97316'
+                }}
+              />
+
+              {!cameraReady && (
+                <div style={styles.cameraOverlay}>
+                  {cameraStatus}
+                </div>
+              )}
+
+              <button
+                type="button"
+                style={{
+                  ...styles.torchButton,
+                  opacity: cameraReady && torchAvailable && !torchChanging ? 1 : 0.55,
+                  background: torchOn ? '#facc15' : '#111827',
+                  color: torchOn ? '#111827' : '#fff'
+                }}
+                onClick={() => setCameraTorch(!torchOn)}
+                disabled={!cameraReady || !torchAvailable || torchChanging}
+              >
+                {torchChanging ? '...' : torchOn ? 'Svetlo zap.' : 'Svetlo'}
+              </button>
+            </div>
           )}
         </div>
 
@@ -1421,12 +1615,53 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 13,
     fontWeight: 750
   },
-  video: {
+  cameraBox: {
+    position: 'relative',
     width: '100%',
-    maxHeight: 320,
+    height: 280,
     background: '#020617',
     borderRadius: 8,
+    overflow: 'hidden'
+  },
+  cameraVideo: {
+    width: '100%',
+    height: '100%',
     objectFit: 'cover'
+  },
+  cameraFrame: {
+    position: 'absolute',
+    inset: '13% 18%',
+    border: '4px solid',
+    borderRadius: 12,
+    pointerEvents: 'none',
+    boxShadow: '0 0 0 999px rgba(2,6,23,0.22)'
+  },
+  cameraOverlay: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textAlign: 'center',
+    padding: 16,
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 900,
+    background: 'rgba(2,6,23,0.58)'
+  },
+  torchButton: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    border: 0,
+    borderRadius: 999,
+    padding: '9px 12px',
+    fontSize: 12,
+    fontWeight: 950,
+    cursor: 'pointer'
+  },
+  hiddenCanvas: {
+    display: 'none'
   },
   resultPanel: {
     minHeight: 260,
