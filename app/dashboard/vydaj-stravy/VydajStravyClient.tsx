@@ -108,6 +108,24 @@ function formatTime(value: string) {
   }
 }
 
+function formatIssueDate(value: string) {
+  if (!value) return ''
+
+  try {
+    const [year, month, day] = value.split('-').map(Number)
+    const date = new Date(year, month - 1, day)
+
+    return new Intl.DateTimeFormat('sk-SK', {
+      weekday: 'long',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    }).format(date)
+  } catch {
+    return value
+  }
+}
+
 function mealLabel(value: string) {
   if (value === 'VECERA') return 'VEČERA'
   return 'OBED'
@@ -1033,7 +1051,9 @@ export default function VydajStravyClient({
           <div style={{ ...styles.scanTop, ...(isMobile ? styles.scanTopMobile : {}) }}>
             <div>
               <div style={styles.scanLabel}>Aktuálny výdaj</div>
-              <h2 style={{ ...styles.scanMeal, ...(isMobile ? styles.scanMealMobile : {}) }}>{mealLabel(typJedla)}</h2>
+              <h2 style={{ ...styles.scanMeal, ...(isMobile ? styles.scanMealMobile : {}) }}>
+                {formatIssueDate(datum)} · {mealLabel(typJedla)}
+              </h2>
             </div>
 
             <div style={{ ...styles.liveBadge, ...(isMobile ? styles.liveBadgeMobile : {}) }}>{loading ? 'Spracúvam' : 'Pripravené'}</div>
@@ -1740,11 +1760,12 @@ const styles: Record<string, CSSProperties> = {
   },
   scanMeal: {
     margin: 0,
-    fontSize: 36,
-    fontWeight: 950
+    fontSize: 32,
+    fontWeight: 950,
+    lineHeight: 1.05
   },
   scanMealMobile: {
-    fontSize: 24
+    fontSize: 20
   },
   liveBadge: {
     borderRadius: 999,
