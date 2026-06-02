@@ -32,6 +32,12 @@ export default function RegisterPage() {
     return registrationGroups.filter(group => normalizeSearch(group.name).startsWith(query))
   }, [registrationGroups, registrationGroupSearch])
 
+  const selectedRegistrationGroupName = useMemo(() => {
+    if (registrationGroupId === 'OTHER') return 'Iné'
+
+    return registrationGroups.find(group => group.id === registrationGroupId)?.name || ''
+  }, [registrationGroups, registrationGroupId])
+
   const clearForm = () => {
     setMeno('')
     setPriezvisko('')
@@ -145,54 +151,87 @@ export default function RegisterPage() {
             <option value="VEGE">VEGE</option>
           </select>
 
-          <div style={styles.groupPicker}>
-            <input
-              style={styles.input}
-              placeholder="Patrím pod skupinu..."
-              value={registrationGroupSearch}
-              onFocus={() => setRegistrationGroupOpen(true)}
-              onBlur={() => setTimeout(() => setRegistrationGroupOpen(false), 120)}
-              onChange={e => {
-                setRegistrationGroupSearch(e.target.value)
-                setRegistrationGroupId('')
-                setRegistrationGroupNote('')
-                setRegistrationGroupOpen(true)
-              }}
-            />
+          <div style={styles.groupField}>
+            <span style={styles.groupLabel}>Registračná skupina</span>
 
-            {registrationGroupOpen && (
-              <div style={styles.groupList}>
-                {filteredRegistrationGroups.map(group => (
+            <div style={styles.groupPicker}>
+              <input
+                style={{
+                  ...styles.input,
+                  paddingRight: selectedRegistrationGroupName && !registrationGroupOpen ? 52 : 17
+                }}
+                placeholder="Začni písať názov skupiny..."
+                value={registrationGroupOpen ? registrationGroupSearch : selectedRegistrationGroupName}
+                onFocus={() => {
+                  setRegistrationGroupSearch('')
+                  setRegistrationGroupOpen(true)
+                }}
+                onBlur={() => setTimeout(() => setRegistrationGroupOpen(false), 120)}
+                onChange={e => {
+                  setRegistrationGroupSearch(e.target.value)
+                  setRegistrationGroupId('')
+                  setRegistrationGroupNote('')
+                  setRegistrationGroupOpen(true)
+                }}
+              />
+
+              {selectedRegistrationGroupName && !registrationGroupOpen && (
+                <button
+                  type="button"
+                  style={styles.groupClearButton}
+                  aria-label="Zrušiť výber skupiny"
+                  title="Zrušiť výber skupiny"
+                  onMouseDown={event => event.preventDefault()}
+                  onClick={() => {
+                    setRegistrationGroupId('')
+                    setRegistrationGroupNote('')
+                    setRegistrationGroupSearch('')
+                  }}
+                >
+                  ×
+                </button>
+              )}
+
+              {registrationGroupOpen && (
+                <div style={styles.groupList}>
+                  {filteredRegistrationGroups.length === 0 && (
+                    <div style={styles.groupEmpty}>
+                      Nenašla sa žiadna skupina
+                    </div>
+                  )}
+
+                  {filteredRegistrationGroups.map(group => (
+                    <button
+                      key={group.id}
+                      type="button"
+                      style={styles.groupOption}
+                      onMouseDown={event => event.preventDefault()}
+                      onClick={() => {
+                        setRegistrationGroupId(group.id)
+                        setRegistrationGroupSearch('')
+                        setRegistrationGroupNote('')
+                        setRegistrationGroupOpen(false)
+                      }}
+                    >
+                      {group.name}
+                    </button>
+                  ))}
+
                   <button
-                    key={group.id}
                     type="button"
                     style={styles.groupOption}
                     onMouseDown={event => event.preventDefault()}
                     onClick={() => {
-                      setRegistrationGroupId(group.id)
-                      setRegistrationGroupSearch(group.name)
-                      setRegistrationGroupNote('')
+                      setRegistrationGroupId('OTHER')
+                      setRegistrationGroupSearch('')
                       setRegistrationGroupOpen(false)
                     }}
                   >
-                    {group.name}
+                    Iné
                   </button>
-                ))}
-
-                <button
-                  type="button"
-                  style={styles.groupOption}
-                  onMouseDown={event => event.preventDefault()}
-                  onClick={() => {
-                    setRegistrationGroupId('OTHER')
-                    setRegistrationGroupSearch('Iné')
-                    setRegistrationGroupOpen(false)
-                  }}
-                >
-                  Iné
-                </button>
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
 
           {registrationGroupId === 'OTHER' && (
@@ -318,6 +357,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   input: {
     width: '100%',
+    boxSizing: 'border-box',
     border: '3px solid #000',
     borderRadius: 18,
     padding: '15px 17px',
@@ -329,6 +369,15 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'relative',
     display: 'grid',
     zIndex: 2
+  },
+  groupField: {
+    display: 'grid',
+    gap: 7
+  },
+  groupLabel: {
+    paddingLeft: 3,
+    fontSize: 14,
+    fontWeight: 900
   },
   groupList: {
     position: 'absolute',
@@ -354,6 +403,28 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'left',
     fontSize: 16,
     fontWeight: 700,
+    cursor: 'pointer'
+  },
+  groupEmpty: {
+    padding: '10px 12px',
+    color: '#6b7280',
+    fontSize: 15,
+    fontWeight: 700
+  },
+  groupClearButton: {
+    position: 'absolute',
+    top: '50%',
+    right: 10,
+    width: 32,
+    height: 32,
+    transform: 'translateY(-50%)',
+    border: '2px solid #000',
+    borderRadius: 999,
+    background: '#fff',
+    color: '#000',
+    fontSize: 22,
+    fontWeight: 900,
+    lineHeight: 1,
     cursor: 'pointer'
   },
   button: {
