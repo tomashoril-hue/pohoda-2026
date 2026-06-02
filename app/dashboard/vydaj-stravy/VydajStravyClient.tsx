@@ -998,51 +998,7 @@ export default function VydajStravyClient({
         {!isMobile && <Link href="/dashboard" style={styles.backButton}>Späť</Link>}
       </header>
 
-      {isMobile ? (
-        <section style={styles.mobileNavStack}>
-          <div style={styles.mobileActionRow}>
-            <Link href="/dashboard" style={styles.mobileBackButton}>Späť</Link>
-
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(prev => !prev)}
-              style={styles.mobileSettingsButton}
-            >
-              Nastavenie výdaja
-            </button>
-          </div>
-
-          {settingsOpen && (
-            <div style={styles.mobileSettingsPanel}>
-              <label style={styles.field}>
-                <span>Dátum</span>
-                <input
-                  type="date"
-                  value={datum}
-                  onChange={event => setDatum(event.target.value)}
-                  style={styles.dateInput}
-                />
-              </label>
-
-              <div style={styles.mealSwitch}>
-                {(['OBED', 'VECERA'] as Meal[]).map(meal => (
-                  <button
-                    key={meal}
-                    type="button"
-                    onClick={() => setTypJedla(meal)}
-                    style={{
-                      ...styles.mealButton,
-                      ...(typJedla === meal ? styles.mealButtonActive : {})
-                    }}
-                  >
-                    {mealLabel(meal)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-      ) : (
+      {!isMobile && (
         <section style={styles.toolbar}>
           <label style={styles.field}>
             <span>Dátum</span>
@@ -1117,13 +1073,15 @@ export default function VydajStravyClient({
           )}
 
           <div style={{ ...styles.cameraActions, ...(isMobile ? styles.cameraActionsMobile : {}) }}>
-            <button
-              type="button"
-              onClick={() => setCameraOpen(prev => !prev)}
-              style={{ ...styles.secondaryButton, ...(isMobile ? styles.cameraToggleMobile : {}) }}
-            >
-              {cameraOpen ? 'Vypnúť kameru' : 'Zapnúť kameru'}
-            </button>
+            {(!isMobile || !cameraOpen) && (
+              <button
+                type="button"
+                onClick={() => setCameraOpen(prev => !prev)}
+                style={{ ...styles.secondaryButton, ...(isMobile ? styles.cameraToggleMobile : {}) }}
+              >
+                {cameraOpen ? 'Vypnúť kameru' : 'Zapnúť kameru'}
+              </button>
+            )}
 
             <span style={{ ...styles.cameraStatus, ...(isMobile ? styles.cameraStatusMobile : {}) }}>
               {cameraReady ? '● ' : ''}
@@ -1477,6 +1435,52 @@ export default function VydajStravyClient({
           </div>
         )}
       </section>
+      )}
+
+      {isMobile && (
+        <section style={styles.mobileNavStack}>
+          <div style={styles.mobileActionRow}>
+            <Link href="/dashboard" style={styles.mobileBackButton}>Späť</Link>
+
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(prev => !prev)}
+              style={styles.mobileSettingsButton}
+            >
+              Nastavenie výdaja
+            </button>
+          </div>
+
+          {settingsOpen && (
+            <div style={styles.mobileSettingsPanel}>
+              <label style={styles.field}>
+                <span>Dátum</span>
+                <input
+                  type="date"
+                  value={datum}
+                  onChange={event => setDatum(event.target.value)}
+                  style={styles.dateInput}
+                />
+              </label>
+
+              <div style={styles.mealSwitch}>
+                {(['OBED', 'VECERA'] as Meal[]).map(meal => (
+                  <button
+                    key={meal}
+                    type="button"
+                    onClick={() => setTypJedla(meal)}
+                    style={{
+                      ...styles.mealButton,
+                      ...(typJedla === meal ? styles.mealButtonActive : {})
+                    }}
+                  >
+                    {mealLabel(meal)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
       )}
 
       {fullMode && activeIssues.length > 0 && (
