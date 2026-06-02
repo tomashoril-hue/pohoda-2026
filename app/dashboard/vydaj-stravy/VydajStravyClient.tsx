@@ -992,7 +992,7 @@ export default function VydajStravyClient({
         <div style={isMobile ? styles.mobileHeaderText : undefined}>
           <div style={styles.kicker}>POHODA 2026</div>
           <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : {}) }}>Výdaj stravy</h1>
-          <div style={styles.actor}>{actorName}</div>
+          <div style={{ ...styles.actor, ...(isMobile ? styles.actorMobile : {}) }}>{actorName}</div>
         </div>
 
         {!isMobile && <Link href="/dashboard" style={styles.backButton}>Späť</Link>}
@@ -1000,15 +1000,17 @@ export default function VydajStravyClient({
 
       {isMobile ? (
         <section style={styles.mobileNavStack}>
-          <Link href="/dashboard" style={styles.mobileBackButton}>Späť</Link>
+          <div style={styles.mobileActionRow}>
+            <Link href="/dashboard" style={styles.mobileBackButton}>Späť</Link>
 
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(prev => !prev)}
-            style={styles.mobileSettingsButton}
-          >
-            Nastavenie výdaja · {datum} · {mealLabel(typJedla)}
-          </button>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(prev => !prev)}
+              style={styles.mobileSettingsButton}
+            >
+              Nastavenie výdaja
+            </button>
+          </div>
 
           {settingsOpen && (
             <div style={styles.mobileSettingsPanel}>
@@ -1544,8 +1546,8 @@ const styles: Record<string, CSSProperties> = {
     margin: '0 auto'
   },
   pageMobile: {
-    padding: 8,
-    gap: 8,
+    padding: 6,
+    gap: 6,
     maxWidth: '100%',
     width: '100%',
     boxSizing: 'border-box'
@@ -1562,7 +1564,7 @@ const styles: Record<string, CSSProperties> = {
   },
   headerMobile: {
     alignItems: 'flex-start',
-    padding: '9px 10px',
+    padding: '7px 9px',
     gap: 4
   },
   mobileHeaderText: {
@@ -1581,13 +1583,17 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950
   },
   titleMobile: {
-    fontSize: 24
+    fontSize: 21
   },
   actor: {
     marginTop: 6,
     color: '#d1d5db',
     fontSize: 14,
     fontWeight: 750
+  },
+  actorMobile: {
+    marginTop: 3,
+    fontSize: 12
   },
   backButton: {
     ...baseButton,
@@ -1608,13 +1614,20 @@ const styles: Record<string, CSSProperties> = {
   },
   mobileNavStack: {
     display: 'grid',
-    gap: 8,
+    gap: 6,
+    width: '100%',
+    minWidth: 0
+  },
+  mobileActionRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(78px, 0.38fr) minmax(0, 1fr)',
+    gap: 6,
     width: '100%',
     minWidth: 0
   },
   mobileBackButton: {
     ...baseButton,
-    minHeight: 48,
+    minHeight: 42,
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1622,19 +1635,22 @@ const styles: Record<string, CSSProperties> = {
     borderColor: '#d97706',
     color: '#111827',
     textDecoration: 'none',
-    padding: '0 14px',
+    padding: '0 10px',
     width: '100%',
-    boxSizing: 'border-box'
+    boxSizing: 'border-box',
+    fontSize: 14
   },
   mobileSettingsButton: {
     ...baseButton,
-    minHeight: 48,
-    background: '#111827',
+    minHeight: 42,
+    background: '#2563eb',
+    borderColor: '#1d4ed8',
     color: '#fff',
-    padding: '0 12px',
+    padding: '0 10px',
     width: '100%',
     boxSizing: 'border-box',
-    textAlign: 'center'
+    textAlign: 'center',
+    fontSize: 14
   },
   mobileSettingsPanel: {
     background: '#fff',
@@ -1685,7 +1701,7 @@ const styles: Record<string, CSSProperties> = {
   },
   scanGridMobile: {
     gridTemplateColumns: '1fr',
-    gap: 8,
+    gap: 6,
     width: '100%',
     minWidth: 0
   },
@@ -1698,8 +1714,8 @@ const styles: Record<string, CSSProperties> = {
     gap: 12
   },
   scanPanelMobile: {
-    padding: 10,
-    gap: 10,
+    padding: 8,
+    gap: 7,
     width: '100%',
     minWidth: 0,
     boxSizing: 'border-box'
@@ -1724,7 +1740,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950
   },
   scanMealMobile: {
-    fontSize: 30
+    fontSize: 24
   },
   liveBadge: {
     borderRadius: 999,
@@ -1735,8 +1751,8 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950
   },
   liveBadgeMobile: {
-    padding: '7px 10px',
-    fontSize: 12
+    padding: '6px 8px',
+    fontSize: 11
   },
   qrInput: {
     width: '100%',
@@ -1774,7 +1790,7 @@ const styles: Record<string, CSSProperties> = {
   cameraActionsMobile: {
     display: 'grid',
     gridTemplateColumns: '1fr',
-    gap: 8
+    gap: 5
   },
   secondaryButton: {
     ...baseButton,
@@ -1784,8 +1800,8 @@ const styles: Record<string, CSSProperties> = {
   },
   cameraToggleMobile: {
     width: '100%',
-    minHeight: 58,
-    fontSize: 18
+    minHeight: 48,
+    fontSize: 16
   },
   cameraStatus: {
     color: '#475569',
@@ -1793,7 +1809,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 750
   },
   cameraStatusMobile: {
-    fontSize: 12
+    fontSize: 11
   },
   cameraBox: {
     position: 'relative',
@@ -1804,8 +1820,8 @@ const styles: Record<string, CSSProperties> = {
     overflow: 'hidden'
   },
   cameraBoxMobile: {
-    height: 'min(56vh, 430px)',
-    minHeight: 260,
+    height: 'min(39vh, 330px)',
+    minHeight: 210,
     width: '100%',
     minWidth: 0
   },
@@ -1861,9 +1877,9 @@ const styles: Record<string, CSSProperties> = {
     gap: 10
   },
   resultPanelMobile: {
-    minHeight: 136,
-    padding: 14,
-    gap: 7,
+    minHeight: 98,
+    padding: 10,
+    gap: 5,
     width: '100%',
     minWidth: 0,
     boxSizing: 'border-box'
@@ -1888,7 +1904,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950
   },
   resultEmptyMobile: {
-    fontSize: 22
+    fontSize: 18
   },
   resultHint: {
     fontSize: 14,
@@ -1896,7 +1912,7 @@ const styles: Record<string, CSSProperties> = {
     color: '#475569'
   },
   resultHintMobile: {
-    fontSize: 12
+    fontSize: 11
   },
   resultStatus: {
     fontSize: 36,
@@ -1904,7 +1920,7 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1
   },
   resultStatusMobile: {
-    fontSize: 28,
+    fontSize: 23,
     lineHeight: 1.05
   },
   resultName: {
@@ -1912,7 +1928,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950
   },
   resultNameMobile: {
-    fontSize: 22
+    fontSize: 18
   },
   resultSub: {
     fontSize: 15,
