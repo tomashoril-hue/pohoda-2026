@@ -1765,6 +1765,7 @@ export default function PersonalistaClient({
             <div style={styles.tableHeader}>
               <span>Osoba</span>
               <span>Stav</span>
+              <span>Reg skupina</span>
               <span>Skupiny</span>
               <span>Strava</span>
               <span>QR</span>
@@ -1813,12 +1814,16 @@ export default function PersonalistaClient({
                     </div>
 
                     <div style={styles.groupBadges}>
-                      {person.registrationGroupName && (
+                      {person.registrationGroupName ? (
                         <span style={styles.registrationGroupBadge}>
-                          Reg.: {person.registrationGroupName}
+                          {person.registrationGroupName}
                         </span>
+                      ) : (
+                        <span style={styles.groupBadge}>-</span>
                       )}
+                    </div>
 
+                    <div style={styles.groupBadges}>
                       {person.groups.length === 0 && (
                         <span style={styles.groupBadge}>
                           Bez skupiny
@@ -2930,9 +2935,9 @@ const styles: Record<string, CSSProperties> = {
     boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
   },
   tableHeader: {
-    minWidth: 850,
+    minWidth: 1020,
     display: 'grid',
-    gridTemplateColumns: 'minmax(190px, 1.25fr) 78px minmax(160px, 1fr) 78px 78px 82px',
+    gridTemplateColumns: 'minmax(190px, 1.25fr) 78px minmax(150px, 0.9fr) minmax(160px, 1fr) 78px 78px 82px',
     gap: 8,
     alignItems: 'center',
     padding: '8px 10px',
@@ -2945,12 +2950,12 @@ const styles: Record<string, CSSProperties> = {
   },
   personRow: {
     width: '100%',
-    minWidth: 850,
+    minWidth: 1020,
     border: '0 solid #e5e7eb',
     borderBottomWidth: 1,
     padding: '7px 10px',
     display: 'grid',
-    gridTemplateColumns: 'minmax(190px, 1.25fr) 78px minmax(160px, 1fr) 78px 78px 82px',
+    gridTemplateColumns: 'minmax(190px, 1.25fr) 78px minmax(150px, 0.9fr) minmax(160px, 1fr) 78px 78px 82px',
     gap: 8,
     alignItems: 'center',
     textAlign: 'left',
@@ -3485,7 +3490,7 @@ const styles: Record<string, CSSProperties> = {
     cursor: 'pointer'
   },
   paginationBar: {
-    minWidth: 850,
+    minWidth: 1020,
     display: 'flex',
     justifyContent: 'flex-end',
     alignItems: 'center',
