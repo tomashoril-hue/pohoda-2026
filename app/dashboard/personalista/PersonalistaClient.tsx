@@ -229,6 +229,10 @@ export default function PersonalistaClient({
   const [registrationGroupLoading, setRegistrationGroupLoading] = useState(false)
   const [registrationGroupMessage, setRegistrationGroupMessage] = useState('')
   const [registrationGroupMessageType, setRegistrationGroupMessageType] = useState<'ok' | 'error' | ''>('')
+  const [bulkRegistrationEntitlementsOpen, setBulkRegistrationEntitlementsOpen] = useState(false)
+  const [bulkRegistrationEntitlementsLoading, setBulkRegistrationEntitlementsLoading] = useState(false)
+  const [bulkRegistrationEntitlementsMessage, setBulkRegistrationEntitlementsMessage] = useState('')
+  const [bulkRegistrationEntitlementsMessageType, setBulkRegistrationEntitlementsMessageType] = useState<'ok' | 'error' | ''>('')
   const [detailMode, setDetailMode] = useState<'profile' | 'entitlements' | 'groups' | 'roles' | 'qr' | 'nfc' | ''>('')
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailMessage, setDetailMessage] = useState('')
@@ -261,6 +265,14 @@ export default function PersonalistaClient({
     validTo: toDate,
     obed: false,
     vecera: false
+  })
+  const [bulkRegistrationEntitlementsForm, setBulkRegistrationEntitlementsForm] = useState({
+    registrationGroupId: '',
+    validFrom: fromDate,
+    validTo: toDate,
+    obed: true,
+    vecera: false,
+    activeOnly: true
   })
   const [calendarClaims, setCalendarClaims] = useState<Record<string, CalendarClaim>>({})
   const [bulkEntitlementClaims, setBulkEntitlementClaims] = useState<BulkEntitlementClaims>({
@@ -469,6 +481,19 @@ export default function PersonalistaClient({
   const entitlementByDate = useMemo(() => {
     return new Map((selectedPerson?.entitlements || []).map(item => [item.datum, item]))
   }, [selectedPerson])
+  const selectedBulkRegistrationGroup = useMemo(() => {
+    return registrationGroups.find(group => group.id === bulkRegistrationEntitlementsForm.registrationGroupId) || null
+  }, [registrationGroups, bulkRegistrationEntitlementsForm.registrationGroupId])
+  const selectedBulkRegistrationGroupPeopleCount = useMemo(() => {
+    if (!bulkRegistrationEntitlementsForm.registrationGroupId) return 0
+
+    return people.filter(person => {
+      if (person.registrationGroupId !== bulkRegistrationEntitlementsForm.registrationGroupId) return false
+      if (!bulkRegistrationEntitlementsForm.activeOnly) return true
+
+      return String(person.aktivny || '').toUpperCase() === 'ANO'
+    }).length
+  }, [people, bulkRegistrationEntitlementsForm.registrationGroupId, bulkRegistrationEntitlementsForm.activeOnly])
 
   const updateCreateForm = (key: string, value: any) => {
     setCreateForm(prev => ({
@@ -652,6 +677,13 @@ export default function PersonalistaClient({
     }
   }
 
+  const updateBulkRegistrationEntitlementsForm = (key: string, value: any) => {
+    setBulkRegistrationEntitlementsForm(prev => ({
+      ...prev,
+      [key]: value
+    }))
+  }
+
   const postDetailAction = async (url: string, payload: any, fallbackMessage: string) => {
     setDetailMessage('')
     setDetailMessageType('')
@@ -778,6 +810,72 @@ export default function PersonalistaClient({
       setRegistrationGroupMessageType('error')
     } finally {
       setRegistrationGroupLoading(false)
+    }
+  }
+
+  const saveBulkRegistrationEntitlements = async () => {
+    if (!bulkRegistrationEntitlementsForm.registrationGroupId) {
+      setBulkRegistrationEntitlementsMessage('Vyber registracnu skupinu.')
+      setBulkRegistrationEntitlementsMessageType('error')
+      return
+    }
+
+    if (!bulkRegistrationEntitlementsForm.validFrom || !bulkRegistrationEntitlementsForm.validTo) {
+      setBulkRegistrationEntitlementsMessage('Vyber obdobie.')
+      setBulkRegistrationEntitlementsMessageType('error')
+      return
+    }
+
+    if (bulkRegistrationEntitlementsForm.validTo < bulkRegistrationEntitlementsForm.validFrom) {
+      setBulkRegistrationEntitlementsMessage('Datum do nemoze byt pred datumom od.')
+      setBulkRegistrationEntitlementsMessageType('error')
+      return
+    }
+
+    if (!bulkRegistrationEntitlementsForm.obed && !bulkRegistrationEntitlementsForm.vecera) {
+      setBulkRegistrationEntitlementsMessage('Vyber obed alebo veceru.')
+      setBulkRegistrationEntitlementsMessageType('error')
+      return
+    }
+
+    const groupName = selectedBulkRegistrationGroup?.name || 'vybrana registracna skupina'
+    const ok = window.confirm(
+      `Prepise sa obdobie ${bulkRegistrationEntitlementsForm.validFrom} - ${bulkRegistrationEntitlementsForm.validTo} pre ${selectedBulkRegistrationGroupPeopleCount} osob v registracnej skupine ${groupName}. Pokracovat?`
+    )
+
+    if (!ok) return
+
+    setBulkRegistrationEntitlementsLoading(true)
+    setBulkRegistrationEntitlementsMessage('')
+    setBulkRegistrationEntitlementsMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/registration-groups/entitlements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bulkRegistrationEntitlementsForm)
+      })
+
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setBulkRegistrationEntitlementsMessage(json.error || 'Hromadne naroky sa nepodarilo ulozit.')
+        setBulkRegistrationEntitlementsMessageType('error')
+        return
+      }
+
+      setBulkRegistrationEntitlementsMessage(json.message || 'Hromadne naroky boli ulozene.')
+      setBulkRegistrationEntitlementsMessageType('ok')
+
+      setTimeout(() => {
+        router.refresh()
+      }, 650)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setBulkRegistrationEntitlementsMessage('Chyba spojenia so serverom: ' + message)
+      setBulkRegistrationEntitlementsMessageType('error')
+    } finally {
+      setBulkRegistrationEntitlementsLoading(false)
     }
   }
 
@@ -1387,6 +1485,19 @@ export default function PersonalistaClient({
         <button
           type="button"
           style={styles.lightButton}
+          disabled={!canManage}
+          onClick={() => {
+            setBulkRegistrationEntitlementsOpen(prev => !prev)
+            setBulkRegistrationEntitlementsMessage('')
+            setBulkRegistrationEntitlementsMessageType('')
+          }}
+        >
+          Naroky podla reg. skupiny
+        </button>
+
+        <button
+          type="button"
+          style={styles.lightButton}
           onClick={() => setStatusFilter('PENDING_REVIEW')}
         >
           Na schvalenie ({stats.pendingReview})
@@ -1465,6 +1576,136 @@ export default function PersonalistaClient({
               }}
             >
               {registrationGroupMessage}
+            </div>
+          )}
+        </section>
+      )}
+
+      {bulkRegistrationEntitlementsOpen && (
+        <section style={styles.createPanel}>
+          <div style={styles.createHeader}>
+            <div>
+              <b>Hromadne naroky podla registracnej skupiny</b>
+              <span>Vybrane obdobie sa prepise ludom v konkretnej registracnej skupine.</span>
+            </div>
+
+            <button
+              type="button"
+              style={styles.closeButton}
+              disabled={bulkRegistrationEntitlementsLoading}
+              onClick={() => setBulkRegistrationEntitlementsOpen(false)}
+            >
+              x
+            </button>
+          </div>
+
+          <div style={styles.createGrid}>
+            <label style={styles.field}>
+              <span>Registracna skupina</span>
+              <select
+                value={bulkRegistrationEntitlementsForm.registrationGroupId}
+                onChange={event => updateBulkRegistrationEntitlementsForm('registrationGroupId', event.target.value)}
+                style={styles.input}
+                disabled={bulkRegistrationEntitlementsLoading}
+              >
+                <option value="">Vyber registracnu skupinu</option>
+                {registrationGroups.map(group => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={styles.field}>
+              <span>Od</span>
+              <input
+                type="date"
+                value={bulkRegistrationEntitlementsForm.validFrom}
+                onChange={event => updateBulkRegistrationEntitlementsForm('validFrom', event.target.value)}
+                style={styles.input}
+                disabled={bulkRegistrationEntitlementsLoading}
+              />
+            </label>
+
+            <label style={styles.field}>
+              <span>Do</span>
+              <input
+                type="date"
+                value={bulkRegistrationEntitlementsForm.validTo}
+                onChange={event => updateBulkRegistrationEntitlementsForm('validTo', event.target.value)}
+                style={styles.input}
+                disabled={bulkRegistrationEntitlementsLoading}
+              />
+            </label>
+          </div>
+
+          <div style={styles.createOptionsGrid}>
+            <div style={styles.optionBox}>
+              <div style={styles.optionTitle}>Strava</div>
+
+              <label style={styles.checkRow}>
+                <input
+                  type="checkbox"
+                  checked={bulkRegistrationEntitlementsForm.obed}
+                  onChange={event => updateBulkRegistrationEntitlementsForm('obed', event.target.checked)}
+                  disabled={bulkRegistrationEntitlementsLoading}
+                  style={styles.checkbox}
+                />
+                <span>Obed</span>
+              </label>
+
+              <label style={styles.checkRow}>
+                <input
+                  type="checkbox"
+                  checked={bulkRegistrationEntitlementsForm.vecera}
+                  onChange={event => updateBulkRegistrationEntitlementsForm('vecera', event.target.checked)}
+                  disabled={bulkRegistrationEntitlementsLoading}
+                  style={styles.checkbox}
+                />
+                <span>Vecera</span>
+              </label>
+            </div>
+
+            <div style={styles.optionBox}>
+              <div style={styles.optionTitle}>Osoby</div>
+
+              <label style={styles.checkRow}>
+                <input
+                  type="checkbox"
+                  checked={bulkRegistrationEntitlementsForm.activeOnly}
+                  onChange={event => updateBulkRegistrationEntitlementsForm('activeOnly', event.target.checked)}
+                  disabled={bulkRegistrationEntitlementsLoading}
+                  style={styles.checkbox}
+                />
+                <span>Iba aktivne osoby</span>
+              </label>
+
+              <span style={styles.optionHint}>
+                Vyber teraz obsahuje {selectedBulkRegistrationGroupPeopleCount} osob.
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            style={styles.confirmButton}
+            disabled={bulkRegistrationEntitlementsLoading}
+            onClick={saveBulkRegistrationEntitlements}
+          >
+            {bulkRegistrationEntitlementsLoading ? 'Ukladam...' : 'Pridelit naroky skupine'}
+          </button>
+
+          {bulkRegistrationEntitlementsMessage && (
+            <div
+              style={{
+                ...styles.message,
+                background: bulkRegistrationEntitlementsMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                color: bulkRegistrationEntitlementsMessageType === 'ok' ? '#166534' : '#991b1b',
+                borderColor: bulkRegistrationEntitlementsMessageType === 'ok' ? '#86efac' : '#fecaca'
+              }}
+            >
+              {bulkRegistrationEntitlementsMessage}
             </div>
           )}
         </section>
