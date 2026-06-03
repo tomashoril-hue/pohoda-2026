@@ -85,17 +85,22 @@ export async function POST(req: NextRequest) {
     const validTo = cleanText(body.validTo)
     const obed = body.obed === true
     const vecera = body.vecera === true
+    const mode = cleanText(body.mode).toUpperCase() || 'SET'
     const activeOnly = body.activeOnly !== false
 
     if (!registrationGroupId) {
       return NextResponse.json({ error: 'Vyber registracnu skupinu.' }, { status: 400 })
     }
 
+    if (mode !== 'SET' && mode !== 'CLEAR') {
+      return NextResponse.json({ error: 'Neplatny sposob upravy narokov.' }, { status: 400 })
+    }
+
     if (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom) {
       return NextResponse.json({ error: 'Zadaj platne obdobie.' }, { status: 400 })
     }
 
-    if (!obed && !vecera) {
+    if (mode === 'SET' && !obed && !vecera) {
       return NextResponse.json({ error: 'Vyber aspon jeden narok.' }, { status: 400 })
     }
 
@@ -164,35 +169,39 @@ export async function POST(req: NextRequest) {
     }
 
     for (const userChunk of chunk(users, 100)) {
-      const entitlementRows = userChunk.flatMap(user => dates.map(datum => ({
-        user_id: user.id,
-        datum,
-        obed,
-        vecera,
-        source: 'PERSONALISTA',
-        note: `Hromadna uprava narokov podla registracnej skupiny: ${registrationGroup.name}.`,
-        created_by: actor.id,
-        updated_by: actor.id,
-        updated_at: now
-      })))
+      if (mode === 'SET') {
+        const entitlementRows = userChunk.flatMap(user => dates.map(datum => ({
+          user_id: user.id,
+          datum,
+          obed,
+          vecera,
+          source: 'PERSONALISTA',
+          note: `Hromadna uprava narokov podla registracnej skupiny: ${registrationGroup.name}.`,
+          created_by: actor.id,
+          updated_by: actor.id,
+          updated_at: now
+        })))
 
-      const { error: insertError } = await supabaseServer
-        .from('user_food_entitlements')
-        .insert(entitlementRows)
+        const { error: insertError } = await supabaseServer
+          .from('user_food_entitlements')
+          .insert(entitlementRows)
 
-      if (insertError) {
-        return NextResponse.json({ error: insertError.message }, { status: 500 })
+        if (insertError) {
+          return NextResponse.json({ error: insertError.message }, { status: 500 })
+        }
+
+        insertedRows += entitlementRows.length
       }
-
-      insertedRows += entitlementRows.length
 
       const periodRows = userChunk.map(user => ({
         user_id: user.id,
         valid_from: validFrom,
         valid_to: validTo,
-        active: true,
+        active: mode !== 'CLEAR',
         source: 'MANUAL',
-        note: `Hromadna uprava narokov podla registracnej skupiny: ${registrationGroup.name}.`,
+        note: mode === 'CLEAR'
+          ? `Hromadne vymazanie narokov podla registracnej skupiny: ${registrationGroup.name}.`
+          : `Hromadna uprava narokov podla registracnej skupiny: ${registrationGroup.name}.`,
         created_by: actor.id,
         updated_by: actor.id
       }))
@@ -211,7 +220,9 @@ export async function POST(req: NextRequest) {
       .insert({
         actor_user_id: actor.id,
         target_user_id: null,
-        action: 'REGISTRATION_GROUP_ENTITLEMENTS_UPDATED',
+        action: mode === 'CLEAR'
+          ? 'REGISTRATION_GROUP_ENTITLEMENTS_CLEARED'
+          : 'REGISTRATION_GROUP_ENTITLEMENTS_UPDATED',
         entity_table: 'registration_groups',
         entity_id: registrationGroupId,
         before_data: {
@@ -223,13 +234,16 @@ export async function POST(req: NextRequest) {
           active_only: activeOnly,
           valid_from: validFrom,
           valid_to: validTo,
+          mode,
           days: dates.length,
           users: users.length,
           inserted_rows: insertedRows,
           obed,
           vecera
         },
-        note: `Hromadna uprava narokov pre registracnu skupinu ${registrationGroup.name}.`
+        note: mode === 'CLEAR'
+          ? `Hromadne vymazanie narokov pre registracnu skupinu ${registrationGroup.name}.`
+          : `Hromadna uprava narokov pre registracnu skupinu ${registrationGroup.name}.`
       })
 
     return NextResponse.json({
@@ -238,7 +252,9 @@ export async function POST(req: NextRequest) {
       days: dates.length,
       insertedRows,
       replacedRows,
-      message: `Naroky boli nastavene pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
+      message: mode === 'CLEAR'
+        ? `Naroky boli vymazane pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
+        : `Naroky boli nastavene pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
     })
   } catch (err: any) {
     return NextResponse.json(

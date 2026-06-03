@@ -273,6 +273,7 @@ export default function PersonalistaClient({
   })
   const [bulkRegistrationEntitlementsForm, setBulkRegistrationEntitlementsForm] = useState({
     registrationGroupId: '',
+    mode: 'SET',
     validFrom: fromDate,
     validTo: toDate,
     obed: true,
@@ -892,16 +893,17 @@ export default function PersonalistaClient({
       return
     }
 
-    if (!bulkRegistrationEntitlementsForm.obed && !bulkRegistrationEntitlementsForm.vecera) {
+    if (bulkRegistrationEntitlementsForm.mode === 'SET' && !bulkRegistrationEntitlementsForm.obed && !bulkRegistrationEntitlementsForm.vecera) {
       setBulkRegistrationEntitlementsMessage('Vyber obed alebo veceru.')
       setBulkRegistrationEntitlementsMessageType('error')
       return
     }
 
     const groupName = selectedBulkRegistrationGroup?.name || 'vybrana registracna skupina'
-    const ok = window.confirm(
-      `Prepise sa obdobie ${bulkRegistrationEntitlementsForm.validFrom} - ${bulkRegistrationEntitlementsForm.validTo} pre ${selectedBulkRegistrationGroupPeopleCount} osob v registracnej skupine ${groupName}. Pokracovat?`
-    )
+    const confirmMessage = bulkRegistrationEntitlementsForm.mode === 'CLEAR'
+      ? `Vymazu sa naroky v obdobi ${bulkRegistrationEntitlementsForm.validFrom} - ${bulkRegistrationEntitlementsForm.validTo} pre ${selectedBulkRegistrationGroupPeopleCount} osob v registracnej skupine ${groupName}. Pokracovat?`
+      : `Prepise sa obdobie ${bulkRegistrationEntitlementsForm.validFrom} - ${bulkRegistrationEntitlementsForm.validTo} pre ${selectedBulkRegistrationGroupPeopleCount} osob v registracnej skupine ${groupName}. Pokracovat?`
+    const ok = window.confirm(confirmMessage)
 
     if (!ok) return
 
@@ -1917,6 +1919,38 @@ export default function PersonalistaClient({
 
           <div style={styles.createOptionsGrid}>
             <div style={styles.optionBox}>
+              <div style={styles.optionTitle}>Rezim upravy</div>
+
+              <label style={styles.checkRow}>
+                <input
+                  type="radio"
+                  name="bulkRegistrationEntitlementsMode"
+                  checked={bulkRegistrationEntitlementsForm.mode === 'SET'}
+                  onChange={() => updateBulkRegistrationEntitlementsForm('mode', 'SET')}
+                  disabled={bulkRegistrationEntitlementsLoading}
+                  style={styles.checkbox}
+                />
+                <span>Nastavit / upravit naroky</span>
+              </label>
+
+              <label style={styles.checkRow}>
+                <input
+                  type="radio"
+                  name="bulkRegistrationEntitlementsMode"
+                  checked={bulkRegistrationEntitlementsForm.mode === 'CLEAR'}
+                  onChange={() => updateBulkRegistrationEntitlementsForm('mode', 'CLEAR')}
+                  disabled={bulkRegistrationEntitlementsLoading}
+                  style={styles.checkbox}
+                />
+                <span>Zrusit naroky v obdobi</span>
+              </label>
+
+              <span style={styles.optionHint}>
+                Zrusenie vymaze obed aj veceru pre vybrane dni.
+              </span>
+            </div>
+
+            <div style={styles.optionBox}>
               <div style={styles.optionTitle}>Strava</div>
 
               <label style={styles.checkRow}>
@@ -1924,7 +1958,7 @@ export default function PersonalistaClient({
                   type="checkbox"
                   checked={bulkRegistrationEntitlementsForm.obed}
                   onChange={event => updateBulkRegistrationEntitlementsForm('obed', event.target.checked)}
-                  disabled={bulkRegistrationEntitlementsLoading}
+                  disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationEntitlementsForm.mode === 'CLEAR'}
                   style={styles.checkbox}
                 />
                 <span>Obed</span>
@@ -1935,7 +1969,7 @@ export default function PersonalistaClient({
                   type="checkbox"
                   checked={bulkRegistrationEntitlementsForm.vecera}
                   onChange={event => updateBulkRegistrationEntitlementsForm('vecera', event.target.checked)}
-                  disabled={bulkRegistrationEntitlementsLoading}
+                  disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationEntitlementsForm.mode === 'CLEAR'}
                   style={styles.checkbox}
                 />
                 <span>Vecera</span>
@@ -1968,7 +2002,11 @@ export default function PersonalistaClient({
             disabled={bulkRegistrationEntitlementsLoading}
             onClick={saveBulkRegistrationEntitlements}
           >
-            {bulkRegistrationEntitlementsLoading ? 'Ukladam...' : 'Pridelit naroky skupine'}
+            {bulkRegistrationEntitlementsLoading
+              ? 'Ukladam...'
+              : bulkRegistrationEntitlementsForm.mode === 'CLEAR'
+                ? 'Zrusit naroky skupine'
+                : 'Pridelit naroky skupine'}
           </button>
 
           {bulkRegistrationEntitlementsMessage && (
