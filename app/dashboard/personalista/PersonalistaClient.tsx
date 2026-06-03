@@ -229,6 +229,11 @@ export default function PersonalistaClient({
   const [registrationGroupLoading, setRegistrationGroupLoading] = useState(false)
   const [registrationGroupMessage, setRegistrationGroupMessage] = useState('')
   const [registrationGroupMessageType, setRegistrationGroupMessageType] = useState<'ok' | 'error' | ''>('')
+  const [registrationAssignmentOpen, setRegistrationAssignmentOpen] = useState(false)
+  const [registrationAssignmentLoading, setRegistrationAssignmentLoading] = useState(false)
+  const [registrationAssignmentMessage, setRegistrationAssignmentMessage] = useState('')
+  const [registrationAssignmentMessageType, setRegistrationAssignmentMessageType] = useState<'ok' | 'error' | ''>('')
+  const [registrationAssignmentSearch, setRegistrationAssignmentSearch] = useState('')
   const [bulkRegistrationEntitlementsOpen, setBulkRegistrationEntitlementsOpen] = useState(false)
   const [bulkRegistrationEntitlementsLoading, setBulkRegistrationEntitlementsLoading] = useState(false)
   const [bulkRegistrationEntitlementsMessage, setBulkRegistrationEntitlementsMessage] = useState('')
@@ -273,6 +278,11 @@ export default function PersonalistaClient({
     obed: true,
     vecera: false,
     activeOnly: true
+  })
+  const [registrationAssignmentForm, setRegistrationAssignmentForm] = useState({
+    registrationGroupId: '',
+    registrationGroupNote: '',
+    userIds: [] as string[]
   })
   const [calendarClaims, setCalendarClaims] = useState<Record<string, CalendarClaim>>({})
   const [bulkEntitlementClaims, setBulkEntitlementClaims] = useState<BulkEntitlementClaims>({
@@ -494,6 +504,33 @@ export default function PersonalistaClient({
       return String(person.aktivny || '').toUpperCase() === 'ANO'
     }).length
   }, [people, bulkRegistrationEntitlementsForm.registrationGroupId, bulkRegistrationEntitlementsForm.activeOnly])
+  const selectedRegistrationAssignmentGroup = useMemo(() => {
+    return registrationGroups.find(group => group.id === registrationAssignmentForm.registrationGroupId) || null
+  }, [registrationGroups, registrationAssignmentForm.registrationGroupId])
+  const selectedRegistrationAssignmentPeople = useMemo(() => {
+    const selectedIds = new Set(registrationAssignmentForm.userIds)
+
+    return people.filter(person => selectedIds.has(person.id))
+  }, [people, registrationAssignmentForm.userIds])
+  const registrationAssignmentFilteredPeople = useMemo(() => {
+    const query = registrationAssignmentSearch.trim().toLowerCase()
+
+    if (!query) return people
+
+    return people.filter(person => {
+      const haystack = [
+        person.fullName,
+        person.email,
+        person.registrationGroupName,
+        person.typStravy
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+      return haystack.includes(query)
+    })
+  }, [people, registrationAssignmentSearch])
 
   const updateCreateForm = (key: string, value: any) => {
     setCreateForm(prev => ({
@@ -681,6 +718,29 @@ export default function PersonalistaClient({
     setBulkRegistrationEntitlementsForm(prev => ({
       ...prev,
       [key]: value
+    }))
+  }
+
+  const updateRegistrationAssignmentForm = (key: string, value: any) => {
+    setRegistrationAssignmentForm(prev => ({
+      ...prev,
+      [key]: value
+    }))
+  }
+
+  const toggleRegistrationAssignmentPerson = (userId: string) => {
+    setRegistrationAssignmentForm(prev => ({
+      ...prev,
+      userIds: prev.userIds.includes(userId)
+        ? prev.userIds.filter(id => id !== userId)
+        : [...prev.userIds, userId]
+    }))
+  }
+
+  const clearRegistrationAssignmentPeople = () => {
+    setRegistrationAssignmentForm(prev => ({
+      ...prev,
+      userIds: []
     }))
   }
 
@@ -876,6 +936,64 @@ export default function PersonalistaClient({
       setBulkRegistrationEntitlementsMessageType('error')
     } finally {
       setBulkRegistrationEntitlementsLoading(false)
+    }
+  }
+
+  const saveRegistrationAssignment = async () => {
+    if (!registrationAssignmentForm.registrationGroupId) {
+      setRegistrationAssignmentMessage('Vyber registracnu skupinu.')
+      setRegistrationAssignmentMessageType('error')
+      return
+    }
+
+    if (registrationAssignmentForm.userIds.length === 0) {
+      setRegistrationAssignmentMessage('Vyber aspon jednu osobu.')
+      setRegistrationAssignmentMessageType('error')
+      return
+    }
+
+    const groupName = selectedRegistrationAssignmentGroup?.name || 'vybrana registracna skupina'
+    const ok = window.confirm(
+      `Priradit ${registrationAssignmentForm.userIds.length} osob do registracnej skupiny ${groupName}? Povodna registracna skupina sa im prepise.`
+    )
+
+    if (!ok) return
+
+    setRegistrationAssignmentLoading(true)
+    setRegistrationAssignmentMessage('')
+    setRegistrationAssignmentMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/registration-groups/assign-people', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(registrationAssignmentForm)
+      })
+
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setRegistrationAssignmentMessage(json.error || 'Priradenie do registracnej skupiny sa nepodarilo.')
+        setRegistrationAssignmentMessageType('error')
+        return
+      }
+
+      setRegistrationAssignmentMessage(json.message || 'Osoby boli priradene do registracnej skupiny.')
+      setRegistrationAssignmentMessageType('ok')
+      setRegistrationAssignmentForm(prev => ({
+        ...prev,
+        userIds: []
+      }))
+
+      setTimeout(() => {
+        router.refresh()
+      }, 650)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setRegistrationAssignmentMessage('Chyba spojenia so serverom: ' + message)
+      setRegistrationAssignmentMessageType('error')
+    } finally {
+      setRegistrationAssignmentLoading(false)
     }
   }
 
@@ -1487,6 +1605,19 @@ export default function PersonalistaClient({
           style={styles.lightButton}
           disabled={!canManage}
           onClick={() => {
+            setRegistrationAssignmentOpen(prev => !prev)
+            setRegistrationAssignmentMessage('')
+            setRegistrationAssignmentMessageType('')
+          }}
+        >
+          Priradit reg. skupinu
+        </button>
+
+        <button
+          type="button"
+          style={styles.lightButton}
+          disabled={!canManage}
+          onClick={() => {
             setBulkRegistrationEntitlementsOpen(prev => !prev)
             setBulkRegistrationEntitlementsMessage('')
             setBulkRegistrationEntitlementsMessageType('')
@@ -1576,6 +1707,150 @@ export default function PersonalistaClient({
               }}
             >
               {registrationGroupMessage}
+            </div>
+          )}
+        </section>
+      )}
+
+      {registrationAssignmentOpen && (
+        <section style={styles.createPanel}>
+          <div style={styles.createHeader}>
+            <div>
+              <b>Manualne priradenie do registracnej skupiny</b>
+              <span>Vybranym osobam sa prepise registracna skupina a ulozi sa audit.</span>
+            </div>
+
+            <button
+              type="button"
+              style={styles.closeButton}
+              disabled={registrationAssignmentLoading}
+              onClick={() => setRegistrationAssignmentOpen(false)}
+            >
+              x
+            </button>
+          </div>
+
+          <div style={styles.createGrid}>
+            <label style={styles.field}>
+              <span>Registracna skupina</span>
+              <select
+                value={registrationAssignmentForm.registrationGroupId}
+                onChange={event => updateRegistrationAssignmentForm('registrationGroupId', event.target.value)}
+                style={styles.input}
+                disabled={registrationAssignmentLoading}
+              >
+                <option value="">Vyber registracnu skupinu</option>
+                {registrationGroups.map(group => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={styles.field}>
+              <span>Poznamka</span>
+              <input
+                value={registrationAssignmentForm.registrationGroupNote}
+                onChange={event => updateRegistrationAssignmentForm('registrationGroupNote', event.target.value)}
+                style={styles.input}
+                placeholder="Volitelne"
+                disabled={registrationAssignmentLoading}
+              />
+            </label>
+          </div>
+
+          <div style={styles.optionBox}>
+            <div style={styles.optionTitle}>
+              Vybrane osoby ({registrationAssignmentForm.userIds.length})
+            </div>
+
+            {selectedRegistrationAssignmentPeople.length === 0 ? (
+              <span style={styles.emptyGroupSelection}>Zatial nikto vybrany</span>
+            ) : (
+              <div style={styles.selectedGroupList}>
+                {selectedRegistrationAssignmentPeople.map(person => (
+                  <span key={person.id} style={styles.selectedGroupPill}>
+                    {person.fullName || person.email || 'Bez mena'}
+                    <button
+                      type="button"
+                      style={styles.removePillButton}
+                      disabled={registrationAssignmentLoading}
+                      onClick={() => toggleRegistrationAssignmentPerson(person.id)}
+                    >
+                      x
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {registrationAssignmentForm.userIds.length > 0 && (
+              <button
+                type="button"
+                style={styles.tinyTextButton}
+                disabled={registrationAssignmentLoading}
+                onClick={clearRegistrationAssignmentPeople}
+              >
+                Zrusit vyber
+              </button>
+            )}
+          </div>
+
+          <label style={styles.field}>
+            <span>Hladat osobu</span>
+            <input
+              value={registrationAssignmentSearch}
+              onChange={event => setRegistrationAssignmentSearch(event.target.value)}
+              style={styles.input}
+              placeholder="Meno, email alebo cast nazvu skupiny"
+              disabled={registrationAssignmentLoading}
+            />
+          </label>
+
+          <div style={styles.personCheckList}>
+            {registrationAssignmentFilteredPeople.length === 0 ? (
+              <span style={styles.emptyGroupSelection}>Nenasli sa ziadne osoby</span>
+            ) : (
+              registrationAssignmentFilteredPeople.map(person => (
+                <label key={person.id} style={styles.personCheckRow}>
+                  <input
+                    type="checkbox"
+                    checked={registrationAssignmentForm.userIds.includes(person.id)}
+                    onChange={() => toggleRegistrationAssignmentPerson(person.id)}
+                    disabled={registrationAssignmentLoading}
+                    style={styles.checkbox}
+                  />
+                  <span style={styles.personCheckText}>
+                    <b>{person.fullName || 'Bez mena'}</b>
+                    <small>
+                      {person.email || 'bez emailu'} - {person.registrationGroupName || 'bez reg. skupiny'}
+                    </small>
+                  </span>
+                </label>
+              ))
+            )}
+          </div>
+
+          <button
+            type="button"
+            style={styles.confirmButton}
+            disabled={registrationAssignmentLoading}
+            onClick={saveRegistrationAssignment}
+          >
+            {registrationAssignmentLoading ? 'Ukladam...' : 'Priradit vybranych'}
+          </button>
+
+          {registrationAssignmentMessage && (
+            <div
+              style={{
+                ...styles.message,
+                background: registrationAssignmentMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                color: registrationAssignmentMessageType === 'ok' ? '#166534' : '#991b1b',
+                borderColor: registrationAssignmentMessageType === 'ok' ? '#86efac' : '#fecaca'
+              }}
+            >
+              {registrationAssignmentMessage}
             </div>
           )}
         </section>
@@ -3671,6 +3946,16 @@ const styles: Record<string, CSSProperties> = {
     maxHeight: 170,
     overflow: 'auto'
   },
+  personCheckList: {
+    display: 'grid',
+    gap: 7,
+    maxHeight: 280,
+    overflow: 'auto',
+    padding: 6,
+    border: '1px solid #e5e7eb',
+    borderRadius: 14,
+    background: '#f9fafb'
+  },
   checkRow: {
     display: 'grid',
     gridTemplateColumns: '22px minmax(0, 1fr)',
@@ -3679,6 +3964,26 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 13,
     fontWeight: 850,
     color: '#111827'
+  },
+  personCheckRow: {
+    display: 'grid',
+    gridTemplateColumns: '22px minmax(0, 1fr)',
+    gap: 8,
+    alignItems: 'center',
+    border: '1px solid #e5e7eb',
+    borderRadius: 12,
+    padding: 9,
+    background: '#fff',
+    cursor: 'pointer'
+  },
+  personCheckText: {
+    display: 'grid',
+    gap: 2,
+    minWidth: 0,
+    fontSize: 13,
+    fontWeight: 900,
+    color: '#111827',
+    overflowWrap: 'anywhere'
   },
   checkbox: {
     width: 18,
