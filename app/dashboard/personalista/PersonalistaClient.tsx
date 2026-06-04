@@ -178,7 +178,7 @@ function thresholdImage(imageData: ImageData) {
 }
 
 export default function PersonalistaClient({
-  people,
+  people: initialPeople,
   groups,
   registrationGroups,
   fromDate,
@@ -205,6 +205,9 @@ export default function PersonalistaClient({
   const qrScannerCancelledRef = useRef(false)
   const qrScannerAttemptRef = useRef(0)
 
+  const [people, setPeople] = useState(initialPeople)
+  const [peopleSearchLoading, setPeopleSearchLoading] = useState(false)
+  const [peopleSearchMessage, setPeopleSearchMessage] = useState('Posledne upravovane osoby')
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState('ALL')
   const [foodFilter, setFoodFilter] = useState('ALL')
@@ -318,6 +321,61 @@ export default function PersonalistaClient({
   const printPersonHref = selectedPerson
     ? `/dashboard/personalista/print-qr?personId=${encodeURIComponent(selectedPerson.id)}`
     : ''
+
+  useEffect(() => {
+    setPeople(initialPeople)
+  }, [initialPeople])
+
+  useEffect(() => {
+    const q = search.trim()
+
+    if (!q) {
+      setPeople(initialPeople)
+      setPeopleSearchLoading(false)
+      setPeopleSearchMessage('Posledne upravovane osoby')
+      return
+    }
+
+    if (q.length < 2) {
+      setPeople(initialPeople)
+      setPeopleSearchLoading(false)
+      setPeopleSearchMessage('Napis aspon 2 znaky pre hladanie v celej databaze')
+      return
+    }
+
+    let cancelled = false
+    const timeout = window.setTimeout(async () => {
+      setPeopleSearchLoading(true)
+      setPeopleSearchMessage('Hladam v databaze...')
+
+      try {
+        const res = await fetch(`/api/personalista/people/search?q=${encodeURIComponent(q)}`)
+        const json = await res.json().catch(() => ({}))
+
+        if (cancelled) return
+
+        if (!res.ok || json.error) {
+          setPeopleSearchMessage(json.error || 'Hladanie sa nepodarilo.')
+          return
+        }
+
+        setPeople(Array.isArray(json.people) ? json.people : [])
+        setPeopleSearchMessage(`Vysledky hladania: ${Array.isArray(json.people) ? json.people.length : 0}`)
+      } catch (err) {
+        if (cancelled) return
+
+        const message = err instanceof Error ? err.message : String(err)
+        setPeopleSearchMessage('Chyba hladania: ' + message)
+      } finally {
+        if (!cancelled) setPeopleSearchLoading(false)
+      }
+    }, 250)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+    }
+  }, [search, initialPeople])
 
   useEffect(() => {
     if (!selectedPerson) return
@@ -2905,7 +2963,7 @@ export default function PersonalistaClient({
         <div style={styles.leftColumn}>
           <section style={styles.toolbar}>
             <div style={styles.toolbarHint}>
-              Zobrazuje sa poslednych {people.length} upravovanych osob. Pre presne hladanie mimo tohto zoznamu pripravime serverove vyhladavanie.
+              {peopleSearchLoading ? 'Hladam...' : peopleSearchMessage} · zobrazenych {people.length}
             </div>
 
             <input
@@ -3962,25 +4020,24 @@ export default function PersonalistaClient({
 const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: '100vh',
-    background: '#f3f4f6',
-    padding: 12,
+    background: '#eef0f3',
+    padding: 8,
     display: 'grid',
-    gap: 12,
+    gap: 8,
     alignContent: 'start',
     fontFamily: 'Arial, Helvetica, sans-serif',
-    fontSize: 13,
+    fontSize: 12,
     color: '#111827'
   },
   header: {
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 10,
-    padding: 10,
+    borderRadius: 6,
+    padding: '7px 9px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
-    boxShadow: '0 3px 12px rgba(0,0,0,0.04)'
+    gap: 8
   },
   breadcrumb: {
     fontSize: 11,
@@ -3990,13 +4047,13 @@ const styles: Record<string, CSSProperties> = {
   },
   title: {
     margin: 0,
-    fontSize: 22,
+    fontSize: 19,
     lineHeight: 1.1,
     fontWeight: 950
   },
   subtitle: {
-    margin: '5px 0 0 0',
-    fontSize: 13,
+    margin: '2px 0 0 0',
+    fontSize: 11,
     fontWeight: 750,
     color: '#6b7280'
   },
@@ -4017,92 +4074,91 @@ const styles: Record<string, CSSProperties> = {
   },
   summaryGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(118px, 1fr))',
-    gap: 6
+    gridTemplateColumns: 'repeat(auto-fit, minmax(105px, 1fr))',
+    gap: 4
   },
   summaryCard: {
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 10,
-    padding: 8,
+    borderRadius: 6,
+    padding: '5px 7px',
     display: 'grid',
     gap: 3,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+    minHeight: 38
   },
   summaryCardBlue: {
     background: '#eff6ff',
     border: '1px solid #93c5fd',
-    borderRadius: 10,
-    padding: 8,
+    borderRadius: 6,
+    padding: '5px 7px',
     display: 'grid',
     gap: 3,
     color: '#1d4ed8',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+    minHeight: 38
   },
   summaryCardGreen: {
     background: '#ecfdf5',
     border: '1px solid #86efac',
-    borderRadius: 10,
-    padding: 8,
+    borderRadius: 6,
+    padding: '5px 7px',
     display: 'grid',
     gap: 3,
     color: '#166534',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+    minHeight: 38
   },
   summaryCardRed: {
     background: '#fef2f2',
     border: '1px solid #fecaca',
-    borderRadius: 10,
-    padding: 8,
+    borderRadius: 6,
+    padding: '5px 7px',
     display: 'grid',
     gap: 3,
     color: '#991b1b',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+    minHeight: 38
   },
   summaryCardYellow: {
     background: '#fffbeb',
     border: '1px solid #fde68a',
-    borderRadius: 10,
-    padding: 8,
+    borderRadius: 6,
+    padding: '5px 7px',
     display: 'grid',
     gap: 3,
     color: '#92400e',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+    minHeight: 38
   },
   summaryCardOrange: {
     background: '#fff7ed',
     border: '1px solid #fdba74',
-    borderRadius: 10,
-    padding: 8,
+    borderRadius: 6,
+    padding: '5px 7px',
     display: 'grid',
     gap: 3,
     color: '#9a3412',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+    minHeight: 38
   },
   summaryCardPink: {
     background: '#fdf2f8',
     border: '1px solid #f9a8d4',
-    borderRadius: 10,
-    padding: 8,
+    borderRadius: 6,
+    padding: '5px 7px',
     display: 'grid',
     gap: 3,
     color: '#9d174d',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+    minHeight: 38
   },
   actionPanel: {
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 10,
-    padding: 8,
+    borderRadius: 6,
+    padding: 6,
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))',
-    gap: 6,
-    boxShadow: '0 3px 12px rgba(0,0,0,0.03)'
+    gridTemplateColumns: 'repeat(auto-fit, minmax(118px, auto))',
+    gap: 5
   },
   layoutGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))',
-    gap: 12,
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(360px, 410px)',
+    gap: 8,
     alignItems: 'start'
   },
   leftColumn: {
@@ -4113,16 +4169,15 @@ const styles: Record<string, CSSProperties> = {
   toolbar: {
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 10,
-    padding: 8,
+    borderRadius: 6,
+    padding: 6,
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',
-    gap: 8,
-    boxShadow: '0 3px 12px rgba(0,0,0,0.03)'
+    gridTemplateColumns: 'minmax(220px, 1.2fr) repeat(4, minmax(120px, 0.7fr))',
+    gap: 5
   },
   toolbarHint: {
     gridColumn: '1 / -1',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 800,
     color: '#6b7280'
   },
@@ -4131,10 +4186,10 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
-    borderRadius: 12,
-    padding: '11px 12px',
-    fontSize: 16,
-    fontWeight: 800,
+    borderRadius: 5,
+    padding: '7px 8px',
+    fontSize: 13,
+    fontWeight: 750,
     outline: 'none',
     background: '#fff',
     color: '#111827'
@@ -4143,27 +4198,27 @@ const styles: Record<string, CSSProperties> = {
     width: '100%',
     minWidth: 0,
     border: '1px solid #d1d5db',
-    borderRadius: 12,
-    padding: '11px 10px',
-    fontSize: 16,
-    fontWeight: 800,
+    borderRadius: 5,
+    padding: '7px 7px',
+    fontSize: 13,
+    fontWeight: 750,
     background: '#fff',
     color: '#111827'
   },
   tableCard: {
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 16,
+    borderRadius: 6,
     overflowX: 'auto',
-    boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
+    boxShadow: 'none'
   },
   tableHeader: {
-    minWidth: 1020,
+    minWidth: 920,
     display: 'grid',
-    gridTemplateColumns: 'minmax(190px, 1.25fr) 78px minmax(150px, 0.9fr) minmax(160px, 1fr) 78px 78px 82px',
-    gap: 8,
+    gridTemplateColumns: 'minmax(180px, 1.3fr) 70px minmax(135px, 0.9fr) minmax(135px, 1fr) 62px 58px 68px',
+    gap: 6,
     alignItems: 'center',
-    padding: '8px 10px',
+    padding: '6px 8px',
     background: '#f9fafb',
     borderBottom: '1px solid #e5e7eb',
     fontSize: 10,
@@ -4173,29 +4228,29 @@ const styles: Record<string, CSSProperties> = {
   },
   personRow: {
     width: '100%',
-    minWidth: 1020,
+    minWidth: 920,
     border: '0 solid #e5e7eb',
     borderBottomWidth: 1,
-    padding: '7px 10px',
+    padding: '5px 8px',
     display: 'grid',
-    gridTemplateColumns: 'minmax(190px, 1.25fr) 78px minmax(150px, 0.9fr) minmax(160px, 1fr) 78px 78px 82px',
-    gap: 8,
+    gridTemplateColumns: 'minmax(180px, 1.3fr) 70px minmax(135px, 0.9fr) minmax(135px, 1fr) 62px 58px 68px',
+    gap: 6,
     alignItems: 'center',
     textAlign: 'left',
     color: '#111827',
     cursor: 'pointer',
-    fontSize: 12
+    fontSize: 11
   },
   personCell: {
     minWidth: 0,
     display: 'grid',
-    gap: 3
+    gap: 1
   },
   groupBadges: {
     minWidth: 0,
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 5
+    gap: 3
   },
   groupBadge: {
     maxWidth: 160,
@@ -4203,10 +4258,10 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     borderRadius: 999,
-    padding: '4px 7px',
+    padding: '2px 5px',
     background: '#f3f4f6',
     color: '#374151',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: 900
   },
   registrationGroupBadge: {
@@ -4215,19 +4270,19 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     borderRadius: 999,
-    padding: '4px 7px',
+    padding: '2px 5px',
     background: '#fffbeb',
     color: '#92400e',
     border: '1px solid #fde68a',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: 900
   },
   moreBadge: {
     borderRadius: 999,
-    padding: '4px 7px',
+    padding: '2px 5px',
     background: '#111827',
     color: '#fff',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: 900
   },
   foodBadge: {
@@ -4235,8 +4290,8 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 999,
-    padding: '6px 8px',
-    fontSize: 10,
+    padding: '3px 6px',
+    fontSize: 9,
     fontWeight: 950,
     background: '#eef2ff',
     color: '#3730a3',
@@ -4247,8 +4302,8 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 999,
-    padding: '5px 7px',
-    fontSize: 10,
+    padding: '3px 5px',
+    fontSize: 9,
     fontWeight: 950,
     whiteSpace: 'nowrap'
   },
@@ -4269,8 +4324,8 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 999,
-    padding: '6px 8px',
-    fontSize: 10,
+    padding: '3px 6px',
+    fontSize: 9,
     fontWeight: 950,
     whiteSpace: 'nowrap'
   },
@@ -4284,11 +4339,15 @@ const styles: Record<string, CSSProperties> = {
   detailPanel: {
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 18,
-    padding: 12,
+    borderRadius: 6,
+    padding: 8,
     display: 'grid',
-    gap: 12,
-    boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
+    gap: 8,
+    boxShadow: 'none',
+    position: 'sticky',
+    top: 8,
+    maxHeight: 'calc(100vh - 16px)',
+    overflow: 'auto'
   },
   detailHeader: {
     display: 'flex',
@@ -4303,19 +4362,19 @@ const styles: Record<string, CSSProperties> = {
   },
   detailTitle: {
     margin: '3px 0 0 0',
-    fontSize: 20,
+    fontSize: 16,
     lineHeight: 1.15,
     fontWeight: 950,
     overflowWrap: 'anywhere'
   },
   detailRows: {
     display: 'grid',
-    gap: 7
+    gap: 4
   },
   detailRow: {
     border: '1px solid #e5e7eb',
-    borderRadius: 12,
-    padding: 10,
+    borderRadius: 5,
+    padding: 6,
     display: 'grid',
     gap: 3,
     overflowWrap: 'anywhere'
@@ -4328,12 +4387,12 @@ const styles: Record<string, CSSProperties> = {
   },
   detailGroups: {
     display: 'grid',
-    gap: 7
+    gap: 4
   },
   detailGroupRow: {
     border: '1px solid #e5e7eb',
-    borderRadius: 12,
-    padding: 10,
+    borderRadius: 5,
+    padding: 6,
     display: 'flex',
     justifyContent: 'space-between',
     gap: 8,
@@ -4342,7 +4401,7 @@ const styles: Record<string, CSSProperties> = {
   detailActions: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-    gap: 8
+    gap: 5
   },
   pendingApprovalBox: {
     border: '1px solid #fde68a',
@@ -4369,10 +4428,10 @@ const styles: Record<string, CSSProperties> = {
   },
   detailEditBox: {
     border: '1px solid #e5e7eb',
-    borderRadius: 14,
-    padding: 10,
+    borderRadius: 5,
+    padding: 6,
     display: 'grid',
-    gap: 10,
+    gap: 6,
     background: '#f9fafb'
   },
   detailEditTitle: {
@@ -4383,27 +4442,27 @@ const styles: Record<string, CSSProperties> = {
   },
   detailEditGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))',
-    gap: 8
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 135px), 1fr))',
+    gap: 5
   },
   primaryAction: {
     background: '#22c55e',
     color: '#052e16',
     border: '1px solid #16a34a',
-    borderRadius: 12,
-    padding: '11px 12px',
-    fontSize: 13,
+    borderRadius: 5,
+    padding: '7px 9px',
+    fontSize: 12,
     fontWeight: 950,
     cursor: 'pointer'
   },
   createPanel: {
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 18,
-    padding: 12,
+    borderRadius: 6,
+    padding: 8,
     display: 'grid',
-    gap: 12,
-    boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
+    gap: 8,
+    boxShadow: 'none'
   },
   createHeader: {
     display: 'flex',
@@ -4413,20 +4472,20 @@ const styles: Record<string, CSSProperties> = {
   },
   createGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 190px), 1fr))',
-    gap: 10
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',
+    gap: 6
   },
   createOptionsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',
-    gap: 10
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 190px), 1fr))',
+    gap: 6
   },
   optionBox: {
     border: '1px solid #e5e7eb',
-    borderRadius: 14,
-    padding: 10,
+    borderRadius: 5,
+    padding: 6,
     display: 'grid',
-    gap: 8,
+    gap: 5,
     background: '#f9fafb'
   },
   registrationSection: {
@@ -4678,10 +4737,10 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
-    borderRadius: 12,
-    padding: '11px 10px',
-    fontSize: 16,
-    fontWeight: 800,
+    borderRadius: 5,
+    padding: '7px 8px',
+    fontSize: 13,
+    fontWeight: 750,
     background: '#fff',
     color: '#111827',
     outline: 'none'
@@ -4691,10 +4750,10 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     boxSizing: 'border-box',
     border: '2px solid #ef4444',
-    borderRadius: 12,
-    padding: '10px 9px',
-    fontSize: 16,
-    fontWeight: 900,
+    borderRadius: 5,
+    padding: '7px 8px',
+    fontSize: 13,
+    fontWeight: 800,
     background: '#fff7f7',
     color: '#991b1b',
     outline: 'none'
@@ -4704,22 +4763,22 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
-    borderRadius: 10,
-    padding: '8px 7px',
-    fontSize: 12,
+    borderRadius: 5,
+    padding: '6px 6px',
+    fontSize: 11,
     fontWeight: 900,
     background: '#fff',
     color: '#111827',
     outline: 'none'
   },
   closeButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 999,
+    width: 26,
+    height: 26,
+    borderRadius: 5,
     border: '1px solid #e5e7eb',
     background: '#f3f4f6',
     color: '#111827',
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: 900,
     lineHeight: 1,
     cursor: 'pointer'
@@ -4728,9 +4787,9 @@ const styles: Record<string, CSSProperties> = {
     background: '#22c55e',
     color: '#052e16',
     border: '1px solid #16a34a',
-    borderRadius: 12,
-    padding: '10px 12px',
-    fontSize: 13,
+    borderRadius: 5,
+    padding: '7px 9px',
+    fontSize: 12,
     fontWeight: 950,
     cursor: 'pointer'
   },
@@ -4738,9 +4797,9 @@ const styles: Record<string, CSSProperties> = {
     background: '#fee2e2',
     color: '#991b1b',
     border: '1px solid #fecaca',
-    borderRadius: 12,
-    padding: '10px 12px',
-    fontSize: 13,
+    borderRadius: 5,
+    padding: '7px 9px',
+    fontSize: 12,
     fontWeight: 950,
     cursor: 'pointer'
   },
@@ -4755,12 +4814,12 @@ const styles: Record<string, CSSProperties> = {
     cursor: 'pointer'
   },
   paginationBar: {
-    minWidth: 1020,
+    minWidth: 920,
     display: 'flex',
     justifyContent: 'flex-end',
     alignItems: 'center',
     gap: 8,
-    padding: '9px 10px',
+    padding: '6px 8px',
     background: '#f9fafb',
     borderTop: '1px solid #e5e7eb',
     fontSize: 12,
@@ -4797,9 +4856,9 @@ const styles: Record<string, CSSProperties> = {
     background: '#f3f4f6',
     color: '#6b7280',
     border: '1px solid #e5e7eb',
-    borderRadius: 12,
-    padding: '11px 12px',
-    fontSize: 13,
+    borderRadius: 5,
+    padding: '7px 9px',
+    fontSize: 12,
     fontWeight: 950,
     cursor: 'not-allowed',
     opacity: 0.65
@@ -4808,9 +4867,9 @@ const styles: Record<string, CSSProperties> = {
     background: '#111827',
     color: '#fff',
     border: 0,
-    borderRadius: 12,
-    padding: '10px 12px',
-    fontSize: 13,
+    borderRadius: 5,
+    padding: '7px 9px',
+    fontSize: 12,
     fontWeight: 950,
     textDecoration: 'none',
     cursor: 'pointer'
@@ -4819,9 +4878,9 @@ const styles: Record<string, CSSProperties> = {
     background: '#f3f4f6',
     color: '#111827',
     border: '1px solid #e5e7eb',
-    borderRadius: 12,
-    padding: '10px 12px',
-    fontSize: 13,
+    borderRadius: 5,
+    padding: '7px 9px',
+    fontSize: 12,
     fontWeight: 950,
     textDecoration: 'none',
     cursor: 'pointer'
