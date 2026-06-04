@@ -72,7 +72,45 @@ export async function POST(req: NextRequest) {
 
     const assigned = Array.isArray(qrRows) ? qrRows[0] : qrRows
     const qrCode = assigned?.qr_code || ''
+    const today = new Date().toISOString().slice(0, 10)
+    let registrationPeriodCreated = false
     let emailSent = false
+
+    const { data: currentPeriod, error: currentPeriodError } = await supabaseServer
+      .from('user_registration_group_periods')
+      .select('id')
+      .eq('user_id', userId)
+      .lte('valid_from', today)
+      .or(`valid_to.is.null,valid_to.gte.${today}`)
+      .maybeSingle()
+
+    if (currentPeriodError) {
+      return NextResponse.json({ error: currentPeriodError.message }, { status: 500 })
+    }
+
+    if (!currentPeriod) {
+      const { error: periodError } = await supabaseServer
+        .from('user_registration_group_periods')
+        .insert({
+          user_id: userId,
+          registration_group_id: registrationGroupId,
+          valid_from: today,
+          valid_to: null,
+          note: registrationGroupNote,
+          created_by: actor.id
+        })
+
+      if (periodError) {
+        const overlaps = periodError.code === '23P01'
+          || periodError.message.toLowerCase().includes('no_overlap')
+
+        if (!overlaps) {
+          return NextResponse.json({ error: periodError.message }, { status: 500 })
+        }
+      } else {
+        registrationPeriodCreated = true
+      }
+    }
 
     if (user.email && qrCode) {
       try {
@@ -104,7 +142,8 @@ export async function POST(req: NextRequest) {
         after_data: {
           registration_group_id: registrationGroupId,
           qr_assigned: !!qrCode,
-          email_sent: emailSent
+          email_sent: emailSent,
+          registration_period_created: registrationPeriodCreated
         }
       })
 

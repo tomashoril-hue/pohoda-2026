@@ -260,6 +260,28 @@ export async function POST(req: NextRequest) {
         .eq('id', newUser.id)
     }
 
+    if (registrationGroupId) {
+      const { error: registrationPeriodError } = await supabaseServer
+        .from('user_registration_group_periods')
+        .insert({
+          user_id: newUser.id,
+          registration_group_id: registrationGroupId,
+          valid_from: validFrom,
+          valid_to: validTo,
+          note: 'Zaradene pri rucnom vytvoreni osoby.',
+          created_by: currentUser.id
+        })
+
+      if (registrationPeriodError) {
+        await rollbackUser()
+
+        return NextResponse.json(
+          { error: registrationPeriodError.message },
+          { status: 500 }
+        )
+      }
+    }
+
     if (groupIds.length > 0) {
       const { error: membershipError } = await supabaseServer
         .from('group_members')

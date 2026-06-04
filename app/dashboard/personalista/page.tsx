@@ -105,6 +105,74 @@ async function fetchEntitlementsForUsers(userIds: string[]) {
   }
 }
 
+async function fetchRegistrationGroupPeriodsForUsers(userIds: string[]) {
+  const rows: any[] = []
+  const pageSize = 1000
+
+  if (userIds.length === 0) return rows
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabaseServer
+      .from('user_registration_group_periods')
+      .select(`
+        id,
+        user_id,
+        registration_group_id,
+        valid_from,
+        valid_to,
+        note,
+        registration_groups (
+          id,
+          name
+        )
+      `)
+      .in('user_id', userIds)
+      .order('valid_from', { ascending: false })
+      .range(from, from + pageSize - 1)
+
+    if (error) return rows
+
+    rows.push(...(data || []))
+
+    if (!data || data.length < pageSize) return rows
+  }
+}
+
+function mapRegistrationGroupPeriod(row: any) {
+  const group = Array.isArray(row.registration_groups)
+    ? row.registration_groups[0]
+    : row.registration_groups
+
+  return {
+    id: row.id,
+    registrationGroupId: row.registration_group_id,
+    registrationGroupName: group?.name || '',
+    validFrom: row.valid_from,
+    validTo: row.valid_to || '',
+    note: row.note || ''
+  }
+}
+
+function currentRegistrationGroupSnapshot(profile: any, periods: any[], registrationGroupById: Map<string, any>, today: string) {
+  const currentPeriod = periods.find(period => {
+    return period.validFrom <= today && (!period.validTo || period.validTo >= today)
+  })
+
+  if (currentPeriod) {
+    return {
+      id: currentPeriod.registrationGroupId || '',
+      name: currentPeriod.registrationGroupName || '',
+      note: currentPeriod.note || ''
+    }
+  }
+
+  return {
+    id: profile?.registration_group_id || '',
+    name: registrationGroupById.get(profile?.registration_group_id)?.name || '',
+    note: profile?.registration_group_note || ''
+  }
+}
+
 export default async function PersonalistaPage() {
   const user = await getCurrentUser()
 
@@ -197,6 +265,7 @@ export default async function PersonalistaPage() {
   let nfcRows: any[] = []
   let roleRows: any[] = []
   let entitlementRows: any[] = []
+  let registrationGroupPeriodRows: any[] = []
 
   if (userIds.length > 0) {
     const { data: qrData } = await supabaseServer
@@ -221,6 +290,7 @@ export default async function PersonalistaPage() {
     roleRows = roleData || []
 
     entitlementRows = await fetchEntitlementsForUsers(userIds)
+    registrationGroupPeriodRows = await fetchRegistrationGroupPeriodsForUsers(userIds)
   }
 
   const activeQrByUserId = new Map<string, number>()
@@ -261,6 +331,15 @@ export default async function PersonalistaPage() {
     entitlementsByUserId.set(row.user_id, list)
   })
 
+  const registrationGroupPeriodsByUserId = new Map<string, any[]>()
+
+  registrationGroupPeriodRows.forEach((row: any) => {
+    const period = mapRegistrationGroupPeriod(row)
+    const list = registrationGroupPeriodsByUserId.get(row.user_id) || []
+    list.push(period)
+    registrationGroupPeriodsByUserId.set(row.user_id, list)
+  })
+
   const personMap = new Map<string, any>()
 
   visibleMemberships.forEach((membership: any) => {
@@ -282,6 +361,13 @@ export default async function PersonalistaPage() {
     }
 
     const rows = entitlementsByUserId.get(membership.user_id) || []
+    const registrationGroupPeriods = registrationGroupPeriodsByUserId.get(membership.user_id) || []
+    const registrationGroup = currentRegistrationGroupSnapshot(
+      memberUser,
+      registrationGroupPeriods,
+      registrationGroupById,
+      fromDate
+    )
     const lunchClaims = rows.filter(row => row.obed).length
     const dinnerClaims = rows.filter(row => row.vecera).length
     const mealClaims = lunchClaims + dinnerClaims
@@ -296,9 +382,10 @@ export default async function PersonalistaPage() {
       typStravy: memberUser?.typ_stravy || '',
       aktivny: memberUser?.aktivny || 'ANO',
       reviewStatus: memberUser?.review_status || 'APPROVED',
-      registrationGroupId: memberUser?.registration_group_id || '',
-      registrationGroupName: registrationGroupById.get(memberUser?.registration_group_id)?.name || '',
-      registrationGroupNote: memberUser?.registration_group_note || '',
+      registrationGroupId: registrationGroup.id,
+      registrationGroupName: registrationGroup.name,
+      registrationGroupNote: registrationGroup.note,
+      registrationGroupPeriods,
       activeQrCount: activeQrByUserId.get(membership.user_id) || 0,
       activeNfcCount: activeNfcByUserId.get(membership.user_id) || 0,
       globalRoles: globalRolesByUserId.get(membership.user_id) || [],
@@ -322,6 +409,13 @@ export default async function PersonalistaPage() {
       if (personMap.has(profile.id)) return
 
       const rows = entitlementsByUserId.get(profile.id) || []
+      const registrationGroupPeriods = registrationGroupPeriodsByUserId.get(profile.id) || []
+      const registrationGroup = currentRegistrationGroupSnapshot(
+        profile,
+        registrationGroupPeriods,
+        registrationGroupById,
+        fromDate
+      )
       const lunchClaims = rows.filter(row => row.obed).length
       const dinnerClaims = rows.filter(row => row.vecera).length
 
@@ -335,9 +429,10 @@ export default async function PersonalistaPage() {
         typStravy: profile.typ_stravy || '',
         aktivny: profile.aktivny || 'ANO',
         reviewStatus: profile.review_status || 'APPROVED',
-        registrationGroupId: profile.registration_group_id || '',
-        registrationGroupName: registrationGroupById.get(profile.registration_group_id)?.name || '',
-        registrationGroupNote: profile.registration_group_note || '',
+        registrationGroupId: registrationGroup.id,
+        registrationGroupName: registrationGroup.name,
+        registrationGroupNote: registrationGroup.note,
+        registrationGroupPeriods,
         activeQrCount: activeQrByUserId.get(profile.id) || 0,
         activeNfcCount: activeNfcByUserId.get(profile.id) || 0,
         globalRoles: globalRolesByUserId.get(profile.id) || [],

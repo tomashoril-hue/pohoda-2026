@@ -29,6 +29,17 @@ function chunk<T>(items: T[], size: number) {
   return chunks
 }
 
+function addDaysIso(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00.000Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
 export async function POST(req: NextRequest) {
   try {
     const actor = await getCurrentUser()
@@ -106,6 +117,8 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString()
+    const today = now.slice(0, 10)
+    const yesterday = addDaysIso(today, -1)
     const beforeData = users.map(user => ({
       id: user.id,
       email: user.email,
@@ -114,6 +127,74 @@ export async function POST(req: NextRequest) {
       registration_group_id: user.registration_group_id,
       registration_group_note: user.registration_group_note
     }))
+
+    for (const user of users) {
+      const { data: periods, error: periodsError } = await supabaseServer
+        .from('user_registration_group_periods')
+        .select('id, valid_from, valid_to')
+        .eq('user_id', user.id)
+        .order('valid_from', { ascending: true })
+
+      if (periodsError) {
+        return NextResponse.json({ error: periodsError.message }, { status: 500 })
+      }
+
+      const existingPeriods = periods || []
+      const currentPeriods = existingPeriods.filter(period => {
+        return period.valid_from <= today && (!period.valid_to || period.valid_to >= today)
+      })
+      const nextFuturePeriod = existingPeriods.find(period => period.valid_from > today)
+      const newValidTo = nextFuturePeriod
+        ? addDaysIso(nextFuturePeriod.valid_from, -1)
+        : null
+
+      for (const period of currentPeriods) {
+        if (period.valid_from < today) {
+          const { error: closeError } = await supabaseServer
+            .from('user_registration_group_periods')
+            .update({ valid_to: yesterday })
+            .eq('id', period.id)
+
+          if (closeError) {
+            return NextResponse.json({ error: closeError.message }, { status: 500 })
+          }
+        } else {
+          const { error: deleteError } = await supabaseServer
+            .from('user_registration_group_periods')
+            .delete()
+            .eq('id', period.id)
+
+          if (deleteError) {
+            return NextResponse.json({ error: deleteError.message }, { status: 500 })
+          }
+        }
+      }
+
+      const { error: insertPeriodError } = await supabaseServer
+        .from('user_registration_group_periods')
+        .insert({
+          user_id: user.id,
+          registration_group_id: registrationGroupId,
+          valid_from: today,
+          valid_to: newValidTo,
+          note: registrationGroupNote,
+          created_by: actor.id
+        })
+
+      if (insertPeriodError) {
+        const overlaps = insertPeriodError.code === '23P01'
+          || insertPeriodError.message.toLowerCase().includes('no_overlap')
+
+        return NextResponse.json(
+          {
+            error: overlaps
+              ? 'Niektora osoba ma naplanovane zaradenie, ktore sa prekryva s novym priradenim. Uprav ju v detaile osoby.'
+              : insertPeriodError.message
+          },
+          { status: overlaps ? 409 : 500 }
+        )
+      }
+    }
 
     for (const userIdChunk of chunk(userIds, 250)) {
       const { error: updateError } = await supabaseServer
@@ -145,16 +226,18 @@ export async function POST(req: NextRequest) {
           registration_group_id: registrationGroupId,
           registration_group_name: registrationGroup.name,
           registration_group_note: registrationGroupNote,
+          valid_from: today,
           user_ids: userIds,
-          users: users.length
+          users: users.length,
+          food_entitlements_changed: false
         },
-        note: `Manualne priradenie ${users.length} osob do registracnej skupiny ${registrationGroup.name}.`
+        note: `Manualne priradenie ${users.length} osob do registracnej skupiny ${registrationGroup.name}. Naroky na stravu neboli zmenene.`
       })
 
     return NextResponse.json({
       ok: true,
       updated: users.length,
-      message: `Do registracnej skupiny ${registrationGroup.name} bolo priradenych ${users.length} osob.`
+      message: `Do registracnej skupiny ${registrationGroup.name} bolo priradenych ${users.length} osob. Naroky na stravu ostali nezmenene.`
     })
   } catch (err: any) {
     return NextResponse.json(

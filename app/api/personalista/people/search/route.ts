@@ -50,6 +50,66 @@ async function fetchEntitlementsForUsers(userIds: string[]) {
   return data || []
 }
 
+async function fetchRegistrationGroupPeriodsForUsers(userIds: string[]) {
+  if (userIds.length === 0) return []
+
+  const { data, error } = await supabaseServer
+    .from('user_registration_group_periods')
+    .select(`
+      id,
+      user_id,
+      registration_group_id,
+      valid_from,
+      valid_to,
+      note,
+      registration_groups (
+        id,
+        name
+      )
+    `)
+    .in('user_id', userIds)
+    .order('valid_from', { ascending: false })
+
+  if (error) throw error
+
+  return data || []
+}
+
+function mapRegistrationGroupPeriod(row: any) {
+  const group = Array.isArray(row.registration_groups)
+    ? row.registration_groups[0]
+    : row.registration_groups
+
+  return {
+    id: row.id,
+    registrationGroupId: row.registration_group_id,
+    registrationGroupName: group?.name || '',
+    validFrom: row.valid_from,
+    validTo: row.valid_to || '',
+    note: row.note || ''
+  }
+}
+
+function currentRegistrationGroupSnapshot(profile: any, periods: any[], registrationGroupById: Map<string, any>, today: string) {
+  const currentPeriod = periods.find(period => {
+    return period.validFrom <= today && (!period.validTo || period.validTo >= today)
+  })
+
+  if (currentPeriod) {
+    return {
+      id: currentPeriod.registrationGroupId || '',
+      name: currentPeriod.registrationGroupName || '',
+      note: currentPeriod.note || ''
+    }
+  }
+
+  return {
+    id: profile?.registration_group_id || '',
+    name: registrationGroupById.get(profile?.registration_group_id)?.name || '',
+    note: profile?.registration_group_note || ''
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const actor = await getCurrentUser()
@@ -96,6 +156,7 @@ export async function GET(req: NextRequest) {
     const [
       memberships,
       entitlements,
+      registrationGroupPeriods,
       qrResult,
       nfcResult,
       roleResult,
@@ -103,6 +164,7 @@ export async function GET(req: NextRequest) {
     ] = await Promise.all([
       fetchMembershipsForUsers(userIds),
       fetchEntitlementsForUsers(userIds),
+      fetchRegistrationGroupPeriodsForUsers(userIds),
       userIds.length
         ? supabaseServer.from('user_qr_codes').select('user_id, active').in('user_id', userIds)
         : Promise.resolve({ data: [], error: null }),
@@ -140,6 +202,14 @@ export async function GET(req: NextRequest) {
       entitlementsByUserId.set(row.user_id, list)
     })
 
+    const registrationGroupPeriodsByUserId = new Map<string, any[]>()
+    registrationGroupPeriods.forEach((row: any) => {
+      const period = mapRegistrationGroupPeriod(row)
+      const list = registrationGroupPeriodsByUserId.get(row.user_id) || []
+      list.push(period)
+      registrationGroupPeriodsByUserId.set(row.user_id, list)
+    })
+
     const activeQrByUserId = new Map<string, number>()
     ;(qrResult.data || []).forEach((row: any) => {
       if (!row.active) return
@@ -165,6 +235,13 @@ export async function GET(req: NextRequest) {
       const lunchClaims = rows.filter(row => row.obed).length
       const dinnerClaims = rows.filter(row => row.vecera).length
       const personMemberships = membershipsByUserId.get(profile.id) || []
+      const registrationGroupPeriods = registrationGroupPeriodsByUserId.get(profile.id) || []
+      const registrationGroup = currentRegistrationGroupSnapshot(
+        profile,
+        registrationGroupPeriods,
+        registrationGroupById,
+        new Date().toISOString().slice(0, 10)
+      )
 
       return {
         id: profile.id,
@@ -176,9 +253,10 @@ export async function GET(req: NextRequest) {
         typStravy: profile.typ_stravy || '',
         aktivny: profile.aktivny || 'ANO',
         reviewStatus: profile.review_status || 'APPROVED',
-        registrationGroupId: profile.registration_group_id || '',
-        registrationGroupName: registrationGroupById.get(profile.registration_group_id)?.name || '',
-        registrationGroupNote: profile.registration_group_note || '',
+        registrationGroupId: registrationGroup.id,
+        registrationGroupName: registrationGroup.name,
+        registrationGroupNote: registrationGroup.note,
+        registrationGroupPeriods,
         activeQrCount: activeQrByUserId.get(profile.id) || 0,
         activeNfcCount: activeNfcByUserId.get(profile.id) || 0,
         globalRoles: globalRolesByUserId.get(profile.id) || [],

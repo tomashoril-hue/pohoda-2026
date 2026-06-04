@@ -28,6 +28,15 @@ type PersonEntitlement = {
   vecera: boolean
 }
 
+type PersonRegistrationGroupPeriod = {
+  id: string
+  registrationGroupId: string
+  registrationGroupName: string
+  validFrom: string
+  validTo: string
+  note: string
+}
+
 type CalendarClaim = {
   obed: boolean
   vecera: boolean
@@ -51,6 +60,7 @@ type PersonItem = {
   registrationGroupId: string
   registrationGroupName: string
   registrationGroupNote: string
+  registrationGroupPeriods: PersonRegistrationGroupPeriod[]
   activeQrCount: number
   activeNfcCount: number
   globalRoles: string[]
@@ -242,7 +252,7 @@ export default function PersonalistaClient({
   const [bulkRegistrationEntitlementsMessage, setBulkRegistrationEntitlementsMessage] = useState('')
   const [bulkRegistrationEntitlementsMessageType, setBulkRegistrationEntitlementsMessageType] = useState<'ok' | 'error' | ''>('')
   const [bulkRegistrationCalendarClaims, setBulkRegistrationCalendarClaims] = useState<Record<string, CalendarClaim>>({})
-  const [detailMode, setDetailMode] = useState<'profile' | 'entitlements' | 'groups' | 'roles' | 'qr' | 'nfc' | ''>('')
+  const [detailMode, setDetailMode] = useState<'profile' | 'registrationPeriods' | 'entitlements' | 'groups' | 'roles' | 'qr' | 'nfc' | ''>('')
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailMessage, setDetailMessage] = useState('')
   const [detailMessageType, setDetailMessageType] = useState<'ok' | 'error' | ''>('')
@@ -268,6 +278,12 @@ export default function PersonalistaClient({
     typStravy: 'MASO',
     registrationGroupId: '',
     registrationGroupNote: ''
+  })
+  const [registrationPeriodForm, setRegistrationPeriodForm] = useState({
+    registrationGroupId: '',
+    validFrom: isoDateOffset(0),
+    validTo: '',
+    note: ''
   })
   const [entitlementForm, setEntitlementForm] = useState({
     validFrom: fromDate,
@@ -388,6 +404,13 @@ export default function PersonalistaClient({
       typStravy: selectedPerson.typStravy || 'MASO',
       registrationGroupId: selectedPerson.registrationGroupId || '',
       registrationGroupNote: selectedPerson.registrationGroupNote || ''
+    })
+
+    setRegistrationPeriodForm({
+      registrationGroupId: selectedPerson.registrationGroupId || '',
+      validFrom: isoDateOffset(0),
+      validTo: '',
+      note: selectedPerson.registrationGroupNote || ''
     })
 
     const bounds = entitlementBounds(selectedPerson.entitlements, fromDate, toDate)
@@ -716,6 +739,13 @@ export default function PersonalistaClient({
     }))
   }
 
+  const updateRegistrationPeriodForm = (key: string, value: any) => {
+    setRegistrationPeriodForm(prev => ({
+      ...prev,
+      [key]: value
+    }))
+  }
+
   const updateEntitlementForm = (key: string, value: any) => {
     const nextForm = {
       ...entitlementForm,
@@ -943,9 +973,44 @@ export default function PersonalistaClient({
       '/api/personalista/people/update-profile',
       {
         userId: selectedPerson.id,
-        ...profileForm
+        meno: profileForm.meno,
+        priezvisko: profileForm.priezvisko,
+        email: profileForm.email,
+        telefon: profileForm.telefon,
+        typStravy: profileForm.typStravy
       },
       'Detail osoby sa nepodarilo uložiť.'
+    )
+  }
+
+  const saveRegistrationGroupPeriod = () => {
+    if (!selectedPerson) return
+
+    if (!registrationPeriodForm.registrationGroupId) {
+      setDetailMessage('Vyber registracnu skupinu.')
+      setDetailMessageType('error')
+      return
+    }
+
+    if (!registrationPeriodForm.validFrom) {
+      setDetailMessage('Vyber datum od.')
+      setDetailMessageType('error')
+      return
+    }
+
+    if (registrationPeriodForm.validTo && registrationPeriodForm.validTo < registrationPeriodForm.validFrom) {
+      setDetailMessage('Datum do nemoze byt pred datumom od.')
+      setDetailMessageType('error')
+      return
+    }
+
+    postDetailAction(
+      '/api/personalista/people/registration-periods',
+      {
+        userId: selectedPerson.id,
+        ...registrationPeriodForm
+      },
+      'Zaradenie sa nepodarilo ulozit.'
     )
   }
 
@@ -3338,6 +3403,19 @@ export default function PersonalistaClient({
                   type="button"
                   style={{
                     ...styles.actionButton,
+                    borderColor: detailMode === 'registrationPeriods' ? '#93c5fd' : '#e5e7eb',
+                    background: detailMode === 'registrationPeriods' ? '#eff6ff' : '#fff'
+                  }}
+                  disabled={detailLoading}
+                  onClick={() => setDetailMode(detailMode === 'registrationPeriods' ? '' : 'registrationPeriods')}
+                >
+                  Zaradenie
+                </button>
+
+                <button
+                  type="button"
+                  style={{
+                    ...styles.actionButton,
                     borderColor: detailMode === 'entitlements' ? '#93c5fd' : '#e5e7eb',
                     background: detailMode === 'entitlements' ? '#eff6ff' : '#fff'
                   }}
@@ -3507,11 +3585,81 @@ export default function PersonalistaClient({
                       </select>
                     </label>
 
+                    {String(selectedPerson.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW' && (
+                      <>
+                        <label style={styles.field}>
+                          <span>Registracna skupina pri schvaleni</span>
+                          <select
+                            value={profileForm.registrationGroupId}
+                            onChange={event => updateProfileForm('registrationGroupId', event.target.value)}
+                            style={styles.input}
+                            disabled={detailLoading}
+                          >
+                            <option value="">Vyber registracnu skupinu</option>
+                            {registrationGroups.map(group => (
+                              <option key={group.id} value={group.id}>
+                                {group.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label style={styles.field}>
+                          <span>Poznamka k registracnej skupine</span>
+                          <input
+                            value={profileForm.registrationGroupNote}
+                            onChange={event => updateProfileForm('registrationGroupNote', event.target.value)}
+                            style={styles.input}
+                            disabled={detailLoading}
+                            autoComplete="off"
+                          />
+                        </label>
+                      </>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    style={styles.confirmButton}
+                    disabled={detailLoading}
+                    onClick={saveProfile}
+                  >
+                    {detailLoading ? 'Ukladám...' : 'Uložiť detail'}
+                  </button>
+                </div>
+              )}
+
+              {detailMode === 'registrationPeriods' && (
+                <div style={styles.detailEditBox}>
+                  <div style={styles.detailEditTitle}>Zaradenie do registracnych skupin</div>
+
+                  <div style={styles.optionHint}>
+                    Zmena zaradenia nemeni naroky na stravu. Ak treba zmenit stravu, otvor samostatne Upravit naroky.
+                  </div>
+
+                  <div style={styles.detailGroups}>
+                    {selectedPerson.registrationGroupPeriods.length === 0 ? (
+                      <div style={styles.detailGroupRow}>
+                        <b>Bez casoveho zaradenia</b>
+                        <span>{selectedPerson.registrationGroupName || '-'}</span>
+                      </div>
+                    ) : (
+                      selectedPerson.registrationGroupPeriods.map(period => (
+                        <div key={period.id} style={styles.detailGroupRow}>
+                          <b>{period.registrationGroupName || '-'}</b>
+                          <span>{period.validFrom} - {period.validTo || 'bez konca'}</span>
+                          {period.note && <small>{period.note}</small>}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div style={styles.detailEditGrid}>
                     <label style={styles.field}>
                       <span>Registracna skupina</span>
                       <select
-                        value={profileForm.registrationGroupId}
-                        onChange={event => updateProfileForm('registrationGroupId', event.target.value)}
+                        value={registrationPeriodForm.registrationGroupId}
+                        onChange={event => updateRegistrationPeriodForm('registrationGroupId', event.target.value)}
                         style={styles.input}
                         disabled={detailLoading}
                       >
@@ -3525,10 +3673,32 @@ export default function PersonalistaClient({
                     </label>
 
                     <label style={styles.field}>
-                      <span>Poznamka k registracnej skupine</span>
+                      <span>Od</span>
                       <input
-                        value={profileForm.registrationGroupNote}
-                        onChange={event => updateProfileForm('registrationGroupNote', event.target.value)}
+                        type="date"
+                        value={registrationPeriodForm.validFrom}
+                        onChange={event => updateRegistrationPeriodForm('validFrom', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                      />
+                    </label>
+
+                    <label style={styles.field}>
+                      <span>Do</span>
+                      <input
+                        type="date"
+                        value={registrationPeriodForm.validTo}
+                        onChange={event => updateRegistrationPeriodForm('validTo', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                      />
+                    </label>
+
+                    <label style={styles.field}>
+                      <span>Poznamka</span>
+                      <input
+                        value={registrationPeriodForm.note}
+                        onChange={event => updateRegistrationPeriodForm('note', event.target.value)}
                         style={styles.input}
                         disabled={detailLoading}
                         autoComplete="off"
@@ -3536,14 +3706,25 @@ export default function PersonalistaClient({
                     </label>
                   </div>
 
-                  <button
-                    type="button"
-                    style={styles.confirmButton}
-                    disabled={detailLoading}
-                    onClick={saveProfile}
-                  >
-                    {detailLoading ? 'Ukladám...' : 'Uložiť detail'}
-                  </button>
+                  <div style={styles.calendarToolbar}>
+                    <button
+                      type="button"
+                      style={styles.confirmButton}
+                      disabled={detailLoading || !registrationPeriodForm.registrationGroupId}
+                      onClick={saveRegistrationGroupPeriod}
+                    >
+                      {detailLoading ? 'Ukladam...' : 'Ulozit zaradenie'}
+                    </button>
+
+                    <button
+                      type="button"
+                      style={styles.lightButton}
+                      disabled={detailLoading}
+                      onClick={() => setDetailMode('entitlements')}
+                    >
+                      Otvorit naroky
+                    </button>
+                  </div>
                 </div>
               )}
 
