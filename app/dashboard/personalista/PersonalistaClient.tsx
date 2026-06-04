@@ -215,7 +215,7 @@ export default function PersonalistaClient({
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
-  const [selectedPersonId, setSelectedPersonId] = useState(people[0]?.id || '')
+  const [selectedPersonId, setSelectedPersonId] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [createLoading, setCreateLoading] = useState(false)
   const [createMessage, setCreateMessage] = useState('')
@@ -472,7 +472,7 @@ export default function PersonalistaClient({
     }
 
     if (!filteredPeople.some(person => person.id === selectedPersonId)) {
-      setSelectedPersonId(filteredPeople[0].id)
+      setSelectedPersonId('')
     }
   }, [filteredPeople, selectedPersonId])
 
@@ -2013,8 +2013,14 @@ export default function PersonalistaClient({
             </div>
           )}
 
-          <div style={styles.registrationSection}>
-            <div style={styles.optionTitle}>Priradenie ludi do vybranej skupiny</div>
+          <div style={styles.registrationPeopleSection}>
+            <div style={styles.registrationSectionHeader}>
+              <span style={styles.registrationSectionBadgeBlue}>1</span>
+              <div>
+                <b>Priradenie ludi</b>
+                <span>Vyber osoby a prirad ich do aktualnej registracnej skupiny.</span>
+              </div>
+            </div>
 
             <label style={styles.field}>
               <span>Poznamka</span>
@@ -2120,8 +2126,14 @@ export default function PersonalistaClient({
             )}
           </div>
 
-          <div style={styles.registrationSection}>
-            <div style={styles.optionTitle}>Naroky vybranej registracnej skupiny</div>
+          <div style={styles.registrationEntitlementSection}>
+            <div style={styles.registrationSectionHeader}>
+              <span style={styles.registrationSectionBadgeGreen}>2</span>
+              <div>
+                <b>Naroky na stravu</b>
+                <span>Nastav cele obdobie, kalendar alebo zrus naroky vybranej skupine.</span>
+              </div>
+            </div>
 
             <div style={styles.createGrid}>
               <label style={styles.field}>
@@ -2959,7 +2971,12 @@ export default function PersonalistaClient({
         </section>
       )}
 
-      <section style={styles.layoutGrid}>
+      <section
+        style={{
+          ...styles.layoutGrid,
+          ...(!selectedPerson ? styles.layoutGridFull : {})
+        }}
+      >
         <div style={styles.leftColumn}>
           <section style={styles.toolbar}>
             <div style={styles.toolbarHint}>
@@ -3170,14 +3187,23 @@ export default function PersonalistaClient({
           </section>
         </div>
 
-        <aside style={styles.detailPanel}>
-          {selectedPerson ? (
+        {selectedPerson && (
+          <aside style={styles.detailPanel}>
             <>
               <div style={styles.detailHeader}>
                 <div>
                   <div style={styles.detailSmall}>Detail osoby</div>
                   <h2 style={styles.detailTitle}>{selectedPerson.fullName}</h2>
                 </div>
+
+                <button
+                  type="button"
+                  style={styles.collapseDetailButton}
+                  onClick={() => setSelectedPersonId('')}
+                  title="Skryt detail"
+                >
+                  &gt;
+                </button>
 
                 <div style={styles.detailHeaderBadges}>
                   <span
@@ -3951,12 +3977,8 @@ export default function PersonalistaClient({
                 </div>
               )}
             </>
-          ) : (
-            <div style={styles.emptyState}>
-              Vyber osobu zo zoznamu.
-            </div>
-          )}
-        </aside>
+          </aside>
+        )}
       </section>
 
       {qrScannerOpen && (
@@ -4161,6 +4183,9 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     alignItems: 'start'
   },
+  layoutGridFull: {
+    gridTemplateColumns: 'minmax(0, 1fr)'
+  },
   leftColumn: {
     minWidth: 0,
     display: 'grid',
@@ -4355,6 +4380,18 @@ const styles: Record<string, CSSProperties> = {
     gap: 10,
     alignItems: 'flex-start'
   },
+  collapseDetailButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 5,
+    border: '1px solid #d1d5db',
+    background: '#f9fafb',
+    color: '#374151',
+    fontSize: 15,
+    fontWeight: 950,
+    cursor: 'pointer',
+    lineHeight: 1
+  },
   detailSmall: {
     fontSize: 11,
     fontWeight: 900,
@@ -4494,11 +4531,66 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gap: 10
   },
-  dangerSection: {
-    borderTop: '1px solid #fecaca',
-    paddingTop: 10,
+  registrationPeopleSection: {
+    border: '1px solid #bfdbfe',
+    borderLeft: '4px solid #2563eb',
+    borderRadius: 6,
+    background: '#f8fbff',
+    padding: 8,
     display: 'grid',
     gap: 8
+  },
+  registrationEntitlementSection: {
+    border: '1px solid #bbf7d0',
+    borderLeft: '4px solid #16a34a',
+    borderRadius: 6,
+    background: '#f8fff9',
+    padding: 8,
+    display: 'grid',
+    gap: 8
+  },
+  registrationSectionHeader: {
+    display: 'grid',
+    gridTemplateColumns: '26px minmax(0, 1fr)',
+    gap: 8,
+    alignItems: 'start',
+    borderBottom: '1px solid rgba(17,24,39,0.08)',
+    paddingBottom: 6,
+    fontSize: 12,
+    color: '#111827'
+  },
+  registrationSectionBadgeBlue: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#2563eb',
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 950
+  },
+  registrationSectionBadgeGreen: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#16a34a',
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 950
+  },
+  dangerSection: {
+    border: '1px solid #fecaca',
+    borderLeft: '4px solid #dc2626',
+    borderRadius: 6,
+    background: '#fff7f7',
+    padding: 8,
+    display: 'grid',
+    gap: 6
   },
   optionTitle: {
     fontSize: 12,
