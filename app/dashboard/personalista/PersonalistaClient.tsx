@@ -505,6 +505,11 @@ export default function PersonalistaClient({
       return String(person.aktivny || '').toUpperCase() === 'ANO'
     }).length
   }, [people, bulkRegistrationEntitlementsForm.registrationGroupId, bulkRegistrationEntitlementsForm.activeOnly])
+  const selectedBulkRegistrationGroupAllPeopleCount = useMemo(() => {
+    if (!bulkRegistrationEntitlementsForm.registrationGroupId) return 0
+
+    return people.filter(person => person.registrationGroupId === bulkRegistrationEntitlementsForm.registrationGroupId).length
+  }, [people, bulkRegistrationEntitlementsForm.registrationGroupId])
   const selectedRegistrationAssignmentGroup = useMemo(() => {
     return registrationGroups.find(group => group.id === registrationAssignmentForm.registrationGroupId) || null
   }, [registrationGroups, registrationAssignmentForm.registrationGroupId])
@@ -927,6 +932,70 @@ export default function PersonalistaClient({
       }
 
       setBulkRegistrationEntitlementsMessage(json.message || 'Hromadne naroky boli ulozene.')
+      setBulkRegistrationEntitlementsMessageType('ok')
+
+      setTimeout(() => {
+        router.refresh()
+      }, 650)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setBulkRegistrationEntitlementsMessage('Chyba spojenia so serverom: ' + message)
+      setBulkRegistrationEntitlementsMessageType('error')
+    } finally {
+      setBulkRegistrationEntitlementsLoading(false)
+    }
+  }
+
+  const clearAllBulkRegistrationEntitlements = async () => {
+    if (!bulkRegistrationEntitlementsForm.registrationGroupId) {
+      setBulkRegistrationEntitlementsMessage('Vyber registracnu skupinu.')
+      setBulkRegistrationEntitlementsMessageType('error')
+      return
+    }
+
+    const groupName = selectedBulkRegistrationGroup?.name || 'vybrana registracna skupina'
+    const typedGroupName = window.prompt(
+      `Tato akcia vymaze VSETKY existujuce naroky bez ohladu na datum pre ${selectedBulkRegistrationGroupAllPeopleCount} osob v registracnej skupine ${groupName}.\n\nPre potvrdenie napis nazov skupiny: ${groupName}`
+    )
+
+    if (typedGroupName === null) return
+
+    if (typedGroupName.trim() !== groupName.trim()) {
+      setBulkRegistrationEntitlementsMessage('Nazov skupiny nesedi. Vymazanie nebolo spustene.')
+      setBulkRegistrationEntitlementsMessageType('error')
+      return
+    }
+
+    const ok = window.confirm(
+      `Naozaj vymazat vsetky existujuce naroky registracnej skupiny ${groupName}? Tato akcia nepouzije datumove obdobie.`
+    )
+
+    if (!ok) return
+
+    setBulkRegistrationEntitlementsLoading(true)
+    setBulkRegistrationEntitlementsMessage('')
+    setBulkRegistrationEntitlementsMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/registration-groups/entitlements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          registrationGroupId: bulkRegistrationEntitlementsForm.registrationGroupId,
+          mode: 'CLEAR_ALL',
+          activeOnly: false
+        })
+      })
+
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setBulkRegistrationEntitlementsMessage(json.error || 'Vsetky naroky skupiny sa nepodarilo vymazat.')
+        setBulkRegistrationEntitlementsMessageType('error')
+        return
+      }
+
+      setBulkRegistrationEntitlementsMessage(json.message || 'Vsetky naroky skupiny boli vymazane.')
       setBulkRegistrationEntitlementsMessageType('ok')
 
       setTimeout(() => {
@@ -2008,6 +2077,21 @@ export default function PersonalistaClient({
                 ? 'Zrusit naroky skupine'
                 : 'Pridelit naroky skupine'}
           </button>
+
+          <div style={styles.optionBox}>
+            <div style={styles.optionTitle}>Nebezpecna akcia</div>
+            <span style={styles.optionHint}>
+              Vymaze vsetky existujuce naroky v tejto registracnej skupine bez ohladu na datum. Pouzije vsetky osoby v skupine, nielen aktivne.
+            </span>
+            <button
+              type="button"
+              style={styles.dangerButton}
+              disabled={bulkRegistrationEntitlementsLoading || !bulkRegistrationEntitlementsForm.registrationGroupId}
+              onClick={clearAllBulkRegistrationEntitlements}
+            >
+              Vymazat vsetky naroky skupiny ({selectedBulkRegistrationGroupAllPeopleCount})
+            </button>
+          </div>
 
           {bulkRegistrationEntitlementsMessage && (
             <div

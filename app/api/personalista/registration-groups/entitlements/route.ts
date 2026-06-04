@@ -92,11 +92,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Vyber registracnu skupinu.' }, { status: 400 })
     }
 
-    if (mode !== 'SET' && mode !== 'CLEAR') {
+    if (mode !== 'SET' && mode !== 'CLEAR' && mode !== 'CLEAR_ALL') {
       return NextResponse.json({ error: 'Neplatny sposob upravy narokov.' }, { status: 400 })
     }
 
-    if (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom) {
+    const usesDateRange = mode !== 'CLEAR_ALL'
+
+    if (usesDateRange && (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom)) {
       return NextResponse.json({ error: 'Zadaj platne obdobie.' }, { status: 400 })
     }
 
@@ -104,9 +106,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Vyber aspon jeden narok.' }, { status: 400 })
     }
 
-    const dates = dateRange(validFrom, validTo)
+    const dates = usesDateRange ? dateRange(validFrom, validTo) : []
 
-    if (dates.length > 370) {
+    if (usesDateRange && dates.length > 370) {
       return NextResponse.json(
         { error: 'Jedna hromadna uprava narokov moze mat najviac 370 dni.' },
         { status: 400 }
@@ -139,7 +141,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const plannedRows = users.length * dates.length
+    const plannedRows = usesDateRange ? users.length * dates.length : 0
 
     if (plannedRows > 60000) {
       return NextResponse.json(
@@ -154,12 +156,18 @@ export async function POST(req: NextRequest) {
     let insertedRows = 0
 
     for (const userIdChunk of chunk(userIds, 250)) {
-      const { count, error: deleteError } = await supabaseServer
+      let deleteQuery = supabaseServer
         .from('user_food_entitlements')
         .delete({ count: 'exact' })
         .in('user_id', userIdChunk)
-        .gte('datum', validFrom)
-        .lte('datum', validTo)
+
+      if (usesDateRange) {
+        deleteQuery = deleteQuery
+          .gte('datum', validFrom)
+          .lte('datum', validTo)
+      }
+
+      const { count, error: deleteError } = await deleteQuery
 
       if (deleteError) {
         return NextResponse.json({ error: deleteError.message }, { status: 500 })
@@ -193,13 +201,17 @@ export async function POST(req: NextRequest) {
         insertedRows += entitlementRows.length
       }
 
+      if (!usesDateRange) {
+        continue
+      }
+
       const periodRows = userChunk.map(user => ({
         user_id: user.id,
         valid_from: validFrom,
         valid_to: validTo,
         active: mode !== 'CLEAR',
         source: 'MANUAL',
-        note: mode === 'CLEAR'
+        note: mode !== 'SET'
           ? `Hromadne vymazanie narokov podla registracnej skupiny: ${registrationGroup.name}.`
           : `Hromadna uprava narokov podla registracnej skupiny: ${registrationGroup.name}.`,
         created_by: actor.id,
@@ -220,9 +232,11 @@ export async function POST(req: NextRequest) {
       .insert({
         actor_user_id: actor.id,
         target_user_id: null,
-        action: mode === 'CLEAR'
-          ? 'REGISTRATION_GROUP_ENTITLEMENTS_CLEARED'
-          : 'REGISTRATION_GROUP_ENTITLEMENTS_UPDATED',
+        action: mode === 'CLEAR_ALL'
+          ? 'REGISTRATION_GROUP_ENTITLEMENTS_ALL_CLEARED'
+          : mode === 'CLEAR'
+            ? 'REGISTRATION_GROUP_ENTITLEMENTS_CLEARED'
+            : 'REGISTRATION_GROUP_ENTITLEMENTS_UPDATED',
         entity_table: 'registration_groups',
         entity_id: registrationGroupId,
         before_data: {
@@ -232,8 +246,8 @@ export async function POST(req: NextRequest) {
           registration_group_id: registrationGroupId,
           registration_group_name: registrationGroup.name,
           active_only: activeOnly,
-          valid_from: validFrom,
-          valid_to: validTo,
+          valid_from: usesDateRange ? validFrom : null,
+          valid_to: usesDateRange ? validTo : null,
           mode,
           days: dates.length,
           users: users.length,
@@ -241,7 +255,9 @@ export async function POST(req: NextRequest) {
           obed,
           vecera
         },
-        note: mode === 'CLEAR'
+        note: mode === 'CLEAR_ALL'
+          ? `Hromadne vymazanie vsetkych narokov pre registracnu skupinu ${registrationGroup.name}.`
+          : mode === 'CLEAR'
           ? `Hromadne vymazanie narokov pre registracnu skupinu ${registrationGroup.name}.`
           : `Hromadna uprava narokov pre registracnu skupinu ${registrationGroup.name}.`
       })
@@ -252,7 +268,9 @@ export async function POST(req: NextRequest) {
       days: dates.length,
       insertedRows,
       replacedRows,
-      message: mode === 'CLEAR'
+      message: mode === 'CLEAR_ALL'
+        ? `Vsetky existujuce naroky boli vymazane pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
+        : mode === 'CLEAR'
         ? `Naroky boli vymazane pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
         : `Naroky boli nastavene pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
     })
