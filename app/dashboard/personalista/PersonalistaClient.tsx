@@ -72,12 +72,6 @@ function foodLabel(value: string) {
   return 'NEZADANÉ'
 }
 
-function rolePriority(person: PersonItem) {
-  if (person.groups.some(group => group.role === 'MANAGER')) return 0
-  if (person.groups.some(group => group.role === 'POVERENY')) return 1
-  return 2
-}
-
 function isoDateOffset(days: number) {
   const date = new Date()
   date.setDate(date.getDate() + days)
@@ -229,6 +223,12 @@ export default function PersonalistaClient({
   const [registrationGroupLoading, setRegistrationGroupLoading] = useState(false)
   const [registrationGroupMessage, setRegistrationGroupMessage] = useState('')
   const [registrationGroupMessageType, setRegistrationGroupMessageType] = useState<'ok' | 'error' | ''>('')
+  const [printQrOpen, setPrintQrOpen] = useState(false)
+  const [printQrForm, setPrintQrForm] = useState({
+    type: 'REGISTRATION_GROUP',
+    registrationGroupId: '',
+    foodGroupId: ''
+  })
   const [registrationAssignmentOpen, setRegistrationAssignmentOpen] = useState(false)
   const [registrationAssignmentLoading, setRegistrationAssignmentLoading] = useState(false)
   const [registrationAssignmentMessage, setRegistrationAssignmentMessage] = useState('')
@@ -315,10 +315,6 @@ export default function PersonalistaClient({
   const selectedPerson = selectedPersonId
     ? people.find(person => person.id === selectedPersonId) || null
     : null
-  const printGroupHref =
-    groupFilter !== 'ALL' && groupFilter !== 'UNGROUPED'
-      ? `/dashboard/personalista/print-qr?groupId=${encodeURIComponent(groupFilter)}`
-      : ''
   const printPersonHref = selectedPerson
     ? `/dashboard/personalista/print-qr?personId=${encodeURIComponent(selectedPerson.id)}`
     : ''
@@ -362,6 +358,10 @@ export default function PersonalistaClient({
     setDetailMessageType('')
   }, [selectedPerson, fromDate, toDate])
 
+  const peopleOrderById = useMemo(() => {
+    return new Map(people.map((person, index) => [person.id, index]))
+  }, [people])
+
   const filteredPeople = useMemo(() => {
     const q = search.trim().toLowerCase()
 
@@ -399,20 +399,9 @@ export default function PersonalistaClient({
         return !blocked && !pendingReview
       })
       .sort((a, b) => {
-        const aPendingReview = String(a.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
-        const bPendingReview = String(b.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
-        const aBlocked = String(a.aktivny || '').toUpperCase() !== 'ANO'
-        const bBlocked = String(b.aktivny || '').toUpperCase() !== 'ANO'
-
-        if (aPendingReview !== bPendingReview) return aPendingReview ? -1 : 1
-        if (aBlocked !== bBlocked) return aBlocked ? 1 : -1
-
-        const priority = rolePriority(a) - rolePriority(b)
-        if (priority !== 0) return priority
-
-        return a.fullName.localeCompare(b.fullName, 'sk')
+        return (peopleOrderById.get(a.id) ?? 0) - (peopleOrderById.get(b.id) ?? 0)
       })
-  }, [people, search, groupFilter, foodFilter, qrFilter, statusFilter])
+  }, [people, peopleOrderById, search, groupFilter, foodFilter, qrFilter, statusFilter])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -517,6 +506,17 @@ export default function PersonalistaClient({
   const selectedRegistrationAssignmentGroup = useMemo(() => {
     return registrationGroups.find(group => group.id === registrationAssignmentForm.registrationGroupId) || null
   }, [registrationGroups, registrationAssignmentForm.registrationGroupId])
+  const printQrHref = useMemo(() => {
+    if (printQrForm.type === 'REGISTRATION_GROUP') {
+      return printQrForm.registrationGroupId
+        ? `/dashboard/personalista/print-qr?registrationGroupId=${encodeURIComponent(printQrForm.registrationGroupId)}`
+        : ''
+    }
+
+    return printQrForm.foodGroupId
+      ? `/dashboard/personalista/print-qr?groupId=${encodeURIComponent(printQrForm.foodGroupId)}`
+      : ''
+  }, [printQrForm])
   const selectedRegistrationAssignmentPeople = useMemo(() => {
     const selectedIds = new Set(registrationAssignmentForm.userIds)
 
@@ -1647,16 +1647,16 @@ export default function PersonalistaClient({
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <div style={styles.breadcrumb}>Prehľad / Personalista</div>
-          <h1 style={styles.title}>Personalista</h1>
+          <div style={styles.breadcrumb}>Prehlad / Personalistika</div>
+          <h1 style={styles.title}>Personalistika</h1>
           <p style={styles.subtitle}>
-            Ľudia, skupiny, QR stav a nároky na stravu.
+            Posledne upravene osoby, registracne skupiny, QR a naroky.
           </p>
         </div>
 
         <div style={styles.headerActions}>
           <a href="/dashboard/groups" style={styles.lightButton}>
-            Skupiny
+            Stravovacie skupiny
           </a>
 
           <a href="/dashboard" style={styles.darkButton}>
@@ -1674,7 +1674,7 @@ export default function PersonalistaClient({
       <section style={styles.summaryGrid}>
         <div style={styles.summaryCard}>
           <b>{people.length}</b>
-          <span>Ľudí</span>
+          <span>Posledne upraveni</span>
         </div>
 
         <div style={styles.summaryCardRed}>
@@ -1778,20 +1778,104 @@ export default function PersonalistaClient({
           Na schvalenie ({stats.pendingReview})
         </button>
 
-        {printGroupHref ? (
-          <a href={printGroupHref} style={styles.lightButton}>
-            Tlač QR skupiny
-          </a>
-        ) : (
-          <button type="button" style={styles.actionButton} disabled>
-            Tlač QR skupiny
-          </button>
-        )}
+        <button
+          type="button"
+          style={styles.lightButton}
+          onClick={() => setPrintQrOpen(prev => !prev)}
+        >
+          Tlac QR skupiny
+        </button>
 
         <button type="button" style={styles.actionButton} disabled>
           QR/NFC párovanie
         </button>
       </section>
+
+      {printQrOpen && (
+        <section style={styles.createPanel}>
+          <div style={styles.createHeader}>
+            <div>
+              <b>Tlac QR skupiny</b>
+              <span>Vyber, ci chces tlacit QR podla registracnej alebo stravovacej skupiny.</span>
+            </div>
+
+            <button
+              type="button"
+              style={styles.closeButton}
+              onClick={() => setPrintQrOpen(false)}
+            >
+              x
+            </button>
+          </div>
+
+          <div style={styles.createGrid}>
+            <label style={styles.field}>
+              <span>Typ skupiny</span>
+              <select
+                value={printQrForm.type}
+                onChange={event => setPrintQrForm(prev => ({
+                  ...prev,
+                  type: event.target.value
+                }))}
+                style={styles.input}
+              >
+                <option value="REGISTRATION_GROUP">Registracna skupina</option>
+                <option value="FOOD_GROUP">Stravovacia skupina</option>
+              </select>
+            </label>
+
+            {printQrForm.type === 'REGISTRATION_GROUP' ? (
+              <label style={styles.field}>
+                <span>Registracna skupina</span>
+                <select
+                  value={printQrForm.registrationGroupId}
+                  onChange={event => setPrintQrForm(prev => ({
+                    ...prev,
+                    registrationGroupId: event.target.value
+                  }))}
+                  style={styles.input}
+                >
+                  <option value="">Vyber registracnu skupinu</option>
+                  {registrationGroups.map(group => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label style={styles.field}>
+                <span>Stravovacia skupina</span>
+                <select
+                  value={printQrForm.foodGroupId}
+                  onChange={event => setPrintQrForm(prev => ({
+                    ...prev,
+                    foodGroupId: event.target.value
+                  }))}
+                  style={styles.input}
+                >
+                  <option value="">Vyber stravovaciu skupinu</option>
+                  {groups.map(group => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+
+          {printQrHref ? (
+            <a href={printQrHref} style={{ ...styles.confirmButton, textAlign: 'center' }}>
+              Pokracovat na tlac
+            </a>
+          ) : (
+            <button type="button" style={styles.actionButton} disabled>
+              Vyber skupinu
+            </button>
+          )}
+        </section>
+      )}
 
       {registrationGroupsOpen && (
         <section style={styles.createPanel}>
@@ -2669,7 +2753,7 @@ export default function PersonalistaClient({
 
           <div style={styles.createOptionsGrid}>
             <div style={styles.optionBox}>
-              <div style={styles.optionTitle}>Skupiny</div>
+              <div style={styles.optionTitle}>Stravovacie skupiny</div>
               <div style={styles.optionHint}>Ak neoznačíš skupinu, osoba vznikne bez skupiny.</div>
 
               <div style={styles.groupSelectRow}>
@@ -2820,6 +2904,10 @@ export default function PersonalistaClient({
       <section style={styles.layoutGrid}>
         <div style={styles.leftColumn}>
           <section style={styles.toolbar}>
+            <div style={styles.toolbarHint}>
+              Zobrazuje sa poslednych {people.length} upravovanych osob. Pre presne hladanie mimo tohto zoznamu pripravime serverove vyhladavanie.
+            </div>
+
             <input
               value={search}
               onChange={event => setSearch(event.target.value)}
@@ -2833,7 +2921,7 @@ export default function PersonalistaClient({
               onChange={event => setGroupFilter(event.target.value)}
               style={styles.select}
             >
-              <option value="ALL">Všetky skupiny</option>
+              <option value="ALL">Vsetky stravovacie skupiny</option>
               <option value="UNGROUPED">Bez skupiny</option>
               {groups.map(group => (
                 <option key={group.id} value={group.id}>
@@ -2880,8 +2968,8 @@ export default function PersonalistaClient({
             <div style={styles.tableHeader}>
               <span>Osoba</span>
               <span>Stav</span>
-              <span>Reg skupina</span>
-              <span>Skupiny</span>
+              <span>Registracna skupina</span>
+              <span>Stravovacie skupiny</span>
               <span>Strava</span>
               <span>QR</span>
               <span>Nároky</span>
@@ -3099,7 +3187,7 @@ export default function PersonalistaClient({
                 </div>
               </div>
 
-              <div style={styles.sectionTitle}>Skupiny</div>
+              <div style={styles.sectionTitle}>Stravovacie skupiny</div>
 
               <div style={styles.detailGroups}>
                 {selectedPerson.groups.length === 0 && (
@@ -3524,7 +3612,7 @@ export default function PersonalistaClient({
 
               {detailMode === 'groups' && (
                 <div style={styles.detailEditBox}>
-                  <div style={styles.detailEditTitle}>Skupiny osoby</div>
+                  <div style={styles.detailEditTitle}>Stravovacie skupiny osoby</div>
 
                   <div style={styles.detailGroups}>
                     {selectedPerson.groups.length === 0 && (
@@ -3886,13 +3974,13 @@ const styles: Record<string, CSSProperties> = {
   header: {
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 18,
-    padding: 14,
+    borderRadius: 10,
+    padding: 10,
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
-    boxShadow: '0 6px 20px rgba(0,0,0,0.05)'
+    boxShadow: '0 3px 12px rgba(0,0,0,0.04)'
   },
   breadcrumb: {
     fontSize: 11,
@@ -3902,7 +3990,7 @@ const styles: Record<string, CSSProperties> = {
   },
   title: {
     margin: 0,
-    fontSize: 26,
+    fontSize: 22,
     lineHeight: 1.1,
     fontWeight: 950
   },
@@ -3929,87 +4017,87 @@ const styles: Record<string, CSSProperties> = {
   },
   summaryGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-    gap: 10
+    gridTemplateColumns: 'repeat(auto-fit, minmax(118px, 1fr))',
+    gap: 6
   },
   summaryCard: {
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 10,
+    padding: 8,
     display: 'grid',
     gap: 3,
-    boxShadow: '0 5px 16px rgba(0,0,0,0.04)'
+    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
   },
   summaryCardBlue: {
     background: '#eff6ff',
     border: '1px solid #93c5fd',
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 10,
+    padding: 8,
     display: 'grid',
     gap: 3,
     color: '#1d4ed8',
-    boxShadow: '0 5px 16px rgba(0,0,0,0.04)'
+    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
   },
   summaryCardGreen: {
     background: '#ecfdf5',
     border: '1px solid #86efac',
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 10,
+    padding: 8,
     display: 'grid',
     gap: 3,
     color: '#166534',
-    boxShadow: '0 5px 16px rgba(0,0,0,0.04)'
+    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
   },
   summaryCardRed: {
     background: '#fef2f2',
     border: '1px solid #fecaca',
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 10,
+    padding: 8,
     display: 'grid',
     gap: 3,
     color: '#991b1b',
-    boxShadow: '0 5px 16px rgba(0,0,0,0.04)'
+    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
   },
   summaryCardYellow: {
     background: '#fffbeb',
     border: '1px solid #fde68a',
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 10,
+    padding: 8,
     display: 'grid',
     gap: 3,
     color: '#92400e',
-    boxShadow: '0 5px 16px rgba(0,0,0,0.04)'
+    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
   },
   summaryCardOrange: {
     background: '#fff7ed',
     border: '1px solid #fdba74',
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 10,
+    padding: 8,
     display: 'grid',
     gap: 3,
     color: '#9a3412',
-    boxShadow: '0 5px 16px rgba(0,0,0,0.04)'
+    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
   },
   summaryCardPink: {
     background: '#fdf2f8',
     border: '1px solid #f9a8d4',
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 10,
+    padding: 8,
     display: 'grid',
     gap: 3,
     color: '#9d174d',
-    boxShadow: '0 5px 16px rgba(0,0,0,0.04)'
+    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
   },
   actionPanel: {
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 18,
-    padding: 12,
+    borderRadius: 10,
+    padding: 8,
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-    gap: 8,
-    boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
+    gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))',
+    gap: 6,
+    boxShadow: '0 3px 12px rgba(0,0,0,0.03)'
   },
   layoutGrid: {
     display: 'grid',
@@ -4025,12 +4113,18 @@ const styles: Record<string, CSSProperties> = {
   toolbar: {
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 16,
-    padding: 10,
+    borderRadius: 10,
+    padding: 8,
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',
     gap: 8,
-    boxShadow: '0 6px 20px rgba(0,0,0,0.04)'
+    boxShadow: '0 3px 12px rgba(0,0,0,0.03)'
+  },
+  toolbarHint: {
+    gridColumn: '1 / -1',
+    fontSize: 11,
+    fontWeight: 800,
+    color: '#6b7280'
   },
   searchInput: {
     width: '100%',

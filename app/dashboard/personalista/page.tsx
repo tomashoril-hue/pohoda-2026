@@ -19,7 +19,13 @@ function fullName(user: any) {
   return `${user?.meno || ''} ${user?.priezvisko || ''}`.trim()
 }
 
-async function fetchAllMemberships() {
+const INITIAL_PEOPLE_LIMIT = 50
+
+async function fetchMembershipsForUsers(userIds: string[]) {
+  if (userIds.length === 0) {
+    return { rows: [], error: null }
+  }
+
   const rows: any[] = []
   const pageSize = 1000
 
@@ -46,9 +52,12 @@ async function fetchAllMemberships() {
           aktivny,
           registration_group_id,
           registration_group_note,
-          review_status
+          review_status,
+          updated_at,
+          created_at
         )
       `)
+      .in('user_id', userIds)
       .order('created_at', { ascending: true })
       .range(from, from + pageSize - 1)
 
@@ -60,22 +69,17 @@ async function fetchAllMemberships() {
   }
 }
 
-async function fetchAllUsers() {
-  const rows: any[] = []
-  const pageSize = 1000
+async function fetchRecentUsers(limit = INITIAL_PEOPLE_LIMIT) {
+  const { data, error } = await supabaseServer
+    .from('users')
+    .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, registration_group_id, registration_group_note, review_status, updated_at, created_at')
+    .order('updated_at', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(limit)
 
-  for (let from = 0; ; from += pageSize) {
-    const { data, error } = await supabaseServer
-      .from('users')
-      .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, registration_group_id, registration_group_note, review_status')
-      .order('created_at', { ascending: false })
-      .range(from, from + pageSize - 1)
-
-    if (error) return { rows, error }
-
-    rows.push(...(data || []))
-
-    if (!data || data.length < pageSize) return { rows, error: null }
+  return {
+    rows: data || [],
+    error
   }
 }
 
@@ -108,7 +112,34 @@ export default async function PersonalistaPage() {
     redirect('/')
   }
 
-  const { rows: memberships, error } = await fetchAllMemberships()
+  const globalAccess = await getGlobalAccess(user.id)
+  const isGlobalPersonalista = globalAccess.canUsePersonalista
+
+  if (!isGlobalPersonalista) {
+    redirect('/dashboard')
+  }
+
+  const { rows: recentUsers, error: usersError } = await fetchRecentUsers()
+
+  if (usersError) {
+    return (
+      <main style={styles.page}>
+        <section style={styles.errorBox}>
+          {usersError.message}
+        </section>
+      </main>
+    )
+  }
+
+  const allVisibleUsers = recentUsers || []
+  const recentUserIds = allVisibleUsers
+    .map((item: any) => item.id)
+    .filter(Boolean)
+  const recentOrderByUserId = new Map(
+    recentUserIds.map((id: string, index: number) => [id, index])
+  )
+
+  const { rows: memberships, error } = await fetchMembershipsForUsers(recentUserIds)
 
   if (error) {
     return (
@@ -120,38 +151,7 @@ export default async function PersonalistaPage() {
     )
   }
 
-  const allMemberships = memberships || []
-
-  const globalAccess = await getGlobalAccess(user.id)
-  const isGlobalPersonalista = globalAccess.canUsePersonalista
-
-  if (!isGlobalPersonalista) {
-    redirect('/dashboard')
-  }
-
-  const myManageableGroupIds = allMemberships
-    .filter((membership: any) => {
-      const role = String(membership.role || '').toUpperCase()
-      return membership.user_id === user.id && role === 'MANAGER'
-    })
-    .map((membership: any) => membership.group_id)
-
-  const manageableGroupIdSet = new Set(myManageableGroupIds)
-
-  const visibleMemberships = allMemberships.filter((membership: any) => {
-    if (isGlobalPersonalista) return true
-
-    return manageableGroupIdSet.has(membership.group_id)
-  })
-
-  let allVisibleUsers: any[] = []
-
-  if (isGlobalPersonalista) {
-    const { rows: usersData } = await fetchAllUsers()
-
-    allVisibleUsers = usersData || []
-  }
-
+  const visibleMemberships = memberships || []
   const groupsById = new Map<string, any>()
   const { data: registrationGroupsData } = await supabaseServer
     .from('registration_groups')
@@ -163,34 +163,19 @@ export default async function PersonalistaPage() {
     registrationGroups.map((group: any) => [group.id, group])
   )
 
-  visibleMemberships.forEach((membership: any) => {
-    const group = Array.isArray(membership.groups)
-      ? membership.groups[0]
-      : membership.groups
+  const { data: allGroupsData } = await supabaseServer
+    .from('groups')
+    .select('id, name')
+    .order('name', { ascending: true })
 
-    if (group?.id) {
-      groupsById.set(group.id, {
-        id: group.id,
-        name: group.name || 'Skupina bez nazvu'
-      })
-    }
-  })
+  ;(allGroupsData || []).forEach((group: any) => {
+    if (!group?.id) return
 
-  if (isGlobalPersonalista) {
-    const { data: allGroupsData } = await supabaseServer
-      .from('groups')
-      .select('id, name')
-      .order('name', { ascending: true })
-
-    ;(allGroupsData || []).forEach((group: any) => {
-      if (!group?.id) return
-
-      groupsById.set(group.id, {
-        id: group.id,
-        name: group.name || 'Skupina bez nazvu'
-      })
+    groupsById.set(group.id, {
+      id: group.id,
+      name: group.name || 'Skupina bez nazvu'
     })
-  }
+  })
 
   const membershipUserIds = visibleMemberships
     .map((membership: any) => membership.user_id)
@@ -377,6 +362,11 @@ export default async function PersonalistaPage() {
   })
 
   const people = Array.from(personMap.values()).sort((a, b) => {
+    const aOrder = recentOrderByUserId.get(a.id) ?? Number.MAX_SAFE_INTEGER
+    const bOrder = recentOrderByUserId.get(b.id) ?? Number.MAX_SAFE_INTEGER
+
+    if (aOrder !== bOrder) return aOrder - bOrder
+
     const aManager = a.groups.some((group: any) => group.role === 'MANAGER')
     const bManager = b.groups.some((group: any) => group.role === 'MANAGER')
 

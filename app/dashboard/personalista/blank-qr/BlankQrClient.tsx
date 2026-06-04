@@ -117,7 +117,7 @@ export default function BlankQrClient() {
 
       <section className="no-print" style={styles.panel}>
         <div>
-          <div style={styles.breadcrumb}>Personalista / Prázdne QR</div>
+          <div style={styles.breadcrumb}>Personalistika / Prázdne QR</div>
           <h1 style={styles.title}>Generovať prázdne QR</h1>
           <p style={styles.subtitle}>
             Rezervuje voľné QR z tabuľky qr_codes a označí ich ako VYTLACENY. Hodnota QR sa na papier netlačí.

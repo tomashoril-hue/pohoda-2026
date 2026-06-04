@@ -28,7 +28,7 @@ async function activeQrByUser(userIds: string[]) {
 export default async function PersonalistaPrintQrPage({
   searchParams
 }: {
-  searchParams: Promise<{ groupId?: string; personId?: string }>
+  searchParams: Promise<{ groupId?: string; personId?: string; registrationGroupId?: string }>
 }) {
   const actor = await getCurrentUser()
 
@@ -39,8 +39,9 @@ export default async function PersonalistaPrintQrPage({
   const params = await searchParams
   const groupId = String(params.groupId || '').trim()
   const personId = String(params.personId || '').trim()
+  const registrationGroupId = String(params.registrationGroupId || '').trim()
 
-  if (!groupId && !personId) {
+  if (!groupId && !personId && !registrationGroupId) {
     redirect('/dashboard/personalista')
   }
 
@@ -95,6 +96,55 @@ export default async function PersonalistaPrintQrPage({
           food: profile.typ_stravy || '',
           qrCode
         }] : []}
+      />
+    )
+  }
+
+  if (registrationGroupId) {
+    const { data: registrationGroup } = await supabaseServer
+      .from('registration_groups')
+      .select('id, name, active')
+      .eq('id', registrationGroupId)
+      .maybeSingle()
+
+    if (!registrationGroup || registrationGroup.active === false) {
+      redirect('/dashboard/personalista')
+    }
+
+    const { data: users } = await supabaseServer
+      .from('users')
+      .select('id, meno, priezvisko, email, typ_stravy')
+      .eq('registration_group_id', registrationGroupId)
+      .order('priezvisko', { ascending: true })
+      .order('meno', { ascending: true })
+
+    const userIds = (users || [])
+      .map((profile: any) => profile.id)
+      .filter(Boolean)
+
+    const qrMap = await activeQrByUser(userIds)
+
+    const items = (users || [])
+      .map((profile: any) => {
+        const qrCode = qrMap.get(profile.id)
+
+        if (!qrCode) return null
+
+        return {
+          userId: profile.id,
+          fullName: fullName(profile) || profile.email || 'Bez mena',
+          groupName: registrationGroup.name || 'Registracna skupina',
+          food: profile.typ_stravy || '',
+          qrCode
+        }
+      })
+      .filter(Boolean)
+      .sort((a: any, b: any) => a.fullName.localeCompare(b.fullName, 'sk'))
+
+    return (
+      <PrintQrClient
+        title={`QR registracna skupina - ${registrationGroup.name || 'Bez nazvu'}`}
+        items={items as any}
       />
     )
   }

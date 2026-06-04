@@ -339,7 +339,7 @@ export default function ImportClient({
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <div style={styles.breadcrumb}>Personalista / Import</div>
+          <div style={styles.breadcrumb}>Personalistika / Import</div>
           <h1 style={styles.title}>Import Excel/CSV</h1>
           <p style={styles.subtitle}>
             Excel ulož ako CSV. Podporované stĺpce: meno, priezvisko, email, telefon, strava, skupina, od, do, obed, vecera, qr.
@@ -472,14 +472,14 @@ export default function ImportClient({
       <section style={styles.tableCard}>
         {rows.length === 0 ? (
           <div style={styles.emptyState}>
-            Vyber CSV súbor. Skupiny v stĺpci skupina oddeľuj znakom |.
+            Vyber CSV subor. Stravovacie skupiny v stlpci skupina oddeluj znakom |.
           </div>
         ) : (
           <>
             <div style={styles.tableHeader}>
               <span>Riadok</span>
               <span>Osoba</span>
-              <span>Skupiny</span>
+              <span>Stravovacie skupiny</span>
               <span>Nárok</span>
               <span>Stav</span>
             </div>

@@ -19,7 +19,7 @@ export default async function GoogleSheetsPage() {
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <div style={styles.breadcrumb}>Personalista / Google Sheets</div>
+          <div style={styles.breadcrumb}>Personalistika / Google Sheets</div>
           <h1 style={styles.title}>Google Sheets napojenie</h1>
           <p style={styles.subtitle}>
             Tabulka vola API aplikacie cez Apps Script a vysledky zapisuje spat do riadkov.
