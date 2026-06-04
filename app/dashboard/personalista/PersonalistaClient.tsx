@@ -238,6 +238,7 @@ export default function PersonalistaClient({
   const [bulkRegistrationEntitlementsLoading, setBulkRegistrationEntitlementsLoading] = useState(false)
   const [bulkRegistrationEntitlementsMessage, setBulkRegistrationEntitlementsMessage] = useState('')
   const [bulkRegistrationEntitlementsMessageType, setBulkRegistrationEntitlementsMessageType] = useState<'ok' | 'error' | ''>('')
+  const [bulkRegistrationCalendarClaims, setBulkRegistrationCalendarClaims] = useState<Record<string, CalendarClaim>>({})
   const [detailMode, setDetailMode] = useState<'profile' | 'entitlements' | 'groups' | 'roles' | 'qr' | 'nfc' | ''>('')
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailMessage, setDetailMessage] = useState('')
@@ -273,7 +274,7 @@ export default function PersonalistaClient({
   })
   const [bulkRegistrationEntitlementsForm, setBulkRegistrationEntitlementsForm] = useState({
     registrationGroupId: '',
-    mode: 'SET',
+    mode: 'SET' as 'SET' | 'CLEAR' | 'DATES',
     validFrom: fromDate,
     validTo: toDate,
     obed: true,
@@ -488,6 +489,9 @@ export default function PersonalistaClient({
   const entitlementCalendarDates = useMemo(() => {
     return dateRangeIso(entitlementForm.validFrom, entitlementForm.validTo)
   }, [entitlementForm.validFrom, entitlementForm.validTo])
+  const bulkRegistrationCalendarDates = useMemo(() => {
+    return dateRangeIso(bulkRegistrationEntitlementsForm.validFrom, bulkRegistrationEntitlementsForm.validTo)
+  }, [bulkRegistrationEntitlementsForm.validFrom, bulkRegistrationEntitlementsForm.validTo])
 
   const entitlementByDate = useMemo(() => {
     return new Map((selectedPerson?.entitlements || []).map(item => [item.datum, item]))
@@ -727,6 +731,77 @@ export default function PersonalistaClient({
     }))
   }
 
+  const selectManagedRegistrationGroup = (groupId: string) => {
+    setBulkRegistrationEntitlementsForm(prev => ({
+      ...prev,
+      registrationGroupId: groupId
+    }))
+    setRegistrationAssignmentForm(prev => ({
+      ...prev,
+      registrationGroupId: groupId
+    }))
+    setBulkRegistrationEntitlementsMessage('')
+    setBulkRegistrationEntitlementsMessageType('')
+    setRegistrationAssignmentMessage('')
+    setRegistrationAssignmentMessageType('')
+  }
+
+  const toggleBulkRegistrationCalendarClaim = (date: string, meal: 'obed' | 'vecera') => {
+    setBulkRegistrationCalendarClaims(prev => {
+      const current = prev[date] || { obed: false, vecera: false }
+      const next = {
+        ...current,
+        [meal]: !current[meal]
+      }
+
+      if (!next.obed && !next.vecera) {
+        const copy = { ...prev }
+        delete copy[date]
+        return copy
+      }
+
+      return {
+        ...prev,
+        [date]: next
+      }
+    })
+  }
+
+  const setBulkRegistrationCalendarMealForAll = (meal: 'obed' | 'vecera', active: boolean) => {
+    setBulkRegistrationCalendarClaims(prev => {
+      const next = { ...prev }
+
+      bulkRegistrationCalendarDates.forEach(date => {
+        const current = next[date] || { obed: false, vecera: false }
+        const updated = {
+          ...current,
+          [meal]: active
+        }
+
+        if (updated.obed || updated.vecera) {
+          next[date] = updated
+        } else {
+          delete next[date]
+        }
+      })
+
+      return next
+    })
+  }
+
+  const clearBulkRegistrationCalendarSelection = () => {
+    setBulkRegistrationCalendarClaims(prev => {
+      const visibleDates = new Set(bulkRegistrationCalendarDates)
+      const next = { ...prev }
+
+      visibleDates.forEach(date => {
+        delete next[date]
+      })
+
+      return next
+    })
+  }
+
   const updateRegistrationAssignmentForm = (key: string, value: any) => {
     setRegistrationAssignmentForm(prev => ({
       ...prev,
@@ -869,6 +944,9 @@ export default function PersonalistaClient({
       setRegistrationGroupName('')
       setRegistrationGroupMessage(json.message || 'Registracna skupina bola vytvorena.')
       setRegistrationGroupMessageType('ok')
+      if (json.group?.id) {
+        selectManagedRegistrationGroup(json.group.id)
+      }
       router.refresh()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -904,10 +982,28 @@ export default function PersonalistaClient({
       return
     }
 
+    const dayClaims = Object.entries(bulkRegistrationCalendarClaims)
+      .filter(([date]) => bulkRegistrationCalendarDates.includes(date))
+      .map(([datum, claim]) => ({
+        datum,
+        obed: claim.obed,
+        vecera: claim.vecera
+      }))
+      .filter(item => item.obed || item.vecera)
+      .sort((a, b) => a.datum.localeCompare(b.datum))
+
+    if (bulkRegistrationEntitlementsForm.mode === 'DATES' && dayClaims.length === 0) {
+      setBulkRegistrationEntitlementsMessage('Vyber aspon jeden den v kalendari.')
+      setBulkRegistrationEntitlementsMessageType('error')
+      return
+    }
+
     const groupName = selectedBulkRegistrationGroup?.name || 'vybrana registracna skupina'
     const confirmMessage = bulkRegistrationEntitlementsForm.mode === 'CLEAR'
       ? `Vymazu sa naroky v obdobi ${bulkRegistrationEntitlementsForm.validFrom} - ${bulkRegistrationEntitlementsForm.validTo} pre ${selectedBulkRegistrationGroupPeopleCount} osob v registracnej skupine ${groupName}. Pokracovat?`
-      : `Prepise sa obdobie ${bulkRegistrationEntitlementsForm.validFrom} - ${bulkRegistrationEntitlementsForm.validTo} pre ${selectedBulkRegistrationGroupPeopleCount} osob v registracnej skupine ${groupName}. Pokracovat?`
+      : bulkRegistrationEntitlementsForm.mode === 'DATES'
+        ? `Podla kalendara sa prepise obdobie ${bulkRegistrationEntitlementsForm.validFrom} - ${bulkRegistrationEntitlementsForm.validTo} pre ${selectedBulkRegistrationGroupPeopleCount} osob v registracnej skupine ${groupName}. Pokracovat?`
+        : `Prepise sa obdobie ${bulkRegistrationEntitlementsForm.validFrom} - ${bulkRegistrationEntitlementsForm.validTo} pre ${selectedBulkRegistrationGroupPeopleCount} osob v registracnej skupine ${groupName}. Pokracovat?`
     const ok = window.confirm(confirmMessage)
 
     if (!ok) return
@@ -920,7 +1016,10 @@ export default function PersonalistaClient({
       const res = await fetch('/api/personalista/registration-groups/entitlements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bulkRegistrationEntitlementsForm)
+        body: JSON.stringify({
+          ...bulkRegistrationEntitlementsForm,
+          dayClaims
+        })
       })
 
       const json = await res.json().catch(() => ({}))
@@ -1674,32 +1773,6 @@ export default function PersonalistaClient({
         <button
           type="button"
           style={styles.lightButton}
-          disabled={!canManage}
-          onClick={() => {
-            setRegistrationAssignmentOpen(prev => !prev)
-            setRegistrationAssignmentMessage('')
-            setRegistrationAssignmentMessageType('')
-          }}
-        >
-          Priradit reg. skupinu
-        </button>
-
-        <button
-          type="button"
-          style={styles.lightButton}
-          disabled={!canManage}
-          onClick={() => {
-            setBulkRegistrationEntitlementsOpen(prev => !prev)
-            setBulkRegistrationEntitlementsMessage('')
-            setBulkRegistrationEntitlementsMessageType('')
-          }}
-        >
-          Naroky podla reg. skupiny
-        </button>
-
-        <button
-          type="button"
-          style={styles.lightButton}
           onClick={() => setStatusFilter('PENDING_REVIEW')}
         >
           Na schvalenie ({stats.pendingReview})
@@ -1725,7 +1798,7 @@ export default function PersonalistaClient({
           <div style={styles.createHeader}>
             <div>
               <b>Registracne skupiny</b>
-              <span>Samostatny administrativny zoznam pre registracie a reporty.</span>
+              <span>Vyber skupinu a spravuj ludi, naroky aj vytvorenie novej skupiny na jednom mieste.</span>
             </div>
 
             <button
@@ -1738,16 +1811,33 @@ export default function PersonalistaClient({
             </button>
           </div>
 
-          <div style={styles.registrationGroupList}>
-            {registrationGroups.length === 0 ? (
-              <span style={styles.emptyGroupSelection}>Zatial bez registracnych skupin</span>
-            ) : (
-              registrationGroups.map(group => (
-                <span key={group.id} style={styles.selectedGroupPill}>
-                  {group.name}
-                </span>
-              ))
-            )}
+          <div style={styles.createGrid}>
+            <label style={styles.field}>
+              <span>Vybrana registracna skupina</span>
+              <select
+                value={bulkRegistrationEntitlementsForm.registrationGroupId}
+                onChange={event => selectManagedRegistrationGroup(event.target.value)}
+                style={styles.input}
+                disabled={registrationGroupLoading || registrationAssignmentLoading || bulkRegistrationEntitlementsLoading}
+              >
+                <option value="">Vyber registracnu skupinu</option>
+                {registrationGroups.map(group => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div style={styles.optionBox}>
+              <div style={styles.optionTitle}>Prehlad</div>
+              <span style={styles.optionHint}>
+                Registracnych skupin: {registrationGroups.length}
+              </span>
+              <span style={styles.optionHint}>
+                Osob vo vybranej skupine: {selectedBulkRegistrationGroupAllPeopleCount}
+              </span>
+            </div>
           </div>
 
           <div style={styles.groupSelectRow}>
@@ -1780,6 +1870,352 @@ export default function PersonalistaClient({
               {registrationGroupMessage}
             </div>
           )}
+
+          <div style={styles.registrationSection}>
+            <div style={styles.optionTitle}>Priradenie ludi do vybranej skupiny</div>
+
+            <label style={styles.field}>
+              <span>Poznamka</span>
+              <input
+                value={registrationAssignmentForm.registrationGroupNote}
+                onChange={event => updateRegistrationAssignmentForm('registrationGroupNote', event.target.value)}
+                style={styles.input}
+                placeholder="Volitelne"
+                disabled={registrationAssignmentLoading || !registrationAssignmentForm.registrationGroupId}
+              />
+            </label>
+
+            <div style={styles.optionTitle}>
+              Vybrane osoby ({registrationAssignmentForm.userIds.length})
+            </div>
+
+            {selectedRegistrationAssignmentPeople.length === 0 ? (
+              <span style={styles.emptyGroupSelection}>Zatial nikto vybrany</span>
+            ) : (
+              <div style={styles.selectedGroupList}>
+                {selectedRegistrationAssignmentPeople.map(person => (
+                  <span key={person.id} style={styles.selectedGroupPill}>
+                    {person.fullName || person.email || 'Bez mena'}
+                    <button
+                      type="button"
+                      style={styles.removePillButton}
+                      disabled={registrationAssignmentLoading}
+                      onClick={() => toggleRegistrationAssignmentPerson(person.id)}
+                    >
+                      x
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {registrationAssignmentForm.userIds.length > 0 && (
+              <button
+                type="button"
+                style={styles.tinyTextButton}
+                disabled={registrationAssignmentLoading}
+                onClick={clearRegistrationAssignmentPeople}
+              >
+                Zrusit vyber
+              </button>
+            )}
+
+            <label style={styles.field}>
+              <span>Hladat osobu</span>
+              <input
+                value={registrationAssignmentSearch}
+                onChange={event => setRegistrationAssignmentSearch(event.target.value)}
+                style={styles.input}
+                placeholder="Meno, email alebo cast nazvu skupiny"
+                disabled={registrationAssignmentLoading || !registrationAssignmentForm.registrationGroupId}
+              />
+            </label>
+
+            <div style={styles.personCheckList}>
+              {registrationAssignmentFilteredPeople.length === 0 ? (
+                <span style={styles.emptyGroupSelection}>Nenasli sa ziadne osoby</span>
+              ) : (
+                registrationAssignmentFilteredPeople.map(person => (
+                  <label key={person.id} style={styles.personCheckRow}>
+                    <input
+                      type="checkbox"
+                      checked={registrationAssignmentForm.userIds.includes(person.id)}
+                      onChange={() => toggleRegistrationAssignmentPerson(person.id)}
+                      disabled={registrationAssignmentLoading || !registrationAssignmentForm.registrationGroupId}
+                      style={styles.checkbox}
+                    />
+                    <span style={styles.personCheckText}>
+                      <b>{person.fullName || 'Bez mena'}</b>
+                      <small>
+                        {person.email || 'bez emailu'} - {person.registrationGroupName || 'bez reg. skupiny'}
+                      </small>
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+
+            <button
+              type="button"
+              style={styles.confirmButton}
+              disabled={registrationAssignmentLoading || !registrationAssignmentForm.registrationGroupId}
+              onClick={saveRegistrationAssignment}
+            >
+              {registrationAssignmentLoading ? 'Ukladam...' : 'Priradit vybranych'}
+            </button>
+
+            {registrationAssignmentMessage && (
+              <div
+                style={{
+                  ...styles.message,
+                  background: registrationAssignmentMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                  color: registrationAssignmentMessageType === 'ok' ? '#166534' : '#991b1b',
+                  borderColor: registrationAssignmentMessageType === 'ok' ? '#86efac' : '#fecaca'
+                }}
+              >
+                {registrationAssignmentMessage}
+              </div>
+            )}
+          </div>
+
+          <div style={styles.registrationSection}>
+            <div style={styles.optionTitle}>Naroky vybranej registracnej skupiny</div>
+
+            <div style={styles.createGrid}>
+              <label style={styles.field}>
+                <span>Od</span>
+                <input
+                  type="date"
+                  value={bulkRegistrationEntitlementsForm.validFrom}
+                  onChange={event => updateBulkRegistrationEntitlementsForm('validFrom', event.target.value)}
+                  style={styles.input}
+                  disabled={bulkRegistrationEntitlementsLoading}
+                />
+              </label>
+
+              <label style={styles.field}>
+                <span>Do</span>
+                <input
+                  type="date"
+                  value={bulkRegistrationEntitlementsForm.validTo}
+                  onChange={event => updateBulkRegistrationEntitlementsForm('validTo', event.target.value)}
+                  style={styles.input}
+                  disabled={bulkRegistrationEntitlementsLoading}
+                />
+              </label>
+            </div>
+
+            <div style={styles.createOptionsGrid}>
+              <div style={styles.optionBox}>
+                <div style={styles.optionTitle}>Rezim upravy</div>
+
+                <label style={styles.checkRow}>
+                  <input
+                    type="radio"
+                    name="bulkRegistrationEntitlementsModeUnified"
+                    checked={bulkRegistrationEntitlementsForm.mode === 'SET'}
+                    onChange={() => updateBulkRegistrationEntitlementsForm('mode', 'SET')}
+                    disabled={bulkRegistrationEntitlementsLoading}
+                    style={styles.checkbox}
+                  />
+                  <span>Nastavit cele obdobie</span>
+                </label>
+
+                <label style={styles.checkRow}>
+                  <input
+                    type="radio"
+                    name="bulkRegistrationEntitlementsModeUnified"
+                    checked={bulkRegistrationEntitlementsForm.mode === 'DATES'}
+                    onChange={() => updateBulkRegistrationEntitlementsForm('mode', 'DATES')}
+                    disabled={bulkRegistrationEntitlementsLoading}
+                    style={styles.checkbox}
+                  />
+                  <span>Upravit podla kalendara</span>
+                </label>
+
+                <label style={styles.checkRow}>
+                  <input
+                    type="radio"
+                    name="bulkRegistrationEntitlementsModeUnified"
+                    checked={bulkRegistrationEntitlementsForm.mode === 'CLEAR'}
+                    onChange={() => updateBulkRegistrationEntitlementsForm('mode', 'CLEAR')}
+                    disabled={bulkRegistrationEntitlementsLoading}
+                    style={styles.checkbox}
+                  />
+                  <span>Zrusit naroky v obdobi</span>
+                </label>
+              </div>
+
+              <div style={styles.optionBox}>
+                <div style={styles.optionTitle}>Strava pre cele obdobie</div>
+
+                <label style={styles.checkRow}>
+                  <input
+                    type="checkbox"
+                    checked={bulkRegistrationEntitlementsForm.obed}
+                    onChange={event => updateBulkRegistrationEntitlementsForm('obed', event.target.checked)}
+                    disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationEntitlementsForm.mode !== 'SET'}
+                    style={styles.checkbox}
+                  />
+                  <span>Obed</span>
+                </label>
+
+                <label style={styles.checkRow}>
+                  <input
+                    type="checkbox"
+                    checked={bulkRegistrationEntitlementsForm.vecera}
+                    onChange={event => updateBulkRegistrationEntitlementsForm('vecera', event.target.checked)}
+                    disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationEntitlementsForm.mode !== 'SET'}
+                    style={styles.checkbox}
+                  />
+                  <span>Vecera</span>
+                </label>
+              </div>
+
+              <div style={styles.optionBox}>
+                <div style={styles.optionTitle}>Osoby</div>
+
+                <label style={styles.checkRow}>
+                  <input
+                    type="checkbox"
+                    checked={bulkRegistrationEntitlementsForm.activeOnly}
+                    onChange={event => updateBulkRegistrationEntitlementsForm('activeOnly', event.target.checked)}
+                    disabled={bulkRegistrationEntitlementsLoading}
+                    style={styles.checkbox}
+                  />
+                  <span>Iba aktivne osoby</span>
+                </label>
+
+                <span style={styles.optionHint}>
+                  Vyber teraz obsahuje {selectedBulkRegistrationGroupPeopleCount} osob.
+                </span>
+              </div>
+            </div>
+
+            {bulkRegistrationEntitlementsForm.mode === 'DATES' && (
+              <>
+                <div style={styles.calendarToolbar}>
+                  <button
+                    type="button"
+                    style={styles.lightButton}
+                    disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationCalendarDates.length === 0}
+                    onClick={() => setBulkRegistrationCalendarMealForAll('obed', true)}
+                  >
+                    Obed vsetky dni
+                  </button>
+
+                  <button
+                    type="button"
+                    style={styles.lightButton}
+                    disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationCalendarDates.length === 0}
+                    onClick={() => setBulkRegistrationCalendarMealForAll('vecera', true)}
+                  >
+                    Vecera vsetky dni
+                  </button>
+
+                  <button
+                    type="button"
+                    style={styles.lightButton}
+                    disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationCalendarDates.length === 0}
+                    onClick={clearBulkRegistrationCalendarSelection}
+                  >
+                    Zrusit vyber dni
+                  </button>
+                </div>
+
+                <div style={styles.entitlementCalendar}>
+                  {bulkRegistrationCalendarDates.length === 0 ? (
+                    <span style={styles.emptyGroupSelection}>Vyber platne obdobie</span>
+                  ) : (
+                    bulkRegistrationCalendarDates.map(date => {
+                      const claim = bulkRegistrationCalendarClaims[date] || { obed: false, vecera: false }
+                      const selected = claim.obed || claim.vecera
+
+                      return (
+                        <div
+                          key={date}
+                          style={{
+                            ...styles.calendarDay,
+                            ...(selected ? styles.calendarDaySelected : {})
+                          }}
+                        >
+                          <b>{shortDateLabel(date)}</b>
+                          <div style={styles.calendarMealButtons}>
+                            <button
+                              type="button"
+                              style={{
+                                ...styles.calendarMealButton,
+                                ...(claim.obed ? styles.calendarMealButtonActive : {})
+                              }}
+                              disabled={bulkRegistrationEntitlementsLoading}
+                              onClick={() => toggleBulkRegistrationCalendarClaim(date, 'obed')}
+                            >
+                              O
+                            </button>
+
+                            <button
+                              type="button"
+                              style={{
+                                ...styles.calendarMealButton,
+                                ...(claim.vecera ? styles.calendarMealButtonActive : {})
+                              }}
+                              disabled={bulkRegistrationEntitlementsLoading}
+                              onClick={() => toggleBulkRegistrationCalendarClaim(date, 'vecera')}
+                            >
+                              V
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </>
+            )}
+
+            <button
+              type="button"
+              style={styles.confirmButton}
+              disabled={bulkRegistrationEntitlementsLoading || !bulkRegistrationEntitlementsForm.registrationGroupId}
+              onClick={saveBulkRegistrationEntitlements}
+            >
+              {bulkRegistrationEntitlementsLoading
+                ? 'Ukladam...'
+                : bulkRegistrationEntitlementsForm.mode === 'CLEAR'
+                  ? 'Zrusit naroky v obdobi'
+                  : bulkRegistrationEntitlementsForm.mode === 'DATES'
+                    ? 'Ulozit kalendar skupiny'
+                    : 'Pridelit naroky skupine'}
+            </button>
+
+            <div style={styles.dangerSection}>
+              <div style={styles.optionTitle}>Nebezpecna akcia</div>
+              <span style={styles.optionHint}>
+                Vymaze vsetky existujuce naroky v tejto registracnej skupine bez ohladu na datum. Pouzije vsetky osoby v skupine, nielen aktivne.
+              </span>
+              <button
+                type="button"
+                style={styles.dangerButton}
+                disabled={bulkRegistrationEntitlementsLoading || !bulkRegistrationEntitlementsForm.registrationGroupId}
+                onClick={clearAllBulkRegistrationEntitlements}
+              >
+                Vymazat vsetky naroky skupiny ({selectedBulkRegistrationGroupAllPeopleCount})
+              </button>
+            </div>
+
+            {bulkRegistrationEntitlementsMessage && (
+              <div
+                style={{
+                  ...styles.message,
+                  background: bulkRegistrationEntitlementsMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                  color: bulkRegistrationEntitlementsMessageType === 'ok' ? '#166534' : '#991b1b',
+                  borderColor: bulkRegistrationEntitlementsMessageType === 'ok' ? '#86efac' : '#fecaca'
+                }}
+              >
+                {bulkRegistrationEntitlementsMessage}
+              </div>
+            )}
+          </div>
         </section>
       )}
 
@@ -3898,6 +4334,18 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gap: 8,
     background: '#f9fafb'
+  },
+  registrationSection: {
+    borderTop: '1px solid #e5e7eb',
+    paddingTop: 12,
+    display: 'grid',
+    gap: 10
+  },
+  dangerSection: {
+    borderTop: '1px solid #fecaca',
+    paddingTop: 10,
+    display: 'grid',
+    gap: 8
   },
   optionTitle: {
     fontSize: 12,

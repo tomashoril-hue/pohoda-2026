@@ -36,6 +36,12 @@ function chunk<T>(items: T[], size: number) {
   return chunks
 }
 
+type DayClaim = {
+  datum: string
+  obed: boolean
+  vecera: boolean
+}
+
 async function fetchUsersByRegistrationGroup(registrationGroupId: string, activeOnly: boolean) {
   const rows: any[] = []
   const pageSize = 1000
@@ -87,12 +93,33 @@ export async function POST(req: NextRequest) {
     const vecera = body.vecera === true
     const mode = cleanText(body.mode).toUpperCase() || 'SET'
     const activeOnly = body.activeOnly !== false
+    const rawDayClaims: DayClaim[] = Array.isArray(body.dayClaims)
+      ? body.dayClaims
+        .map((item: any) => ({
+          datum: cleanText(item?.datum),
+          obed: !!item?.obed,
+          vecera: !!item?.vecera
+        }))
+        .filter((item: DayClaim) => isIsoDate(item.datum) && (item.obed || item.vecera))
+        .sort((a: DayClaim, b: DayClaim) => a.datum.localeCompare(b.datum))
+      : []
+    const dayClaims = Array.from(
+      rawDayClaims.reduce((map, item) => {
+        const existing = map.get(item.datum) || { datum: item.datum, obed: false, vecera: false }
+        map.set(item.datum, {
+          datum: item.datum,
+          obed: existing.obed || item.obed,
+          vecera: existing.vecera || item.vecera
+        })
+        return map
+      }, new Map<string, DayClaim>()).values()
+    ).sort((a, b) => a.datum.localeCompare(b.datum))
 
     if (!registrationGroupId) {
       return NextResponse.json({ error: 'Vyber registracnu skupinu.' }, { status: 400 })
     }
 
-    if (mode !== 'SET' && mode !== 'CLEAR' && mode !== 'CLEAR_ALL') {
+    if (mode !== 'SET' && mode !== 'CLEAR' && mode !== 'CLEAR_ALL' && mode !== 'DATES') {
       return NextResponse.json({ error: 'Neplatny sposob upravy narokov.' }, { status: 400 })
     }
 
@@ -106,7 +133,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Vyber aspon jeden narok.' }, { status: 400 })
     }
 
+    if (mode === 'DATES' && dayClaims.length === 0) {
+      return NextResponse.json({ error: 'Vyber aspon jeden den v kalendari.' }, { status: 400 })
+    }
+
     const dates = usesDateRange ? dateRange(validFrom, validTo) : []
+    const selectedDateSet = new Set(dates)
+    const safeDayClaims = mode === 'DATES'
+      ? dayClaims.filter(item => selectedDateSet.has(item.datum))
+      : []
+
+    if (mode === 'DATES' && safeDayClaims.length === 0) {
+      return NextResponse.json(
+        { error: 'Vybrane dni nie su vo vybranom obdobi.' },
+        { status: 400 }
+      )
+    }
 
     if (usesDateRange && dates.length > 370) {
       return NextResponse.json(
@@ -177,8 +219,20 @@ export async function POST(req: NextRequest) {
     }
 
     for (const userChunk of chunk(users, 100)) {
-      if (mode === 'SET') {
-        const entitlementRows = userChunk.flatMap(user => dates.map(datum => ({
+      if (mode === 'SET' || mode === 'DATES') {
+        const entitlementRows = mode === 'DATES'
+          ? userChunk.flatMap(user => safeDayClaims.map(item => ({
+            user_id: user.id,
+            datum: item.datum,
+            obed: item.obed,
+            vecera: item.vecera,
+            source: 'PERSONALISTA',
+            note: `Hromadna kalendarova uprava narokov podla registracnej skupiny: ${registrationGroup.name}.`,
+            created_by: actor.id,
+            updated_by: actor.id,
+            updated_at: now
+          })))
+          : userChunk.flatMap(user => dates.map(datum => ({
           user_id: user.id,
           datum,
           obed,
@@ -212,7 +266,9 @@ export async function POST(req: NextRequest) {
         active: mode !== 'CLEAR',
         source: 'MANUAL',
         note: mode !== 'SET'
-          ? `Hromadne vymazanie narokov podla registracnej skupiny: ${registrationGroup.name}.`
+          ? mode === 'DATES'
+            ? `Hromadna kalendarova uprava narokov podla registracnej skupiny: ${registrationGroup.name}.`
+            : `Hromadne vymazanie narokov podla registracnej skupiny: ${registrationGroup.name}.`
           : `Hromadna uprava narokov podla registracnej skupiny: ${registrationGroup.name}.`,
         created_by: actor.id,
         updated_by: actor.id
@@ -236,7 +292,9 @@ export async function POST(req: NextRequest) {
           ? 'REGISTRATION_GROUP_ENTITLEMENTS_ALL_CLEARED'
           : mode === 'CLEAR'
             ? 'REGISTRATION_GROUP_ENTITLEMENTS_CLEARED'
-            : 'REGISTRATION_GROUP_ENTITLEMENTS_UPDATED',
+            : mode === 'DATES'
+              ? 'REGISTRATION_GROUP_ENTITLEMENTS_CALENDAR_UPDATED'
+              : 'REGISTRATION_GROUP_ENTITLEMENTS_UPDATED',
         entity_table: 'registration_groups',
         entity_id: registrationGroupId,
         before_data: {
@@ -253,13 +311,16 @@ export async function POST(req: NextRequest) {
           users: users.length,
           inserted_rows: insertedRows,
           obed,
-          vecera
+          vecera,
+          day_claims: safeDayClaims
         },
         note: mode === 'CLEAR_ALL'
           ? `Hromadne vymazanie vsetkych narokov pre registracnu skupinu ${registrationGroup.name}.`
           : mode === 'CLEAR'
-          ? `Hromadne vymazanie narokov pre registracnu skupinu ${registrationGroup.name}.`
-          : `Hromadna uprava narokov pre registracnu skupinu ${registrationGroup.name}.`
+            ? `Hromadne vymazanie narokov pre registracnu skupinu ${registrationGroup.name}.`
+            : mode === 'DATES'
+              ? `Hromadna kalendarova uprava narokov pre registracnu skupinu ${registrationGroup.name}.`
+              : `Hromadna uprava narokov pre registracnu skupinu ${registrationGroup.name}.`
       })
 
     return NextResponse.json({
@@ -271,8 +332,10 @@ export async function POST(req: NextRequest) {
       message: mode === 'CLEAR_ALL'
         ? `Vsetky existujuce naroky boli vymazane pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
         : mode === 'CLEAR'
-        ? `Naroky boli vymazane pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
-        : `Naroky boli nastavene pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
+          ? `Naroky boli vymazane pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
+          : mode === 'DATES'
+            ? `Naroky podla kalendara boli nastavene pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
+            : `Naroky boli nastavene pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
     })
   } catch (err: any) {
     return NextResponse.json(
