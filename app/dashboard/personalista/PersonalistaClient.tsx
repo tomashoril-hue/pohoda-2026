@@ -239,6 +239,7 @@ export default function PersonalistaClient({
   const qrScannerReaderRef = useRef<BrowserQRCodeReader | null>(null)
   const qrScannerCancelledRef = useRef(false)
   const qrScannerAttemptRef = useRef(0)
+  const detailMessageRef = useRef<HTMLDivElement | null>(null)
   const preservedDetailMessageRef = useRef<{
     userId: string
     message: string
@@ -411,6 +412,19 @@ export default function PersonalistaClient({
 
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [isMobile, selectedPersonId])
+
+  useEffect(() => {
+    if (!isMobile || !shouldShowDetailMessage) return
+
+    const frame = window.requestAnimationFrame(() => {
+      detailMessageRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [isMobile, shouldShowDetailMessage, detailMessage])
 
   useEffect(() => {
     setPeople(initialPeople)
@@ -4648,6 +4662,7 @@ export default function PersonalistaClient({
 
               {shouldShowDetailMessage && (
                 <div
+                  ref={detailMessageRef}
                   style={{
                     ...styles.message,
                     background: detailMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
