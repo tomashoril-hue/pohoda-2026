@@ -70,14 +70,25 @@ export default function PrintQrClient({
   }, [items])
 
   return (
-    <main style={styles.page}>
+    <main className="print-page" style={styles.page}>
       <style>{`
         @page { size: A4; margin: 10mm; }
         @media print {
-          body { background: #fff !important; }
+          html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+          .print-page { min-height: auto !important; padding: 0 !important; background: #fff !important; }
           .no-print { display: none !important; }
-          .print-sheet { break-after: page; page-break-after: always; }
+          .print-sheet {
+            width: 190mm !important;
+            min-height: auto !important;
+            margin: 0 auto !important;
+            padding: 5mm !important;
+            break-after: page;
+            page-break-after: always;
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
           .print-sheet:last-child { break-after: auto; page-break-after: auto; }
+          .print-grid { grid-auto-rows: 47mm !important; gap: 2.5mm !important; }
         }
       `}</style>
 
@@ -115,7 +126,7 @@ export default function PrintQrClient({
               <span>Strana {pageIndex + 1} / {pages.length}</span>
             </header>
 
-            <div style={styles.grid}>
+            <div className="print-grid" style={styles.grid}>
               {pageItems.map(item => (
                 <article key={item.userId} style={styles.card}>
                   <div style={styles.qrBox}>
