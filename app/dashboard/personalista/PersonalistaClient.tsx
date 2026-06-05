@@ -215,6 +215,7 @@ export default function PersonalistaClient({
   const qrScannerCancelledRef = useRef(false)
   const qrScannerAttemptRef = useRef(0)
 
+  const [isMobile, setIsMobile] = useState(false)
   const [people, setPeople] = useState(initialPeople)
   const [peopleSearchLoading, setPeopleSearchLoading] = useState(false)
   const [peopleSearchMessage, setPeopleSearchMessage] = useState('Posledne upravovane osoby')
@@ -337,6 +338,22 @@ export default function PersonalistaClient({
   const printPersonHref = selectedPerson
     ? `/dashboard/personalista/print-qr?personId=${encodeURIComponent(selectedPerson.id)}`
     : ''
+  const tableColumns = isMobile
+    ? 'minmax(155px, 1.25fr) 64px minmax(120px, 0.9fr) minmax(120px, 1fr) 56px 52px 62px'
+    : 'minmax(180px, 1.3fr) 70px minmax(135px, 0.9fr) minmax(135px, 1fr) 62px 58px 68px'
+  const tableMinWidth = isMobile ? 760 : 920
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 760px)')
+    const updateMobile = () => setIsMobile(media.matches)
+
+    updateMobile()
+    media.addEventListener('change', updateMobile)
+
+    return () => {
+      media.removeEventListener('change', updateMobile)
+    }
+  }, [])
 
   useEffect(() => {
     setPeople(initialPeople)
@@ -1768,7 +1785,10 @@ export default function PersonalistaClient({
 
   return (
     <main style={styles.page}>
-      <header style={styles.header}>
+      <header style={{
+        ...styles.header,
+        ...(isMobile ? styles.mobileHeader : {})
+      }}>
         <div>
           <div style={styles.breadcrumb}>Prehlad / Personalistika</div>
           <h1 style={styles.title}>Personalistika</h1>
@@ -1777,7 +1797,10 @@ export default function PersonalistaClient({
           </p>
         </div>
 
-        <div style={styles.headerActions}>
+        <div style={{
+          ...styles.headerActions,
+          ...(isMobile ? styles.mobileActionStrip : {})
+        }}>
           <a href="/dashboard/groups" style={styles.lightButton}>
             Stravovacie skupiny
           </a>
@@ -1794,7 +1817,10 @@ export default function PersonalistaClient({
         </section>
       )}
 
-      <section style={styles.summaryGrid}>
+      <section style={{
+        ...styles.summaryGrid,
+        ...(isMobile ? styles.mobileSummaryStrip : {})
+      }}>
         <div style={styles.summaryCard}>
           <b>{people.length}</b>
           <span>Posledne upraveni</span>
@@ -1832,7 +1858,10 @@ export default function PersonalistaClient({
         </div>
       </section>
 
-      <section style={styles.actionPanel}>
+      <section style={{
+        ...styles.actionPanel,
+        ...(isMobile ? styles.mobileActionStripPanel : {})
+      }}>
         <button
           type="button"
           style={{
@@ -3043,7 +3072,10 @@ export default function PersonalistaClient({
         }}
       >
         <div style={styles.leftColumn}>
-          <section style={styles.toolbar}>
+          <section style={{
+            ...styles.toolbar,
+            ...(isMobile ? styles.mobileToolbar : {})
+          }}>
             <div style={styles.toolbarHint}>
               {peopleSearchLoading ? 'Hladam...' : peopleSearchMessage} · zobrazenych {people.length}
             </div>
@@ -3105,7 +3137,11 @@ export default function PersonalistaClient({
           </section>
 
           <section style={styles.tableCard}>
-            <div style={styles.tableHeader}>
+            <div style={{
+              ...styles.tableHeader,
+              minWidth: tableMinWidth,
+              gridTemplateColumns: tableColumns
+            }}>
               <span>Osoba</span>
               <span>Stav</span>
               <span>Registracna skupina</span>
@@ -3131,6 +3167,8 @@ export default function PersonalistaClient({
                     type="button"
                     style={{
                       ...styles.personRow,
+                      minWidth: tableMinWidth,
+                      gridTemplateColumns: tableColumns,
                       background: selected ? '#eff6ff' : blocked ? '#fef2f2' : pendingReview ? '#fffbeb' : '#fff',
                       borderColor: selected ? '#93c5fd' : blocked ? '#fecaca' : pendingReview ? '#fde68a' : '#e5e7eb'
                     }}
@@ -3213,7 +3251,10 @@ export default function PersonalistaClient({
             )}
 
             {filteredPeople.length > 0 && (
-              <div style={styles.paginationBar}>
+              <div style={{
+                ...styles.paginationBar,
+                minWidth: tableMinWidth
+              }}>
                 <span>
                   {pageStart + 1}-{pageEnd} z {filteredPeople.length}
                 </span>
@@ -3385,7 +3426,10 @@ export default function PersonalistaClient({
                 </div>
               )}
 
-              <div style={styles.detailActions}>
+              <div style={{
+                ...styles.detailActions,
+                ...(isMobile ? styles.mobileDetailActions : {})
+              }}>
                 <button
                   type="button"
                   style={{
@@ -4242,6 +4286,10 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     gap: 8
   },
+  mobileHeader: {
+    display: 'grid',
+    alignItems: 'start'
+  },
   breadcrumb: {
     fontSize: 11,
     fontWeight: 800,
@@ -4266,6 +4314,18 @@ const styles: Record<string, CSSProperties> = {
     flexWrap: 'wrap',
     justifyContent: 'flex-end'
   },
+  mobileActionStrip: {
+    display: 'grid',
+    gridAutoFlow: 'column',
+    gridAutoColumns: 'max-content',
+    justifyContent: 'start',
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    flexWrap: 'nowrap',
+    width: '100%',
+    paddingBottom: 2,
+    WebkitOverflowScrolling: 'touch'
+  },
   warningBox: {
     background: '#ffedd5',
     color: '#9a3412',
@@ -4279,6 +4339,15 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(105px, 1fr))',
     gap: 4
+  },
+  mobileSummaryStrip: {
+    gridTemplateColumns: 'none',
+    gridAutoFlow: 'column',
+    gridAutoColumns: '112px',
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    paddingBottom: 2,
+    WebkitOverflowScrolling: 'touch'
   },
   summaryCard: {
     background: '#fff',
@@ -4358,6 +4427,15 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: 'repeat(auto-fit, minmax(118px, auto))',
     gap: 5
   },
+  mobileActionStripPanel: {
+    gridTemplateColumns: 'none',
+    gridAutoFlow: 'column',
+    gridAutoColumns: 'max-content',
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    paddingBottom: 6,
+    WebkitOverflowScrolling: 'touch'
+  },
   layoutGrid: {
     display: 'grid',
     gridTemplateColumns: 'minmax(0, 1fr) minmax(360px, 410px)',
@@ -4380,6 +4458,15 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'minmax(220px, 1.2fr) repeat(4, minmax(120px, 0.7fr))',
     gap: 5
+  },
+  mobileToolbar: {
+    gridTemplateColumns: 'none',
+    gridAutoFlow: 'column',
+    gridAutoColumns: '220px',
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    paddingBottom: 6,
+    WebkitOverflowScrolling: 'touch'
   },
   toolbarHint: {
     gridColumn: '1 / -1',
@@ -4620,6 +4707,15 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     gap: 5
+  },
+  mobileDetailActions: {
+    gridTemplateColumns: 'none',
+    gridAutoFlow: 'column',
+    gridAutoColumns: 'max-content',
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    paddingBottom: 6,
+    WebkitOverflowScrolling: 'touch'
   },
   pendingApprovalBox: {
     border: '1px solid #fde68a',
