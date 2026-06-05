@@ -316,6 +316,8 @@ export default function VydajStravyClient({
   const scanAttemptRef = useRef(0)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const decisionOpenRef = useRef(false)
+  const datumRef = useRef(initialDate)
+  const typJedlaRef = useRef<Meal>(initialMeal === 'VECERA' ? 'VECERA' : 'OBED')
 
   const [datum, setDatum] = useState(initialDate)
   const [typJedla, setTypJedla] = useState<Meal>(initialMeal === 'VECERA' ? 'VECERA' : 'OBED')
@@ -403,6 +405,16 @@ export default function VydajStravyClient({
       setScanFlash(null)
       flashTimerRef.current = null
     }, 360)
+  }
+
+  const updateDatum = (value: string) => {
+    datumRef.current = value
+    setDatum(value)
+  }
+
+  const updateTypJedla = (value: Meal) => {
+    typJedlaRef.current = value
+    setTypJedla(value)
   }
 
   const playBeep = (type: 'ok' | 'error') => {
@@ -648,9 +660,11 @@ export default function VydajStravyClient({
   }
 
   const refreshRecentIssued = async () => {
+    const currentDatum = datumRef.current
+    const currentTypJedla = typJedlaRef.current
     const params = new URLSearchParams({
-      datum,
-      typJedla
+      datum: currentDatum,
+      typJedla: currentTypJedla
     })
 
     const res = await fetch(`/api/vydaj-stravy/recent?${params.toString()}`)
@@ -740,6 +754,9 @@ export default function VydajStravyClient({
     const cleanQr = String(manualValue ?? qrValue).trim()
     if (!cleanQr || busyRef.current || (decisionOpenRef.current && !issueAction)) return
 
+    const currentDatum = datumRef.current
+    const currentTypJedla = typJedlaRef.current
+
     busyRef.current = true
     setLoading(true)
 
@@ -749,8 +766,8 @@ export default function VydajStravyClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           qrCode: cleanQr,
-          datum,
-          typJedla,
+          datum: currentDatum,
+          typJedla: currentTypJedla,
           issueAction,
           bulkIssueId
         })
@@ -793,7 +810,7 @@ export default function VydajStravyClient({
       const tone = toneOf(String(json.status || ''), ok)
       const item: ScanItem = {
         id: makeScanId(),
-        typJedla,
+        typJedla: currentTypJedla,
         status: String(json.status || (ok ? 'ISSUED' : 'ERROR')),
         tone,
         message: String(json.message || json.error || 'Nepodarilo sa spracovať QR.'),
@@ -831,7 +848,7 @@ export default function VydajStravyClient({
       setErrorCount(prev => prev + 1)
       addHistory({
         id: `${Date.now()}-error`,
-        typJedla,
+        typJedla: currentTypJedla,
         status: 'ERROR',
         tone: 'error',
         message: err?.message || 'Chyba spojenia so serverom.',
@@ -1072,7 +1089,7 @@ export default function VydajStravyClient({
             <input
               type="date"
               value={datum}
-              onChange={event => setDatum(event.target.value)}
+              onChange={event => updateDatum(event.target.value)}
               style={styles.dateInput}
             />
           </label>
@@ -1082,7 +1099,7 @@ export default function VydajStravyClient({
               <button
                 key={meal}
                 type="button"
-                onClick={() => setTypJedla(meal)}
+                onClick={() => updateTypJedla(meal)}
                 style={{
                   ...styles.mealButton,
                   ...(typJedla === meal ? styles.mealButtonActive : {})
@@ -1541,7 +1558,7 @@ export default function VydajStravyClient({
                 <input
                   type="date"
                   value={datum}
-                  onChange={event => setDatum(event.target.value)}
+                  onChange={event => updateDatum(event.target.value)}
                   style={styles.dateInput}
                 />
               </label>
@@ -1551,7 +1568,7 @@ export default function VydajStravyClient({
                   <button
                     key={meal}
                     type="button"
-                    onClick={() => setTypJedla(meal)}
+                    onClick={() => updateTypJedla(meal)}
                     style={{
                       ...styles.mealButton,
                       ...(typJedla === meal ? styles.mealButtonActive : {})
