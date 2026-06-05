@@ -1803,7 +1803,25 @@ export default function PersonalistaClient({
   }
 
   return (
-    <main style={styles.page}>
+    <main className="personalista-page" style={styles.page}>
+      <style jsx global>{`
+        .personalista-page button,
+        .personalista-page a[href] {
+          transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+          -webkit-tap-highlight-color: rgba(37, 99, 235, 0.22);
+        }
+
+        .personalista-page button:not(:disabled):active,
+        .personalista-page a[href]:active {
+          transform: scale(0.97);
+          filter: brightness(0.93);
+          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.22);
+        }
+
+        .personalista-page button:disabled {
+          cursor: wait;
+        }
+      `}</style>
       <header style={{
         ...styles.header,
         ...(isMobile ? styles.mobileHeader : {})
@@ -3313,7 +3331,10 @@ export default function PersonalistaClient({
         </div>
 
         {selectedPerson && (
-          <aside style={styles.detailPanel}>
+          <aside style={{
+            ...styles.detailPanel,
+            ...(isMobile ? styles.mobileDetailPanel : {})
+          }}>
             <>
               <div style={styles.detailHeader}>
                 <div>
@@ -3610,7 +3631,7 @@ export default function PersonalistaClient({
                       />
                     </label>
 
-                    <label style={styles.fieldWarning}>
+                    <label style={{ ...styles.fieldWarning, ...styles.detailEditFullRow }}>
                       <span>Email</span>
                       <input
                         value={profileForm.email}
@@ -3622,7 +3643,7 @@ export default function PersonalistaClient({
                       />
                     </label>
 
-                    <label style={styles.field}>
+                    <label style={{ ...styles.field, ...styles.detailEditFullRow }}>
                       <span>Telefón</span>
                       <input
                         value={profileForm.telefon}
@@ -4664,6 +4685,20 @@ const styles: Record<string, CSSProperties> = {
     maxHeight: 'calc(100vh - 16px)',
     overflow: 'auto'
   },
+  mobileDetailPanel: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 70,
+    width: '100%',
+    height: '100dvh',
+    maxHeight: '100dvh',
+    borderRadius: 0,
+    border: 0,
+    padding: 8,
+    boxSizing: 'border-box',
+    overflow: 'auto',
+    overscrollBehavior: 'contain'
+  },
   detailHeader: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -4791,9 +4826,14 @@ const styles: Record<string, CSSProperties> = {
   },
   detailEditGridWide: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     gap: 5,
-    minWidth: 0
+    minWidth: 0,
+    width: '100%',
+    boxSizing: 'border-box'
+  },
+  detailEditFullRow: {
+    gridColumn: '1 / -1'
   },
   primaryAction: {
     background: '#22c55e',
@@ -5143,7 +5183,9 @@ const styles: Record<string, CSSProperties> = {
     width: '100%',
     maxWidth: '100%',
     minWidth: 0,
+    minInlineSize: 0,
     boxSizing: 'border-box',
+    overflow: 'hidden',
     border: '1px solid #d1d5db',
     borderRadius: 5,
     padding: '7px 8px',
@@ -5157,7 +5199,9 @@ const styles: Record<string, CSSProperties> = {
     width: '100%',
     maxWidth: '100%',
     minWidth: 0,
+    minInlineSize: 0,
     boxSizing: 'border-box',
+    overflow: 'hidden',
     border: '2px solid #ef4444',
     borderRadius: 5,
     padding: '7px 8px',
