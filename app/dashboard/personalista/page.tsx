@@ -236,6 +236,36 @@ export default async function PersonalistaPage() {
     .select('id, name')
     .order('name', { ascending: true })
 
+  let qrWristbandRules = {
+    enabled: true,
+    ranges: [] as any[]
+  }
+
+  if (globalAccess.isAdmin) {
+    const [qrRuleSettingsResult, qrRuleRangesResult] = await Promise.all([
+      supabaseServer
+        .from('personnel_qr_wristband_settings')
+        .select('enabled')
+        .eq('id', 'DEFAULT')
+        .maybeSingle(),
+      supabaseServer
+        .from('personnel_qr_wristband_ranges')
+        .select('id, type_code, series_from, series_to, active')
+        .order('type_code', { ascending: true })
+    ])
+
+    qrWristbandRules = {
+      enabled: qrRuleSettingsResult.data?.enabled !== false,
+      ranges: (qrRuleRangesResult.data || []).map((range: any) => ({
+        id: range.id,
+        typeCode: range.type_code,
+        seriesFrom: range.series_from,
+        seriesTo: range.series_to,
+        active: range.active !== false
+      }))
+    }
+  }
+
   ;(allGroupsData || []).forEach((group: any) => {
     if (!group?.id) return
 
@@ -475,6 +505,7 @@ export default async function PersonalistaPage() {
       people={people}
       groups={groups}
       registrationGroups={registrationGroups.filter((group: any) => group.active)}
+      qrWristbandRules={qrWristbandRules}
       fromDate={fromDate}
       toDate={toDate}
       canManage={isGlobalPersonalista}

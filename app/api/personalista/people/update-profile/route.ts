@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
     const email = cleanEmail(body.email)
     const telefon = cleanText(body.telefon) || null
     const typStravy = cleanFood(body.typStravy)
+    const emailChangeConfirmed = body.emailChangeConfirmed === true
 
     if (!userId) {
       return NextResponse.json({ error: 'Chyba osoba.' }, { status: 400 })
@@ -84,6 +85,15 @@ export async function POST(req: NextRequest) {
       .select('meno, priezvisko, email, telefon, typ_stravy')
       .eq('id', userId)
       .maybeSingle()
+
+    const previousEmail = cleanEmail(before?.email)
+
+    if (previousEmail !== email && !emailChangeConfirmed) {
+      return NextResponse.json(
+        { error: 'Zmena e-mailu vyzaduje dodatocne potvrdenie.' },
+        { status: 400 }
+      )
+    }
 
     const now = new Date().toISOString()
 

@@ -7,6 +7,52 @@ function cleanText(value: any) {
   return String(value || '').trim()
 }
 
+async function validateWristbandQrRule(qrCode: string) {
+  const { data: settings, error: settingsError } = await supabaseServer
+    .from('personnel_qr_wristband_settings')
+    .select('enabled')
+    .eq('id', 'DEFAULT')
+    .maybeSingle()
+
+  if (settingsError) {
+    return { ok: false, error: settingsError.message }
+  }
+
+  if (settings?.enabled === false) {
+    return { ok: true, error: '' }
+  }
+
+  if (!/^[0-9]{14}$/.test(qrCode)) {
+    return {
+      ok: false,
+      error: 'QR kod naramku musi mat 14 cislic.'
+    }
+  }
+
+  const typeCode = qrCode.slice(0, 2)
+  const series = Number(qrCode.slice(2, 5))
+
+  const { data: range, error: rangeError } = await supabaseServer
+    .from('personnel_qr_wristband_ranges')
+    .select('series_from, series_to, active')
+    .eq('type_code', typeCode)
+    .eq('active', true)
+    .maybeSingle()
+
+  if (rangeError) {
+    return { ok: false, error: rangeError.message }
+  }
+
+  if (!range || series < range.series_from || series > range.series_to) {
+    return {
+      ok: false,
+      error: `QR kod naramku nie je povoleny pre typ ${typeCode} a seriu ${String(series).padStart(3, '0')}.`
+    }
+  }
+
+  return { ok: true, error: '' }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const actor = await getCurrentUser()
@@ -39,6 +85,14 @@ export async function POST(req: NextRequest) {
         { error: access.error || 'Nemate opravnenie.' },
         { status: access.status || 403 }
       )
+    }
+
+    if (mode === 'SPECIFIC' && qrCode) {
+      const ruleValidation = await validateWristbandQrRule(qrCode)
+
+      if (!ruleValidation.ok) {
+        return NextResponse.json({ error: ruleValidation.error }, { status: 400 })
+      }
     }
 
     const rpcName =

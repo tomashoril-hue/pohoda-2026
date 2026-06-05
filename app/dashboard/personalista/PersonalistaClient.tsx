@@ -16,6 +16,19 @@ type RegistrationGroupItem = {
   name: string
 }
 
+type QrWristbandRuleRange = {
+  id?: string
+  typeCode: string
+  seriesFrom: number
+  seriesTo: number
+  active: boolean
+}
+
+type QrWristbandRules = {
+  enabled: boolean
+  ranges: QrWristbandRuleRange[]
+}
+
 type PersonGroup = {
   id: string
   name: string
@@ -201,6 +214,7 @@ export default function PersonalistaClient({
   people: initialPeople,
   groups,
   registrationGroups,
+  qrWristbandRules,
   fromDate,
   toDate,
   canManage,
@@ -210,6 +224,7 @@ export default function PersonalistaClient({
   people: PersonItem[]
   groups: GroupItem[]
   registrationGroups: RegistrationGroupItem[]
+  qrWristbandRules: QrWristbandRules
   fromDate: string
   toDate: string
   canManage: boolean
@@ -259,6 +274,11 @@ export default function PersonalistaClient({
     registrationGroupId: '',
     foodGroupId: ''
   })
+  const [qrRulesOpen, setQrRulesOpen] = useState(false)
+  const [qrRulesLoading, setQrRulesLoading] = useState(false)
+  const [qrRulesMessage, setQrRulesMessage] = useState('')
+  const [qrRulesMessageType, setQrRulesMessageType] = useState<'ok' | 'error' | ''>('')
+  const [qrRulesForm, setQrRulesForm] = useState<QrWristbandRules>(qrWristbandRules)
   const [registrationAssignmentOpen, setRegistrationAssignmentOpen] = useState(false)
   const [registrationAssignmentLoading, setRegistrationAssignmentLoading] = useState(false)
   const [registrationAssignmentMessage, setRegistrationAssignmentMessage] = useState('')
@@ -395,6 +415,10 @@ export default function PersonalistaClient({
   useEffect(() => {
     setPeople(initialPeople)
   }, [initialPeople])
+
+  useEffect(() => {
+    setQrRulesForm(qrWristbandRules)
+  }, [qrWristbandRules])
 
   useEffect(() => {
     const q = search.trim()
@@ -975,6 +999,101 @@ export default function PersonalistaClient({
     }))
   }
 
+  const updateQrRuleRange = (index: number, key: keyof QrWristbandRuleRange, value: any) => {
+    setQrRulesForm(prev => ({
+      ...prev,
+      ranges: prev.ranges.map((range, rangeIndex) => {
+        if (rangeIndex !== index) return range
+
+        if (key === 'seriesFrom' || key === 'seriesTo') {
+          const number = Number(String(value || '').replace(/\D/g, '').slice(0, 3))
+          return {
+            ...range,
+            [key]: Number.isFinite(number) ? number : 0
+          }
+        }
+
+        if (key === 'typeCode') {
+          return {
+            ...range,
+            typeCode: String(value || '').replace(/\D/g, '').slice(0, 2)
+          }
+        }
+
+        return {
+          ...range,
+          [key]: value
+        }
+      })
+    }))
+  }
+
+  const addQrRuleRange = () => {
+    setQrRulesForm(prev => ({
+      ...prev,
+      ranges: [
+        ...prev.ranges,
+        {
+          typeCode: '',
+          seriesFrom: 1,
+          seriesTo: 1,
+          active: true
+        }
+      ]
+    }))
+  }
+
+  const removeQrRuleRange = (index: number) => {
+    setQrRulesForm(prev => ({
+      ...prev,
+      ranges: prev.ranges.filter((_, rangeIndex) => rangeIndex !== index)
+    }))
+  }
+
+  const saveQrWristbandRules = async () => {
+    if (!canAssignSensitiveRoles) {
+      setQrRulesMessage('Pravidla QR naramkov moze upravit iba ADMIN.')
+      setQrRulesMessageType('error')
+      return
+    }
+
+    setQrRulesLoading(true)
+    setQrRulesMessage('')
+    setQrRulesMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/qr-wristband-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: qrRulesForm.enabled,
+          ranges: qrRulesForm.ranges
+        })
+      })
+
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setQrRulesMessage(json.error || 'Pravidla QR naramkov sa nepodarilo ulozit.')
+        setQrRulesMessageType('error')
+        return
+      }
+
+      setQrRulesMessage(json.message || 'Pravidla QR naramkov boli ulozene.')
+      setQrRulesMessageType('ok')
+
+      setTimeout(() => {
+        router.refresh()
+      }, 450)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setQrRulesMessage('Chyba spojenia so serverom: ' + message)
+      setQrRulesMessageType('error')
+    } finally {
+      setQrRulesLoading(false)
+    }
+  }
+
   const postDetailAction = async (url: string, payload: any, fallbackMessage: string, messageMode: DetailMode = detailMode, method = 'POST') => {
     clearDetailFeedback()
     setDetailMessageMode(messageMode)
@@ -1038,6 +1157,25 @@ export default function PersonalistaClient({
   const saveProfile = () => {
     if (!selectedPerson) return
 
+    const originalEmail = String(selectedPerson.email || '').trim().toLowerCase()
+    const nextEmail = String(profileForm.email || '').trim().toLowerCase()
+
+    if (originalEmail !== nextEmail) {
+      const typedEmail = window.prompt(
+        `Menis citlivy udaj - e-mail osoby.\n\nPovodny e-mail: ${selectedPerson.email || '-'}\nNovy e-mail: ${profileForm.email || '-'}\n\nPre potvrdenie napis novy e-mail presne: ${profileForm.email || ''}`
+      )
+
+      if (typedEmail === null) return
+
+      if (typedEmail.trim().toLowerCase() !== nextEmail) {
+        setDetailFeedback('Email nesedi. Zmena e-mailu nebola ulozena.', 'error', 'profile')
+        return
+      }
+
+      const ok = window.confirm('Naozaj ulozit zmenu e-mailu? Zmena sa zapise do auditu.')
+      if (!ok) return
+    }
+
     postDetailAction(
       '/api/personalista/people/update-profile',
       {
@@ -1046,7 +1184,8 @@ export default function PersonalistaClient({
         priezvisko: profileForm.priezvisko,
         email: profileForm.email,
         telefon: profileForm.telefon,
-        typStravy: profileForm.typStravy
+        typStravy: profileForm.typStravy,
+        emailChangeConfirmed: originalEmail !== nextEmail
       },
       'Detail osoby sa nepodarilo uložiť.'
     )
@@ -1998,6 +2137,7 @@ export default function PersonalistaClient({
             setCreateOpen(prev => !prev)
             setRegistrationGroupsOpen(false)
             setPrintQrOpen(false)
+            setQrRulesOpen(false)
             setCreateMessage('')
             setCreateMessageType('')
           }}
@@ -2043,6 +2183,7 @@ export default function PersonalistaClient({
             setRegistrationGroupsOpen(prev => !prev)
             setCreateOpen(false)
             setPrintQrOpen(false)
+            setQrRulesOpen(false)
             setRegistrationGroupMessage('')
             setRegistrationGroupMessageType('')
           }}
@@ -2065,10 +2206,28 @@ export default function PersonalistaClient({
             setPrintQrOpen(prev => !prev)
             setCreateOpen(false)
             setRegistrationGroupsOpen(false)
+            setQrRulesOpen(false)
           }}
         >
           Tlac QR skupiny
         </button>
+
+        {canAssignSensitiveRoles && (
+          <button
+            type="button"
+            style={styles.lightButton}
+            onClick={() => {
+              setQrRulesOpen(prev => !prev)
+              setCreateOpen(false)
+              setRegistrationGroupsOpen(false)
+              setPrintQrOpen(false)
+              setQrRulesMessage('')
+              setQrRulesMessageType('')
+            }}
+          >
+            Pravidla QR naramkov
+          </button>
+        )}
 
         <button type="button" style={styles.actionButton} disabled>
           QR/NFC párovanie
@@ -2158,6 +2317,148 @@ export default function PersonalistaClient({
             <button type="button" style={styles.actionButton} disabled>
               Vyber skupinu
             </button>
+          )}
+        </section>
+      )}
+
+      {!showMobilePersonDetail && qrRulesOpen && (
+        <section style={styles.createPanel}>
+          <div style={styles.createHeader}>
+            <div>
+              <b>Pravidla QR naramkov</b>
+              <span>Kontrola sa pouzije pri priradeni nacitaneho QR naramku osobe.</span>
+            </div>
+
+            <button
+              type="button"
+              style={styles.closeButton}
+              disabled={qrRulesLoading}
+              onClick={() => setQrRulesOpen(false)}
+            >
+              x
+            </button>
+          </div>
+
+          <label style={styles.checkRow}>
+            <input
+              type="checkbox"
+              checked={qrRulesForm.enabled}
+              onChange={event => setQrRulesForm(prev => ({
+                ...prev,
+                enabled: event.target.checked
+              }))}
+              disabled={qrRulesLoading}
+              style={styles.checkbox}
+            />
+            <span>Zapnut kontrolu pravidiel QR naramkov</span>
+          </label>
+
+          <div style={styles.optionHint}>
+            QR kod naramku musi mat 14 cislic. Prve 2 cislice su typ, dalsie 3 cislice su seria.
+          </div>
+
+          <div style={styles.qrRuleList}>
+            {qrRulesForm.ranges.map((range, index) => (
+              <div
+                key={`${range.id || 'new'}-${index}`}
+                style={{
+                  ...styles.qrRuleRow,
+                  ...(isMobile ? styles.mobileQrRuleRow : {})
+                }}
+              >
+                <label style={styles.field}>
+                  <span>Typ</span>
+                  <input
+                    value={range.typeCode}
+                    onChange={event => updateQrRuleRange(index, 'typeCode', event.target.value)}
+                    style={styles.input}
+                    disabled={qrRulesLoading}
+                    inputMode="numeric"
+                    maxLength={2}
+                    placeholder="42"
+                  />
+                </label>
+
+                <label style={styles.field}>
+                  <span>Seria od</span>
+                  <input
+                    value={String(range.seriesFrom || '')}
+                    onChange={event => updateQrRuleRange(index, 'seriesFrom', event.target.value)}
+                    style={styles.input}
+                    disabled={qrRulesLoading}
+                    inputMode="numeric"
+                    maxLength={3}
+                    placeholder="001"
+                  />
+                </label>
+
+                <label style={styles.field}>
+                  <span>Seria do</span>
+                  <input
+                    value={String(range.seriesTo || '')}
+                    onChange={event => updateQrRuleRange(index, 'seriesTo', event.target.value)}
+                    style={styles.input}
+                    disabled={qrRulesLoading}
+                    inputMode="numeric"
+                    maxLength={3}
+                    placeholder="520"
+                  />
+                </label>
+
+                <label style={styles.compactCheck}>
+                  <input
+                    type="checkbox"
+                    checked={range.active}
+                    onChange={event => updateQrRuleRange(index, 'active', event.target.checked)}
+                    disabled={qrRulesLoading}
+                    style={styles.checkbox}
+                  />
+                  <span>Aktivne</span>
+                </label>
+
+                <button
+                  type="button"
+                  style={styles.dangerTinyButton}
+                  disabled={qrRulesLoading || qrRulesForm.ranges.length <= 1}
+                  onClick={() => removeQrRuleRange(index)}
+                >
+                  Zmazat
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div style={styles.calendarToolbar}>
+            <button
+              type="button"
+              style={styles.lightButton}
+              disabled={qrRulesLoading}
+              onClick={addQrRuleRange}
+            >
+              Pridat typ
+            </button>
+
+            <button
+              type="button"
+              style={styles.confirmButton}
+              disabled={qrRulesLoading}
+              onClick={saveQrWristbandRules}
+            >
+              {qrRulesLoading ? 'Ukladam...' : 'Ulozit pravidla'}
+            </button>
+          </div>
+
+          {qrRulesMessage && (
+            <div
+              style={{
+                ...styles.message,
+                background: qrRulesMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                color: qrRulesMessageType === 'ok' ? '#166534' : '#991b1b',
+                borderColor: qrRulesMessageType === 'ok' ? '#86efac' : '#fecaca'
+              }}
+            >
+              {qrRulesMessage}
+            </div>
           )}
         </section>
       )}
@@ -5234,6 +5535,35 @@ const styles: Record<string, CSSProperties> = {
     display: 'flex',
     flexWrap: 'wrap',
     gap: 6
+  },
+  qrRuleList: {
+    display: 'grid',
+    gap: 6
+  },
+  qrRuleRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(58px, 0.65fr) minmax(72px, 0.8fr) minmax(72px, 0.8fr) auto auto',
+    gap: 6,
+    alignItems: 'end',
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    padding: 6,
+    background: '#f9fafb',
+    minWidth: 0
+  },
+  mobileQrRuleRow: {
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    alignItems: 'end'
+  },
+  compactCheck: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    minHeight: 31,
+    fontSize: 11,
+    fontWeight: 950,
+    color: '#374151',
+    whiteSpace: 'nowrap'
   },
   emptyGroupSelection: {
     borderRadius: 999,
