@@ -214,6 +214,11 @@ export default function PersonalistaClient({
   const qrScannerReaderRef = useRef<BrowserQRCodeReader | null>(null)
   const qrScannerCancelledRef = useRef(false)
   const qrScannerAttemptRef = useRef(0)
+  const preservedDetailMessageRef = useRef<{
+    userId: string
+    message: string
+    type: 'ok' | 'error'
+  } | null>(null)
 
   const [isMobile, setIsMobile] = useState(false)
   const [people, setPeople] = useState(initialPeople)
@@ -452,8 +457,16 @@ export default function PersonalistaClient({
       vydaj: selectedPerson.globalRoles.includes('VYDAJ'),
       groupCreator: selectedPerson.globalRoles.includes('GROUP_CREATOR')
     })
-    setDetailMessage('')
-    setDetailMessageType('')
+    const preservedMessage = preservedDetailMessageRef.current
+
+    if (preservedMessage?.userId === selectedPerson.id) {
+      setDetailMessage(preservedMessage.message)
+      setDetailMessageType(preservedMessage.type)
+      preservedDetailMessageRef.current = null
+    } else {
+      setDetailMessage('')
+      setDetailMessageType('')
+    }
   }, [selectedPerson, fromDate, toDate])
 
   const peopleOrderById = useMemo(() => {
@@ -968,8 +981,14 @@ export default function PersonalistaClient({
         return
       }
 
-      setDetailMessage(json.message || 'Zmena bola uložená.')
+      const successMessage = json.message || 'Zmena bola uložená.'
+      setDetailMessage(successMessage)
       setDetailMessageType('ok')
+      preservedDetailMessageRef.current = {
+        userId: selectedPerson.id,
+        message: successMessage,
+        type: 'ok'
+      }
 
       setTimeout(() => {
         router.refresh()
@@ -3076,7 +3095,7 @@ export default function PersonalistaClient({
             ...styles.toolbar,
             ...(isMobile ? styles.mobileToolbar : {})
           }}>
-            <div style={styles.toolbarHint}>
+            <div style={isMobile ? styles.mobileToolbarHint : styles.toolbarHint}>
               {peopleSearchLoading ? 'Hladam...' : peopleSearchMessage} · zobrazenych {people.length}
             </div>
 
@@ -3346,7 +3365,7 @@ export default function PersonalistaClient({
 
                 <div style={styles.detailRow}>
                   <span>Email</span>
-                  <b>{selectedPerson.email || '-'}</b>
+                  <b style={styles.detailEmailValue}>{selectedPerson.email || '-'}</b>
                 </div>
 
                 <div style={styles.detailRow}>
@@ -3698,7 +3717,7 @@ export default function PersonalistaClient({
                     )}
                   </div>
 
-                  <div style={styles.detailEditGrid}>
+                  <div style={styles.detailEditGridWide}>
                     <label style={styles.field}>
                       <span>Registracna skupina</span>
                       <select
@@ -3776,7 +3795,7 @@ export default function PersonalistaClient({
                 <div style={styles.detailEditBox}>
                   <div style={styles.detailEditTitle}>Nároky na stravu</div>
 
-                  <div style={styles.detailEditGrid}>
+                  <div style={styles.detailEditGridWide}>
                     <label style={styles.field}>
                       <span>Od</span>
                       <input
@@ -4468,6 +4487,9 @@ const styles: Record<string, CSSProperties> = {
     paddingBottom: 6,
     WebkitOverflowScrolling: 'touch'
   },
+  mobileToolbarHint: {
+    display: 'none'
+  },
   toolbarHint: {
     gridColumn: '1 / -1',
     fontSize: 10,
@@ -4684,6 +4706,13 @@ const styles: Record<string, CSSProperties> = {
     gap: 3,
     overflowWrap: 'anywhere'
   },
+  detailEmailValue: {
+    display: 'block',
+    minWidth: 0,
+    width: '100%',
+    wordBreak: 'break-all',
+    overflowWrap: 'anywhere'
+  },
   sectionTitle: {
     fontSize: 12,
     fontWeight: 950,
@@ -4746,7 +4775,8 @@ const styles: Record<string, CSSProperties> = {
     padding: 6,
     display: 'grid',
     gap: 6,
-    background: '#f9fafb'
+    background: '#f9fafb',
+    minWidth: 0
   },
   detailEditTitle: {
     fontSize: 12,
@@ -4758,6 +4788,12 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 135px), 1fr))',
     gap: 5
+  },
+  detailEditGridWide: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',
+    gap: 5,
+    minWidth: 0
   },
   primaryAction: {
     background: '#22c55e',
@@ -5092,17 +5128,20 @@ const styles: Record<string, CSSProperties> = {
     gap: 5,
     fontSize: 11,
     fontWeight: 950,
-    color: '#6b7280'
+    color: '#6b7280',
+    minWidth: 0
   },
   fieldWarning: {
     display: 'grid',
     gap: 5,
     fontSize: 11,
     fontWeight: 950,
-    color: '#b91c1c'
+    color: '#b91c1c',
+    minWidth: 0
   },
   input: {
     width: '100%',
+    maxWidth: '100%',
     minWidth: 0,
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
@@ -5116,6 +5155,7 @@ const styles: Record<string, CSSProperties> = {
   },
   inputWarning: {
     width: '100%',
+    maxWidth: '100%',
     minWidth: 0,
     boxSizing: 'border-box',
     border: '2px solid #ef4444',
