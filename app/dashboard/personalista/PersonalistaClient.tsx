@@ -2243,7 +2243,7 @@ export default function PersonalistaClient({
           </button>
         )}
 
-        <button type="button" style={styles.actionButton} disabled>
+        <button type="button" style={{ display: 'none' }} disabled>
           QR/NFC párovanie
         </button>
       </section>
@@ -5861,15 +5861,15 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 850
   },
   actionButton: {
-    background: '#f3f4f6',
-    color: '#6b7280',
-    border: '1px solid #e5e7eb',
+    background: '#fff',
+    color: '#111827',
+    border: '1px solid #d1d5db',
     borderRadius: 5,
     padding: '7px 9px',
     fontSize: 12,
     fontWeight: 950,
-    cursor: 'not-allowed',
-    opacity: 0.65
+    cursor: 'pointer',
+    opacity: 1
   },
   darkButton: {
     background: '#111827',
