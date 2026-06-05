@@ -365,7 +365,7 @@ export default function PersonalistaClient({
     ? people.find(person => person.id === selectedPersonId) || null
     : null
   const showMobilePersonDetail = isMobile && !!selectedPerson
-  const visibleDetailMessage = detailMessage && detailMessageMode === detailMode
+  const shouldShowDetailMessage = Boolean(detailMessage && detailMessageMode === detailMode)
   const printPersonHref = selectedPerson
     ? `/dashboard/personalista/print-qr?personId=${encodeURIComponent(selectedPerson.id)}`
     : ''
@@ -1846,6 +1846,42 @@ export default function PersonalistaClient({
         roles
       },
       'Globálne role sa nepodarilo uložiť.'
+    )
+  }
+
+  const renderDateInput = (
+    value: string,
+    onChange: (value: string) => void,
+    disabled: boolean,
+    placeholder = 'Vyber datum'
+  ) => {
+    if (!isMobile) {
+      return (
+        <input
+          type="date"
+          value={value}
+          onChange={event => onChange(event.target.value)}
+          style={styles.input}
+          disabled={disabled}
+        />
+      )
+    }
+
+    return (
+      <div style={styles.mobileDateControl}>
+        <span style={styles.mobileDateValue}>
+          {value ? fullDateLabel(value) : placeholder}
+        </span>
+
+        <input
+          type="date"
+          value={value}
+          onChange={event => onChange(event.target.value)}
+          style={styles.mobileDateNativeInput}
+          disabled={disabled}
+          aria-label={placeholder}
+        />
+      </div>
     )
   }
 
@@ -3842,24 +3878,22 @@ export default function PersonalistaClient({
 
                     <label style={styles.field}>
                       <span>Od</span>
-                      <input
-                        type="date"
-                        value={registrationPeriodForm.validFrom}
-                        onChange={event => updateRegistrationPeriodForm('validFrom', event.target.value)}
-                        style={{ ...styles.input, ...styles.compactDateInput }}
-                        disabled={detailLoading}
-                      />
+                      {renderDateInput(
+                        registrationPeriodForm.validFrom,
+                        value => updateRegistrationPeriodForm('validFrom', value),
+                        detailLoading,
+                        'Vyber od'
+                      )}
                     </label>
 
                     <label style={styles.field}>
                       <span>Do</span>
-                      <input
-                        type="date"
-                        value={registrationPeriodForm.validTo}
-                        onChange={event => updateRegistrationPeriodForm('validTo', event.target.value)}
-                        style={{ ...styles.input, ...styles.compactDateInput }}
-                        disabled={detailLoading}
-                      />
+                      {renderDateInput(
+                        registrationPeriodForm.validTo,
+                        value => updateRegistrationPeriodForm('validTo', value),
+                        detailLoading,
+                        'Bez konca'
+                      )}
                     </label>
 
                     <label style={styles.field}>
@@ -3903,24 +3937,22 @@ export default function PersonalistaClient({
                   <div style={styles.detailEditGridWide}>
                     <label style={styles.field}>
                       <span>Od</span>
-                      <input
-                        type="date"
-                        value={entitlementForm.validFrom}
-                        onChange={event => updateEntitlementForm('validFrom', event.target.value)}
-                        style={{ ...styles.input, ...styles.compactDateInput }}
-                        disabled={detailLoading}
-                      />
+                      {renderDateInput(
+                        entitlementForm.validFrom,
+                        value => updateEntitlementForm('validFrom', value),
+                        detailLoading,
+                        'Vyber od'
+                      )}
                     </label>
 
                     <label style={styles.field}>
                       <span>Do</span>
-                      <input
-                        type="date"
-                        value={entitlementForm.validTo}
-                        onChange={event => updateEntitlementForm('validTo', event.target.value)}
-                        style={{ ...styles.input, ...styles.compactDateInput }}
-                        disabled={detailLoading}
-                      />
+                      {renderDateInput(
+                        entitlementForm.validTo,
+                        value => updateEntitlementForm('validTo', value),
+                        detailLoading,
+                        'Vyber do'
+                      )}
                     </label>
                   </div>
 
@@ -4313,7 +4345,7 @@ export default function PersonalistaClient({
                 </div>
               )}
 
-              {visibleDetailMessage && (
+              {shouldShowDetailMessage && (
                 <div
                   style={{
                     ...styles.message,
@@ -4322,7 +4354,7 @@ export default function PersonalistaClient({
                     borderColor: detailMessageType === 'ok' ? '#86efac' : '#fecaca'
                   }}
                 >
-                  {visibleDetailMessage}
+                  {detailMessage}
                 </div>
               )}
             </>
@@ -5332,11 +5364,46 @@ const styles: Record<string, CSSProperties> = {
     color: '#111827',
     outline: 'none'
   },
-  compactDateInput: {
-    minHeight: 30,
-    padding: '5px 6px',
+  mobileDateControl: {
+    position: 'relative',
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    height: 30,
+    boxSizing: 'border-box',
+    border: '1px solid #d1d5db',
+    borderRadius: 5,
+    background: '#fff',
+    overflow: 'hidden'
+  },
+  mobileDateValue: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    padding: '0 7px',
+    boxSizing: 'border-box',
+    color: '#111827',
     fontSize: 11,
-    fontWeight: 850
+    fontWeight: 900,
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    pointerEvents: 'none'
+  },
+  mobileDateNativeInput: {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    opacity: 0,
+    border: 0,
+    padding: 0,
+    margin: 0,
+    cursor: 'pointer'
   },
   inputWarning: {
     width: '100%',
