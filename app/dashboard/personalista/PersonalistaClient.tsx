@@ -390,6 +390,39 @@ export default function PersonalistaClient({
     setDetailMessageMode('')
   }
 
+  const replacePersonInList = (person: PersonItem) => {
+    setPeople(prev => {
+      let found = false
+      const nextPeople = prev.map(item => {
+        if (item.id !== person.id) return item
+
+        found = true
+        return person
+      })
+
+      return found ? nextPeople : [person, ...prev]
+    })
+  }
+
+  const reloadPersonDetail = async (userId: string) => {
+    const res = await fetch(`/api/personalista/people/search?userId=${encodeURIComponent(userId)}`, {
+      cache: 'no-store'
+    })
+    const json = await res.json().catch(() => ({}))
+
+    if (!res.ok || json.error) {
+      throw new Error(json.error || 'Detail osoby sa nepodarilo obnovit.')
+    }
+
+    const person = Array.isArray(json.people) ? json.people[0] : null
+
+    if (!person?.id) {
+      throw new Error('Server nevratil aktualny detail osoby.')
+    }
+
+    replacePersonInList(person)
+  }
+
   const selectedPerson = selectedPersonId
     ? people.find(person => person.id === selectedPersonId) || null
     : null
@@ -597,15 +630,15 @@ export default function PersonalistaClient({
   }, [search, groupFilter, foodFilter, qrFilter, statusFilter, pageSize])
 
   useEffect(() => {
-    if (!filteredPeople.length) {
+    if (!people.length) {
       if (selectedPersonId) setSelectedPersonId('')
       return
     }
 
-    if (!filteredPeople.some(person => person.id === selectedPersonId)) {
+    if (!people.some(person => person.id === selectedPersonId)) {
       setSelectedPersonId('')
     }
-  }, [filteredPeople, selectedPersonId])
+  }, [people, selectedPersonId])
 
   const pageCount = Math.max(1, Math.ceil(filteredPeople.length / pageSize))
   const safeCurrentPage = Math.min(currentPage, pageCount)
@@ -1164,9 +1197,13 @@ export default function PersonalistaClient({
         mode: messageMode
       }
 
-      setTimeout(() => {
-        router.refresh()
-      }, 450)
+      try {
+        await reloadPersonDetail(selectedPerson.id)
+      } catch (reloadError) {
+        const reloadMessage = reloadError instanceof Error ? reloadError.message : String(reloadError)
+        setDetailMessage(`${successMessage} Detail sa nepodarilo automaticky obnovit: ${reloadMessage}`)
+        setDetailMessageType('ok')
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setDetailMessage('Chyba spojenia so serverom: ' + message)

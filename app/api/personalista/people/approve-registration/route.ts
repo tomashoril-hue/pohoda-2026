@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { slovakiaDateIso } from '@/lib/date'
 import { sendAppEmail } from '@/lib/email'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     const assigned = Array.isArray(qrRows) ? qrRows[0] : qrRows
     const qrCode = assigned?.qr_code || ''
-    const today = new Date().toISOString().slice(0, 10)
+    const today = slovakiaDateIso()
     let registrationPeriodCreated = false
     let emailSent = false
 

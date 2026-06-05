@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { slovakiaDateIso } from '@/lib/date'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
@@ -7,6 +8,10 @@ const RESULT_LIMIT = 100
 
 function cleanText(value: any) {
   return String(value || '').trim()
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 }
 
 function fullName(user: any) {
@@ -127,19 +132,31 @@ export async function GET(req: NextRequest) {
     }
 
     const q = cleanText(req.nextUrl.searchParams.get('q'))
+    const userId = cleanText(req.nextUrl.searchParams.get('userId'))
     const query = q.replaceAll('%', '').replaceAll(',', ' ')
+
+    if (userId && !isUuid(userId)) {
+      return NextResponse.json({ error: 'Neplatna osoba.' }, { status: 400 })
+    }
 
     let usersQuery = supabaseServer
       .from('users')
       .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, registration_group_id, registration_group_note, review_status, updated_at, created_at')
       .limit(RESULT_LIMIT)
+    let mode = 'RECENT'
 
-    if (query.length >= 2) {
+    if (userId) {
+      usersQuery = usersQuery
+        .eq('id', userId)
+        .limit(1)
+      mode = 'PERSON'
+    } else if (query.length >= 2) {
       const pattern = `%${query}%`
       usersQuery = usersQuery
         .or(`meno.ilike.${pattern},priezvisko.ilike.${pattern},email.ilike.${pattern},telefon.ilike.${pattern}`)
         .order('priezvisko', { ascending: true })
         .order('meno', { ascending: true })
+      mode = 'SEARCH'
     } else {
       usersQuery = usersQuery
         .order('updated_at', { ascending: false })
@@ -242,7 +259,7 @@ export async function GET(req: NextRequest) {
         profile,
         registrationGroupPeriods,
         registrationGroupById,
-        new Date().toISOString().slice(0, 10)
+        slovakiaDateIso()
       )
 
       return {
@@ -288,7 +305,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       people,
-      mode: query.length >= 2 ? 'SEARCH' : 'RECENT',
+      mode,
       limit: RESULT_LIMIT
     })
   } catch (err: any) {

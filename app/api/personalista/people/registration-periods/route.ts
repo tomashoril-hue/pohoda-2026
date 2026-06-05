@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { slovakiaDateIso } from '@/lib/date'
 import { canManagePersonAsPersonalista } from '@/lib/personalistaAccess'
 import { supabaseServer } from '@/lib/supabaseServer'
 
@@ -89,7 +90,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: deleteError.message }, { status: 500 })
     }
 
-    const today = new Date().toISOString().slice(0, 10)
+    const today = slovakiaDateIso()
     const { data: currentPeriod, error: currentPeriodError } = await supabaseServer
       .from('user_registration_group_periods')
       .select('id, registration_group_id, valid_from, valid_to, note')
@@ -271,7 +272,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const today = new Date().toISOString().slice(0, 10)
+    const today = slovakiaDateIso()
     const isCurrent = validFrom <= today && (!validTo || validTo >= today)
 
     if (isCurrent) {

@@ -1,18 +1,12 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
+import { slovakiaDateIso } from '@/lib/date'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import PersonalistaClient from './PersonalistaClient'
 
 function isoDateOffset(days: number) {
-  const date = new Date()
-  date.setDate(date.getDate() + days)
-
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-
-  return `${year}-${month}-${day}`
+  return slovakiaDateIso(days)
 }
 
 function fullName(user: any) {
