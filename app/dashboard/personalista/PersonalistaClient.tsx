@@ -340,6 +340,7 @@ export default function PersonalistaClient({
   const selectedPerson = selectedPersonId
     ? people.find(person => person.id === selectedPersonId) || null
     : null
+  const showMobilePersonDetail = isMobile && !!selectedPerson
   const printPersonHref = selectedPerson
     ? `/dashboard/personalista/print-qr?personId=${encodeURIComponent(selectedPerson.id)}`
     : ''
@@ -359,6 +360,12 @@ export default function PersonalistaClient({
       media.removeEventListener('change', updateMobile)
     }
   }, [])
+
+  useEffect(() => {
+    if (!isMobile || !selectedPersonId) return
+
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [isMobile, selectedPersonId])
 
   useEffect(() => {
     setPeople(initialPeople)
@@ -1824,7 +1831,8 @@ export default function PersonalistaClient({
       `}</style>
       <header style={{
         ...styles.header,
-        ...(isMobile ? styles.mobileHeader : {})
+        ...(isMobile ? styles.mobileHeader : {}),
+        ...(showMobilePersonDetail ? styles.mobileHiddenListColumn : {})
       }}>
         <div>
           <div style={styles.breadcrumb}>Prehlad / Personalistika</div>
@@ -1848,12 +1856,13 @@ export default function PersonalistaClient({
         </div>
       </header>
 
-      {!canManage && (
+      {!showMobilePersonDetail && !canManage && (
         <section style={styles.warningBox}>
           Na túto obrazovku potrebuješ rolu ADMIN alebo PERSONALISTA.
         </section>
       )}
 
+      {!showMobilePersonDetail && (
       <section style={{
         ...styles.summaryGrid,
         ...(isMobile ? styles.mobileSummaryStrip : {})
@@ -1894,7 +1903,9 @@ export default function PersonalistaClient({
           <span>DIÉTA</span>
         </div>
       </section>
+      )}
 
+      {!showMobilePersonDetail && (
       <section style={{
         ...styles.actionPanel,
         ...(isMobile ? styles.mobileActionStripPanel : {})
@@ -1909,6 +1920,8 @@ export default function PersonalistaClient({
           disabled={!canManage}
           onClick={() => {
             setCreateOpen(prev => !prev)
+            setRegistrationGroupsOpen(false)
+            setPrintQrOpen(false)
             setCreateMessage('')
             setCreateMessageType('')
           }}
@@ -1952,6 +1965,8 @@ export default function PersonalistaClient({
           disabled={!canManage}
           onClick={() => {
             setRegistrationGroupsOpen(prev => !prev)
+            setCreateOpen(false)
+            setPrintQrOpen(false)
             setRegistrationGroupMessage('')
             setRegistrationGroupMessageType('')
           }}
@@ -1970,7 +1985,11 @@ export default function PersonalistaClient({
         <button
           type="button"
           style={styles.lightButton}
-          onClick={() => setPrintQrOpen(prev => !prev)}
+          onClick={() => {
+            setPrintQrOpen(prev => !prev)
+            setCreateOpen(false)
+            setRegistrationGroupsOpen(false)
+          }}
         >
           Tlac QR skupiny
         </button>
@@ -1979,8 +1998,9 @@ export default function PersonalistaClient({
           QR/NFC párovanie
         </button>
       </section>
+      )}
 
-      {printQrOpen && (
+      {!showMobilePersonDetail && printQrOpen && (
         <section style={styles.createPanel}>
           <div style={styles.createHeader}>
             <div>
@@ -2066,7 +2086,7 @@ export default function PersonalistaClient({
         </section>
       )}
 
-      {registrationGroupsOpen && (
+      {!showMobilePersonDetail && registrationGroupsOpen && (
         <section style={styles.createPanel}>
           <div style={styles.createHeader}>
             <div>
@@ -2829,7 +2849,7 @@ export default function PersonalistaClient({
         </section>
       )}
 
-      {createOpen && (
+      {!showMobilePersonDetail && createOpen && (
         <section style={styles.createPanel}>
           <div style={styles.createHeader}>
             <div>
@@ -3105,10 +3125,13 @@ export default function PersonalistaClient({
       <section
         style={{
           ...styles.layoutGrid,
-          ...(!selectedPerson ? styles.layoutGridFull : {})
+          ...(!selectedPerson || showMobilePersonDetail ? styles.layoutGridFull : {})
         }}
       >
-        <div style={styles.leftColumn}>
+        <div style={{
+          ...styles.leftColumn,
+          ...(showMobilePersonDetail ? styles.mobileHiddenListColumn : {})
+        }}>
           <section style={{
             ...styles.toolbar,
             ...(isMobile ? styles.mobileToolbar : {})
@@ -3336,7 +3359,10 @@ export default function PersonalistaClient({
             ...(isMobile ? styles.mobileDetailPanel : {})
           }}>
             <>
-              <div style={styles.detailHeader}>
+              <div style={{
+                ...styles.detailHeader,
+                ...(isMobile ? styles.mobileDetailHeader : {})
+              }}>
                 <div>
                   <div style={styles.detailSmall}>Detail osoby</div>
                   <h2 style={styles.detailTitle}>{selectedPerson.fullName}</h2>
@@ -3344,14 +3370,20 @@ export default function PersonalistaClient({
 
                 <button
                   type="button"
-                  style={styles.collapseDetailButton}
+                  style={{
+                    ...styles.collapseDetailButton,
+                    ...(isMobile ? styles.mobileBackToListButton : {})
+                  }}
                   onClick={() => setSelectedPersonId('')}
                   title="Skryt detail"
                 >
-                  &gt;
+                  {isMobile ? '← Zoznam' : '×'}
                 </button>
 
-                <div style={styles.detailHeaderBadges}>
+                <div style={{
+                  ...styles.detailHeaderBadges,
+                  ...(isMobile ? styles.mobileDetailHeaderBadges : {})
+                }}>
                   <span
                     style={{
                       ...styles.statusBadge,
@@ -4686,24 +4718,32 @@ const styles: Record<string, CSSProperties> = {
     overflow: 'auto'
   },
   mobileDetailPanel: {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 70,
     width: '100%',
-    height: '100dvh',
-    maxHeight: '100dvh',
-    borderRadius: 0,
-    border: 0,
-    padding: 8,
+    maxHeight: 'none',
+    minHeight: 'calc(100vh - 8px)',
+    position: 'static',
+    top: 'auto',
+    borderRadius: 8,
+    padding: 10,
     boxSizing: 'border-box',
-    overflow: 'auto',
-    overscrollBehavior: 'contain'
+    overflow: 'visible',
+    alignSelf: 'start',
+    borderColor: '#dbeafe',
+    boxShadow: '0 1px 2px rgba(15, 23, 42, 0.06)'
+  },
+  mobileHiddenListColumn: {
+    display: 'none'
   },
   detailHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     gap: 10,
     alignItems: 'flex-start'
+  },
+  mobileDetailHeader: {
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8
   },
   collapseDetailButton: {
     width: 26,
@@ -4716,6 +4756,21 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950,
     cursor: 'pointer',
     lineHeight: 1
+  },
+  mobileBackToListButton: {
+    width: 'auto',
+    height: 32,
+    minWidth: 94,
+    padding: '0 12px',
+    borderRadius: 999,
+    borderColor: '#111827',
+    background: '#111827',
+    color: '#fff',
+    fontSize: 12,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5
   },
   detailSmall: {
     fontSize: 11,
@@ -4773,13 +4828,11 @@ const styles: Record<string, CSSProperties> = {
     gap: 5
   },
   mobileDetailActions: {
-    gridTemplateColumns: 'none',
-    gridAutoFlow: 'column',
-    gridAutoColumns: 'max-content',
-    overflowX: 'auto',
-    overflowY: 'hidden',
-    paddingBottom: 6,
-    WebkitOverflowScrolling: 'touch'
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    overflowX: 'visible',
+    overflowY: 'visible',
+    paddingBottom: 0,
+    gap: 6
   },
   pendingApprovalBox: {
     border: '1px solid #fde68a',
@@ -4795,6 +4848,10 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
     flexWrap: 'wrap',
     justifyContent: 'flex-end'
+  },
+  mobileDetailHeaderBadges: {
+    width: '100%',
+    justifyContent: 'flex-start'
   },
   globalRoleBadge: {
     borderRadius: 999,
