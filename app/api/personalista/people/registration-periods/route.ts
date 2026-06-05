@@ -24,6 +24,127 @@ function addDaysIso(value: string, days: number) {
   return `${year}-${month}-${day}`
 }
 
+export async function DELETE(req: NextRequest) {
+  try {
+    const actor = await getCurrentUser()
+
+    if (!actor) {
+      return NextResponse.json({ error: 'Nie si prihlaseny.' }, { status: 401 })
+    }
+
+    const body = await req.json()
+    const userId = cleanText(body.userId)
+    const periodId = cleanText(body.periodId)
+
+    if (!userId) {
+      return NextResponse.json({ error: 'Chyba osoba.' }, { status: 400 })
+    }
+
+    if (!periodId) {
+      return NextResponse.json({ error: 'Chyba zaradenie.' }, { status: 400 })
+    }
+
+    const access = await canManagePersonAsPersonalista(actor.id, userId)
+
+    if (!access.ok) {
+      return NextResponse.json(
+        { error: access.error || 'Nemate opravnenie.' },
+        { status: access.status || 403 }
+      )
+    }
+
+    const { data: period, error: periodError } = await supabaseServer
+      .from('user_registration_group_periods')
+      .select(`
+        id,
+        user_id,
+        registration_group_id,
+        valid_from,
+        valid_to,
+        note,
+        registration_groups (
+          id,
+          name
+        )
+      `)
+      .eq('id', periodId)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (periodError) {
+      return NextResponse.json({ error: periodError.message }, { status: 500 })
+    }
+
+    if (!period) {
+      return NextResponse.json({ error: 'Zaradenie neexistuje.' }, { status: 404 })
+    }
+
+    const { error: deleteError } = await supabaseServer
+      .from('user_registration_group_periods')
+      .delete()
+      .eq('id', periodId)
+      .eq('user_id', userId)
+
+    if (deleteError) {
+      return NextResponse.json({ error: deleteError.message }, { status: 500 })
+    }
+
+    const today = new Date().toISOString().slice(0, 10)
+    const { data: currentPeriod, error: currentPeriodError } = await supabaseServer
+      .from('user_registration_group_periods')
+      .select('id, registration_group_id, valid_from, valid_to, note')
+      .eq('user_id', userId)
+      .lte('valid_from', today)
+      .or(`valid_to.is.null,valid_to.gte.${today}`)
+      .order('valid_from', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (currentPeriodError) {
+      return NextResponse.json({ error: currentPeriodError.message }, { status: 500 })
+    }
+
+    const { error: userUpdateError } = await supabaseServer
+      .from('users')
+      .update({
+        registration_group_id: currentPeriod?.registration_group_id || null,
+        registration_group_note: currentPeriod?.note || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
+
+    if (userUpdateError) {
+      return NextResponse.json({ error: userUpdateError.message }, { status: 500 })
+    }
+
+    await supabaseServer
+      .from('personnel_audit_log')
+      .insert({
+        actor_user_id: actor.id,
+        target_user_id: userId,
+        action: 'PERSON_REGISTRATION_GROUP_PERIOD_DELETED',
+        entity_table: 'user_registration_group_periods',
+        entity_id: period.id,
+        before_data: period,
+        after_data: {
+          current_registration_group_id: currentPeriod?.registration_group_id || null,
+          current_registration_group_note: currentPeriod?.note || null
+        },
+        note: 'Naroky na stravu neboli zmenene.'
+      })
+
+    return NextResponse.json({
+      ok: true,
+      message: 'Zaradenie bolo vymazane. Naroky na stravu ostali nezmenene.'
+    })
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message || 'Neznama chyba servera.' },
+      { status: 500 }
+    )
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const actor = await getCurrentUser()

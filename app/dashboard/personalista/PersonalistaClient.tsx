@@ -72,6 +72,9 @@ type PersonItem = {
   groups: PersonGroup[]
 }
 
+type DetailMode = 'profile' | 'registrationPeriods' | 'entitlements' | 'groups' | 'roles' | 'qr' | 'nfc' | ''
+type DetailMessageType = 'ok' | 'error' | ''
+
 function foodLabel(value: string) {
   const normalized = String(value || '').toUpperCase()
 
@@ -116,6 +119,13 @@ function shortDateLabel(value: string) {
     day: '2-digit',
     month: '2-digit'
   })
+}
+
+function fullDateLabel(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value || '-'
+
+  const [year, month, day] = value.split('-')
+  return `${day}-${month}-${year}`
 }
 
 function entitlementBounds(entitlements: PersonEntitlement[], fallbackFrom: string, fallbackTo: string) {
@@ -217,7 +227,8 @@ export default function PersonalistaClient({
   const preservedDetailMessageRef = useRef<{
     userId: string
     message: string
-    type: 'ok' | 'error'
+    type: DetailMessageType
+    mode: DetailMode
   } | null>(null)
 
   const [isMobile, setIsMobile] = useState(false)
@@ -258,10 +269,11 @@ export default function PersonalistaClient({
   const [bulkRegistrationEntitlementsMessage, setBulkRegistrationEntitlementsMessage] = useState('')
   const [bulkRegistrationEntitlementsMessageType, setBulkRegistrationEntitlementsMessageType] = useState<'ok' | 'error' | ''>('')
   const [bulkRegistrationCalendarClaims, setBulkRegistrationCalendarClaims] = useState<Record<string, CalendarClaim>>({})
-  const [detailMode, setDetailMode] = useState<'profile' | 'registrationPeriods' | 'entitlements' | 'groups' | 'roles' | 'qr' | 'nfc' | ''>('')
+  const [detailMode, setDetailMode] = useState<DetailMode>('')
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailMessage, setDetailMessage] = useState('')
-  const [detailMessageType, setDetailMessageType] = useState<'ok' | 'error' | ''>('')
+  const [detailMessageType, setDetailMessageType] = useState<DetailMessageType>('')
+  const [detailMessageMode, setDetailMessageMode] = useState<DetailMode>('')
   const [createForm, setCreateForm] = useState({
     meno: '',
     priezvisko: '',
@@ -337,10 +349,23 @@ export default function PersonalistaClient({
     groupCreator: false
   })
 
+  const setDetailFeedback = (message: string, type: DetailMessageType, mode: DetailMode = detailMode) => {
+    setDetailMessage(message)
+    setDetailMessageType(type)
+    setDetailMessageMode(mode)
+  }
+
+  const clearDetailFeedback = () => {
+    setDetailMessage('')
+    setDetailMessageType('')
+    setDetailMessageMode('')
+  }
+
   const selectedPerson = selectedPersonId
     ? people.find(person => person.id === selectedPersonId) || null
     : null
   const showMobilePersonDetail = isMobile && !!selectedPerson
+  const visibleDetailMessage = detailMessage && detailMessageMode === detailMode
   const printPersonHref = selectedPerson
     ? `/dashboard/personalista/print-qr?personId=${encodeURIComponent(selectedPerson.id)}`
     : ''
@@ -469,10 +494,10 @@ export default function PersonalistaClient({
     if (preservedMessage?.userId === selectedPerson.id) {
       setDetailMessage(preservedMessage.message)
       setDetailMessageType(preservedMessage.type)
+      setDetailMessageMode(preservedMessage.mode)
       preservedDetailMessageRef.current = null
     } else {
-      setDetailMessage('')
-      setDetailMessageType('')
+      clearDetailFeedback()
     }
   }, [selectedPerson, fromDate, toDate])
 
@@ -950,9 +975,9 @@ export default function PersonalistaClient({
     }))
   }
 
-  const postDetailAction = async (url: string, payload: any, fallbackMessage: string) => {
-    setDetailMessage('')
-    setDetailMessageType('')
+  const postDetailAction = async (url: string, payload: any, fallbackMessage: string, messageMode: DetailMode = detailMode, method = 'POST') => {
+    clearDetailFeedback()
+    setDetailMessageMode(messageMode)
 
     if (!selectedPerson) return
 
@@ -966,7 +991,7 @@ export default function PersonalistaClient({
 
     try {
       const res = await fetch(url, {
-        method: 'POST',
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
@@ -994,7 +1019,8 @@ export default function PersonalistaClient({
       preservedDetailMessageRef.current = {
         userId: selectedPerson.id,
         message: successMessage,
-        type: 'ok'
+        type: 'ok',
+        mode: messageMode
       }
 
       setTimeout(() => {
@@ -1030,20 +1056,17 @@ export default function PersonalistaClient({
     if (!selectedPerson) return
 
     if (!registrationPeriodForm.registrationGroupId) {
-      setDetailMessage('Vyber registracnu skupinu.')
-      setDetailMessageType('error')
+      setDetailFeedback('Vyber registracnu skupinu.', 'error', 'registrationPeriods')
       return
     }
 
     if (!registrationPeriodForm.validFrom) {
-      setDetailMessage('Vyber datum od.')
-      setDetailMessageType('error')
+      setDetailFeedback('Vyber datum od.', 'error', 'registrationPeriods')
       return
     }
 
     if (registrationPeriodForm.validTo && registrationPeriodForm.validTo < registrationPeriodForm.validFrom) {
-      setDetailMessage('Datum do nemoze byt pred datumom od.')
-      setDetailMessageType('error')
+      setDetailFeedback('Datum do nemoze byt pred datumom od.', 'error', 'registrationPeriods')
       return
     }
 
@@ -1053,7 +1076,27 @@ export default function PersonalistaClient({
         userId: selectedPerson.id,
         ...registrationPeriodForm
       },
-      'Zaradenie sa nepodarilo ulozit.'
+      'Zaradenie sa nepodarilo ulozit.',
+      'registrationPeriods'
+    )
+  }
+
+  const deleteRegistrationGroupPeriod = (period: PersonRegistrationGroupPeriod) => {
+    if (!selectedPerson) return
+
+    const label = `${period.registrationGroupName || 'registracne zaradenie'} (${fullDateLabel(period.validFrom)} - ${period.validTo ? fullDateLabel(period.validTo) : 'bez konca'})`
+    const ok = window.confirm(`Vymazat zaradenie ${label}? Naroky na stravu sa nezmenia.`)
+    if (!ok) return
+
+    postDetailAction(
+      '/api/personalista/people/registration-periods',
+      {
+        userId: selectedPerson.id,
+        periodId: period.id
+      },
+      'Zaradenie sa nepodarilo vymazat.',
+      'registrationPeriods',
+      'DELETE'
     )
   }
 
@@ -1061,8 +1104,7 @@ export default function PersonalistaClient({
     if (!selectedPerson) return
 
     if (!profileForm.registrationGroupId) {
-      setDetailMessage('Vyber registracnu skupinu.')
-      setDetailMessageType('error')
+      setDetailFeedback('Vyber registracnu skupinu.', 'error', detailMode || 'profile')
       return
     }
 
@@ -1476,8 +1518,7 @@ export default function PersonalistaClient({
 
   const addPersonGroup = () => {
     if (!safeDetailGroupId) {
-      setDetailMessage('Vyber skupinu.')
-      setDetailMessageType('error')
+      setDetailFeedback('Vyber skupinu.', 'error', 'groups')
       return
     }
 
@@ -1724,8 +1765,7 @@ export default function PersonalistaClient({
     if (typedEmail === null) return
 
     if (typedEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
-      setDetailMessage('Email nesedi. Odregistrovanie nebolo spustene.')
-      setDetailMessageType('error')
+      setDetailFeedback('Email nesedi. Odregistrovanie nebolo spustene.', 'error', 'roles')
       return
     }
 
@@ -3475,7 +3515,7 @@ export default function PersonalistaClient({
                 ) : (
                   selectedPerson.entitlements.map(item => (
                     <span key={item.datum} style={styles.entitlementPill}>
-                      {item.datum}: {item.obed ? 'O' : '-'} / {item.vecera ? 'V' : '-'}
+                      {fullDateLabel(item.datum)}: {item.obed ? 'O' : '-'} / {item.vecera ? 'V' : '-'}
                     </span>
                   ))
                 )}
@@ -3761,10 +3801,22 @@ export default function PersonalistaClient({
                       </div>
                     ) : (
                       selectedPerson.registrationGroupPeriods.map(period => (
-                        <div key={period.id} style={styles.detailGroupRow}>
-                          <b>{period.registrationGroupName || '-'}</b>
-                          <span>{period.validFrom} - {period.validTo || 'bez konca'}</span>
-                          {period.note && <small>{period.note}</small>}
+                        <div key={period.id} style={styles.registrationPeriodRow}>
+                          <div style={styles.registrationPeriodInfo}>
+                            <b>{period.registrationGroupName || '-'}</b>
+                            <span>{fullDateLabel(period.validFrom)} - {period.validTo ? fullDateLabel(period.validTo) : 'bez konca'}</span>
+                            {period.note && <small>{period.note}</small>}
+                          </div>
+
+                          <button
+                            type="button"
+                            style={styles.smallRemoveButton}
+                            disabled={detailLoading}
+                            onClick={() => deleteRegistrationGroupPeriod(period)}
+                            title="Vymazat zaradenie"
+                          >
+                            x
+                          </button>
                         </div>
                       ))
                     )}
@@ -3794,7 +3846,7 @@ export default function PersonalistaClient({
                         type="date"
                         value={registrationPeriodForm.validFrom}
                         onChange={event => updateRegistrationPeriodForm('validFrom', event.target.value)}
-                        style={styles.input}
+                        style={{ ...styles.input, ...styles.compactDateInput }}
                         disabled={detailLoading}
                       />
                     </label>
@@ -3805,7 +3857,7 @@ export default function PersonalistaClient({
                         type="date"
                         value={registrationPeriodForm.validTo}
                         onChange={event => updateRegistrationPeriodForm('validTo', event.target.value)}
-                        style={styles.input}
+                        style={{ ...styles.input, ...styles.compactDateInput }}
                         disabled={detailLoading}
                       />
                     </label>
@@ -3855,7 +3907,7 @@ export default function PersonalistaClient({
                         type="date"
                         value={entitlementForm.validFrom}
                         onChange={event => updateEntitlementForm('validFrom', event.target.value)}
-                        style={styles.input}
+                        style={{ ...styles.input, ...styles.compactDateInput }}
                         disabled={detailLoading}
                       />
                     </label>
@@ -3866,7 +3918,7 @@ export default function PersonalistaClient({
                         type="date"
                         value={entitlementForm.validTo}
                         onChange={event => updateEntitlementForm('validTo', event.target.value)}
-                        style={styles.input}
+                        style={{ ...styles.input, ...styles.compactDateInput }}
                         disabled={detailLoading}
                       />
                     </label>
@@ -4261,7 +4313,7 @@ export default function PersonalistaClient({
                 </div>
               )}
 
-              {detailMessage && (
+              {visibleDetailMessage && (
                 <div
                   style={{
                     ...styles.message,
@@ -4270,7 +4322,7 @@ export default function PersonalistaClient({
                     borderColor: detailMessageType === 'ok' ? '#86efac' : '#fecaca'
                   }}
                 >
-                  {detailMessage}
+                  {visibleDetailMessage}
                 </div>
               )}
             </>
@@ -4822,6 +4874,34 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     alignItems: 'center'
   },
+  registrationPeriodRow: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 5,
+    padding: 6,
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) 26px',
+    gap: 8,
+    alignItems: 'center',
+    background: '#fff'
+  },
+  registrationPeriodInfo: {
+    display: 'grid',
+    gap: 3,
+    minWidth: 0,
+    overflowWrap: 'anywhere'
+  },
+  smallRemoveButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    border: '1px solid #fecaca',
+    background: '#fff',
+    color: '#b91c1c',
+    fontSize: 15,
+    fontWeight: 950,
+    lineHeight: 1,
+    cursor: 'pointer'
+  },
   detailActions: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
@@ -5251,6 +5331,12 @@ const styles: Record<string, CSSProperties> = {
     background: '#fff',
     color: '#111827',
     outline: 'none'
+  },
+  compactDateInput: {
+    minHeight: 30,
+    padding: '5px 6px',
+    fontSize: 11,
+    fontWeight: 850
   },
   inputWarning: {
     width: '100%',
