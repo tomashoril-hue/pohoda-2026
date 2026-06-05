@@ -59,6 +59,18 @@ body {
   white-space: nowrap;
 }
 
+@media print {
+  .pwa-ios-status-bar,
+  .pwa-pull-refresh {
+    display: none !important;
+  }
+
+  .pwa-ios-standalone body {
+    padding-top: 0 !important;
+    background: #fff !important;
+  }
+}
+
 @media (max-width: 768px) {
   input,
   select,
