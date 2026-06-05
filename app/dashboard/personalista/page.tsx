@@ -195,7 +195,7 @@ async function fetchRegistrationGroupPeriodsForUsers(userIds: string[]) {
   }
 }
 
-function mapRegistrationGroupPeriod(row: any) {
+function mapRegistrationGroupPeriod(row: any, registrationGroupById: Map<string, any>) {
   const group = Array.isArray(row.registration_groups)
     ? row.registration_groups[0]
     : row.registration_groups
@@ -203,7 +203,7 @@ function mapRegistrationGroupPeriod(row: any) {
   return {
     id: row.id,
     registrationGroupId: row.registration_group_id,
-    registrationGroupName: group?.name || '',
+    registrationGroupName: group?.name || registrationGroupById.get(row.registration_group_id)?.name || '',
     validFrom: row.valid_from,
     validTo: row.valid_to || '',
     note: row.note || ''
@@ -216,9 +216,11 @@ function currentRegistrationGroupSnapshot(profile: any, periods: any[], registra
   })
 
   if (currentPeriod) {
+    const group = registrationGroupById.get(currentPeriod.registrationGroupId)
+
     return {
       id: currentPeriod.registrationGroupId || '',
-      name: currentPeriod.registrationGroupName || '',
+      name: currentPeriod.registrationGroupName || group?.name || '',
       note: currentPeriod.note || ''
     }
   }
@@ -432,7 +434,7 @@ export default async function PersonalistaPage({
   const registrationGroupPeriodsByUserId = new Map<string, any[]>()
 
   registrationGroupPeriodRows.forEach((row: any) => {
-    const period = mapRegistrationGroupPeriod(row)
+    const period = mapRegistrationGroupPeriod(row, registrationGroupById)
     const list = registrationGroupPeriodsByUserId.get(row.user_id) || []
     list.push(period)
     registrationGroupPeriodsByUserId.set(row.user_id, list)
