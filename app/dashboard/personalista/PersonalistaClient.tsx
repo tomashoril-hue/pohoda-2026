@@ -392,15 +392,9 @@ export default function PersonalistaClient({
 
   const replacePersonInList = (person: PersonItem) => {
     setPeople(prev => {
-      let found = false
-      const nextPeople = prev.map(item => {
-        if (item.id !== person.id) return item
+      const nextPeople = prev.filter(item => item.id !== person.id)
 
-        found = true
-        return person
-      })
-
-      return found ? nextPeople : [person, ...prev]
+      return [person, ...nextPeople]
     })
   }
 
