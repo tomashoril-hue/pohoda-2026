@@ -87,6 +87,7 @@ type PersonItem = {
 
 type DetailMode = 'profile' | 'registrationPeriods' | 'entitlements' | 'groups' | 'roles' | 'qr' | 'nfc' | ''
 type DetailMessageType = 'ok' | 'error' | ''
+type PeopleScope = 'mine' | 'all'
 
 function foodLabel(value: string) {
   const normalized = String(value || '').toUpperCase()
@@ -219,7 +220,9 @@ export default function PersonalistaClient({
   toDate,
   canManage,
   canAssignSensitiveRoles,
-  canDeregisterUsers
+  canDeregisterUsers,
+  canViewAllPeople,
+  peopleScope
 }: {
   people: PersonItem[]
   groups: GroupItem[]
@@ -230,8 +233,13 @@ export default function PersonalistaClient({
   canManage: boolean
   canAssignSensitiveRoles: boolean
   canDeregisterUsers: boolean
+  canViewAllPeople: boolean
+  peopleScope: PeopleScope
 }) {
   const router = useRouter()
+  const initialPeopleSearchMessage = peopleScope === 'all'
+    ? 'Vsetky posledne upravovane osoby'
+    : 'Moje posledne upravovane osoby'
   const qrScannerVideoRef = useRef<HTMLVideoElement | null>(null)
   const qrScannerCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const qrScannerStreamRef = useRef<MediaStream | null>(null)
@@ -250,7 +258,7 @@ export default function PersonalistaClient({
   const [isMobile, setIsMobile] = useState(false)
   const [people, setPeople] = useState(initialPeople)
   const [peopleSearchLoading, setPeopleSearchLoading] = useState(false)
-  const [peopleSearchMessage, setPeopleSearchMessage] = useState('Posledne upravovane osoby')
+  const [peopleSearchMessage, setPeopleSearchMessage] = useState(initialPeopleSearchMessage)
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState('ALL')
   const [foodFilter, setFoodFilter] = useState('ALL')
@@ -440,7 +448,7 @@ export default function PersonalistaClient({
     if (!q) {
       setPeople(initialPeople)
       setPeopleSearchLoading(false)
-      setPeopleSearchMessage('Posledne upravovane osoby')
+      setPeopleSearchMessage(initialPeopleSearchMessage)
       return
     }
 
@@ -483,7 +491,7 @@ export default function PersonalistaClient({
       cancelled = true
       window.clearTimeout(timeout)
     }
-  }, [search, initialPeople])
+  }, [search, initialPeople, initialPeopleSearchMessage])
 
   useEffect(() => {
     if (!selectedPerson) return
@@ -2067,7 +2075,7 @@ export default function PersonalistaClient({
           <div style={styles.breadcrumb}>Prehlad / Personalistika</div>
           <h1 style={styles.title}>Personalistika</h1>
           <p style={styles.subtitle}>
-            Posledne upravene osoby, registracne skupiny, QR a naroky.
+            {peopleScope === 'all' ? 'Vsetky posledne upravene osoby' : 'Moje posledne upravene osoby'}, registracne skupiny, QR a naroky.
           </p>
         </div>
 
@@ -2098,7 +2106,7 @@ export default function PersonalistaClient({
       }}>
         <div style={styles.summaryCard}>
           <b>{people.length}</b>
-          <span>Posledne upraveni</span>
+          <span>{peopleScope === 'all' ? 'Posledne upraveni' : 'Moje upravy'}</span>
         </div>
 
         <div style={styles.summaryCardRed}>
@@ -2241,6 +2249,30 @@ export default function PersonalistaClient({
           >
             Pravidla QR naramkov
           </button>
+        )}
+
+        {canViewAllPeople && (
+          <div style={styles.scopeToggle}>
+            <a
+              href="/dashboard/personalista"
+              style={{
+                ...styles.scopeToggleButton,
+                ...(peopleScope === 'mine' ? styles.scopeToggleButtonActive : {})
+              }}
+            >
+              Moje upravy
+            </a>
+
+            <a
+              href="/dashboard/personalista?scope=all"
+              style={{
+                ...styles.scopeToggleButton,
+                ...(peopleScope === 'all' ? styles.scopeToggleButtonActive : {})
+              }}
+            >
+              Vsetky
+            </a>
+          </div>
         )}
 
         <button type="button" style={{ display: 'none' }} disabled>
@@ -4898,6 +4930,30 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(118px, auto))',
     gap: 5
+  },
+  scopeToggle: {
+    background: '#eef2ff',
+    border: '1px solid #c7d2fe',
+    borderRadius: 5,
+    padding: 3,
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 3,
+    minWidth: 164
+  },
+  scopeToggleButton: {
+    borderRadius: 4,
+    padding: '5px 7px',
+    color: '#3730a3',
+    fontSize: 11,
+    fontWeight: 950,
+    textAlign: 'center',
+    textDecoration: 'none'
+  },
+  scopeToggleButtonActive: {
+    background: '#fff',
+    color: '#111827',
+    boxShadow: '0 1px 2px rgba(17, 24, 39, 0.12)'
   },
   mobileActionStripPanel: {
     gridTemplateColumns: 'none',

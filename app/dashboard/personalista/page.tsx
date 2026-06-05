@@ -20,6 +20,11 @@ function fullName(user: any) {
 }
 
 const INITIAL_PEOPLE_LIMIT = 50
+const RECENT_USER_SELECT = 'id, meno, priezvisko, email, telefon, typ_stravy, aktivny, registration_group_id, registration_group_note, review_status, updated_at, created_at'
+
+type PersonalistaSearchParams = Promise<{
+  scope?: string | string[]
+}>
 
 async function fetchMembershipsForUsers(userIds: string[]) {
   if (userIds.length === 0) {
@@ -72,13 +77,65 @@ async function fetchMembershipsForUsers(userIds: string[]) {
 async function fetchRecentUsers(limit = INITIAL_PEOPLE_LIMIT) {
   const { data, error } = await supabaseServer
     .from('users')
-    .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, registration_group_id, registration_group_note, review_status, updated_at, created_at')
+    .select(RECENT_USER_SELECT)
     .order('updated_at', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(limit)
 
   return {
     rows: data || [],
+    error
+  }
+}
+
+async function fetchRecentUsersEditedByActor(actorUserId: string, limit = INITIAL_PEOPLE_LIMIT) {
+  const { data: auditRows, error: auditError } = await supabaseServer
+    .from('personnel_audit_log')
+    .select('target_user_id, created_at')
+    .eq('actor_user_id', actorUserId)
+    .not('target_user_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit * 8)
+
+  if (auditError) {
+    return {
+      rows: [],
+      error: auditError
+    }
+  }
+
+  const orderedUserIds: string[] = []
+  const seenUserIds = new Set<string>()
+
+  for (const row of auditRows || []) {
+    const userId = row.target_user_id
+
+    if (!userId || seenUserIds.has(userId)) continue
+
+    seenUserIds.add(userId)
+    orderedUserIds.push(userId)
+
+    if (orderedUserIds.length >= limit) break
+  }
+
+  if (orderedUserIds.length === 0) {
+    return {
+      rows: [],
+      error: null
+    }
+  }
+
+  const { data, error } = await supabaseServer
+    .from('users')
+    .select(RECENT_USER_SELECT)
+    .in('id', orderedUserIds)
+
+  const rows = (data || []).sort((a: any, b: any) => {
+    return orderedUserIds.indexOf(a.id) - orderedUserIds.indexOf(b.id)
+  })
+
+  return {
+    rows,
     error
   }
 }
@@ -173,7 +230,11 @@ function currentRegistrationGroupSnapshot(profile: any, periods: any[], registra
   }
 }
 
-export default async function PersonalistaPage() {
+export default async function PersonalistaPage({
+  searchParams
+}: {
+  searchParams: PersonalistaSearchParams
+}) {
   const user = await getCurrentUser()
 
   if (!user) {
@@ -187,7 +248,14 @@ export default async function PersonalistaPage() {
     redirect('/dashboard')
   }
 
-  const { rows: recentUsers, error: usersError } = await fetchRecentUsers()
+  const resolvedSearchParams = await searchParams
+  const requestedScope = Array.isArray(resolvedSearchParams?.scope)
+    ? resolvedSearchParams.scope[0]
+    : resolvedSearchParams?.scope
+  const peopleScope = globalAccess.isAdmin && requestedScope === 'all' ? 'all' : 'mine'
+  const { rows: recentUsers, error: usersError } = peopleScope === 'all'
+    ? await fetchRecentUsers()
+    : await fetchRecentUsersEditedByActor(user.id)
 
   if (usersError) {
     return (
@@ -511,6 +579,8 @@ export default async function PersonalistaPage() {
       canManage={isGlobalPersonalista}
       canAssignSensitiveRoles={globalAccess.isAdmin}
       canDeregisterUsers={globalAccess.isAdmin}
+      canViewAllPeople={globalAccess.isAdmin}
+      peopleScope={peopleScope}
     />
   )
 }
