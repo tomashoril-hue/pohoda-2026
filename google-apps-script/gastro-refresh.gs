@@ -28,6 +28,7 @@ function refreshGastro2026() {
   var written = writeCounts(sheet, exportData, rowMap, rebuild.columnMap, rebuild.firstGroupCol, rebuild.lastGroupCol);
 
   refreshTotalFormulas(sheet, rebuild.firstGroupCol, rebuild.lastGroupCol, rebuild.totalCol);
+  applyDaySeparators(sheet, rebuild.totalCol);
 
   SpreadsheetApp.getUi().alert(
     'GASTRO_2026 obnovene.\nSkupiny: ' +
@@ -396,4 +397,29 @@ function refreshTotalFormulas(sheet, firstGroupCol, lastGroupCol, totalCol) {
   }
 
   sheet.getRange(HEADER_ROW + 1, totalCol, dataRows, 1).setFormulas(formulas);
+}
+
+function applyDaySeparators(sheet, totalCol) {
+  var lastRow = sheet.getLastRow();
+  var dataRows = Math.max(0, lastRow - HEADER_ROW);
+
+  if (dataRows === 0) return;
+
+  var firstDataRow = HEADER_ROW + 1;
+  var dataRange = sheet.getRange(firstDataRow, 1, dataRows, totalCol);
+  dataRange.setBorder(null, null, false, null, null, null);
+
+  var dates = sheet.getRange(firstDataRow, 2, dataRows, 1).getValues();
+
+  dates.forEach(function(row, index) {
+    var currentDate = normalizeDate(row[0]);
+    var nextDate = index + 1 < dates.length ? normalizeDate(dates[index + 1][0]) : '';
+
+    if (!currentDate) return;
+    if (currentDate === nextDate) return;
+
+    sheet
+      .getRange(firstDataRow + index, 1, 1, totalCol)
+      .setBorder(null, null, true, null, null, null, '#555555', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  });
 }
