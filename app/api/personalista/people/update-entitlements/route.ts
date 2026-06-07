@@ -97,9 +97,9 @@ export async function POST(req: NextRequest) {
     }
 
     const dates = mode === 'DATES'
-      ? requestedDayClaims.length > 0
-        ? requestedDayClaims.map(item => item.datum)
-        : requestedDates
+      ? requestedDates.length > 0
+        ? requestedDates
+        : requestedDayClaims.map(item => item.datum)
       : dateRange(validFrom, validTo)
 
     if (dates.length > 370) {
@@ -118,28 +118,36 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { data: beforeRows } = await supabaseServer
+    let beforeQuery = supabaseServer
       .from('user_food_entitlements')
       .select('datum, obed, vecera, source, note')
       .eq('user_id', userId)
-      .gte('datum', validFrom)
-      .lte('datum', validTo)
+
+    beforeQuery = mode === 'DATES'
+      ? beforeQuery.in('datum', dates)
+      : beforeQuery.gte('datum', validFrom).lte('datum', validTo)
+
+    const { data: beforeRows } = await beforeQuery
 
     const now = new Date().toISOString()
 
-    const { error: deleteError } = await supabaseServer
+    let deleteQuery = supabaseServer
       .from('user_food_entitlements')
       .delete()
       .eq('user_id', userId)
-      .gte('datum', validFrom)
-      .lte('datum', validTo)
+
+    deleteQuery = mode === 'DATES'
+      ? deleteQuery.in('datum', dates)
+      : deleteQuery.gte('datum', validFrom).lte('datum', validTo)
+
+    const { error: deleteError } = await deleteQuery
 
     if (deleteError) {
       return NextResponse.json({ error: deleteError.message }, { status: 500 })
     }
 
     if (mode === 'SET' || mode === 'DATES') {
-      const rows = mode === 'DATES' && requestedDayClaims.length > 0
+      const rows = mode === 'DATES'
         ? requestedDayClaims.map(item => ({
           user_id: userId,
           datum: item.datum,
@@ -163,9 +171,11 @@ export async function POST(req: NextRequest) {
           updated_at: now
         }))
 
-      const { error: insertError } = await supabaseServer
-        .from('user_food_entitlements')
-        .insert(rows)
+      const { error: insertError } = rows.length > 0
+        ? await supabaseServer
+          .from('user_food_entitlements')
+          .insert(rows)
+        : { error: null }
 
       if (insertError) {
         return NextResponse.json({ error: insertError.message }, { status: 500 })

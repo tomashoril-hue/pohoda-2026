@@ -1814,61 +1814,118 @@ export default function PersonalistaClient({
     })
   }
 
-  const saveSelectedEntitlementDates = () => {
+  const openEntitlementsFromRegistrationPeriod = () => {
     if (!selectedPerson) return
 
-    const allowedDates = new Set(entitlementCalendarDates)
-    const dayClaims = Object.entries(calendarClaims)
-      .filter(([date]) => allowedDates.has(date))
-      .map(([datum, claim]) => ({
-        datum,
-        obed: claim.obed,
-        vecera: claim.vecera
-      }))
-      .filter(item => item.obed || item.vecera)
-      .sort((a, b) => a.datum.localeCompare(b.datum))
+    const today = isoDateOffset(0)
+    const sourceFrom = registrationPeriodForm.validFrom
+    const sourceTo = registrationPeriodForm.validTo || toDate
 
-    if (dayClaims.length === 0) {
-      const ok = window.confirm('V období nie je vybraný žiadny nárok. Vymazať nároky v tomto období?')
-      if (!ok) return
-
-      postDetailAction(
-        '/api/personalista/people/update-entitlements',
-        {
-          userId: selectedPerson.id,
-          mode: 'CLEAR',
-          validFrom: entitlementForm.validFrom,
-          validTo: entitlementForm.validTo,
-          obed: false,
-          vecera: false
-        },
-        'Nároky sa nepodarilo vymazať.'
-      )
+    if (!sourceFrom || !sourceTo || sourceTo < sourceFrom) {
+      setDetailFeedback('Najprv nastav platne obdobie zaradenia.', 'error', 'registrationPeriods')
       return
     }
 
-    const today = isoDateOffset(0)
-    const changesPastEntitlements = entitlementCalendarDates.some(date => {
-      if (date >= today) return false
+    if (sourceTo < today) {
+      setDetailFeedback('Toto zaradenie je cele v minulosti. Naroky do minulosti sa automaticky nepridavaju.', 'error', 'registrationPeriods')
+      return
+    }
 
+    const validFrom = sourceFrom < today ? today : sourceFrom
+    const validTo = sourceTo
+    const dates = dateRangeIso(validFrom, validTo)
+
+    if (dates.length === 0) {
+      setDetailFeedback('Pre toto obdobie nie je co pripravit.', 'error', 'registrationPeriods')
+      return
+    }
+
+    const addedObed: string[] = []
+    const addedVecera: string[] = []
+    const nextCalendarClaims = { ...calendarClaims }
+
+    dates.forEach(date => {
+      const current = nextCalendarClaims[date] || { obed: false, vecera: false }
+
+      if (!current.obed) addedObed.push(date)
+      if (!current.vecera) addedVecera.push(date)
+
+      nextCalendarClaims[date] = {
+        obed: true,
+        vecera: true
+      }
+    })
+
+    setCalendarClaims(nextCalendarClaims)
+    setBulkEntitlementClaims(prev => ({
+      obed: Array.from(new Set([...prev.obed, ...addedObed])),
+      vecera: Array.from(new Set([...prev.vecera, ...addedVecera]))
+    }))
+    setEntitlementForm({
+      validFrom,
+      validTo,
+      obed: true,
+      vecera: true
+    })
+    setDetailFeedback(
+      `Naroky boli pripravene od ${fullDateLabel(validFrom)} do ${fullDateLabel(validTo)}. Skontroluj oranzove zmeny a uloz naroky.`,
+      'ok',
+      'entitlements'
+    )
+    setDetailMode('entitlements')
+  }
+
+  const saveSelectedEntitlementDates = () => {
+    if (!selectedPerson) return
+
+    const changedDates = entitlementCalendarDates.filter(date => {
       const saved = entitlementByDate.get(date) || { obed: false, vecera: false }
       const claim = calendarClaims[date] || { obed: false, vecera: false }
 
       return claim.obed !== saved.obed || claim.vecera !== saved.vecera
     })
+    const dayClaims = changedDates
+      .map(datum => {
+        const claim = calendarClaims[datum] || { obed: false, vecera: false }
+
+        return {
+          datum,
+          obed: claim.obed,
+          vecera: claim.vecera
+        }
+      })
+      .filter(item => item.obed || item.vecera)
+      .sort((a, b) => a.datum.localeCompare(b.datum))
+
+    if (changedDates.length === 0) {
+      setDetailFeedback('Nie je ziadna zmena narokov na ulozenie.', 'ok', 'entitlements')
+      return
+    }
+
+    if (dayClaims.length === 0) {
+      const ok = window.confirm('V zmenenych dnoch nie je vybrany ziaden narok. Vymazat tieto zmenene dni?')
+      if (!ok) return
+    }
+
+    const today = isoDateOffset(0)
+    const changesPastEntitlements = changedDates.some(date => date < today)
 
     if (changesPastEntitlements) {
       const ok = window.confirm('Pokúšaš sa uložiť nárok do minulosti. Naozaj chceš tieto nároky uložiť?')
       if (!ok) return
     }
 
+    const validFrom = changedDates[0]
+    const validTo = changedDates[changedDates.length - 1]
+
     postDetailAction(
       '/api/personalista/people/update-entitlements',
       {
         userId: selectedPerson.id,
         mode: 'DATES',
-        validFrom: entitlementForm.validFrom,
-        validTo: entitlementForm.validTo,
+        validFrom,
+        validTo,
+        dates: changedDates,
         dayClaims
       },
       'Nároky podľa kalendára sa nepodarilo uložiť.'
@@ -4555,7 +4612,7 @@ export default function PersonalistaClient({
                       type="button"
                       style={styles.lightButton}
                       disabled={detailLoading}
-                      onClick={() => setDetailMode('entitlements')}
+                      onClick={openEntitlementsFromRegistrationPeriod}
                     >
                       Otvorit naroky
                     </button>
