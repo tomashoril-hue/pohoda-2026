@@ -80,6 +80,50 @@ async function fetchRegistrationGroupPeriodsForUsers(userIds: string[]) {
   return data || []
 }
 
+async function fetchLatestAuditForUsers(userIds: string[]) {
+  if (userIds.length === 0) return new Map<string, any>()
+
+  const { data: auditRows } = await supabaseServer
+    .from('personnel_audit_log')
+    .select('target_user_id, actor_user_id, created_at')
+    .in('target_user_id', userIds)
+    .order('created_at', { ascending: false })
+    .limit(userIds.length * 8)
+
+  const latestByUserId = new Map<string, any>()
+
+  ;(auditRows || []).forEach((row: any) => {
+    if (!row.target_user_id || latestByUserId.has(row.target_user_id)) return
+
+    latestByUserId.set(row.target_user_id, row)
+  })
+
+  const actorUserIds = Array.from(new Set(
+    Array.from(latestByUserId.values())
+      .map((row: any) => row.actor_user_id)
+      .filter(Boolean)
+  ))
+
+  if (actorUserIds.length === 0) return latestByUserId
+
+  const { data: actorRows } = await supabaseServer
+    .from('users')
+    .select('id, meno, priezvisko, email')
+    .in('id', actorUserIds)
+  const actorsById = new Map((actorRows || []).map((actor: any) => [actor.id, actor]))
+
+  latestByUserId.forEach((row: any, userId: string) => {
+    const actor = actorsById.get(row.actor_user_id)
+
+    latestByUserId.set(userId, {
+      ...row,
+      actor_name: fullName(actor) || actor?.email || ''
+    })
+  })
+
+  return latestByUserId
+}
+
 function mapRegistrationGroupPeriod(row: any, registrationGroupById: Map<string, any>) {
   const group = Array.isArray(row.registration_groups)
     ? row.registration_groups[0]
@@ -179,7 +223,8 @@ export async function GET(req: NextRequest) {
       qrResult,
       nfcResult,
       roleResult,
-      registrationGroupsResult
+      registrationGroupsResult,
+      latestAuditByUserId
     ] = await Promise.all([
       fetchMembershipsForUsers(userIds),
       fetchEntitlementsForUsers(userIds),
@@ -193,7 +238,8 @@ export async function GET(req: NextRequest) {
       userIds.length
         ? supabaseServer.from('app_user_roles').select('user_id, role, active').in('user_id', userIds)
         : Promise.resolve({ data: [], error: null }),
-      supabaseServer.from('registration_groups').select('id, name, active')
+      supabaseServer.from('registration_groups').select('id, name, active'),
+      fetchLatestAuditForUsers(userIds)
     ])
 
     if (qrResult.error) return NextResponse.json({ error: qrResult.error.message }, { status: 500 })
@@ -261,6 +307,7 @@ export async function GET(req: NextRequest) {
         registrationGroupById,
         slovakiaDateIso()
       )
+      const lastAudit = latestAuditByUserId.get(profile.id)
 
       return {
         id: profile.id,
@@ -276,6 +323,8 @@ export async function GET(req: NextRequest) {
         registrationGroupName: registrationGroup.name,
         registrationGroupNote: registrationGroup.note,
         registrationGroupPeriods,
+        lastEditedAt: lastAudit?.created_at || profile.updated_at || '',
+        lastEditedByName: lastAudit?.actor_name || '',
         activeQrCount: activeQrByUserId.get(profile.id) || 0,
         activeNfcCount: activeNfcByUserId.get(profile.id) || 0,
         globalRoles: globalRolesByUserId.get(profile.id) || [],

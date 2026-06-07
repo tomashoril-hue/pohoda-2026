@@ -74,6 +74,8 @@ type PersonItem = {
   registrationGroupName: string
   registrationGroupNote: string
   registrationGroupPeriods: PersonRegistrationGroupPeriod[]
+  lastEditedAt: string
+  lastEditedByName: string
   activeQrCount: number
   activeNfcCount: number
   globalRoles: string[]
@@ -140,6 +142,20 @@ function fullDateLabel(value: string) {
 
   const [year, month, day] = value.split('-')
   return `${day}-${month}-${year}`
+}
+
+function compactDateTimeLabel(value: string) {
+  if (!value) return ''
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+
+  return date.toLocaleString('sk-SK', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 function entitlementBounds(entitlements: PersonEntitlement[], fallbackFrom: string, fallbackTo: string) {
@@ -222,7 +238,9 @@ export default function PersonalistaClient({
   canAssignSensitiveRoles,
   canDeregisterUsers,
   canViewAllPeople,
-  peopleScope
+  peopleScope,
+  currentUserName,
+  currentUserRoleLabel
 }: {
   people: PersonItem[]
   groups: GroupItem[]
@@ -235,6 +253,8 @@ export default function PersonalistaClient({
   canDeregisterUsers: boolean
   canViewAllPeople: boolean
   peopleScope: PeopleScope
+  currentUserName: string
+  currentUserRoleLabel: string
 }) {
   const router = useRouter()
   const initialPeopleSearchMessage = peopleScope === 'all'
@@ -264,7 +284,7 @@ export default function PersonalistaClient({
   const [foodFilter, setFoodFilter] = useState('ALL')
   const [qrFilter, setQrFilter] = useState('ALL')
   const [statusFilter, setStatusFilter] = useState('ALL')
-  const [pageSize, setPageSize] = useState(50)
+  const [pageSize, setPageSize] = useState(12)
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedPersonId, setSelectedPersonId] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
@@ -2121,9 +2141,11 @@ export default function PersonalistaClient({
           ...styles.headerActions,
           ...(isMobile ? styles.mobileActionStrip : {})
         }}>
-          <a href="/dashboard/groups" style={styles.lightButton}>
-            Stravovacie skupiny
-          </a>
+          <div style={styles.currentUserPill}>
+            <span style={styles.currentUserLabel}>Prihlaseny</span>
+            <b style={styles.currentUserName}>{currentUserName}</b>
+            <small style={styles.currentUserRole}>{currentUserRoleLabel}</small>
+          </div>
 
           <a href="/dashboard" style={styles.darkButton}>
             Späť na prehľad
@@ -3684,6 +3706,11 @@ export default function PersonalistaClient({
                 const selected = selectedPerson?.id === person.id
                 const blocked = String(person.aktivny || '').toUpperCase() !== 'ANO'
                 const pendingReview = String(person.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
+                const lastEditedLabel = compactDateTimeLabel(person.lastEditedAt)
+                const lastEditedText = [
+                  lastEditedLabel ? `upr. ${lastEditedLabel}` : '',
+                  canViewAllPeople && person.lastEditedByName ? person.lastEditedByName : ''
+                ].filter(Boolean).join(' · ')
 
                 return (
                   <button
@@ -3704,6 +3731,9 @@ export default function PersonalistaClient({
                         {person.email || '-'}
                         {person.telefon ? ` · ${person.telefon}` : ''}
                       </span>
+                      {lastEditedText && (
+                        <small style={styles.personMeta}>{lastEditedText}</small>
+                      )}
                     </div>
 
                     <div>
@@ -3788,9 +3818,9 @@ export default function PersonalistaClient({
                   onChange={event => setPageSize(Number(event.target.value))}
                   style={styles.pageSizeSelect}
                 >
+                  <option value={12}>12 / strana</option>
+                  <option value={25}>25 / strana</option>
                   <option value={50}>50 / strana</option>
-                  <option value={100}>100 / strana</option>
-                  <option value={200}>200 / strana</option>
                 </select>
 
                 <button
@@ -4859,6 +4889,36 @@ const styles: Record<string, CSSProperties> = {
     flexWrap: 'wrap',
     justifyContent: 'flex-end'
   },
+  currentUserPill: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 5,
+    padding: '5px 8px',
+    background: '#f9fafb',
+    display: 'grid',
+    gap: 1,
+    minWidth: 150,
+    maxWidth: 230
+  },
+  currentUserLabel: {
+    fontSize: 9,
+    fontWeight: 900,
+    color: '#6b7280',
+    textTransform: 'uppercase'
+  },
+  currentUserName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    fontWeight: 950,
+    color: '#111827'
+  },
+  currentUserRole: {
+    fontSize: 9,
+    fontWeight: 950,
+    color: '#2563eb'
+  },
   mobileActionStrip: {
     display: 'grid',
     gridAutoFlow: 'column',
@@ -5131,6 +5191,15 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     display: 'grid',
     gap: 1
+  },
+  personMeta: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 9,
+    fontWeight: 850,
+    color: '#6b7280'
   },
   groupBadges: {
     minWidth: 0,

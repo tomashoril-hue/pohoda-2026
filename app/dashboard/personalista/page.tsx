@@ -82,14 +82,25 @@ async function fetchRecentUsers(limit = INITIAL_PEOPLE_LIMIT) {
   }
 }
 
-async function fetchRecentUsersEditedByActor(actorUserId: string, limit = INITIAL_PEOPLE_LIMIT) {
-  const { data: auditRows, error: auditError } = await supabaseServer
+async function fetchRecentUsersFromAudit({
+  actorUserId,
+  limit = INITIAL_PEOPLE_LIMIT
+}: {
+  actorUserId?: string
+  limit?: number
+}) {
+  let auditQuery = supabaseServer
     .from('personnel_audit_log')
-    .select('target_user_id, created_at')
-    .eq('actor_user_id', actorUserId)
+    .select('target_user_id, actor_user_id, created_at')
     .not('target_user_id', 'is', null)
     .order('created_at', { ascending: false })
     .limit(limit * 8)
+
+  if (actorUserId) {
+    auditQuery = auditQuery.eq('actor_user_id', actorUserId)
+  }
+
+  const { data: auditRows, error: auditError } = await auditQuery
 
   if (auditError) {
     return {
@@ -100,6 +111,7 @@ async function fetchRecentUsersEditedByActor(actorUserId: string, limit = INITIA
 
   const orderedUserIds: string[] = []
   const seenUserIds = new Set<string>()
+  const lastAuditByUserId = new Map<string, any>()
 
   for (const row of auditRows || []) {
     const userId = row.target_user_id
@@ -108,6 +120,7 @@ async function fetchRecentUsersEditedByActor(actorUserId: string, limit = INITIA
 
     seenUserIds.add(userId)
     orderedUserIds.push(userId)
+    lastAuditByUserId.set(userId, row)
 
     if (orderedUserIds.length >= limit) break
   }
@@ -124,14 +137,44 @@ async function fetchRecentUsersEditedByActor(actorUserId: string, limit = INITIA
     .select(RECENT_USER_SELECT)
     .in('id', orderedUserIds)
 
+  const actorUserIds = Array.from(new Set(
+    Array.from(lastAuditByUserId.values())
+      .map((row: any) => row.actor_user_id)
+      .filter(Boolean)
+  ))
+  let actorsById = new Map<string, any>()
+
+  if (actorUserIds.length > 0) {
+    const { data: actorRows } = await supabaseServer
+      .from('users')
+      .select('id, meno, priezvisko, email')
+      .in('id', actorUserIds)
+
+    actorsById = new Map((actorRows || []).map((actor: any) => [actor.id, actor]))
+  }
+
   const rows = (data || []).sort((a: any, b: any) => {
     return orderedUserIds.indexOf(a.id) - orderedUserIds.indexOf(b.id)
+  }).map((profile: any) => {
+    const audit = lastAuditByUserId.get(profile.id)
+    const actor = actorsById.get(audit?.actor_user_id)
+
+    return {
+      ...profile,
+      last_edited_at: audit?.created_at || profile.updated_at || profile.created_at || '',
+      last_edited_by_id: audit?.actor_user_id || '',
+      last_edited_by_name: fullName(actor) || actor?.email || ''
+    }
   })
 
   return {
     rows,
     error
   }
+}
+
+async function fetchRecentUsersEditedByActor(actorUserId: string, limit = INITIAL_PEOPLE_LIMIT) {
+  return fetchRecentUsersFromAudit({ actorUserId, limit })
 }
 
 async function fetchEntitlementsForUsers(userIds: string[]) {
@@ -249,9 +292,17 @@ export default async function PersonalistaPage({
     ? resolvedSearchParams.scope[0]
     : resolvedSearchParams?.scope
   const peopleScope = globalAccess.isAdmin && requestedScope === 'all' ? 'all' : 'mine'
-  const { rows: recentUsers, error: usersError } = peopleScope === 'all'
-    ? await fetchRecentUsers()
+  const {
+    rows: auditRecentUsers,
+    error: auditUsersError
+  } = peopleScope === 'all'
+    ? await fetchRecentUsersFromAudit({})
     : await fetchRecentUsersEditedByActor(user.id)
+  const fallbackRecentUsersResult = auditRecentUsers.length === 0 && peopleScope === 'all'
+    ? await fetchRecentUsers()
+    : { rows: [], error: null }
+  const recentUsers = auditRecentUsers.length > 0 ? auditRecentUsers : fallbackRecentUsersResult.rows
+  const usersError = auditUsersError || fallbackRecentUsersResult.error
 
   if (usersError) {
     return (
@@ -435,11 +486,15 @@ export default async function PersonalistaPage({
   })
 
   const personMap = new Map<string, any>()
+  const visibleProfileById = new Map(
+    allVisibleUsers.map((profile: any) => [profile.id, profile])
+  )
 
   visibleMemberships.forEach((membership: any) => {
     const memberUser = Array.isArray(membership.users)
       ? membership.users[0]
       : membership.users
+    const profile: any = visibleProfileById.get(membership.user_id) || memberUser
 
     const group = groupsById.get(membership.group_id)
     const current = personMap.get(membership.user_id)
@@ -457,7 +512,7 @@ export default async function PersonalistaPage({
     const rows = entitlementsByUserId.get(membership.user_id) || []
     const registrationGroupPeriods = registrationGroupPeriodsByUserId.get(membership.user_id) || []
     const registrationGroup = currentRegistrationGroupSnapshot(
-      memberUser,
+      profile,
       registrationGroupPeriods,
       registrationGroupById,
       fromDate
@@ -468,18 +523,20 @@ export default async function PersonalistaPage({
 
     personMap.set(membership.user_id, {
       id: membership.user_id,
-      fullName: fullName(memberUser) || memberUser?.email || 'Bez mena',
-      meno: memberUser?.meno || '',
-      priezvisko: memberUser?.priezvisko || '',
-      email: memberUser?.email || '',
-      telefon: memberUser?.telefon || '',
-      typStravy: memberUser?.typ_stravy || '',
-      aktivny: memberUser?.aktivny || 'ANO',
-      reviewStatus: memberUser?.review_status || 'APPROVED',
+      fullName: fullName(profile) || profile?.email || 'Bez mena',
+      meno: profile?.meno || '',
+      priezvisko: profile?.priezvisko || '',
+      email: profile?.email || '',
+      telefon: profile?.telefon || '',
+      typStravy: profile?.typ_stravy || '',
+      aktivny: profile?.aktivny || 'ANO',
+      reviewStatus: profile?.review_status || 'APPROVED',
       registrationGroupId: registrationGroup.id,
       registrationGroupName: registrationGroup.name,
       registrationGroupNote: registrationGroup.note,
       registrationGroupPeriods,
+      lastEditedAt: profile?.last_edited_at || profile?.updated_at || '',
+      lastEditedByName: profile?.last_edited_by_name || '',
       activeQrCount: activeQrByUserId.get(membership.user_id) || 0,
       activeNfcCount: activeNfcByUserId.get(membership.user_id) || 0,
       globalRoles: globalRolesByUserId.get(membership.user_id) || [],
@@ -527,6 +584,8 @@ export default async function PersonalistaPage({
         registrationGroupName: registrationGroup.name,
         registrationGroupNote: registrationGroup.note,
         registrationGroupPeriods,
+        lastEditedAt: profile.last_edited_at || profile.updated_at || '',
+        lastEditedByName: profile.last_edited_by_name || '',
         activeQrCount: activeQrByUserId.get(profile.id) || 0,
         activeNfcCount: activeNfcByUserId.get(profile.id) || 0,
         globalRoles: globalRolesByUserId.get(profile.id) || [],
@@ -577,6 +636,8 @@ export default async function PersonalistaPage({
       canDeregisterUsers={globalAccess.isAdmin}
       canViewAllPeople={globalAccess.isAdmin}
       peopleScope={peopleScope}
+      currentUserName={fullName(user) || user.email || 'Pouzivatel'}
+      currentUserRoleLabel={globalAccess.isAdmin ? 'ADMIN' : 'PERSONALISTA'}
     />
   )
 }
