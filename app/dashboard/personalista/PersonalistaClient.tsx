@@ -5847,7 +5847,8 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     alignItems: 'center',
     background: '#fff',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    outline: 'none'
   },
   registrationPeriodRowSelected: {
     borderColor: '#fb923c',
@@ -5866,7 +5867,8 @@ const styles: Record<string, CSSProperties> = {
     gap: 4,
     background: '#fff1f2',
     color: '#991b1b',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    outline: 'none'
   },
   registrationPeriodGapRowSelected: {
     borderColor: '#f97316',
