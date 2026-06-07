@@ -447,6 +447,7 @@ export default function PersonalistaClient({
     validTo: '',
     note: ''
   })
+  const [selectedRegistrationPeriodKeys, setSelectedRegistrationPeriodKeys] = useState<string[]>([])
   const [entitlementForm, setEntitlementForm] = useState({
     validFrom: fromDate,
     validTo: toDate,
@@ -538,23 +539,25 @@ export default function PersonalistaClient({
   const selectedRegistrationPeriodRows = useMemo(() => {
     const periods = sortRegistrationPeriods(selectedPerson?.registrationGroupPeriods || [])
     const rows: Array<
-      | { type: 'period'; period: PersonRegistrationGroupPeriod }
-      | { type: 'gap'; id: string; validFrom: string; validTo: string }
+      | { type: 'period'; key: string; period: PersonRegistrationGroupPeriod }
+      | { type: 'gap'; key: string; id: string; validFrom: string; validTo: string }
     > = []
 
     periods.forEach((period, index) => {
-      rows.push({ type: 'period', period })
+      rows.push({ type: 'period', key: `period-${period.id}`, period })
 
       const next = periods[index + 1]
       if (!next || !period.validTo) return
 
       const gapFrom = isoDateAdd(period.validTo, 1)
       const gapTo = isoDateAdd(next.validFrom, -1)
+      const gapKey = `gap-${gapFrom}-${gapTo}`
 
       if (gapFrom && gapTo && gapFrom <= gapTo) {
         rows.push({
           type: 'gap',
-          id: `gap-${gapFrom}-${gapTo}`,
+          key: gapKey,
+          id: gapKey,
           validFrom: gapFrom,
           validTo: gapTo
         })
@@ -563,6 +566,10 @@ export default function PersonalistaClient({
 
     return rows
   }, [selectedPerson])
+  const selectedRegistrationPeriodKeySet = useMemo(() => {
+    return new Set(selectedRegistrationPeriodKeys)
+  }, [selectedRegistrationPeriodKeys])
+  const selectedRegistrationPeriodCount = selectedRegistrationPeriodKeys.length
   const showMobilePersonDetail = isMobile && !!selectedPerson
   const shouldShowDetailMessage = Boolean(detailMessage && detailMessageMode === detailMode)
   const printPersonHref = selectedPerson
@@ -684,6 +691,7 @@ export default function PersonalistaClient({
     })
 
     setRegistrationPeriodForm(defaultRegistrationPeriodForm(selectedPerson))
+    setSelectedRegistrationPeriodKeys([])
 
     const bounds = entitlementBounds(selectedPerson.entitlements, fromDate, toDate)
     const nextEntitlementForm = {
@@ -1455,6 +1463,31 @@ export default function PersonalistaClient({
     )
   }
 
+  const toggleRegistrationPeriodSelection = (
+    row:
+      | { type: 'period'; key: string; period: PersonRegistrationGroupPeriod }
+      | { type: 'gap'; key: string; id: string; validFrom: string; validTo: string }
+  ) => {
+    const wasSelected = selectedRegistrationPeriodKeySet.has(row.key)
+
+    setSelectedRegistrationPeriodKeys(prev => (
+      prev.includes(row.key)
+        ? prev.filter(key => key !== row.key)
+        : [...prev, row.key]
+    ))
+
+    if (row.type === 'gap' && !wasSelected) {
+      setRegistrationPeriodForm({
+        periodId: '',
+        registrationGroupId: '',
+        validFrom: row.validFrom,
+        validTo: row.validTo,
+        note: ''
+      })
+      setDetailFeedback('Nezaradene obdobie je pripravene. Vyber registracnu skupinu a uloz zaradenie.', 'ok', 'registrationPeriods')
+    }
+  }
+
   const resetRegistrationGroupPeriodForm = () => {
     setRegistrationPeriodForm(defaultRegistrationPeriodForm(selectedPerson))
     clearDetailFeedback()
@@ -1818,28 +1851,42 @@ export default function PersonalistaClient({
     if (!selectedPerson) return
 
     const today = isoDateOffset(0)
-    const sourceFrom = registrationPeriodForm.validFrom
-    const sourceTo = registrationPeriodForm.validTo || toDate
+    const selectedRows = selectedRegistrationPeriodRows.filter(row => selectedRegistrationPeriodKeySet.has(row.key))
 
-    if (!sourceFrom || !sourceTo || sourceTo < sourceFrom) {
-      setDetailFeedback('Najprv nastav platne obdobie zaradenia.', 'error', 'registrationPeriods')
+    if (selectedRows.length === 0) {
+      setDetailFeedback('Najprv oznac jedno alebo viac obdobi.', 'error', 'registrationPeriods')
       return
     }
 
-    if (sourceTo < today) {
-      setDetailFeedback('Toto zaradenie je cele v minulosti. Naroky do minulosti sa automaticky nepridavaju.', 'error', 'registrationPeriods')
-      return
-    }
+    let skippedPast = 0
+    const datesToPrepare = new Set<string>()
 
-    const validFrom = sourceFrom < today ? today : sourceFrom
-    const validTo = sourceTo
-    const dates = dateRangeIso(validFrom, validTo)
+    selectedRows.forEach(row => {
+      const sourceFrom = row.type === 'period' ? row.period.validFrom : row.validFrom
+      const sourceTo = row.type === 'period' ? row.period.validTo || toDate : row.validTo
+
+      if (!sourceFrom || !sourceTo || sourceTo < sourceFrom) return
+
+      if (sourceTo < today) {
+        skippedPast += 1
+        return
+      }
+
+      if (sourceFrom < today) skippedPast += 1
+
+      dateRangeIso(sourceFrom < today ? today : sourceFrom, sourceTo)
+        .forEach(date => datesToPrepare.add(date))
+    })
+
+    const dates = Array.from(datesToPrepare).sort()
 
     if (dates.length === 0) {
-      setDetailFeedback('Pre toto obdobie nie je co pripravit.', 'error', 'registrationPeriods')
+      setDetailFeedback('Medzi oznacenymi obdobiami nie je ziadne obdobie od dnes dalej. Minule obdobia nie je mozne zmenit.', 'error', 'registrationPeriods')
       return
     }
 
+    const validFrom = dates[0]
+    const validTo = dates[dates.length - 1]
     const addedObed: string[] = []
     const addedVecera: string[] = []
     const nextCalendarClaims = { ...calendarClaims }
@@ -1868,7 +1915,7 @@ export default function PersonalistaClient({
       vecera: true
     })
     setDetailFeedback(
-      `Naroky boli pripravene od ${fullDateLabel(validFrom)} do ${fullDateLabel(validTo)}. Skontroluj oranzove zmeny a uloz naroky.`,
+      `${skippedPast > 0 ? 'Minule obdobia nie je mozne zmenit. ' : ''}Naroky boli pripravene pre ${dates.length} dni. Skontroluj oranzove zmeny a uloz naroky.`,
       'ok',
       'entitlements'
     )
@@ -4477,8 +4524,22 @@ export default function PersonalistaClient({
                     ) : (
                       selectedRegistrationPeriodRows.map(row => {
                         if (row.type === 'gap') {
+                          const isSelected = selectedRegistrationPeriodKeySet.has(row.key)
+
                           return (
-                            <div key={row.id} style={styles.registrationPeriodGapRow}>
+                            <div
+                              key={row.id}
+                              role="button"
+                              tabIndex={0}
+                              style={{
+                                ...styles.registrationPeriodGapRow,
+                                ...(isSelected ? styles.registrationPeriodGapRowSelected : {})
+                              }}
+                              onClick={() => toggleRegistrationPeriodSelection(row)}
+                              onKeyDown={event => {
+                                if (event.key === 'Enter' || event.key === ' ') toggleRegistrationPeriodSelection(row)
+                              }}
+                            >
                               <div style={styles.registrationPeriodInfo}>
                                 <b>Nezaradene obdobie</b>
                                 <span>{fullDateLabel(row.validFrom)} - {fullDateLabel(row.validTo)}</span>
@@ -4489,13 +4550,21 @@ export default function PersonalistaClient({
 
                         const period = row.period
                         const isEditing = registrationPeriodForm.periodId === period.id
+                        const isSelected = selectedRegistrationPeriodKeySet.has(row.key)
 
                         return (
                           <div
                             key={period.id}
+                            role="button"
+                            tabIndex={0}
                             style={{
                               ...styles.registrationPeriodRow,
+                              ...(isSelected ? styles.registrationPeriodRowSelected : {}),
                               ...(isEditing ? styles.registrationPeriodRowActive : {})
+                            }}
+                            onClick={() => toggleRegistrationPeriodSelection(row)}
+                            onKeyDown={event => {
+                              if (event.key === 'Enter' || event.key === ' ') toggleRegistrationPeriodSelection(row)
                             }}
                           >
                             <div style={styles.registrationPeriodInfo}>
@@ -4509,7 +4578,10 @@ export default function PersonalistaClient({
                                 type="button"
                                 style={styles.smallEditButton}
                                 disabled={detailLoading}
-                                onClick={() => editRegistrationGroupPeriod(period)}
+                                onClick={event => {
+                                  event.stopPropagation()
+                                  editRegistrationGroupPeriod(period)
+                                }}
                                 title="Zmenit zaradenie"
                               >
                                 Z
@@ -4519,7 +4591,10 @@ export default function PersonalistaClient({
                                 type="button"
                                 style={styles.smallRemoveButton}
                                 disabled={detailLoading}
-                                onClick={() => deleteRegistrationGroupPeriod(period)}
+                                onClick={event => {
+                                  event.stopPropagation()
+                                  deleteRegistrationGroupPeriod(period)
+                                }}
                                 title="Vymazat zaradenie"
                               >
                                 x
@@ -4614,7 +4689,7 @@ export default function PersonalistaClient({
                       disabled={detailLoading}
                       onClick={openEntitlementsFromRegistrationPeriod}
                     >
-                      Otvorit naroky
+                      Otvorit naroky ({selectedRegistrationPeriodCount})
                     </button>
                   </div>
                 </div>
@@ -5689,7 +5764,13 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: 'minmax(0, 1fr) auto',
     gap: 8,
     alignItems: 'center',
-    background: '#fff'
+    background: '#fff',
+    cursor: 'pointer'
+  },
+  registrationPeriodRowSelected: {
+    borderColor: '#fb923c',
+    background: '#fff7ed',
+    boxShadow: '0 0 0 2px #fdba74 inset'
   },
   registrationPeriodRowActive: {
     borderColor: '#2563eb',
@@ -5702,7 +5783,13 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gap: 4,
     background: '#fff1f2',
-    color: '#991b1b'
+    color: '#991b1b',
+    cursor: 'pointer'
+  },
+  registrationPeriodGapRowSelected: {
+    borderColor: '#f97316',
+    background: '#ffedd5',
+    boxShadow: '0 0 0 2px #fb923c inset'
   },
   registrationPeriodInfo: {
     display: 'grid',
