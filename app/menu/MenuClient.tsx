@@ -289,6 +289,10 @@ export default function MenuClient({
     })
 
     setMessage('Výber bol uložený.')
+    if (volba === 'BEZ_ZAUJMU') {
+      setMessage('Jedlo bolo odhlásené.')
+    }
+
     setSavingKey(null)
   }
 
@@ -301,6 +305,8 @@ export default function MenuClient({
     )
 
     const selected = getSelected(selectedDate, typ)
+    const selectedVariant = normalizeVariant(selected)
+    const noInterestSelected = selectedVariant === 'BEZ_ZAUJMU'
     const isSaving = savingKey === `${selectedDate}-${typ}`
     const state = getDeadlineState(selectedDate, typ)
 
@@ -357,10 +363,12 @@ export default function MenuClient({
                   ? '#ff2b2b'
                   : state.showCountdown
                     ? '#f25be6'
-                    : selected
+                    : noInterestSelected
+                      ? '#ef4444'
+                      : selected
                       ? '#56db3f'
                       : '#fff176',
-              color: state.locked || state.danger ? '#fff' : '#000',
+              color: state.locked || state.danger || noInterestSelected ? '#fff' : '#000',
               border: '3px solid #000',
               borderRadius: 999,
               padding: '7px 13px',
@@ -374,6 +382,8 @@ export default function MenuClient({
               ? state.label
                 : state.showCountdown
                   ? `UZÁVIERKA ${state.countdown}`
+                  : noInterestSelected
+                  ? `Odhlásené: ${typ === 'OBED' ? 'obed' : 'večera'}`
                   : selected
                   ? `Vybrané: ${variantLabel(selected)}`
                   : `Predvolené: ${defaultFoodLabel}`}
