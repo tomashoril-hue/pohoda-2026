@@ -56,6 +56,7 @@ function mealLabel(value: string) {
 }
 
 function choiceLabel(value: string | null | undefined, defaultValue?: string | null) {
+  if (value === 'BEZ_ZAUJMU') return 'ODHLÁSENÉ'
   if (value === 'MASO') return 'MASO'
   if (value === 'VEGE') return 'VEGE'
   if (isDietFood(value)) return 'DIÉTA'
@@ -96,6 +97,17 @@ function bulkLabel(value: any) {
   if (value.status === 'BULK_ISSUED') return 'VYDANÉ HROMADNE'
 
   return value.status || 'NIE'
+}
+
+function activeRegistrationGroupName(period: any, fallbackGroup: any) {
+  const group = Array.isArray(period?.registration_groups)
+    ? period.registration_groups[0]
+    : period?.registration_groups
+
+  if (group?.name) return group.name
+  if (fallbackGroup?.name) return fallbackGroup.name
+
+  return '-'
 }
 
 export default async function DashboardPage({
@@ -141,6 +153,31 @@ export default async function DashboardPage({
     .eq('email', String(user.email || '').toLowerCase())
     .eq('status', 'PENDING')
     .order('created_at', { ascending: false })
+
+  const { data: activeRegistrationPeriod } = await supabaseServer
+    .from('user_registration_group_periods')
+    .select(`
+      registration_group_id,
+      valid_from,
+      valid_to,
+      registration_groups (
+        name
+      )
+    `)
+    .eq('user_id', user.id)
+    .lte('valid_from', selectedDate)
+    .or(`valid_to.is.null,valid_to.gte.${selectedDate}`)
+    .order('valid_from', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const { data: fallbackRegistrationGroup } = user.registration_group_id
+    ? await supabaseServer
+      .from('registration_groups')
+      .select('name')
+      .eq('id', user.registration_group_id)
+      .maybeSingle()
+    : { data: null }
 
   const { data: entitlement } = await supabaseServer
     .from('user_food_entitlements')
@@ -192,6 +229,7 @@ export default async function DashboardPage({
   const hasMembership = !!memberships && memberships.length > 0
   const hasPendingInvites = !!pendingInvites && pendingInvites.length > 0
   const hasEntitlementRow = !!entitlement
+  const registrationGroupName = activeRegistrationGroupName(activeRegistrationPeriod, fallbackRegistrationGroup)
   const globalAccess = await getGlobalAccess(user.id)
   const canOpenPersonalista = globalAccess.canUsePersonalista
   const canOpenFoodIssue = globalAccess.canUseFoodIssue
@@ -311,6 +349,7 @@ export default async function DashboardPage({
 
         <div className="dashboard-info" style={styles.infoBox}>
           <p><b>E-mail:</b> {user.email || '-'}</p>
+          <p><b>Registračná skupina:</b> {registrationGroupName}</p>
           <p><b>Typ stravy:</b> {menuVariantLabel(defaultFood) || '-'}</p>
         </div>
 
@@ -348,6 +387,7 @@ export default async function DashboardPage({
               const entitlementIsYes = meal.entitlement === 'ÁNO'
               const entitlementIsNo = meal.entitlement === 'NIE'
               const issuedText = issuedLabel(meal.issued?.status)
+              const noInterest = meal.selection?.volba === 'BEZ_ZAUJMU'
 
               return (
                 <div className="dashboard-today-meal" key={meal.typJedla} style={styles.todayMealCard}>
@@ -374,7 +414,9 @@ export default async function DashboardPage({
                   <div style={styles.todayRows}>
                     <div style={styles.todayRow}>
                       <span>Výber</span>
-                      <b>{choiceLabel(meal.selection?.volba, defaultFood)}</b>
+                      <b style={noInterest ? styles.noInterestChoice : undefined}>
+                        {choiceLabel(meal.selection?.volba, defaultFood)}
+                      </b>
                     </div>
 
                     <div style={styles.todayRowWide}>
@@ -660,6 +702,15 @@ const styles: Record<string, React.CSSProperties> = {
   todayMenuText: {
     whiteSpace: 'pre-line',
     lineHeight: 1.35
+  },
+  noInterestChoice: {
+    display: 'inline-block',
+    background: '#ef4444',
+    color: '#fff',
+    border: '2px solid #000',
+    borderRadius: 999,
+    padding: '4px 9px',
+    fontWeight: 950
   },
   menuGrid: {
     marginTop: 28,
