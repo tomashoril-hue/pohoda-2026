@@ -2460,13 +2460,6 @@ export default function PersonalistaClient({
           cursor: wait;
         }
 
-        .personalista-page .registration-period-click-row,
-        .personalista-page .registration-period-click-row:focus,
-        .personalista-page .registration-period-click-row:focus-visible,
-        .personalista-page .registration-period-click-row:active {
-          outline: 0 !important;
-          -webkit-tap-highlight-color: transparent;
-        }
       `}</style>
       <header style={{
         ...styles.header,
@@ -4609,16 +4602,11 @@ export default function PersonalistaClient({
                           return (
                             <div
                               key={row.id}
-                              className="registration-period-click-row"
                               style={{
                                 ...styles.registrationPeriodGapRow,
                                 ...(isSelected ? styles.registrationPeriodGapRowSelected : {})
                               }}
-                              onPointerDown={event => event.preventDefault()}
-                              onClick={event => {
-                                event.currentTarget.blur()
-                                toggleRegistrationPeriodSelection(row)
-                              }}
+                              onClick={() => toggleRegistrationPeriodSelection(row)}
                             >
                               <div style={styles.registrationPeriodInfo}>
                                 <b>Nezaradene obdobie</b>
@@ -4629,23 +4617,16 @@ export default function PersonalistaClient({
                         }
 
                         const period = row.period
-                        const isEditing = registrationPeriodForm.periodId === period.id
                         const isSelected = selectedRegistrationPeriodKeySet.has(row.key)
 
                         return (
                           <div
                             key={period.id}
-                            className="registration-period-click-row"
                             style={{
                               ...styles.registrationPeriodRow,
-                              ...(isSelected ? styles.registrationPeriodRowSelected : {}),
-                              ...(isEditing ? styles.registrationPeriodRowActive : {})
+                              ...(isSelected ? styles.registrationPeriodRowSelected : {})
                             }}
-                            onPointerDown={event => event.preventDefault()}
-                            onClick={event => {
-                              event.currentTarget.blur()
-                              toggleRegistrationPeriodSelection(row)
-                            }}
+                            onClick={() => toggleRegistrationPeriodSelection(row)}
                           >
                             <div style={styles.registrationPeriodInfo}>
                               <b>{period.registrationGroupName || '-'}</b>
@@ -5855,18 +5836,12 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     alignItems: 'center',
     background: '#fff',
-    cursor: 'pointer',
-    outline: 'none',
-    boxShadow: 'none'
+    cursor: 'pointer'
   },
   registrationPeriodRowSelected: {
     borderColor: '#fb923c',
     background: '#fff7ed',
     boxShadow: '0 0 0 2px #fdba74 inset'
-  },
-  registrationPeriodRowActive: {
-    borderColor: '#2563eb',
-    background: '#eff6ff'
   },
   registrationPeriodGapRow: {
     border: '1px solid #fecaca',
@@ -5876,9 +5851,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 4,
     background: '#fff1f2',
     color: '#991b1b',
-    cursor: 'pointer',
-    outline: 'none',
-    boxShadow: 'none'
+    cursor: 'pointer'
   },
   registrationPeriodGapRowSelected: {
     borderColor: '#f97316',
