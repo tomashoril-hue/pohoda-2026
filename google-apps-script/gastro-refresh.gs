@@ -420,6 +420,6 @@ function applyDaySeparators(sheet, totalCol) {
 
     sheet
       .getRange(firstDataRow + index, 1, 1, totalCol)
-      .setBorder(null, null, true, null, null, null, '#555555', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+      .setBorder(null, null, true, null, null, null, '#777777', SpreadsheetApp.BorderStyle.SOLID);
   });
 }
