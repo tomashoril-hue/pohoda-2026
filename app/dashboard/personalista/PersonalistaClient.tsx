@@ -4604,7 +4604,7 @@ export default function PersonalistaClient({
                               key={row.id}
                               style={{
                                 ...styles.registrationPeriodGapRow,
-                                ...(isSelected ? styles.registrationPeriodGapRowSelected : {})
+                                ...(isSelected ? styles.registrationPeriodGapRowSelected : styles.registrationPeriodGapRowIdle)
                               }}
                               onClick={() => toggleRegistrationPeriodSelection(row)}
                             >
@@ -4624,7 +4624,7 @@ export default function PersonalistaClient({
                             key={period.id}
                             style={{
                               ...styles.registrationPeriodRow,
-                              ...(isSelected ? styles.registrationPeriodRowSelected : {})
+                              ...(isSelected ? styles.registrationPeriodRowSelected : styles.registrationPeriodRowIdle)
                             }}
                             onClick={() => toggleRegistrationPeriodSelection(row)}
                           >
@@ -5838,8 +5838,16 @@ const styles: Record<string, CSSProperties> = {
     background: '#fff',
     cursor: 'pointer'
   },
+  registrationPeriodRowIdle: {
+    border: '1px solid #e5e7eb',
+    background: '#fff',
+    boxShadow: 'none',
+    outline: 'none',
+    WebkitTapHighlightColor: 'transparent',
+    userSelect: 'none'
+  },
   registrationPeriodRowSelected: {
-    borderColor: '#fb923c',
+    border: '1px solid #fb923c',
     background: '#fff7ed',
     boxShadow: '0 0 0 2px #fdba74 inset'
   },
@@ -5853,8 +5861,16 @@ const styles: Record<string, CSSProperties> = {
     color: '#991b1b',
     cursor: 'pointer'
   },
+  registrationPeriodGapRowIdle: {
+    border: '1px solid #fecaca',
+    background: '#fff1f2',
+    boxShadow: 'none',
+    outline: 'none',
+    WebkitTapHighlightColor: 'transparent',
+    userSelect: 'none'
+  },
   registrationPeriodGapRowSelected: {
-    borderColor: '#f97316',
+    border: '1px solid #f97316',
     background: '#ffedd5',
     boxShadow: '0 0 0 2px #fb923c inset'
   },
