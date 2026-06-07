@@ -429,6 +429,13 @@ export default function PersonalistaClient({
     ? 'minmax(155px, 1.25fr) 64px minmax(120px, 0.9fr) minmax(120px, 1fr) 56px 52px 62px'
     : 'minmax(180px, 1.3fr) 70px minmax(135px, 0.9fr) minmax(135px, 1fr) 62px 58px 68px'
   const tableMinWidth = isMobile ? 760 : 920
+  const peopleSearchHintStyle = peopleSearchLoading
+    ? styles.toolbarHintLoading
+    : peopleSearchMessage.startsWith('Vysledky hladania')
+      ? styles.toolbarHintSuccess
+      : peopleSearchMessage.toLowerCase().includes('chyba') || peopleSearchMessage.toLowerCase().includes('nepodarilo')
+        ? styles.toolbarHintError
+        : {}
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 760px)')
@@ -3590,7 +3597,10 @@ export default function PersonalistaClient({
             ...styles.toolbar,
             ...(isMobile ? styles.mobileToolbar : {})
           }}>
-            <div style={isMobile ? styles.mobileToolbarHint : styles.toolbarHint}>
+            <div style={{
+              ...(isMobile ? styles.mobileToolbarHint : styles.toolbarHint),
+              ...peopleSearchHintStyle
+            }}>
               {peopleSearchLoading ? 'Hladam...' : peopleSearchMessage} · zobrazenych {people.length}
             </div>
 
@@ -5035,6 +5045,27 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 800,
     color: '#6b7280'
+  },
+  toolbarHintLoading: {
+    color: '#c2410c',
+    background: '#ffedd5',
+    border: '1px solid #fed7aa',
+    borderRadius: 5,
+    padding: '4px 6px'
+  },
+  toolbarHintSuccess: {
+    color: '#166534',
+    background: '#dcfce7',
+    border: '1px solid #86efac',
+    borderRadius: 5,
+    padding: '4px 6px'
+  },
+  toolbarHintError: {
+    color: '#991b1b',
+    background: '#fee2e2',
+    border: '1px solid #fecaca',
+    borderRadius: 5,
+    padding: '4px 6px'
   },
   searchInput: {
     width: '100%',
