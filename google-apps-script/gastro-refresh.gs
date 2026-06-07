@@ -1,0 +1,299 @@
+var DEFAULT_GASTRO_EXPORT_URL = 'https://www.pohodapass.sk/api/gastro-export?year=2026';
+var DEFAULT_GASTRO_SHEET_NAME = 'GASTRO_2026';
+var HEADER_ROW = 1;
+var FIRST_FIXED_COLS = 3;
+var FIRST_GROUP_COL = FIRST_FIXED_COLS + 1;
+var TOTAL_HEADER = 'SPOLU';
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('POHODA')
+    .addItem('Refresh GASTRO_2026', 'refreshGastro2026')
+    .addToUi();
+}
+
+function refreshGastro2026() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetName = getScriptProperty('GASTRO_SHEET_NAME') || DEFAULT_GASTRO_SHEET_NAME;
+  var sheet = ss.getSheetByName(sheetName);
+
+  if (!sheet) {
+    throw new Error('Harok ' + sheetName + ' neexistuje.');
+  }
+
+  var exportData = fetchGastroExport();
+  var rebuild = rebuildGroupColumns(sheet, exportData.groups || []);
+  var rowMap = buildRowMap(sheet);
+  var written = writeCounts(sheet, exportData, rowMap, rebuild.columnMap, rebuild.firstGroupCol, rebuild.lastGroupCol);
+
+  refreshTotalFormulas(sheet, rebuild.firstGroupCol, rebuild.lastGroupCol, rebuild.totalCol);
+
+  SpreadsheetApp.getUi().alert(
+    'GASTRO_2026 obnovene.\nSkupiny: ' +
+    (exportData.groups || []).length +
+    '\nPolozky z API: ' +
+    (exportData.items || []).length +
+    '\nZapisane bunky: ' +
+    written
+  );
+}
+
+function normalizeText(value) {
+  return String(value == null ? '' : value).trim().replace(/\s+/g, ' ');
+}
+
+function normalizeMeal(value) {
+  return normalizeText(value).toLowerCase();
+}
+
+function normalizeGroupName(value) {
+  return normalizeText(value).toLowerCase();
+}
+
+function normalizeDate(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+
+  var text = normalizeText(value);
+  var iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return text;
+
+  var sk = text.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (sk) {
+    return sk[3] + '-' + String(sk[2]).padStart(2, '0') + '-' + String(sk[1]).padStart(2, '0');
+  }
+
+  var parsed = new Date(text);
+  if (!isNaN(parsed.getTime())) {
+    return Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+
+  return '';
+}
+
+function columnToLetter(columnNumber) {
+  var letter = '';
+  var temp = columnNumber;
+
+  while (temp > 0) {
+    var remainder = (temp - 1) % 26;
+    letter = String.fromCharCode(65 + remainder) + letter;
+    temp = Math.floor((temp - remainder) / 26);
+  }
+
+  return letter;
+}
+
+function getScriptProperty(name) {
+  return PropertiesService.getScriptProperties().getProperty(name);
+}
+
+function fetchGastroExport() {
+  var url = getScriptProperty('GASTRO_EXPORT_URL') || DEFAULT_GASTRO_EXPORT_URL;
+  var token = getScriptProperty('GASTRO_EXPORT_TOKEN');
+
+  if (!token) {
+    throw new Error('Script Property GASTRO_EXPORT_TOKEN nie je nastavena.');
+  }
+
+  var response = UrlFetchApp.fetch(url, {
+    method: 'get',
+    muteHttpExceptions: true,
+    headers: {
+      Authorization: 'Bearer ' + token
+    }
+  });
+  var code = response.getResponseCode();
+  var text = response.getContentText();
+
+  if (code < 200 || code >= 300) {
+    throw new Error('Gastro export zlyhal (' + code + '): ' + text);
+  }
+
+  var data = JSON.parse(text);
+
+  if (!Array.isArray(data.groups) || !Array.isArray(data.items)) {
+    throw new Error('Gastro export vratil neplatny JSON.');
+  }
+
+  return data;
+}
+
+function findTotalColumn(sheet) {
+  var lastCol = sheet.getLastColumn();
+  var headers = sheet.getRange(HEADER_ROW, 1, 1, lastCol).getValues()[0];
+
+  for (var index = 0; index < headers.length; index++) {
+    if (normalizeText(headers[index]).toUpperCase() === TOTAL_HEADER) {
+      return index + 1;
+    }
+  }
+
+  throw new Error('Stlpec SPOLU sa nenasiel v riadku 1.');
+}
+
+function rebuildGroupColumns(sheet, groups) {
+  var maxRows = sheet.getMaxRows();
+  var totalCol = findTotalColumn(sheet);
+  var oldGroupCount = Math.max(0, totalCol - FIRST_GROUP_COL);
+  var templateCol = oldGroupCount > 0 ? FIRST_GROUP_COL : totalCol;
+  var maxCols = sheet.getMaxColumns();
+
+  sheet.insertColumnAfter(maxCols);
+  var tempFormatCol = maxCols + 1;
+  sheet
+    .getRange(1, templateCol, maxRows, 1)
+    .copyTo(sheet.getRange(1, tempFormatCol, maxRows, 1), { formatOnly: true });
+
+  if (oldGroupCount > 0) {
+    sheet.deleteColumns(FIRST_GROUP_COL, oldGroupCount);
+    tempFormatCol -= oldGroupCount;
+  }
+
+  var currentTotalCol = FIRST_GROUP_COL;
+  var groupCount = groups.length;
+  var firstGroupCol = FIRST_GROUP_COL;
+  var lastGroupCol = FIRST_GROUP_COL - 1;
+
+  if (groupCount > 0) {
+    sheet.insertColumnsBefore(currentTotalCol, groupCount);
+    tempFormatCol += groupCount;
+    lastGroupCol = firstGroupCol + groupCount - 1;
+
+    for (var col = firstGroupCol; col <= lastGroupCol; col++) {
+      sheet
+        .getRange(1, tempFormatCol, maxRows, 1)
+        .copyTo(sheet.getRange(1, col, maxRows, 1), { formatOnly: true });
+    }
+
+    var headers = groups.map(function(group) {
+      return group.sheetColumnName || group.name || '';
+    });
+    sheet.getRange(HEADER_ROW, firstGroupCol, 1, groupCount).setValues([headers]);
+
+    var dataRows = Math.max(0, sheet.getLastRow() - HEADER_ROW);
+    if (dataRows > 0) {
+      sheet.getRange(HEADER_ROW + 1, firstGroupCol, dataRows, groupCount).clearContent();
+    }
+  }
+
+  sheet.deleteColumn(tempFormatCol);
+
+  var totalColAfter = FIRST_GROUP_COL + groupCount;
+  var columnMap = {};
+
+  groups.forEach(function(group, index) {
+    var key = normalizeGroupName(group.sheetColumnName || group.name);
+    if (key) columnMap[key] = firstGroupCol + index;
+  });
+
+  return {
+    firstGroupCol: firstGroupCol,
+    lastGroupCol: lastGroupCol,
+    totalCol: totalColAfter,
+    columnMap: columnMap
+  };
+}
+
+function buildRowMap(sheet) {
+  var lastRow = sheet.getLastRow();
+  var rowMap = {};
+
+  if (lastRow <= HEADER_ROW) return rowMap;
+
+  var values = sheet.getRange(HEADER_ROW + 1, 1, lastRow - HEADER_ROW, FIRST_FIXED_COLS).getValues();
+
+  values.forEach(function(row, index) {
+    var date = normalizeDate(row[1]);
+    var meal = normalizeMeal(row[2]);
+
+    if (!date || !meal) return;
+
+    rowMap[date + '|' + meal] = HEADER_ROW + 1 + index;
+  });
+
+  return rowMap;
+}
+
+function writeCounts(sheet, exportData, rowMap, columnMap, firstGroupCol, lastGroupCol) {
+  if (lastGroupCol < firstGroupCol) {
+    (exportData.items || []).forEach(function(item) {
+      Logger.log('Ignored item without group columns: ' + JSON.stringify(item));
+    });
+    return 0;
+  }
+
+  var dataRows = Math.max(0, sheet.getLastRow() - HEADER_ROW);
+  var groupCols = lastGroupCol - firstGroupCol + 1;
+  var matrix = [];
+
+  for (var r = 0; r < dataRows; r++) {
+    var row = [];
+    for (var c = 0; c < groupCols; c++) row.push('');
+    matrix.push(row);
+  }
+
+  var written = 0;
+
+  (exportData.items || []).forEach(function(item) {
+    var rowKey = normalizeDate(item.date) + '|' + normalizeMeal(item.meal);
+    var sheetRow = rowMap[rowKey];
+
+    if (!sheetRow) {
+      Logger.log('No matching date/meal row for item: ' + JSON.stringify(item));
+      return;
+    }
+
+    var groupKey = normalizeGroupName(item.groupName);
+    var sheetCol = columnMap[groupKey];
+
+    if (!sheetCol) {
+      Logger.log('No matching group column for item: ' + JSON.stringify(item));
+      return;
+    }
+
+    var rowIndex = sheetRow - HEADER_ROW - 1;
+    var colIndex = sheetCol - firstGroupCol;
+    var count = Number(item.count || 0);
+
+    if (!isFinite(count)) count = 0;
+
+    matrix[rowIndex][colIndex] = Number(matrix[rowIndex][colIndex] || 0) + count;
+    written += 1;
+  });
+
+  if (dataRows > 0) {
+    sheet.getRange(HEADER_ROW + 1, firstGroupCol, dataRows, groupCols).setValues(matrix);
+  }
+
+  return written;
+}
+
+function refreshTotalFormulas(sheet, firstGroupCol, lastGroupCol, totalCol) {
+  var lastRow = sheet.getLastRow();
+  var dataRows = Math.max(0, lastRow - HEADER_ROW);
+
+  if (dataRows === 0) return;
+
+  var formulas = [];
+
+  for (var row = HEADER_ROW + 1; row <= lastRow; row++) {
+    if (lastGroupCol < firstGroupCol) {
+      formulas.push(['=0']);
+      continue;
+    }
+
+    formulas.push([
+      '=SUM(' +
+      columnToLetter(firstGroupCol) +
+      row +
+      ':' +
+      columnToLetter(lastGroupCol) +
+      row +
+      ')'
+    ]);
+  }
+
+  sheet.getRange(HEADER_ROW + 1, totalCol, dataRows, 1).setFormulas(formulas);
+}
