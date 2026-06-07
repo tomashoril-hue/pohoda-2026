@@ -1,8 +1,9 @@
 var DEFAULT_GASTRO_EXPORT_URL = 'https://www.pohodapass.sk/api/gastro-export?year=2026';
 var DEFAULT_GASTRO_SHEET_NAME = 'GASTRO_2026';
 var HEADER_ROW = 1;
-var FIRST_FIXED_COLS = 3;
-var FIRST_GROUP_COL = FIRST_FIXED_COLS + 1;
+var DATE_MEAL_COLS = 3;
+var PINNED_TOTAL_COL = 4;
+var FIRST_GROUP_COL = PINNED_TOTAL_COL + 1;
 var TOTAL_HEADER = 'SPOLU';
 
 function onOpen() {
@@ -20,6 +21,8 @@ function refreshGastro2026() {
   if (!sheet) {
     throw new Error('Harok ' + sheetName + ' neexistuje.');
   }
+
+  ensurePinnedTotalColumn(sheet);
 
   var exportData = fetchGastroExport();
   var rebuild = rebuildGroupColumns(sheet, exportData.groups || []);
@@ -153,13 +156,30 @@ function findTotalColumn(sheet) {
   var lastCol = sheet.getLastColumn();
   var headers = sheet.getRange(HEADER_ROW, 1, 1, lastCol).getValues()[0];
 
-  for (var index = 0; index < headers.length; index++) {
+  for (var index = headers.length - 1; index >= 0; index--) {
     if (normalizeText(headers[index]).toUpperCase() === TOTAL_HEADER) {
       return index + 1;
     }
   }
 
   throw new Error('Stlpec SPOLU sa nenasiel v riadku 1.');
+}
+
+function ensurePinnedTotalColumn(sheet) {
+  var pinnedHeader = normalizeText(sheet.getRange(HEADER_ROW, PINNED_TOTAL_COL).getValue()).toUpperCase();
+
+  if (pinnedHeader !== TOTAL_HEADER) {
+    var totalCol = findTotalColumn(sheet);
+    sheet.insertColumnBefore(PINNED_TOTAL_COL);
+    if (totalCol >= PINNED_TOTAL_COL) totalCol += 1;
+
+    sheet
+      .getRange(1, totalCol, sheet.getMaxRows(), 1)
+      .copyTo(sheet.getRange(1, PINNED_TOTAL_COL, sheet.getMaxRows(), 1), { formatOnly: true });
+    sheet.getRange(HEADER_ROW, PINNED_TOTAL_COL).setValue(TOTAL_HEADER);
+  }
+
+  sheet.setFrozenColumns(PINNED_TOTAL_COL);
 }
 
 function rebuildGroupColumns(sheet, groups) {
@@ -292,7 +312,7 @@ function rebuildDataRows(sheet, exportData, totalCol) {
     ];
   });
 
-  sheet.getRange(HEADER_ROW + 1, 1, desiredRows, FIRST_FIXED_COLS).setValues(values);
+  sheet.getRange(HEADER_ROW + 1, 1, desiredRows, DATE_MEAL_COLS).setValues(values);
   sheet.getRange(HEADER_ROW + 1, 2, desiredRows, 1).setNumberFormat('dd.mm.yyyy');
 
   return desiredRows;
@@ -304,7 +324,7 @@ function buildRowMap(sheet) {
 
   if (lastRow <= HEADER_ROW) return rowMap;
 
-  var values = sheet.getRange(HEADER_ROW + 1, 1, lastRow - HEADER_ROW, FIRST_FIXED_COLS).getValues();
+  var values = sheet.getRange(HEADER_ROW + 1, 1, lastRow - HEADER_ROW, DATE_MEAL_COLS).getValues();
 
   values.forEach(function(row, index) {
     var date = normalizeDate(row[1]);
@@ -397,6 +417,7 @@ function refreshTotalFormulas(sheet, firstGroupCol, lastGroupCol, totalCol) {
     ]);
   }
 
+  sheet.getRange(HEADER_ROW + 1, PINNED_TOTAL_COL, dataRows, 1).setFormulas(formulas);
   sheet.getRange(HEADER_ROW + 1, totalCol, dataRows, 1).setFormulas(formulas);
 }
 

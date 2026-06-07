@@ -37,6 +37,10 @@ The Google Sheet keeps the original header and visual style, but refresh now als
 rebuilds data rows A:C from application entitlements. Dates are no longer a
 manual fixed list in the sheet.
 
+The script adds a frozen helper `SPOLU` column after `Jedlo`, so columns A:D
+stay visible while scrolling across registration groups. The original final
+`SPOLU` column remains at the far right.
+
 Meal rows are exported with unambiguous labels:
 
 - `Obed mäso` - MASO
@@ -87,6 +91,7 @@ Production check:
 6. Click `POHODA -> Refresh GASTRO_2026`.
 7. Verify:
    - header columns A:C stay unchanged
+   - helper `SPOLU` is visible in frozen column D
    - date/meal rows are generated from application entitlements
    - registration groups are recreated as columns
    - `SPOLU` remains the last column
