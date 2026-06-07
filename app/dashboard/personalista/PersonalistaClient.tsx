@@ -50,6 +50,10 @@ type PersonRegistrationGroupPeriod = {
   note: string
 }
 
+type RegistrationPeriodSelectionRow =
+  | { type: 'period'; key: string; period: PersonRegistrationGroupPeriod }
+  | { type: 'gap'; key: string; id: string; validFrom: string; validTo: string }
+
 type CalendarClaim = {
   obed: boolean
   vecera: boolean
@@ -538,10 +542,7 @@ export default function PersonalistaClient({
     : null
   const selectedRegistrationPeriodRows = useMemo(() => {
     const periods = sortRegistrationPeriods(selectedPerson?.registrationGroupPeriods || [])
-    const rows: Array<
-      | { type: 'period'; key: string; period: PersonRegistrationGroupPeriod }
-      | { type: 'gap'; key: string; id: string; validFrom: string; validTo: string }
-    > = []
+    const rows: RegistrationPeriodSelectionRow[] = []
 
     periods.forEach((period, index) => {
       rows.push({ type: 'period', key: `period-${period.id}`, period })
@@ -569,7 +570,11 @@ export default function PersonalistaClient({
   const selectedRegistrationPeriodKeySet = useMemo(() => {
     return new Set(selectedRegistrationPeriodKeys)
   }, [selectedRegistrationPeriodKeys])
+  const selectedRegistrationPeriodSelectionRows = useMemo(() => {
+    return selectedRegistrationPeriodRows.filter(row => selectedRegistrationPeriodKeySet.has(row.key))
+  }, [selectedRegistrationPeriodRows, selectedRegistrationPeriodKeySet])
   const selectedRegistrationPeriodCount = selectedRegistrationPeriodKeys.length
+  const isBulkRegistrationPeriodEdit = selectedRegistrationPeriodCount > 1
   const showMobilePersonDetail = isMobile && !!selectedPerson
   const shouldShowDetailMessage = Boolean(detailMessage && detailMessageMode === detailMode)
   const printPersonHref = selectedPerson
@@ -1408,6 +1413,46 @@ export default function PersonalistaClient({
       return
     }
 
+    if (isBulkRegistrationPeriodEdit) {
+      const items = selectedRegistrationPeriodSelectionRows.map(row => (
+        row.type === 'period'
+          ? {
+            periodId: row.period.id,
+            validFrom: row.period.validFrom,
+            validTo: row.period.validTo || ''
+          }
+          : {
+            periodId: '',
+            validFrom: row.validFrom,
+            validTo: row.validTo
+          }
+      ))
+
+      if (items.length === 0) {
+        setDetailFeedback('Oznac obdobia, ktore chces upravit.', 'error', 'registrationPeriods')
+        return
+      }
+
+      const saved = await postDetailAction(
+        '/api/personalista/people/registration-periods',
+        {
+          userId: selectedPerson.id,
+          registrationGroupId: registrationPeriodForm.registrationGroupId,
+          note: registrationPeriodForm.note,
+          items
+        },
+        'Oznacene zaradenia sa nepodarilo ulozit.',
+        'registrationPeriods',
+        'PATCH'
+      )
+
+      if (saved) {
+        setSelectedRegistrationPeriodKeys([])
+        setRegistrationPeriodForm(defaultRegistrationPeriodForm(selectedPerson))
+      }
+      return
+    }
+
     if (!registrationPeriodForm.validFrom) {
       setDetailFeedback('Vyber datum od.', 'error', 'registrationPeriods')
       return
@@ -1449,6 +1494,7 @@ export default function PersonalistaClient({
   }
 
   const editRegistrationGroupPeriod = (period: PersonRegistrationGroupPeriod) => {
+    setSelectedRegistrationPeriodKeys([`period-${period.id}`])
     setRegistrationPeriodForm({
       periodId: period.id,
       registrationGroupId: period.registrationGroupId,
@@ -1463,33 +1509,59 @@ export default function PersonalistaClient({
     )
   }
 
-  const toggleRegistrationPeriodSelection = (
-    row:
-      | { type: 'period'; key: string; period: PersonRegistrationGroupPeriod }
-      | { type: 'gap'; key: string; id: string; validFrom: string; validTo: string }
-  ) => {
-    const wasSelected = selectedRegistrationPeriodKeySet.has(row.key)
+  const toggleRegistrationPeriodSelection = (row: RegistrationPeriodSelectionRow) => {
+    const nextKeys = selectedRegistrationPeriodKeys.includes(row.key)
+      ? selectedRegistrationPeriodKeys.filter(key => key !== row.key)
+      : [...selectedRegistrationPeriodKeys, row.key]
 
-    setSelectedRegistrationPeriodKeys(prev => (
-      prev.includes(row.key)
-        ? prev.filter(key => key !== row.key)
-        : [...prev, row.key]
-    ))
+    setSelectedRegistrationPeriodKeys(nextKeys)
 
-    if (row.type === 'gap' && !wasSelected) {
+    const nextRows = selectedRegistrationPeriodRows.filter(item => nextKeys.includes(item.key))
+
+    if (nextRows.length === 0) {
+      setRegistrationPeriodForm(defaultRegistrationPeriodForm(selectedPerson))
+      clearDetailFeedback()
+      return
+    }
+
+    if (nextRows.length === 1) {
+      const selectedRow = nextRows[0]
+
+      if (selectedRow.type === 'period') {
+        setRegistrationPeriodForm({
+          periodId: selectedRow.period.id,
+          registrationGroupId: selectedRow.period.registrationGroupId,
+          validFrom: selectedRow.period.validFrom,
+          validTo: selectedRow.period.validTo || '',
+          note: selectedRow.period.note || ''
+        })
+        setDetailFeedback('Oznacene je jedno zaradenie. Mozes upravit skupinu, datumy aj poznamku.', 'ok', 'registrationPeriods')
+        return
+      }
+
       setRegistrationPeriodForm({
         periodId: '',
         registrationGroupId: '',
-        validFrom: row.validFrom,
-        validTo: row.validTo,
+        validFrom: selectedRow.validFrom,
+        validTo: selectedRow.validTo,
         note: ''
       })
       setDetailFeedback('Nezaradene obdobie je pripravene. Vyber registracnu skupinu a uloz zaradenie.', 'ok', 'registrationPeriods')
+      return
     }
+
+    setRegistrationPeriodForm(prev => ({
+      ...prev,
+      periodId: '',
+      validFrom: '',
+      validTo: ''
+    }))
+    setDetailFeedback('Oznacenych je viac obdobi. Upravuje sa iba registracna skupina a poznamka, datumy ostanu povodne.', 'ok', 'registrationPeriods')
   }
 
   const resetRegistrationGroupPeriodForm = () => {
     setRegistrationPeriodForm(defaultRegistrationPeriodForm(selectedPerson))
+    setSelectedRegistrationPeriodKeys([])
     clearDetailFeedback()
   }
 
@@ -4612,6 +4684,12 @@ export default function PersonalistaClient({
                     </div>
                   )}
 
+                  {isBulkRegistrationPeriodEdit && (
+                    <div style={styles.optionHint}>
+                      Oznacenych je {selectedRegistrationPeriodCount} obdobi. Datumy ostanu zachovane, zmeni sa iba registracna skupina a poznamka.
+                    </div>
+                  )}
+
                   <div style={styles.detailEditGridWide}>
                     <label style={styles.field}>
                       <span>Registracna skupina</span>
@@ -4630,25 +4708,29 @@ export default function PersonalistaClient({
                       </select>
                     </label>
 
-                    <label style={styles.field}>
-                      <span>Od</span>
-                      {renderDateInput(
-                        registrationPeriodForm.validFrom,
-                        value => updateRegistrationPeriodForm('validFrom', value),
-                        detailLoading,
-                        'Vyber od'
-                      )}
-                    </label>
+                    {!isBulkRegistrationPeriodEdit && (
+                      <>
+                        <label style={styles.field}>
+                          <span>Od</span>
+                          {renderDateInput(
+                            registrationPeriodForm.validFrom,
+                            value => updateRegistrationPeriodForm('validFrom', value),
+                            detailLoading,
+                            'Vyber od'
+                          )}
+                        </label>
 
-                    <label style={styles.field}>
-                      <span>Do</span>
-                      {renderDateInput(
-                        registrationPeriodForm.validTo,
-                        value => updateRegistrationPeriodForm('validTo', value),
-                        detailLoading,
-                        'Bez konca'
-                      )}
-                    </label>
+                        <label style={styles.field}>
+                          <span>Do</span>
+                          {renderDateInput(
+                            registrationPeriodForm.validTo,
+                            value => updateRegistrationPeriodForm('validTo', value),
+                            detailLoading,
+                            'Bez konca'
+                          )}
+                        </label>
+                      </>
+                    )}
 
                     <label style={styles.field}>
                       <span>Poznamka</span>
@@ -4669,17 +4751,17 @@ export default function PersonalistaClient({
                       disabled={detailLoading || !registrationPeriodForm.registrationGroupId}
                       onClick={saveRegistrationGroupPeriod}
                     >
-                      {detailLoading ? 'Ukladam...' : registrationPeriodForm.periodId ? 'Ulozit zmenu' : 'Ulozit zaradenie'}
+                      {detailLoading ? 'Ukladam...' : isBulkRegistrationPeriodEdit ? 'Ulozit oznacene' : registrationPeriodForm.periodId ? 'Ulozit zmenu' : 'Ulozit zaradenie'}
                     </button>
 
-                    {registrationPeriodForm.periodId && (
+                    {(registrationPeriodForm.periodId || isBulkRegistrationPeriodEdit) && (
                       <button
                         type="button"
                         style={styles.lightButton}
                         disabled={detailLoading}
                         onClick={resetRegistrationGroupPeriodForm}
                       >
-                        Zrusit upravu
+                        Zrusit vyber
                       </button>
                     )}
 

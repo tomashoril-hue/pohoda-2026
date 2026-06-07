@@ -275,12 +275,13 @@ export async function PATCH(req: NextRequest) {
     const validFrom = cleanDate(body.validFrom)
     const validTo = cleanDate(body.validTo) || null
     const note = cleanText(body.note) || null
+    const rawItems = Array.isArray(body.items) ? body.items : []
 
     if (!userId) {
       return NextResponse.json({ error: 'Chyba osoba.' }, { status: 400 })
     }
 
-    if (!periodId) {
+    if (!periodId && rawItems.length === 0) {
       return NextResponse.json({ error: 'Chyba zaradenie.' }, { status: 400 })
     }
 
@@ -288,11 +289,11 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Vyber registracnu skupinu.' }, { status: 400 })
     }
 
-    if (!validFrom) {
+    if (rawItems.length === 0 && !validFrom) {
       return NextResponse.json({ error: 'Vyber datum od.' }, { status: 400 })
     }
 
-    if (validTo && validTo < validFrom) {
+    if (rawItems.length === 0 && validTo && validTo < validFrom) {
       return NextResponse.json({ error: 'Datum do nemoze byt pred datumom od.' }, { status: 400 })
     }
 
@@ -305,19 +306,26 @@ export async function PATCH(req: NextRequest) {
       )
     }
 
-    const { data: currentPeriod, error: currentPeriodError } = await supabaseServer
-      .from('user_registration_group_periods')
-      .select('id, user_id, registration_group_id, valid_from, valid_to, note')
-      .eq('id', periodId)
-      .eq('user_id', userId)
-      .maybeSingle()
+    const items = rawItems
+      .map((item: any) => ({
+        periodId: cleanText(item?.periodId),
+        validFrom: cleanDate(item?.validFrom),
+        validTo: cleanDate(item?.validTo) || null
+      }))
+      .filter((item: any) => item.validFrom)
 
-    if (currentPeriodError) {
-      return NextResponse.json({ error: currentPeriodError.message }, { status: 500 })
-    }
+    if (rawItems.length > 0) {
+      if (items.length !== rawItems.length) {
+        return NextResponse.json({ error: 'Niektore oznacene obdobia nemaju platny datum od.' }, { status: 400 })
+      }
 
-    if (!currentPeriod) {
-      return NextResponse.json({ error: 'Zaradenie neexistuje.' }, { status: 404 })
+      if (items.some((item: any) => item.validTo && item.validTo < item.validFrom)) {
+        return NextResponse.json({ error: 'Datum do nemoze byt pred datumom od.' }, { status: 400 })
+      }
+
+      if (items.length > 30) {
+        return NextResponse.json({ error: 'Naraz je mozne upravit najviac 30 obdobi.' }, { status: 400 })
+      }
     }
 
     const { data: registrationGroup, error: registrationGroupError } = await supabaseServer
@@ -335,6 +343,117 @@ export async function PATCH(req: NextRequest) {
         { error: 'Registracna skupina neexistuje alebo nie je aktivna.' },
         { status: 404 }
       )
+    }
+
+    if (items.length > 0) {
+      const existingPeriodIds = items.map((item: any) => item.periodId).filter(Boolean)
+      const beforeById = new Map<string, any>()
+
+      if (existingPeriodIds.length > 0) {
+        const { data: beforeRows, error: beforeError } = await supabaseServer
+          .from('user_registration_group_periods')
+          .select('id, user_id, registration_group_id, valid_from, valid_to, note')
+          .eq('user_id', userId)
+          .in('id', existingPeriodIds)
+
+        if (beforeError) {
+          return NextResponse.json({ error: beforeError.message }, { status: 500 })
+        }
+
+        ;(beforeRows || []).forEach((row: any) => {
+          beforeById.set(row.id, row)
+        })
+
+        if (beforeById.size !== existingPeriodIds.length) {
+          return NextResponse.json({ error: 'Niektore oznacene zaradenia uz neexistuju.' }, { status: 404 })
+        }
+      }
+
+      const changedPeriods = []
+
+      for (const item of items) {
+        if (item.periodId) {
+          const { data: period, error: updateError } = await supabaseServer
+            .from('user_registration_group_periods')
+            .update({
+              registration_group_id: registrationGroupId,
+              valid_from: item.validFrom,
+              valid_to: item.validTo,
+              note
+            })
+            .eq('id', item.periodId)
+            .eq('user_id', userId)
+            .select('id, user_id, registration_group_id, valid_from, valid_to, note')
+            .single()
+
+          if (updateError) {
+            return overlapErrorResponse(updateError)
+          }
+
+          changedPeriods.push(period)
+        } else {
+          const { data: period, error: insertError } = await supabaseServer
+            .from('user_registration_group_periods')
+            .insert({
+              user_id: userId,
+              registration_group_id: registrationGroupId,
+              valid_from: item.validFrom,
+              valid_to: item.validTo,
+              note,
+              created_by: actor.id
+            })
+            .select('id, user_id, registration_group_id, valid_from, valid_to, note')
+            .single()
+
+          if (insertError) {
+            return overlapErrorResponse(insertError)
+          }
+
+          changedPeriods.push(period)
+        }
+      }
+
+      const refreshedPeriod = await refreshCurrentRegistrationGroupSnapshot(userId)
+
+      await supabaseServer
+        .from('personnel_audit_log')
+        .insert({
+          actor_user_id: actor.id,
+          target_user_id: userId,
+          action: 'PERSON_REGISTRATION_GROUP_PERIODS_BULK_UPDATED',
+          entity_table: 'user_registration_group_periods',
+          entity_id: null,
+          before_data: {
+            periods: Array.from(beforeById.values())
+          },
+          after_data: {
+            periods: changedPeriods,
+            registration_group_name: registrationGroup.name,
+            current_registration_group_id: refreshedPeriod?.registration_group_id || null
+          },
+          note: 'Hromadna uprava oznacenych zaradeni. Naroky na stravu neboli zmenene.'
+        })
+
+      return NextResponse.json({
+        ok: true,
+        periods: changedPeriods,
+        message: `Oznacene zaradenia boli ulozene (${changedPeriods.length}). Naroky na stravu ostali nezmenene.`
+      })
+    }
+
+    const { data: currentPeriod, error: currentPeriodError } = await supabaseServer
+      .from('user_registration_group_periods')
+      .select('id, user_id, registration_group_id, valid_from, valid_to, note')
+      .eq('id', periodId)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (currentPeriodError) {
+      return NextResponse.json({ error: currentPeriodError.message }, { status: 500 })
+    }
+
+    if (!currentPeriod) {
+      return NextResponse.json({ error: 'Zaradenie neexistuje.' }, { status: 404 })
     }
 
     const { data: period, error: updateError } = await supabaseServer
