@@ -5,6 +5,7 @@ var DATE_MEAL_COLS = 3;
 var PINNED_TOTAL_COL = 4;
 var FIRST_GROUP_COL = PINNED_TOTAL_COL + 1;
 var TOTAL_HEADER = 'SPOLU';
+var UNASSIGNED_GROUP_NAME = 'Nezaradený';
 
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -32,6 +33,7 @@ function refreshGastro2026() {
 
   refreshTotalFormulas(sheet, rebuild.firstGroupCol, rebuild.lastGroupCol, rebuild.totalCol);
   applyDaySeparators(sheet, rebuild.totalCol);
+  styleUnassignedColumn(sheet, rebuild.columnMap);
   protectGastroSheet(sheet);
 
   SpreadsheetApp.getUi().alert(
@@ -457,6 +459,27 @@ function applyDaySeparators(sheet, totalCol) {
       .getRange(firstDataRow + index, 1, 1, totalCol)
       .setBorder(null, null, true, null, null, null, '#777777', SpreadsheetApp.BorderStyle.SOLID);
   });
+}
+
+function styleUnassignedColumn(sheet, columnMap) {
+  var unassignedCol = columnMap[normalizeGroupName(UNASSIGNED_GROUP_NAME)];
+  if (!unassignedCol) return;
+
+  var lastRow = sheet.getLastRow();
+  var dataRows = Math.max(0, lastRow - HEADER_ROW);
+
+  sheet
+    .getRange(HEADER_ROW, unassignedCol, 1, 1)
+    .setBackground('#fff3bf')
+    .setFontColor('#7c2d12')
+    .setFontWeight('bold');
+
+  if (dataRows > 0) {
+    sheet
+      .getRange(HEADER_ROW + 1, unassignedCol, dataRows, 1)
+      .setBackground('#fff8db')
+      .setFontColor('#7c2d12');
+  }
 }
 
 function protectGastroSheet(sheet) {

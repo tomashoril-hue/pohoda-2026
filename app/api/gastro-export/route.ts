@@ -23,6 +23,9 @@ type ExportRow = {
   meal: string
 }
 
+const UNASSIGNED_GROUP_ID = '__UNASSIGNED__'
+const UNASSIGNED_GROUP_NAME = 'Nezaradený'
+
 function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status })
 }
@@ -124,12 +127,15 @@ async function fetchAll(buildQuery: (from: number, to: number) => any) {
 
 function registrationGroupForDate(user: any, periods: any[], date: string) {
   const normalizedDate = cleanIsoDate(date)
-  const period = periods
+  const normalizedPeriods = periods
     .map(item => ({
       ...item,
       valid_from: cleanIsoDate(item.valid_from),
       valid_to: cleanIsoDate(item.valid_to)
     }))
+    .filter(item => item.valid_from)
+
+  const period = normalizedPeriods
     .filter(item => {
       return item.valid_from <= normalizedDate && (!item.valid_to || item.valid_to >= normalizedDate)
     })
@@ -140,8 +146,12 @@ function registrationGroupForDate(user: any, periods: any[], date: string) {
       return cleanText(b.id).localeCompare(cleanText(a.id))
     })[0]
 
-  // Fallback for older users that still only have users.registration_group_id.
-  return period?.registration_group_id || user?.registration_group_id || ''
+  // Older users can still have only users.registration_group_id. If they have
+  // period history, a missing matching period means "Nezaradený" for that date.
+  if (period?.registration_group_id) return period.registration_group_id
+  if (normalizedPeriods.length === 0) return user?.registration_group_id || UNASSIGNED_GROUP_ID
+
+  return UNASSIGNED_GROUP_ID
 }
 
 export async function GET(req: NextRequest) {
@@ -175,11 +185,18 @@ export async function GET(req: NextRequest) {
       return jsonError(groupError.message, 500)
     }
 
-    const groups: RegistrationGroup[] = (groupRows || []).map((group: any) => ({
-      id: group.id,
-      name: group.name || 'Registracna skupina',
-      sheetColumnName: group.name || 'Registracna skupina'
-    }))
+    const groups: RegistrationGroup[] = [
+      ...(groupRows || []).map((group: any) => ({
+        id: group.id,
+        name: group.name || 'Registracna skupina',
+        sheetColumnName: group.name || 'Registracna skupina'
+      })),
+      {
+        id: UNASSIGNED_GROUP_ID,
+        name: UNASSIGNED_GROUP_NAME,
+        sheetColumnName: UNASSIGNED_GROUP_NAME
+      }
+    ]
     const activeGroupById = new Map(groups.map(group => [group.id, group]))
 
     const entitlementRows = await fetchAll((from, to) => supabaseServer
@@ -267,7 +284,7 @@ export async function GET(req: NextRequest) {
         periodsByUserId.get(row.user_id) || [],
         row.datum
       )
-      const group = activeGroupById.get(registrationGroupId)
+      const group = activeGroupById.get(registrationGroupId) || activeGroupById.get(UNASSIGNED_GROUP_ID)
 
       if (!group) return
 

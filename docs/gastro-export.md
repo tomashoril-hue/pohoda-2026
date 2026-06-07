@@ -43,6 +43,11 @@ The script adds a frozen helper `SPOLU` column after `Jedlo`, so columns A:D
 stay visible while scrolling across registration groups. The original final
 `SPOLU` column remains at the far right.
 
+The export also adds a highlighted `Nezaradený` group column. A person is counted
+there when they have a food entitlement for a date, but no registration group
+period valid for that entitlement date. For legacy users without any period
+history, `users.registration_group_id` is still used as fallback.
+
 Sheet protection is optional. If `GASTRO_PROTECT_SHEET=true`, the script protects
 the whole report sheet after refresh and allows manual edits only for emails in
 `GASTRO_PROTECTION_EDITORS`. If no editor list is provided, it keeps the current
