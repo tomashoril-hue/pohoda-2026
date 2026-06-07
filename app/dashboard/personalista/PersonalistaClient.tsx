@@ -113,6 +113,97 @@ function isoDateOffset(days: number) {
   return `${year}-${month}-${day}`
 }
 
+function isoDateAdd(value: string, days: number) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return ''
+
+  const date = new Date(`${value}T00:00:00.000Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function sortRegistrationPeriods(periods: PersonRegistrationGroupPeriod[]) {
+  return [...periods].sort((a, b) => {
+    const fromCompare = a.validFrom.localeCompare(b.validFrom)
+    if (fromCompare !== 0) return fromCompare
+
+    return (a.validTo || '9999-12-31').localeCompare(b.validTo || '9999-12-31')
+  })
+}
+
+function findRegistrationPeriodGaps(periods: PersonRegistrationGroupPeriod[]) {
+  const sorted = sortRegistrationPeriods(periods)
+  const gaps: Array<{ id: string; validFrom: string; validTo: string }> = []
+
+  for (let index = 0; index < sorted.length - 1; index++) {
+    const current = sorted[index]
+    const next = sorted[index + 1]
+
+    if (!current.validTo) continue
+
+    const gapFrom = isoDateAdd(current.validTo, 1)
+    const gapTo = isoDateAdd(next.validFrom, -1)
+
+    if (gapFrom && gapTo && gapFrom <= gapTo) {
+      gaps.push({
+        id: `gap-${gapFrom}-${gapTo}`,
+        validFrom: gapFrom,
+        validTo: gapTo
+      })
+    }
+  }
+
+  return gaps
+}
+
+function defaultRegistrationPeriodForm(person: PersonItem | null) {
+  const gaps = findRegistrationPeriodGaps(person?.registrationGroupPeriods || [])
+  const firstGap = gaps[0]
+
+  if (firstGap) {
+    return {
+      periodId: '',
+      registrationGroupId: person?.registrationGroupId || '',
+      validFrom: firstGap.validFrom,
+      validTo: firstGap.validTo,
+      note: person?.registrationGroupNote || ''
+    }
+  }
+
+  const periods = sortRegistrationPeriods(person?.registrationGroupPeriods || [])
+  const latest = periods[periods.length - 1]
+  const nextFrom = latest?.validTo ? isoDateAdd(latest.validTo, 1) : isoDateOffset(0)
+
+  return {
+    periodId: '',
+    registrationGroupId: person?.registrationGroupId || '',
+    validFrom: nextFrom || isoDateOffset(0),
+    validTo: '',
+    note: person?.registrationGroupNote || ''
+  }
+}
+
+function registrationPeriodsOverlap(
+  periods: PersonRegistrationGroupPeriod[],
+  validFrom: string,
+  validTo: string,
+  excludePeriodId = ''
+) {
+  const end = validTo || '9999-12-31'
+
+  return periods.some(period => {
+    if (period.id === excludePeriodId) return false
+
+    const periodEnd = period.validTo || '9999-12-31'
+
+    return validFrom <= periodEnd && period.validFrom <= end
+  })
+}
+
 function dateRangeIso(from: string, to: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from) {
     return []
@@ -350,6 +441,7 @@ export default function PersonalistaClient({
     registrationGroupNote: ''
   })
   const [registrationPeriodForm, setRegistrationPeriodForm] = useState({
+    periodId: '',
     registrationGroupId: '',
     validFrom: isoDateOffset(0),
     validTo: '',
@@ -443,6 +535,34 @@ export default function PersonalistaClient({
   const selectedPerson = selectedPersonId
     ? people.find(person => person.id === selectedPersonId) || null
     : null
+  const selectedRegistrationPeriodRows = useMemo(() => {
+    const periods = sortRegistrationPeriods(selectedPerson?.registrationGroupPeriods || [])
+    const rows: Array<
+      | { type: 'period'; period: PersonRegistrationGroupPeriod }
+      | { type: 'gap'; id: string; validFrom: string; validTo: string }
+    > = []
+
+    periods.forEach((period, index) => {
+      rows.push({ type: 'period', period })
+
+      const next = periods[index + 1]
+      if (!next || !period.validTo) return
+
+      const gapFrom = isoDateAdd(period.validTo, 1)
+      const gapTo = isoDateAdd(next.validFrom, -1)
+
+      if (gapFrom && gapTo && gapFrom <= gapTo) {
+        rows.push({
+          type: 'gap',
+          id: `gap-${gapFrom}-${gapTo}`,
+          validFrom: gapFrom,
+          validTo: gapTo
+        })
+      }
+    })
+
+    return rows
+  }, [selectedPerson])
   const showMobilePersonDetail = isMobile && !!selectedPerson
   const shouldShowDetailMessage = Boolean(detailMessage && detailMessageMode === detailMode)
   const printPersonHref = selectedPerson
@@ -563,12 +683,7 @@ export default function PersonalistaClient({
       registrationGroupNote: selectedPerson.registrationGroupNote || ''
     })
 
-    setRegistrationPeriodForm({
-      registrationGroupId: selectedPerson.registrationGroupId || '',
-      validFrom: isoDateOffset(0),
-      validTo: '',
-      note: selectedPerson.registrationGroupNote || ''
-    })
+    setRegistrationPeriodForm(defaultRegistrationPeriodForm(selectedPerson))
 
     const bounds = entitlementBounds(selectedPerson.entitlements, fromDate, toDate)
     const nextEntitlementForm = {
@@ -1177,12 +1292,12 @@ export default function PersonalistaClient({
     clearDetailFeedback()
     setDetailMessageMode(messageMode)
 
-    if (!selectedPerson) return
+    if (!selectedPerson) return false
 
     if (!canManage) {
       setDetailMessage('Nemáš oprávnenie upravovať osoby.')
       setDetailMessageType('error')
-      return
+      return false
     }
 
     setDetailLoading(true)
@@ -1202,13 +1317,13 @@ export default function PersonalistaClient({
       } catch {
         setDetailMessage('Server vrátil neplatnú odpoveď.')
         setDetailMessageType('error')
-        return
+        return false
       }
 
       if (!res.ok || json.error) {
         setDetailMessage(json.error || fallbackMessage)
         setDetailMessageType('error')
-        return
+        return false
       }
 
       const successMessage = json.message || 'Zmena bola uložená.'
@@ -1228,10 +1343,13 @@ export default function PersonalistaClient({
         setDetailMessage(`${successMessage} Detail sa nepodarilo automaticky obnovit: ${reloadMessage}`)
         setDetailMessageType('ok')
       }
+
+      return true
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setDetailMessage('Chyba spojenia so serverom: ' + message)
       setDetailMessageType('error')
+      return false
     } finally {
       setDetailLoading(false)
     }
@@ -1274,7 +1392,7 @@ export default function PersonalistaClient({
     )
   }
 
-  const saveRegistrationGroupPeriod = () => {
+  const saveRegistrationGroupPeriod = async () => {
     if (!selectedPerson) return
 
     if (!registrationPeriodForm.registrationGroupId) {
@@ -1292,15 +1410,54 @@ export default function PersonalistaClient({
       return
     }
 
-    postDetailAction(
+    if (registrationPeriodsOverlap(
+      selectedPerson.registrationGroupPeriods,
+      registrationPeriodForm.validFrom,
+      registrationPeriodForm.validTo,
+      registrationPeriodForm.periodId
+    )) {
+      setDetailFeedback(
+        'Obdobie sa prekryva s existujucim zaradenim. V jeden den moze platit iba jedna registracna skupina.',
+        'error',
+        'registrationPeriods'
+      )
+      return
+    }
+
+    const saved = await postDetailAction(
       '/api/personalista/people/registration-periods',
       {
         userId: selectedPerson.id,
         ...registrationPeriodForm
       },
       'Zaradenie sa nepodarilo ulozit.',
+      'registrationPeriods',
+      registrationPeriodForm.periodId ? 'PATCH' : 'POST'
+    )
+
+    if (saved) {
+      setRegistrationPeriodForm(defaultRegistrationPeriodForm(selectedPerson))
+    }
+  }
+
+  const editRegistrationGroupPeriod = (period: PersonRegistrationGroupPeriod) => {
+    setRegistrationPeriodForm({
+      periodId: period.id,
+      registrationGroupId: period.registrationGroupId,
+      validFrom: period.validFrom,
+      validTo: period.validTo || '',
+      note: period.note || ''
+    })
+    setDetailFeedback(
+      `Upravujes zaradenie ${period.registrationGroupName || '-'} (${fullDateLabel(period.validFrom)} - ${period.validTo ? fullDateLabel(period.validTo) : 'bez konca'}).`,
+      'ok',
       'registrationPeriods'
     )
+  }
+
+  const resetRegistrationGroupPeriodForm = () => {
+    setRegistrationPeriodForm(defaultRegistrationPeriodForm(selectedPerson))
+    clearDetailFeedback()
   }
 
   const deleteRegistrationGroupPeriod = (period: PersonRegistrationGroupPeriod) => {
@@ -4261,27 +4418,67 @@ export default function PersonalistaClient({
                         <span>{selectedPerson.registrationGroupName || '-'}</span>
                       </div>
                     ) : (
-                      selectedPerson.registrationGroupPeriods.map(period => (
-                        <div key={period.id} style={styles.registrationPeriodRow}>
-                          <div style={styles.registrationPeriodInfo}>
-                            <b>{period.registrationGroupName || '-'}</b>
-                            <span>{fullDateLabel(period.validFrom)} - {period.validTo ? fullDateLabel(period.validTo) : 'bez konca'}</span>
-                            {period.note && <small>{period.note}</small>}
-                          </div>
+                      selectedRegistrationPeriodRows.map(row => {
+                        if (row.type === 'gap') {
+                          return (
+                            <div key={row.id} style={styles.registrationPeriodGapRow}>
+                              <div style={styles.registrationPeriodInfo}>
+                                <b>Nezaradene obdobie</b>
+                                <span>{fullDateLabel(row.validFrom)} - {fullDateLabel(row.validTo)}</span>
+                              </div>
+                            </div>
+                          )
+                        }
 
-                          <button
-                            type="button"
-                            style={styles.smallRemoveButton}
-                            disabled={detailLoading}
-                            onClick={() => deleteRegistrationGroupPeriod(period)}
-                            title="Vymazat zaradenie"
+                        const period = row.period
+                        const isEditing = registrationPeriodForm.periodId === period.id
+
+                        return (
+                          <div
+                            key={period.id}
+                            style={{
+                              ...styles.registrationPeriodRow,
+                              ...(isEditing ? styles.registrationPeriodRowActive : {})
+                            }}
                           >
-                            x
-                          </button>
-                        </div>
-                      ))
+                            <div style={styles.registrationPeriodInfo}>
+                              <b>{period.registrationGroupName || '-'}</b>
+                              <span>{fullDateLabel(period.validFrom)} - {period.validTo ? fullDateLabel(period.validTo) : 'bez konca'}</span>
+                              {period.note && <small>{period.note}</small>}
+                            </div>
+
+                            <div style={styles.registrationPeriodActions}>
+                              <button
+                                type="button"
+                                style={styles.smallEditButton}
+                                disabled={detailLoading}
+                                onClick={() => editRegistrationGroupPeriod(period)}
+                                title="Zmenit zaradenie"
+                              >
+                                Z
+                              </button>
+
+                              <button
+                                type="button"
+                                style={styles.smallRemoveButton}
+                                disabled={detailLoading}
+                                onClick={() => deleteRegistrationGroupPeriod(period)}
+                                title="Vymazat zaradenie"
+                              >
+                                x
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })
                     )}
                   </div>
+
+                  {registrationPeriodForm.periodId && (
+                    <div style={styles.optionHint}>
+                      Upravujes existujuce zaradenie. Ak chces pridat nove obdobie, zrus upravu.
+                    </div>
+                  )}
 
                   <div style={styles.detailEditGridWide}>
                     <label style={styles.field}>
@@ -4340,8 +4537,19 @@ export default function PersonalistaClient({
                       disabled={detailLoading || !registrationPeriodForm.registrationGroupId}
                       onClick={saveRegistrationGroupPeriod}
                     >
-                      {detailLoading ? 'Ukladam...' : 'Ulozit zaradenie'}
+                      {detailLoading ? 'Ukladam...' : registrationPeriodForm.periodId ? 'Ulozit zmenu' : 'Ulozit zaradenie'}
                     </button>
+
+                    {registrationPeriodForm.periodId && (
+                      <button
+                        type="button"
+                        style={styles.lightButton}
+                        disabled={detailLoading}
+                        onClick={resetRegistrationGroupPeriodForm}
+                      >
+                        Zrusit upravu
+                      </button>
+                    )}
 
                     <button
                       type="button"
@@ -5421,16 +5629,46 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 5,
     padding: 6,
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) 26px',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
     gap: 8,
     alignItems: 'center',
     background: '#fff'
+  },
+  registrationPeriodRowActive: {
+    borderColor: '#2563eb',
+    background: '#eff6ff'
+  },
+  registrationPeriodGapRow: {
+    border: '1px solid #fecaca',
+    borderRadius: 5,
+    padding: 6,
+    display: 'grid',
+    gap: 4,
+    background: '#fff1f2',
+    color: '#991b1b'
   },
   registrationPeriodInfo: {
     display: 'grid',
     gap: 3,
     minWidth: 0,
     overflowWrap: 'anywhere'
+  },
+  registrationPeriodActions: {
+    display: 'flex',
+    gap: 4,
+    alignItems: 'center'
+  },
+  smallEditButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    border: '1px solid #bfdbfe',
+    background: '#fff',
+    color: '#1d4ed8',
+    fontSize: 12,
+    fontWeight: 950,
+    lineHeight: 1,
+    cursor: 'pointer'
   },
   smallRemoveButton: {
     width: 24,
