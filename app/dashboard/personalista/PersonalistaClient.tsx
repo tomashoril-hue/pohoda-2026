@@ -2459,6 +2459,14 @@ export default function PersonalistaClient({
         .personalista-page button:disabled {
           cursor: wait;
         }
+
+        .personalista-page .registration-period-click-row,
+        .personalista-page .registration-period-click-row:focus,
+        .personalista-page .registration-period-click-row:focus-visible,
+        .personalista-page .registration-period-click-row:active {
+          outline: 0 !important;
+          -webkit-tap-highlight-color: transparent;
+        }
       `}</style>
       <header style={{
         ...styles.header,
@@ -4601,11 +4609,16 @@ export default function PersonalistaClient({
                           return (
                             <div
                               key={row.id}
+                              className="registration-period-click-row"
                               style={{
                                 ...styles.registrationPeriodGapRow,
                                 ...(isSelected ? styles.registrationPeriodGapRowSelected : {})
                               }}
-                              onClick={() => toggleRegistrationPeriodSelection(row)}
+                              onPointerDown={event => event.preventDefault()}
+                              onClick={event => {
+                                event.currentTarget.blur()
+                                toggleRegistrationPeriodSelection(row)
+                              }}
                             >
                               <div style={styles.registrationPeriodInfo}>
                                 <b>Nezaradene obdobie</b>
@@ -4622,12 +4635,17 @@ export default function PersonalistaClient({
                         return (
                           <div
                             key={period.id}
+                            className="registration-period-click-row"
                             style={{
                               ...styles.registrationPeriodRow,
                               ...(isSelected ? styles.registrationPeriodRowSelected : {}),
                               ...(isEditing ? styles.registrationPeriodRowActive : {})
                             }}
-                            onClick={() => toggleRegistrationPeriodSelection(row)}
+                            onPointerDown={event => event.preventDefault()}
+                            onClick={event => {
+                              event.currentTarget.blur()
+                              toggleRegistrationPeriodSelection(row)
+                            }}
                           >
                             <div style={styles.registrationPeriodInfo}>
                               <b>{period.registrationGroupName || '-'}</b>
