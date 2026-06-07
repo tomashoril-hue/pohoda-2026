@@ -4601,16 +4601,11 @@ export default function PersonalistaClient({
                           return (
                             <div
                               key={row.id}
-                              role="button"
-                              tabIndex={0}
                               style={{
                                 ...styles.registrationPeriodGapRow,
                                 ...(isSelected ? styles.registrationPeriodGapRowSelected : {})
                               }}
                               onClick={() => toggleRegistrationPeriodSelection(row)}
-                              onKeyDown={event => {
-                                if (event.key === 'Enter' || event.key === ' ') toggleRegistrationPeriodSelection(row)
-                              }}
                             >
                               <div style={styles.registrationPeriodInfo}>
                                 <b>Nezaradene obdobie</b>
@@ -4627,17 +4622,12 @@ export default function PersonalistaClient({
                         return (
                           <div
                             key={period.id}
-                            role="button"
-                            tabIndex={0}
                             style={{
                               ...styles.registrationPeriodRow,
                               ...(isSelected ? styles.registrationPeriodRowSelected : {}),
                               ...(isEditing ? styles.registrationPeriodRowActive : {})
                             }}
                             onClick={() => toggleRegistrationPeriodSelection(row)}
-                            onKeyDown={event => {
-                              if (event.key === 'Enter' || event.key === ' ') toggleRegistrationPeriodSelection(row)
-                            }}
                           >
                             <div style={styles.registrationPeriodInfo}>
                               <b>{period.registrationGroupName || '-'}</b>
@@ -5848,7 +5838,8 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     background: '#fff',
     cursor: 'pointer',
-    outline: 'none'
+    outline: 'none',
+    boxShadow: 'none'
   },
   registrationPeriodRowSelected: {
     borderColor: '#fb923c',
@@ -5868,7 +5859,8 @@ const styles: Record<string, CSSProperties> = {
     background: '#fff1f2',
     color: '#991b1b',
     cursor: 'pointer',
-    outline: 'none'
+    outline: 'none',
+    boxShadow: 'none'
   },
   registrationPeriodGapRowSelected: {
     borderColor: '#f97316',
