@@ -27,7 +27,23 @@ const UNASSIGNED_GROUP_ID = '__UNASSIGNED__'
 const UNASSIGNED_GROUP_NAME = 'Nezaradený'
 
 function jsonError(message: string, status: number) {
-  return NextResponse.json({ error: message }, { status })
+  return NextResponse.json(
+    { error: message },
+    {
+      status,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0'
+      }
+    }
+  )
+}
+
+function jsonOk(body: any) {
+  return NextResponse.json(body, {
+    headers: {
+      'Cache-Control': 'no-store, max-age=0'
+    }
+  })
 }
 
 function cleanText(value: any) {
@@ -61,6 +77,25 @@ function normalizeChoice(value: any): FoodChoice {
   if (text === 'VEGE') return 'VEGE'
   if (text === 'DIETA' || text === 'DIÉTA' || text === 'DIĂ‰TA') return 'DIETA'
   return 'MASO'
+}
+
+function normalizeMealCode(value: any): MealCode | '' {
+  const text = cleanText(value).toUpperCase()
+
+  if (text === 'OBED') return 'OBED'
+  if (text === 'VECERA') return 'VECERA'
+
+  return ''
+}
+
+function selectionKey(userId: any, date: any, meal: any) {
+  const normalizedUserId = cleanText(userId)
+  const normalizedDate = cleanIsoDate(date)
+  const normalizedMeal = normalizeMealCode(meal)
+
+  if (!normalizedUserId || !normalizedDate || !normalizedMeal) return ''
+
+  return `${normalizedUserId}|${normalizedDate}|${normalizedMeal}`
 }
 
 function mealLabel(meal: MealCode, choice: FoodChoice) {
@@ -206,6 +241,8 @@ export async function GET(req: NextRequest) {
       .select('user_id, datum, obed, vecera')
       .gte('datum', dateFrom)
       .lte('datum', dateTo)
+      .order('user_id', { ascending: true })
+      .order('datum', { ascending: true })
       .range(from, to)
     )
 
@@ -214,7 +251,7 @@ export async function GET(req: NextRequest) {
     ))
 
     if (userIds.length === 0 || groups.length === 0) {
-      return NextResponse.json({
+      return jsonOk({
         year,
         generatedAt: new Date().toISOString(),
         groups,
@@ -233,6 +270,7 @@ export async function GET(req: NextRequest) {
         // No personal data is exported. These columns are used only server-side.
         .select('id, aktivny, registration_group_id, typ_stravy')
         .in('id', userIdChunk)
+        .order('id', { ascending: true })
         .range(from, to)
       ))
 
@@ -244,6 +282,7 @@ export async function GET(req: NextRequest) {
         .in('user_id', userIdChunk)
         .lte('valid_from', dateTo)
         .or(`valid_to.is.null,valid_to.gte.${dateFrom}`)
+        .order('user_id', { ascending: true })
         .order('valid_from', { ascending: false })
         .range(from, to)
       ))
@@ -255,14 +294,21 @@ export async function GET(req: NextRequest) {
         .in('user_id', userIdChunk)
         .gte('datum', dateFrom)
         .lte('datum', dateTo)
+        .order('user_id', { ascending: true })
+        .order('datum', { ascending: true })
+        .order('typ_jedla', { ascending: true })
         .range(from, to)
       ))
     }
 
     const userById = new Map(userRows.map((row: any) => [row.id, row]))
-    const selectionByKey = new Map(
-      selectionRows.map((row: any) => [`${row.user_id}|${row.datum}|${row.typ_jedla}`, row])
-    )
+    const selectionByKey = new Map<string, any>()
+
+    selectionRows.forEach((row: any) => {
+      const key = selectionKey(row.user_id, row.datum, row.typ_jedla)
+
+      if (key) selectionByKey.set(key, row)
+    })
     const periodsByUserId = new Map<string, any[]>()
 
     periodRows.forEach((row: any) => {
@@ -276,13 +322,15 @@ export async function GET(req: NextRequest) {
 
     entitlementRows.forEach((row: any) => {
       const user = userById.get(row.user_id)
+      const entitlementDate = cleanIsoDate(row.datum)
 
       if (!activeUser(user)) return
+      if (!entitlementDate) return
 
       const registrationGroupId = registrationGroupForDate(
         user,
         periodsByUserId.get(row.user_id) || [],
-        row.datum
+        entitlementDate
       )
       const group = activeGroupById.get(registrationGroupId) || activeGroupById.get(UNASSIGNED_GROUP_ID)
 
@@ -294,10 +342,10 @@ export async function GET(req: NextRequest) {
       ] as Array<[MealCode, boolean]>).forEach(([meal, enabled]) => {
         if (enabled !== true) return
 
-        const selection = selectionByKey.get(`${row.user_id}|${row.datum}|${meal}`)
+        const selection = selectionByKey.get(selectionKey(row.user_id, entitlementDate, meal))
         const choice = normalizeChoice(selection?.volba || user?.typ_stravy)
-        const key = `${row.datum}|${meal}|${choice}|${group.name}`
-        rowKeys.add(`${row.datum}|${meal}|${choice}`)
+        const key = `${entitlementDate}|${meal}|${choice}|${group.name}`
+        rowKeys.add(`${entitlementDate}|${meal}|${choice}`)
         countByKey.set(key, (countByKey.get(key) || 0) + 1)
       })
     })
@@ -340,7 +388,7 @@ export async function GET(req: NextRequest) {
         return a.groupName.localeCompare(b.groupName, 'sk')
       })
 
-    return NextResponse.json({
+    return jsonOk({
       year,
       generatedAt: new Date().toISOString(),
       groups,
