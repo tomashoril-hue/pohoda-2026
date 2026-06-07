@@ -29,8 +29,13 @@ The API returns only aggregate counts:
 - food entitlements from `user_food_entitlements`
 - registration group membership valid for the entitlement date from `user_registration_group_periods`
 - fallback group from `users.registration_group_id` when no period exists
+- dynamic date/meal rows in `rows`, derived from real food entitlements
 
 No names, emails, phones or QR codes are returned.
+
+The Google Sheet keeps the original header and visual style, but refresh now also
+rebuilds data rows A:C from application entitlements. Dates are no longer a
+manual fixed list in the sheet.
 
 ## Google Apps Script setup
 
@@ -69,7 +74,8 @@ Production check:
 5. In Google Sheets, set Script Properties.
 6. Click `POHODA -> Refresh GASTRO_2026`.
 7. Verify:
-   - columns A:C stay unchanged
+   - header columns A:C stay unchanged
+   - date/meal rows are generated from application entitlements
    - registration groups are recreated as columns
    - `SPOLU` remains the last column
    - `SPOLU` formulas sum all group columns

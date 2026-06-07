@@ -16,6 +16,12 @@ type ExportItem = {
   count: number
 }
 
+type ExportRow = {
+  date: string
+  day: string
+  meal: string
+}
+
 function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status })
 }
@@ -42,6 +48,22 @@ function bearerToken(req: NextRequest) {
 function mealLabel(meal: MealCode) {
   if (meal === 'OBED') return 'Obed'
   return 'Večera'
+}
+
+function mealOrder(meal: string) {
+  if (meal === 'OBED') return 1
+  if (meal === 'VECERA') return 2
+  return 99
+}
+
+function dayLabel(date: string) {
+  const parsed = new Date(`${date}T12:00:00.000Z`)
+  const label = new Intl.DateTimeFormat('sk-SK', {
+    weekday: 'long',
+    timeZone: 'UTC'
+  }).format(parsed)
+
+  return label.charAt(0).toUpperCase() + label.slice(1)
 }
 
 function activeUser(row: any) {
@@ -140,6 +162,7 @@ export async function GET(req: NextRequest) {
         year,
         generatedAt: new Date().toISOString(),
         groups,
+        rows: [],
         items: []
       })
     }
@@ -179,6 +202,7 @@ export async function GET(req: NextRequest) {
     })
 
     const countByKey = new Map<string, number>()
+    const rowKeys = new Set<string>()
 
     entitlementRows.forEach((row: any) => {
       const user = userById.get(row.user_id)
@@ -201,9 +225,27 @@ export async function GET(req: NextRequest) {
         if (enabled !== true) return
 
         const key = `${row.datum}|${meal}|${group.name}`
+        rowKeys.add(`${row.datum}|${meal}`)
         countByKey.set(key, (countByKey.get(key) || 0) + 1)
       })
     })
+
+    const rows: ExportRow[] = Array.from(rowKeys)
+      .map(key => {
+        const [date, meal] = key.split('|')
+
+        return {
+          date,
+          day: dayLabel(date),
+          meal: mealLabel(meal as MealCode)
+        }
+      })
+      .sort((a, b) => {
+        const dateCompare = a.date.localeCompare(b.date)
+        if (dateCompare !== 0) return dateCompare
+
+        return mealOrder(a.meal === 'Obed' ? 'OBED' : 'VECERA') - mealOrder(b.meal === 'Obed' ? 'OBED' : 'VECERA')
+      })
 
     const items: ExportItem[] = Array.from(countByKey.entries())
       .map(([key, count]) => {
@@ -230,6 +272,7 @@ export async function GET(req: NextRequest) {
       year,
       generatedAt: new Date().toISOString(),
       groups,
+      rows,
       items
     })
   } catch (err: any) {

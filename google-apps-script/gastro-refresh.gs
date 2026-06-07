@@ -23,6 +23,7 @@ function refreshGastro2026() {
 
   var exportData = fetchGastroExport();
   var rebuild = rebuildGroupColumns(sheet, exportData.groups || []);
+  var rows = rebuildDataRows(sheet, exportData, rebuild.totalCol);
   var rowMap = buildRowMap(sheet);
   var written = writeCounts(sheet, exportData, rowMap, rebuild.columnMap, rebuild.firstGroupCol, rebuild.lastGroupCol);
 
@@ -31,6 +32,8 @@ function refreshGastro2026() {
   SpreadsheetApp.getUi().alert(
     'GASTRO_2026 obnovene.\nSkupiny: ' +
     (exportData.groups || []).length +
+    '\nRiadky datum/jedlo: ' +
+    rows +
     '\nPolozky z API: ' +
     (exportData.items || []).length +
     '\nZapisane bunky: ' +
@@ -70,6 +73,27 @@ function normalizeDate(value) {
   }
 
   return '';
+}
+
+function dateToSheetValue(isoDate) {
+  var match = normalizeDate(isoDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return isoDate || '';
+
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function dayNameFromIsoDate(isoDate) {
+  var date = dateToSheetValue(isoDate);
+  if (Object.prototype.toString.call(date) !== '[object Date]' || isNaN(date.getTime())) return '';
+
+  return ['Nedeľa', 'Pondelok', 'Utorok', 'Streda', 'Štvrtok', 'Piatok', 'Sobota'][date.getDay()];
+}
+
+function mealSortValue(meal) {
+  var normalized = normalizeMeal(meal);
+  if (normalized === 'obed') return 1;
+  if (normalized === 'vecera' || normalized === 'večera') return 2;
+  return 99;
 }
 
 function columnToLetter(columnNumber) {
@@ -194,6 +218,78 @@ function rebuildGroupColumns(sheet, groups) {
     totalCol: totalColAfter,
     columnMap: columnMap
   };
+}
+
+function buildExportRows(exportData) {
+  if (Array.isArray(exportData.rows) && exportData.rows.length > 0) {
+    return exportData.rows.slice().sort(function(a, b) {
+      var dateCompare = normalizeDate(a.date).localeCompare(normalizeDate(b.date));
+      if (dateCompare !== 0) return dateCompare;
+
+      return mealSortValue(a.meal) - mealSortValue(b.meal);
+    });
+  }
+
+  var seen = {};
+
+  (exportData.items || []).forEach(function(item) {
+    var date = normalizeDate(item.date);
+    var meal = normalizeText(item.meal);
+
+    if (!date || !meal) return;
+
+    seen[date + '|' + normalizeMeal(meal)] = {
+      date: date,
+      day: dayNameFromIsoDate(date),
+      meal: meal
+    };
+  });
+
+  return Object.keys(seen)
+    .map(function(key) {
+      return seen[key];
+    })
+    .sort(function(a, b) {
+      var dateCompare = a.date.localeCompare(b.date);
+      if (dateCompare !== 0) return dateCompare;
+
+      return mealSortValue(a.meal) - mealSortValue(b.meal);
+    });
+}
+
+function rebuildDataRows(sheet, exportData, totalCol) {
+  var rows = buildExportRows(exportData);
+  var desiredRows = rows.length;
+  var currentRows = Math.max(0, sheet.getLastRow() - HEADER_ROW);
+
+  if (currentRows > desiredRows) {
+    sheet.deleteRows(HEADER_ROW + desiredRows + 1, currentRows - desiredRows);
+  } else if (currentRows < desiredRows) {
+    sheet.insertRowsAfter(HEADER_ROW + currentRows, desiredRows - currentRows);
+  }
+
+  if (desiredRows === 0) return 0;
+
+  var templateRow = HEADER_ROW + 1;
+  sheet
+    .getRange(templateRow, 1, 1, totalCol)
+    .copyTo(sheet.getRange(HEADER_ROW + 1, 1, desiredRows, totalCol), { formatOnly: true });
+
+  sheet.getRange(HEADER_ROW + 1, 1, desiredRows, totalCol).clearContent();
+
+  var values = rows.map(function(row) {
+    var date = normalizeDate(row.date);
+
+    return [
+      row.day || dayNameFromIsoDate(date),
+      dateToSheetValue(date),
+      row.meal || ''
+    ];
+  });
+
+  sheet.getRange(HEADER_ROW + 1, 1, desiredRows, FIRST_FIXED_COLS).setValues(values);
+
+  return desiredRows;
 }
 
 function buildRowMap(sheet) {
