@@ -32,6 +32,7 @@ function refreshGastro2026() {
 
   refreshTotalFormulas(sheet, rebuild.firstGroupCol, rebuild.lastGroupCol, rebuild.totalCol);
   applyDaySeparators(sheet, rebuild.totalCol);
+  protectGastroSheet(sheet);
 
   SpreadsheetApp.getUi().alert(
     'GASTRO_2026 obnovene.\nSkupiny: ' +
@@ -119,6 +120,18 @@ function columnToLetter(columnNumber) {
 
 function getScriptProperty(name) {
   return PropertiesService.getScriptProperties().getProperty(name);
+}
+
+function getCsvScriptProperty(name) {
+  var value = getScriptProperty(name);
+  if (!value) return [];
+
+  return value
+    .split(',')
+    .map(function(item) {
+      return normalizeText(item);
+    })
+    .filter(Boolean);
 }
 
 function fetchGastroExport() {
@@ -444,4 +457,48 @@ function applyDaySeparators(sheet, totalCol) {
       .getRange(firstDataRow + index, 1, 1, totalCol)
       .setBorder(null, null, true, null, null, null, '#777777', SpreadsheetApp.BorderStyle.SOLID);
   });
+}
+
+function protectGastroSheet(sheet) {
+  var enabled = normalizeText(getScriptProperty('GASTRO_PROTECT_SHEET')).toLowerCase() === 'true';
+  if (!enabled) return;
+
+  var editors = getCsvScriptProperty('GASTRO_PROTECTION_EDITORS');
+  var effectiveUser = normalizeText(Session.getEffectiveUser().getEmail());
+
+  if (editors.length === 0 && effectiveUser) {
+    editors = [effectiveUser];
+  }
+
+  if (editors.length === 0) {
+    throw new Error('GASTRO_PROTECTION_EDITORS nie je nastavene a nepodarilo sa zistit aktualny email.');
+  }
+
+  var protections = sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+  var protection = protections.length > 0
+    ? protections[0]
+    : sheet.protect().setDescription('POHODA GASTRO_2026 report');
+
+  protection.setDescription('POHODA GASTRO_2026 report');
+  protection.setWarningOnly(false);
+
+  var allowed = {};
+  editors.forEach(function(email) {
+    allowed[email.toLowerCase()] = true;
+  });
+
+  var currentEditors = protection.getEditors();
+  var editorsToRemove = currentEditors.filter(function(user) {
+    return !allowed[normalizeText(user.getEmail()).toLowerCase()];
+  });
+
+  if (editorsToRemove.length > 0) {
+    protection.removeEditors(editorsToRemove);
+  }
+
+  protection.addEditors(editors);
+
+  if (protection.canDomainEdit()) {
+    protection.setDomainEdit(false);
+  }
 }

@@ -13,6 +13,8 @@ Set these in Google Apps Script `Project Settings -> Script Properties`:
 - `GASTRO_EXPORT_TOKEN` - same standalone token as on Vercel.
 - `GASTRO_EXPORT_URL` - optional. Default: `https://www.pohodapass.sk/api/gastro-export?year=2026`.
 - `GASTRO_SHEET_NAME` - optional. Default: `GASTRO_2026`.
+- `GASTRO_PROTECT_SHEET` - optional. Set to `true` to protect the report sheet after refresh.
+- `GASTRO_PROTECTION_EDITORS` - optional comma-separated admin emails allowed to edit the protected sheet.
 
 ## API
 
@@ -41,6 +43,11 @@ The script adds a frozen helper `SPOLU` column after `Jedlo`, so columns A:D
 stay visible while scrolling across registration groups. The original final
 `SPOLU` column remains at the far right.
 
+Sheet protection is optional. If `GASTRO_PROTECT_SHEET=true`, the script protects
+the whole report sheet after refresh and allows manual edits only for emails in
+`GASTRO_PROTECTION_EDITORS`. If no editor list is provided, it keeps the current
+effective script user as the only editor.
+
 Meal rows are exported with unambiguous labels:
 
 - `Obed mäso` - MASO
@@ -61,8 +68,9 @@ for that date and meal, the export uses `users.typ_stravy`.
 4. Open `Project Settings -> Script Properties`.
 5. Add `GASTRO_EXPORT_TOKEN`.
 6. Optionally add `GASTRO_EXPORT_URL` and `GASTRO_SHEET_NAME`.
-7. Reload the spreadsheet.
-8. Use `POHODA -> Refresh GASTRO_2026`.
+7. Optionally add `GASTRO_PROTECT_SHEET=true` and `GASTRO_PROTECTION_EDITORS`.
+8. Reload the spreadsheet.
+9. Use `POHODA -> Refresh GASTRO_2026`.
 
 ## Test procedure
 
