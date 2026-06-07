@@ -182,6 +182,39 @@ function findTotalColumn(sheet) {
   throw new Error('Stlpec SPOLU sa nenasiel v riadku 1.');
 }
 
+function groupHeader(group) {
+  return group.sheetColumnName || group.name || '';
+}
+
+function groupHeadersMatch(sheet, groups, totalCol) {
+  var groupCount = groups.length;
+  var currentGroupCount = Math.max(0, totalCol - FIRST_GROUP_COL);
+
+  if (currentGroupCount !== groupCount) return false;
+  if (groupCount === 0) return true;
+
+  var currentHeaders = sheet.getRange(HEADER_ROW, FIRST_GROUP_COL, 1, groupCount).getValues()[0];
+
+  for (var index = 0; index < groupCount; index++) {
+    if (normalizeText(currentHeaders[index]) !== normalizeText(groupHeader(groups[index]))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function buildColumnMap(groups, firstGroupCol) {
+  var columnMap = {};
+
+  groups.forEach(function(group, index) {
+    var key = normalizeGroupName(groupHeader(group));
+    if (key) columnMap[key] = firstGroupCol + index;
+  });
+
+  return columnMap;
+}
+
 function ensurePinnedTotalColumn(sheet) {
   var pinnedHeader = normalizeText(sheet.getRange(HEADER_ROW, PINNED_TOTAL_COL).getValue()).toUpperCase();
 
@@ -202,6 +235,16 @@ function ensurePinnedTotalColumn(sheet) {
 function rebuildGroupColumns(sheet, groups) {
   var maxRows = sheet.getMaxRows();
   var totalCol = findTotalColumn(sheet);
+
+  if (groupHeadersMatch(sheet, groups, totalCol)) {
+    return {
+      firstGroupCol: FIRST_GROUP_COL,
+      lastGroupCol: FIRST_GROUP_COL + groups.length - 1,
+      totalCol: totalCol,
+      columnMap: buildColumnMap(groups, FIRST_GROUP_COL)
+    };
+  }
+
   var oldGroupCount = Math.max(0, totalCol - FIRST_GROUP_COL);
   var templateCol = oldGroupCount > 0 ? FIRST_GROUP_COL : totalCol;
   var maxCols = sheet.getMaxColumns();
@@ -233,9 +276,7 @@ function rebuildGroupColumns(sheet, groups) {
         .copyTo(sheet.getRange(1, col, maxRows, 1), { formatOnly: true });
     }
 
-    var headers = groups.map(function(group) {
-      return group.sheetColumnName || group.name || '';
-    });
+    var headers = groups.map(groupHeader);
     sheet.getRange(HEADER_ROW, firstGroupCol, 1, groupCount).setValues([headers]);
 
     var dataRows = Math.max(0, sheet.getLastRow() - HEADER_ROW);
@@ -247,18 +288,12 @@ function rebuildGroupColumns(sheet, groups) {
   sheet.deleteColumn(tempFormatCol);
 
   var totalColAfter = FIRST_GROUP_COL + groupCount;
-  var columnMap = {};
-
-  groups.forEach(function(group, index) {
-    var key = normalizeGroupName(group.sheetColumnName || group.name);
-    if (key) columnMap[key] = firstGroupCol + index;
-  });
 
   return {
     firstGroupCol: firstGroupCol,
     lastGroupCol: lastGroupCol,
     totalCol: totalColAfter,
-    columnMap: columnMap
+    columnMap: buildColumnMap(groups, firstGroupCol)
   };
 }
 
