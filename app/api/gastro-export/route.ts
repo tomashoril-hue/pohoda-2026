@@ -56,20 +56,20 @@ function normalizeChoice(value: any): FoodChoice {
 function mealLabel(meal: MealCode, choice: FoodChoice) {
   const base = meal === 'OBED' ? 'Obed' : 'Večera'
 
-  if (choice === 'VEGE') return `${base} V`
+  if (choice === 'VEGE') return `${base} vege`
   if (choice === 'DIETA') return `${base} diéta`
 
-  return base
+  return `${base} mäso`
 }
 
 function mealLabelSortValue(meal: string) {
   const text = cleanText(meal).toLowerCase()
 
-  if (text === 'obed') return 1
-  if (text === 'obed v') return 2
+  if (text === 'obed mäso' || text === 'obed maso' || text === 'obed') return 1
+  if (text === 'obed vege' || text === 'obed v') return 2
   if (text === 'obed diéta' || text === 'obed dieta') return 3
-  if (text === 'večera' || text === 'vecera') return 4
-  if (text === 'večera v' || text === 'vecera v') return 5
+  if (text === 'večera mäso' || text === 'vecera maso' || text === 'večera' || text === 'vecera') return 4
+  if (text === 'večera vege' || text === 'vecera vege' || text === 'večera v' || text === 'vecera v') return 5
   if (text === 'večera diéta' || text === 'vecera dieta') return 6
 
   return 99

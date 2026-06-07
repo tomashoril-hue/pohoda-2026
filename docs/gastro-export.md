@@ -39,11 +39,11 @@ manual fixed list in the sheet.
 
 Meal rows are exported with unambiguous labels:
 
-- `Obed` - default/MASO
-- `Obed V` - VEGE
+- `Obed mäso` - MASO
+- `Obed vege` - VEGE
 - `Obed diéta` - DIETA
-- `Večera` - default/MASO
-- `Večera V` - VEGE
+- `Večera mäso` - MASO
+- `Večera vege` - VEGE
 - `Večera diéta` - DIETA
 
 The variant comes from `vyber_jedal.volba`; if a person has no explicit choice
