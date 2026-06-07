@@ -45,6 +45,7 @@ function normalizeChoice(value: any) {
   const text = String(value || '').trim().toUpperCase()
   if (text === 'MASO') return 'MASO'
   if (text === 'VEGE') return 'VEGE'
+  if (text === 'BEZ_ZAUJMU') return 'BEZ_ZAUJMU'
   if (text === 'DIETA' || text === 'DIÉTA') return 'DIETA'
   return ''
 }

@@ -3,6 +3,7 @@ import { supabaseServer } from '@/lib/supabaseServer'
 
 type MealCode = 'OBED' | 'VECERA'
 type FoodChoice = 'MASO' | 'VEGE' | 'DIETA'
+type SelectionChoice = FoodChoice | 'BEZ_ZAUJMU'
 
 type RegistrationGroup = {
   id: string
@@ -72,8 +73,9 @@ function bearerToken(req: NextRequest) {
   return match?.[1]?.trim() || ''
 }
 
-function normalizeChoice(value: any): FoodChoice {
+function normalizeChoice(value: any): SelectionChoice {
   const text = cleanText(value).toUpperCase()
+  if (text === 'BEZ_ZAUJMU') return 'BEZ_ZAUJMU'
   if (text === 'VEGE') return 'VEGE'
   if (text === 'DIETA' || text === 'DIÉTA' || text === 'DIĂ‰TA') return 'DIETA'
   return 'MASO'
@@ -344,6 +346,9 @@ export async function GET(req: NextRequest) {
 
         const selection = selectionByKey.get(selectionKey(row.user_id, entitlementDate, meal))
         const choice = normalizeChoice(selection?.volba || user?.typ_stravy)
+
+        if (choice === 'BEZ_ZAUJMU') return
+
         const key = `${entitlementDate}|${meal}|${choice}|${group.name}`
         rowKeys.add(`${entitlementDate}|${meal}|${choice}`)
         countByKey.set(key, (countByKey.get(key) || 0) + 1)

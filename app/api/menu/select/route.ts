@@ -7,6 +7,7 @@ function normalizeChoice(value: unknown) {
 
   if (normalized === 'MASO') return 'MASO'
   if (normalized === 'VEGE') return 'VEGE'
+  if (normalized === 'BEZ_ZAUJMU') return 'BEZ_ZAUJMU'
   if (normalized === 'DIETA' || normalized === 'DIÉTA') return 'DIETA'
 
   return null
@@ -72,21 +73,24 @@ export async function POST(req: Request) {
     )
   }
 
-  const { data: menuItem, error: menuError } = await supabaseServer
-    .from('jedalny_listok')
-    .select('id')
-    .eq('datum', datum)
-    .eq('typ_jedla', typ_jedla)
-    .eq('varianta', volba)
-    .eq('aktivne', true)
-    .maybeSingle()
+  if (volba !== 'BEZ_ZAUJMU') {
+    const { data: menuItem, error: menuError } = await supabaseServer
+      .from('jedalny_listok')
+      .select('id')
+      .eq('datum', datum)
+      .eq('typ_jedla', typ_jedla)
+      .eq('varianta', volba)
+      .eq('aktivne', true)
+      .maybeSingle()
 
-  if (menuError) {
-    return NextResponse.json({ error: menuError.message }, { status: 500 })
-  }
+    if (menuError) {
+      return NextResponse.json({ error: menuError.message }, { status: 500 })
+    }
 
-  if (!menuItem) {
+    if (!menuItem) {
     return NextResponse.json({ error: 'Táto možnosť nie je v jedálnom lístku.' }, { status: 400 })
+    }
+
   }
 
   const { data: deadline } = await supabaseServer

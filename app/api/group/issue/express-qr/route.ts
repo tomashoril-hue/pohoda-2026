@@ -13,6 +13,12 @@ function normalizeChoice(value: any) {
   return null
 }
 
+function normalizeSelectionChoice(value: any) {
+  const text = String(value || '').trim().toUpperCase()
+  if (text === 'BEZ_ZAUJMU') return 'BEZ_ZAUJMU'
+  return normalizeChoice(value)
+}
+
 function entitlementStatus(entitlement: any, typJedla: string) {
   if (!entitlement) return 'UNKNOWN'
 
@@ -167,8 +173,19 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     const volba =
-      normalizeChoice(selection?.volba) ||
+      normalizeSelectionChoice(selection?.volba) ||
       normalizeChoice(profile.typ_stravy)
+
+    if (volba === 'BEZ_ZAUJMU') {
+      return NextResponse.json(
+        {
+          error: typJedla === 'OBED'
+            ? 'Používateľ sa odhlásil z obeda na tento deň.'
+            : 'Používateľ sa odhlásil z večere na tento deň.'
+        },
+        { status: 403 }
+      )
+    }
 
     const baseMember = {
       userId: targetUserId,

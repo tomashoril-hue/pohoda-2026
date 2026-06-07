@@ -49,6 +49,7 @@ function mealLabel(value: string) {
 function choiceLabel(value: string | null) {
   if (value === 'MASO') return 'MASO'
   if (value === 'VEGE') return 'VEGE'
+  if (value === 'BEZ_ZAUJMU') return 'NEMÁ ZÁUJEM'
   if (value === 'DIETA') return 'DIÉTA'
   return 'NEZADANÉ'
 }

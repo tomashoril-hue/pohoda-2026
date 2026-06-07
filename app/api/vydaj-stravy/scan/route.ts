@@ -27,6 +27,20 @@ function normalizeChoice(value: any) {
   return null
 }
 
+function normalizeSelectionChoice(value: any) {
+  const text = clean(value).toUpperCase()
+  if (text === 'BEZ_ZAUJMU') return 'BEZ_ZAUJMU'
+  return normalizeChoice(value)
+}
+
+function effectiveMealChoice(selectionValue: any, defaultValue: any) {
+  const selectionChoice = normalizeSelectionChoice(selectionValue)
+
+  if (selectionChoice === 'BEZ_ZAUJMU') return 'BEZ_ZAUJMU'
+
+  return selectionChoice || normalizeChoice(defaultValue)
+}
+
 function fullName(user: any) {
   return `${user?.meno || ''} ${user?.priezvisko || ''}`.trim()
 }
@@ -620,7 +634,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: selectionError.message }, { status: 500 })
     }
 
-    const choice = normalizeChoice(selection?.volba) || normalizeChoice(profile.typ_stravy)
+    const choice = effectiveMealChoice(selection?.volba, profile.typ_stravy)
 
     const { data: plannedItems, error: plannedItemsError } = plannedItemsResult
 
@@ -749,7 +763,7 @@ export async function POST(req: NextRequest) {
             (candidateEntitlementsResult.data || []).map((row: any) => [row.user_id, row])
           )
           const candidateSelectionMap = new Map(
-            (candidateSelectionsResult.data || []).map((row: any) => [row.user_id, normalizeChoice(row.volba)])
+            (candidateSelectionsResult.data || []).map((row: any) => [row.user_id, normalizeSelectionChoice(row.volba)])
           )
           const itemsByIssue = new Map<string, any[]>()
 
@@ -760,10 +774,14 @@ export async function POST(req: NextRequest) {
             if (!entitlementOk(candidateEntitlementMap.get(item.user_id), typJedla)) continue
             if (candidateIssuedIds.has(item.user_id)) continue
 
+            const itemChoice = candidateSelectionMap.get(item.user_id) || normalizeChoice(profileRow?.typ_stravy) || null
+
+            if (itemChoice === 'BEZ_ZAUJMU') continue
+
             const items = itemsByIssue.get(item.hromadny_vydaj_id) || []
             items.push({
               ...item,
-              volba: candidateSelectionMap.get(item.user_id) || normalizeChoice(profileRow?.typ_stravy) || null
+              volba: itemChoice
             })
             itemsByIssue.set(item.hromadny_vydaj_id, items)
           }
@@ -798,7 +816,7 @@ export async function POST(req: NextRequest) {
         },
         choice: normalizeChoice(alreadyIssued?.volba) || choice,
         individual: {
-          available: !alreadyIssued && entitlementOk(entitlement, typJedla),
+          available: !alreadyIssued && entitlementOk(entitlement, typJedla) && choice !== 'BEZ_ZAUJMU',
           alreadyIssued: Boolean(alreadyIssued),
           hasEntitlement: entitlementOk(entitlement, typJedla)
         },
@@ -847,6 +865,22 @@ export async function POST(req: NextRequest) {
         choice: normalizeChoice(alreadyIssued.volba) || choice,
         message: 'Už vydané'
       }, { status: 409 })
+    }
+
+    if (!selectedBulkOption && choice === 'BEZ_ZAUJMU') {
+      return NextResponse.json({
+        ok: false,
+        status: 'NO_INTEREST',
+        tone: 'error',
+        person: {
+          id: profile.id,
+          fullName: fullName(profile) || profile.email || '',
+          email: profile.email || ''
+        },
+        message: typJedla === 'OBED'
+          ? 'Osoba sa odhlásila z obeda na tento deň.'
+          : 'Osoba sa odhlásila z večere na tento deň.'
+      }, { status: 403 })
     }
 
     if (!selectedBulkOption && !entitlementOk(entitlement, typJedla)) {
@@ -945,7 +979,7 @@ export async function POST(req: NextRequest) {
 
       const bulkProfileMap = new Map((bulkProfilesResult.data || []).map((row: any) => [row.id, row]))
       const bulkEntitlementMap = new Map((bulkEntitlementsResult.data || []).map((row: any) => [row.user_id, row]))
-      const bulkSelectionMap = new Map((bulkSelectionsResult.data || []).map((row: any) => [row.user_id, normalizeChoice(row.volba)]))
+      const bulkSelectionMap = new Map((bulkSelectionsResult.data || []).map((row: any) => [row.user_id, normalizeSelectionChoice(row.volba)]))
       const invalidBulkItems: Array<{ id: string; reason: string }> = []
       const eligibleBulkItems = (bulkItems || []).flatMap((item: any) => {
         const profileRow = bulkProfileMap.get(item.user_id)
@@ -960,9 +994,16 @@ export async function POST(req: NextRequest) {
           return []
         }
 
+        const itemChoice = bulkSelectionMap.get(item.user_id) || normalizeChoice(profileRow?.typ_stravy) || null
+
+        if (itemChoice === 'BEZ_ZAUJMU') {
+          invalidBulkItems.push({ id: item.id, reason: 'NO_INTEREST' })
+          return []
+        }
+
         return [{
           ...item,
-          volba: bulkSelectionMap.get(item.user_id) || normalizeChoice(profileRow?.typ_stravy) || null
+          volba: itemChoice
         }]
       })
 

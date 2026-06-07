@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState } from 'react'
 
 type MealType = 'OBED' | 'VECERA'
-type Variant = 'MASO' | 'VEGE' | 'DIETA'
+type MenuVariant = 'MASO' | 'VEGE' | 'DIETA'
+type Variant = MenuVariant | 'BEZ_ZAUJMU'
 
 type MenuItem = {
   id: string
   datum: string
   typ_jedla: MealType
-  varianta: Variant
+  varianta: MenuVariant
   nazov: string
   popis: string | null
 }
@@ -44,13 +45,19 @@ function normalizeVariant(value: string | null | undefined): Variant | null {
 
   if (normalized === 'MASO') return 'MASO'
   if (normalized === 'VEGE') return 'VEGE'
+  if (normalized === 'BEZ_ZAUJMU') return 'BEZ_ZAUJMU'
   if (normalized === 'DIETA' || normalized === 'DIÉTA') return 'DIETA'
 
   return null
 }
 
 function variantLabel(value: string | null | undefined) {
+  if (normalizeVariant(value) === 'BEZ_ZAUJMU') return 'NEMÁM ZÁUJEM'
   return normalizeVariant(value) === 'DIETA' ? 'DIÉTA' : value
+}
+
+function noInterestLabel(meal: MealType) {
+  return meal === 'OBED' ? 'Nemám záujem o obed' : 'Nemám záujem o večeru'
 }
 
 export default function MenuClient({
@@ -454,6 +461,81 @@ export default function MenuClient({
               </button>
             )
           })}
+
+          {(() => {
+            const active = normalizeVariant(selected) === 'BEZ_ZAUJMU'
+
+            return (
+              <button
+                key={`${typ}-bez-zaujmu`}
+                onClick={() => handleSelect(selectedDate, typ, 'BEZ_ZAUJMU')}
+                disabled={isSaving || state.locked}
+                style={{
+                  textAlign: 'left',
+                  minHeight: 150,
+                  padding: 18,
+                  border: '3px solid #000',
+                  borderRadius: 22,
+                  background: active ? '#ff8a8a' : '#fff7ed',
+                  boxShadow: active && !state.locked ? '6px 6px 0 #000' : 'none',
+                  cursor: state.locked ? 'not-allowed' : isSaving ? 'wait' : 'pointer',
+                  opacity: state.locked && !active ? 0.45 : 1,
+                  fontFamily: 'Arial, Helvetica, sans-serif',
+                  filter: state.locked && !active ? 'grayscale(1)' : 'none',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'inline-block',
+                    background: '#ef4444',
+                    color: '#fff',
+                    border: '3px solid #000',
+                    borderRadius: 999,
+                    padding: '5px 12px',
+                    fontSize: 13,
+                    fontWeight: 900,
+                    marginBottom: 12,
+                  }}
+                >
+                  ODHLÁSIŤ
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 900,
+                    color: '#000',
+                    marginBottom: 8,
+                  }}
+                >
+                  {noInterestLabel(typ)}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    lineHeight: 1.35,
+                    color: '#000',
+                  }}
+                >
+                  Toto jedlo sa nezapočíta do gastro tabuľky ani do výdaja.
+                </div>
+
+                {active && (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      fontWeight: 900,
+                      fontSize: 14,
+                    }}
+                  >
+                    ✓ Jedlo je odhlásené
+                  </div>
+                )}
+              </button>
+            )
+          })()}
         </div>
       </section>
     )

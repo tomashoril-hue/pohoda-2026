@@ -18,6 +18,10 @@ function normalizeChoice(value: any): FoodChoice {
   return 'NEZADANE'
 }
 
+function isNoInterestChoice(value: any) {
+  return String(value || '').trim().toUpperCase() === 'BEZ_ZAUJMU'
+}
+
 function chunks<T>(items: T[], size: number) {
   const result: T[][] = []
 
@@ -168,6 +172,8 @@ export async function GET(req: NextRequest) {
 
         const selection = selectionMap.get(`${entitlement.user_id}|${meal}`)
         const issued = issuedMap.get(`${entitlement.user_id}|${meal}`)
+        if (isNoInterestChoice(selection?.volba)) return
+
         const choice = normalizeChoice(selection?.volba || user.typ_stravy)
         const issuedChoice = normalizeChoice(issued?.volba || choice)
 

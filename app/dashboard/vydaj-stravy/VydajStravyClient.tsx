@@ -132,6 +132,7 @@ function mealLabel(value: string) {
 }
 
 function choiceLabel(value: string) {
+  if (value === 'BEZ_ZAUJMU') return 'ODHLÁSENÉ'
   if (value === 'DIETA') return 'DIÉTA'
   if (value === 'NEZADANE') return 'NEZADANÉ'
   if (value === 'VEGE') return 'VEGE'

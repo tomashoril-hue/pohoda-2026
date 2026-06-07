@@ -13,6 +13,12 @@ function normalizeChoice(value: any) {
   return null
 }
 
+function normalizeSelectionChoice(value: any) {
+  const text = String(value || '').trim().toUpperCase()
+  if (text === 'BEZ_ZAUJMU') return 'BEZ_ZAUJMU'
+  return normalizeChoice(value)
+}
+
 function issuedStatusToItemStatus(row: any) {
   if (!row) return null
 
@@ -324,7 +330,7 @@ export async function POST(req: NextRequest) {
     }
 
     const selectionMap = new Map(
-      selections.map((s: any) => [s.user_id, normalizeChoice(s.volba)])
+      selections.map((s: any) => [s.user_id, normalizeSelectionChoice(s.volba)])
     )
 
     const { data: qrUsersData, error: qrUsersError } = await supabaseServer
@@ -379,26 +385,32 @@ export async function POST(req: NextRequest) {
         const conflict = conflictUserIds.has(userId)
         const blocked = blockedUserIds.has(userId)
         const shouldBeQrExtra = selectedQrExtraUserIds.includes(userId)
+        const selectedChoice = selectionMap.get(userId)
+        const noInterest = selectedChoice === 'BEZ_ZAUJMU'
 
         return {
           existingItem,
           update: {
             status: blocked
               ? 'REMOVED'
-              : issuedMeal
-                ? issuedStatusToItemStatus(issuedMeal)
-                : conflict
-                  ? 'REMOVED'
-                  : 'PLANNED',
+              : noInterest
+                ? 'REMOVED'
+                : issuedMeal
+                  ? issuedStatusToItemStatus(issuedMeal)
+                  : conflict
+                    ? 'REMOVED'
+                    : 'PLANNED',
             remove_reason: blocked
               ? 'USER_BLOCKED'
-              : conflict
-                ? 'IN_OTHER_ISSUE'
-                : null,
-            removed_at: blocked || conflict ? now : null,
-            removed_by: blocked || conflict ? user.id : null,
+              : noInterest
+                ? 'MANUAL'
+                : conflict
+                  ? 'IN_OTHER_ISSUE'
+                  : null,
+            removed_at: blocked || conflict || noInterest ? now : null,
+            removed_by: blocked || conflict || noInterest ? user.id : null,
             source: shouldBeQrExtra ? 'QR_EXTRA' : existingItem.source || 'GROUP',
-            volba: selectionMap.get(userId) || defaultChoiceMap.get(userId) || null,
+            volba: noInterest ? null : selectedChoice || defaultChoiceMap.get(userId) || null,
             updated_at: now
           }
         }
@@ -430,6 +442,7 @@ export async function POST(req: NextRequest) {
 
       const selectedChoice = selectionMap.get(member.user_id)
       const defaultChoice = normalizeChoice(memberUser?.typ_stravy)
+      const noInterest = selectedChoice === 'BEZ_ZAUJMU'
 
       const issuedMeal = issuedMap.get(member.user_id)
       const conflict = conflictUserIds.has(member.user_id)
@@ -439,21 +452,25 @@ export async function POST(req: NextRequest) {
         hromadny_vydaj_id: issue.id,
         user_id: member.user_id,
         source: 'GROUP',
-        volba: selectedChoice || defaultChoice,
+        volba: noInterest ? null : selectedChoice || defaultChoice,
         status: blocked
           ? 'REMOVED'
-          : issuedMeal
-            ? issuedStatusToItemStatus(issuedMeal)
-            : conflict
-              ? 'REMOVED'
-              : 'PLANNED',
+          : noInterest
+            ? 'REMOVED'
+            : issuedMeal
+              ? issuedStatusToItemStatus(issuedMeal)
+              : conflict
+                ? 'REMOVED'
+                : 'PLANNED',
         remove_reason: blocked
           ? 'USER_BLOCKED'
-          : conflict
-            ? 'IN_OTHER_ISSUE'
-            : null,
-        removed_at: blocked || conflict ? now : null,
-        removed_by: blocked || conflict ? user.id : null,
+          : noInterest
+            ? 'MANUAL'
+            : conflict
+              ? 'IN_OTHER_ISSUE'
+              : null,
+        removed_at: blocked || conflict || noInterest ? now : null,
+        removed_by: blocked || conflict || noInterest ? user.id : null,
         added_by: user.id,
         updated_at: now
       }
@@ -463,6 +480,7 @@ export async function POST(req: NextRequest) {
       const qrUser = qrUsersMap.get(userId)
       const selectedChoice = selectionMap.get(userId)
       const defaultChoice = normalizeChoice(qrUser?.typ_stravy)
+      const noInterest = selectedChoice === 'BEZ_ZAUJMU'
 
       const issuedMeal = issuedMap.get(userId)
       const conflict = conflictUserIds.has(userId)
@@ -472,21 +490,25 @@ export async function POST(req: NextRequest) {
         hromadny_vydaj_id: issue.id,
         user_id: userId,
         source: 'QR_EXTRA',
-        volba: selectedChoice || defaultChoice,
+        volba: noInterest ? null : selectedChoice || defaultChoice,
         status: blocked
           ? 'REMOVED'
-          : issuedMeal
-            ? issuedStatusToItemStatus(issuedMeal)
-            : conflict
+          : noInterest
             ? 'REMOVED'
-            : 'PLANNED',
+            : issuedMeal
+              ? issuedStatusToItemStatus(issuedMeal)
+              : conflict
+                ? 'REMOVED'
+                : 'PLANNED',
         remove_reason: blocked
           ? 'USER_BLOCKED'
-          : conflict
-            ? 'IN_OTHER_ISSUE'
-            : null,
-        removed_at: blocked || conflict ? now : null,
-        removed_by: blocked || conflict ? user.id : null,
+          : noInterest
+            ? 'MANUAL'
+            : conflict
+              ? 'IN_OTHER_ISSUE'
+              : null,
+        removed_at: blocked || conflict || noInterest ? now : null,
+        removed_by: blocked || conflict || noInterest ? user.id : null,
         added_by: user.id,
         updated_at: now
       }
