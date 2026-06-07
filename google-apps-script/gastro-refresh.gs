@@ -92,7 +92,11 @@ function dayNameFromIsoDate(isoDate) {
 function mealSortValue(meal) {
   var normalized = normalizeMeal(meal);
   if (normalized === 'obed') return 1;
-  if (normalized === 'vecera' || normalized === 'večera') return 2;
+  if (normalized === 'obed v') return 2;
+  if (normalized === 'obed diéta' || normalized === 'obed dieta') return 3;
+  if (normalized === 'vecera' || normalized === 'večera') return 4;
+  if (normalized === 'vecera v' || normalized === 'večera v') return 5;
+  if (normalized === 'vecera diéta' || normalized === 'vecera dieta' || normalized === 'večera diéta' || normalized === 'večera dieta') return 6;
   return 99;
 }
 

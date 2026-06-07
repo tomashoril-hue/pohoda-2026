@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 type MealCode = 'OBED' | 'VECERA'
+type FoodChoice = 'MASO' | 'VEGE' | 'DIETA'
 
 type RegistrationGroup = {
   id: string
@@ -45,14 +46,32 @@ function bearerToken(req: NextRequest) {
   return match?.[1]?.trim() || ''
 }
 
-function mealLabel(meal: MealCode) {
-  if (meal === 'OBED') return 'Obed'
-  return 'Večera'
+function normalizeChoice(value: any): FoodChoice {
+  const text = cleanText(value).toUpperCase()
+  if (text === 'VEGE') return 'VEGE'
+  if (text === 'DIETA' || text === 'DIÉTA' || text === 'DIĂ‰TA') return 'DIETA'
+  return 'MASO'
 }
 
-function mealOrder(meal: string) {
-  if (meal === 'OBED') return 1
-  if (meal === 'VECERA') return 2
+function mealLabel(meal: MealCode, choice: FoodChoice) {
+  const base = meal === 'OBED' ? 'Obed' : 'Večera'
+
+  if (choice === 'VEGE') return `${base} V`
+  if (choice === 'DIETA') return `${base} diéta`
+
+  return base
+}
+
+function mealLabelSortValue(meal: string) {
+  const text = cleanText(meal).toLowerCase()
+
+  if (text === 'obed') return 1
+  if (text === 'obed v') return 2
+  if (text === 'obed diéta' || text === 'obed dieta') return 3
+  if (text === 'večera' || text === 'vecera') return 4
+  if (text === 'večera v' || text === 'vecera v') return 5
+  if (text === 'večera diéta' || text === 'vecera dieta') return 6
+
   return 99
 }
 
@@ -169,12 +188,13 @@ export async function GET(req: NextRequest) {
 
     const userRows: any[] = []
     const periodRows: any[] = []
+    const selectionRows: any[] = []
 
     for (const userIdChunk of chunks(userIds, 400)) {
       userRows.push(...await fetchAll((from, to) => supabaseServer
         .from('users')
         // No personal data is exported. These columns are used only server-side.
-        .select('id, aktivny, registration_group_id')
+        .select('id, aktivny, registration_group_id, typ_stravy')
         .in('id', userIdChunk)
         .range(from, to)
       ))
@@ -190,9 +210,22 @@ export async function GET(req: NextRequest) {
         .order('valid_from', { ascending: false })
         .range(from, to)
       ))
+
+      selectionRows.push(...await fetchAll((from, to) => supabaseServer
+        .from('vyber_jedal')
+        // Optional user meal selection. Fallback is users.typ_stravy.
+        .select('user_id, datum, typ_jedla, volba')
+        .in('user_id', userIdChunk)
+        .gte('datum', dateFrom)
+        .lte('datum', dateTo)
+        .range(from, to)
+      ))
     }
 
     const userById = new Map(userRows.map((row: any) => [row.id, row]))
+    const selectionByKey = new Map(
+      selectionRows.map((row: any) => [`${row.user_id}|${row.datum}|${row.typ_jedla}`, row])
+    )
     const periodsByUserId = new Map<string, any[]>()
 
     periodRows.forEach((row: any) => {
@@ -224,36 +257,38 @@ export async function GET(req: NextRequest) {
       ] as Array<[MealCode, boolean]>).forEach(([meal, enabled]) => {
         if (enabled !== true) return
 
-        const key = `${row.datum}|${meal}|${group.name}`
-        rowKeys.add(`${row.datum}|${meal}`)
+        const selection = selectionByKey.get(`${row.user_id}|${row.datum}|${meal}`)
+        const choice = normalizeChoice(selection?.volba || user?.typ_stravy)
+        const key = `${row.datum}|${meal}|${choice}|${group.name}`
+        rowKeys.add(`${row.datum}|${meal}|${choice}`)
         countByKey.set(key, (countByKey.get(key) || 0) + 1)
       })
     })
 
     const rows: ExportRow[] = Array.from(rowKeys)
       .map(key => {
-        const [date, meal] = key.split('|')
+        const [date, meal, choice] = key.split('|')
 
         return {
           date,
           day: dayLabel(date),
-          meal: mealLabel(meal as MealCode)
+          meal: mealLabel(meal as MealCode, choice as FoodChoice)
         }
       })
       .sort((a, b) => {
         const dateCompare = a.date.localeCompare(b.date)
         if (dateCompare !== 0) return dateCompare
 
-        return mealOrder(a.meal === 'Obed' ? 'OBED' : 'VECERA') - mealOrder(b.meal === 'Obed' ? 'OBED' : 'VECERA')
+        return mealLabelSortValue(a.meal) - mealLabelSortValue(b.meal)
       })
 
     const items: ExportItem[] = Array.from(countByKey.entries())
       .map(([key, count]) => {
-        const [date, meal, groupName] = key.split('|')
+        const [date, meal, choice, groupName] = key.split('|')
 
         return {
           date,
-          meal: mealLabel(meal as MealCode),
+          meal: mealLabel(meal as MealCode, choice as FoodChoice),
           groupName,
           count
         }

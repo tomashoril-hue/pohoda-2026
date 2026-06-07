@@ -37,6 +37,18 @@ The Google Sheet keeps the original header and visual style, but refresh now als
 rebuilds data rows A:C from application entitlements. Dates are no longer a
 manual fixed list in the sheet.
 
+Meal rows are exported with unambiguous labels:
+
+- `Obed` - default/MASO
+- `Obed V` - VEGE
+- `Obed diéta` - DIETA
+- `Večera` - default/MASO
+- `Večera V` - VEGE
+- `Večera diéta` - DIETA
+
+The variant comes from `vyber_jedal.volba`; if a person has no explicit choice
+for that date and meal, the export uses `users.typ_stravy`.
+
 ## Google Apps Script setup
 
 1. Open the Google Sheet.
