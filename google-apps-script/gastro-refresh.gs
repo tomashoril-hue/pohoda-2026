@@ -286,13 +286,14 @@ function rebuildDataRows(sheet, exportData, totalCol) {
     var date = normalizeDate(row.date);
 
     return [
-      row.day || dayNameFromIsoDate(date),
+      dayNameFromIsoDate(date),
       dateToSheetValue(date),
       row.meal || ''
     ];
   });
 
   sheet.getRange(HEADER_ROW + 1, 1, desiredRows, FIRST_FIXED_COLS).setValues(values);
+  sheet.getRange(HEADER_ROW + 1, 2, desiredRows, 1).setNumberFormat('dd.mm.yyyy');
 
   return desiredRows;
 }
