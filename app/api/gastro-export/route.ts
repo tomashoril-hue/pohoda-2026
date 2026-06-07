@@ -31,6 +31,13 @@ function cleanText(value: any) {
   return String(value || '').trim()
 }
 
+function cleanIsoDate(value: any) {
+  const text = cleanText(value)
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/)
+
+  return match?.[1] || ''
+}
+
 function parseYear(value: any) {
   const year = Number.parseInt(cleanText(value), 10)
 
@@ -116,9 +123,22 @@ async function fetchAll(buildQuery: (from: number, to: number) => any) {
 }
 
 function registrationGroupForDate(user: any, periods: any[], date: string) {
-  const period = periods.find(item => {
-    return item.valid_from <= date && (!item.valid_to || item.valid_to >= date)
-  })
+  const normalizedDate = cleanIsoDate(date)
+  const period = periods
+    .map(item => ({
+      ...item,
+      valid_from: cleanIsoDate(item.valid_from),
+      valid_to: cleanIsoDate(item.valid_to)
+    }))
+    .filter(item => {
+      return item.valid_from <= normalizedDate && (!item.valid_to || item.valid_to >= normalizedDate)
+    })
+    .sort((a, b) => {
+      const fromCompare = b.valid_from.localeCompare(a.valid_from)
+      if (fromCompare !== 0) return fromCompare
+
+      return cleanText(b.id).localeCompare(cleanText(a.id))
+    })[0]
 
   // Fallback for older users that still only have users.registration_group_id.
   return period?.registration_group_id || user?.registration_group_id || ''
