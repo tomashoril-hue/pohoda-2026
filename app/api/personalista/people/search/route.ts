@@ -324,6 +324,7 @@ export async function GET(req: NextRequest) {
         registrationGroupNote: registrationGroup.note,
         registrationGroupPeriods,
         lastEditedAt: lastAudit?.created_at || profile.updated_at || '',
+        lastEditedById: lastAudit?.actor_user_id || '',
         lastEditedByName: lastAudit?.actor_name || '',
         activeQrCount: activeQrByUserId.get(profile.id) || 0,
         activeNfcCount: activeNfcByUserId.get(profile.id) || 0,

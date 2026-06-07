@@ -75,6 +75,7 @@ type PersonItem = {
   registrationGroupNote: string
   registrationGroupPeriods: PersonRegistrationGroupPeriod[]
   lastEditedAt: string
+  lastEditedById: string
   lastEditedByName: string
   activeQrCount: number
   activeNfcCount: number
@@ -239,6 +240,7 @@ export default function PersonalistaClient({
   canDeregisterUsers,
   canViewAllPeople,
   peopleScope,
+  currentUserId,
   currentUserName,
   currentUserRoleLabel
 }: {
@@ -253,6 +255,7 @@ export default function PersonalistaClient({
   canDeregisterUsers: boolean
   canViewAllPeople: boolean
   peopleScope: PeopleScope
+  currentUserId: string
   currentUserName: string
   currentUserRoleLabel: string
 }) {
@@ -3707,9 +3710,13 @@ export default function PersonalistaClient({
                 const blocked = String(person.aktivny || '').toUpperCase() !== 'ANO'
                 const pendingReview = String(person.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
                 const lastEditedLabel = compactDateTimeLabel(person.lastEditedAt)
+                const showLastEditedBy = Boolean(
+                  person.lastEditedByName &&
+                  (canViewAllPeople || (person.lastEditedById && person.lastEditedById !== currentUserId))
+                )
                 const lastEditedText = [
                   lastEditedLabel ? `upr. ${lastEditedLabel}` : '',
-                  canViewAllPeople && person.lastEditedByName ? person.lastEditedByName : ''
+                  showLastEditedBy ? person.lastEditedByName : ''
                 ].filter(Boolean).join(' · ')
 
                 return (

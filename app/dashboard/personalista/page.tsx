@@ -536,6 +536,7 @@ export default async function PersonalistaPage({
       registrationGroupNote: registrationGroup.note,
       registrationGroupPeriods,
       lastEditedAt: profile?.last_edited_at || profile?.updated_at || '',
+      lastEditedById: profile?.last_edited_by_id || '',
       lastEditedByName: profile?.last_edited_by_name || '',
       activeQrCount: activeQrByUserId.get(membership.user_id) || 0,
       activeNfcCount: activeNfcByUserId.get(membership.user_id) || 0,
@@ -585,6 +586,7 @@ export default async function PersonalistaPage({
         registrationGroupNote: registrationGroup.note,
         registrationGroupPeriods,
         lastEditedAt: profile.last_edited_at || profile.updated_at || '',
+        lastEditedById: profile.last_edited_by_id || '',
         lastEditedByName: profile.last_edited_by_name || '',
         activeQrCount: activeQrByUserId.get(profile.id) || 0,
         activeNfcCount: activeNfcByUserId.get(profile.id) || 0,
@@ -636,6 +638,7 @@ export default async function PersonalistaPage({
       canDeregisterUsers={globalAccess.isAdmin}
       canViewAllPeople={globalAccess.isAdmin}
       peopleScope={peopleScope}
+      currentUserId={user.id}
       currentUserName={fullName(user) || user.email || 'Pouzivatel'}
       currentUserRoleLabel={globalAccess.isAdmin ? 'ADMIN' : 'PERSONALISTA'}
     />
