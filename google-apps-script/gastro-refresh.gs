@@ -86,14 +86,16 @@ function dateToSheetValue(isoDate) {
   var match = normalizeDate(isoDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return isoDate || '';
 
-  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return match[3] + '.' + match[2] + '.' + match[1];
 }
 
 function dayNameFromIsoDate(isoDate) {
-  var date = dateToSheetValue(isoDate);
-  if (Object.prototype.toString.call(date) !== '[object Date]' || isNaN(date.getTime())) return '';
+  var match = normalizeDate(isoDate).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return '';
 
-  return ['Nedeľa', 'Pondelok', 'Utorok', 'Streda', 'Štvrtok', 'Piatok', 'Sobota'][date.getDay()];
+  var date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0));
+
+  return ['Nedeľa', 'Pondelok', 'Utorok', 'Streda', 'Štvrtok', 'Piatok', 'Sobota'][date.getUTCDay()];
 }
 
 function mealSortValue(meal) {
@@ -327,8 +329,8 @@ function rebuildDataRows(sheet, exportData, totalCol) {
     ];
   });
 
+  sheet.getRange(HEADER_ROW + 1, 2, desiredRows, 1).setNumberFormat('@');
   sheet.getRange(HEADER_ROW + 1, 1, desiredRows, DATE_MEAL_COLS).setValues(values);
-  sheet.getRange(HEADER_ROW + 1, 2, desiredRows, 1).setNumberFormat('dd.mm.yyyy');
 
   return desiredRows;
 }
