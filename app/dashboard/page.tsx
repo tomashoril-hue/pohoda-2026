@@ -565,6 +565,10 @@ export default async function DashboardPage({
             <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Strava</span>
             <b className="dashboard-menu-title" style={styles.menuTileTitle}>Stravovacie skupiny</b>
           </Link>
+          <Link className="dashboard-menu-tile" href="/dashboard/groups" style={{ ...styles.menuTile, ...styles.menuTileWhite }}>
+            <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Strava</span>
+            <b className="dashboard-menu-title" style={styles.menuTileTitle}>Skupinový výdaj</b>
+          </Link>
           {canOpenFoodIssue && (
             <Link className="dashboard-menu-tile" href="/dashboard/vydaj-stravy" style={{ ...styles.menuTile, ...styles.menuTileGreen }}>
               <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Obsluha</span>
