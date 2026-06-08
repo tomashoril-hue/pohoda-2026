@@ -313,9 +313,9 @@ export default async function DashboardPage({
 
         .dashboard-page button:not(:disabled):active,
         .dashboard-page a[href]:active {
-          transform: scale(0.97);
-          filter: brightness(0.92);
-          box-shadow: 0 0 0 3px rgba(86, 219, 63, 0.28) !important;
+          transform: translate(2px, 2px) scale(0.98);
+          filter: brightness(0.94);
+          box-shadow: 2px 2px 0 #000 !important;
         }
 
         .dashboard-page button:disabled {
@@ -338,7 +338,7 @@ export default async function DashboardPage({
           .dashboard-today-box { border: 0 !important; background: transparent !important; padding: 0 !important; margin-top: 18px !important; }
           .dashboard-today-title { font-size: 22px !important; }
           .dashboard-date-picker { font-size: 12px !important; padding: 7px 10px !important; }
-          .dashboard-today-meal { border: 2px solid rgba(0,0,0,0.24) !important; background: rgba(255,255,255,0.9) !important; border-radius: 18px !important; padding: 12px !important; }
+          .dashboard-today-meal { border: 3px solid #000 !important; background: #fff !important; border-radius: 18px !important; padding: 12px !important; }
           .dashboard-meal-title { font-size: 18px !important; }
           .dashboard-entitlement { border-width: 2px !important; font-size: 10px !important; padding: 5px 8px !important; }
           .dashboard-meal-choice { padding: 10px !important; }
@@ -446,7 +446,7 @@ export default async function DashboardPage({
                       }}
                     >
                       <span style={styles.todayChoiceLabel}>Môj výber</span>
-                      <b style={noInterest ? styles.noInterestChoice : styles.todayChoiceValue}>
+                      <b style={styles.todayChoiceValue}>
                         {choiceLabel(meal.selection?.volba, defaultFood)}
                       </b>
                     </div>
@@ -677,14 +677,13 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 12
   },
   todayMealCard: {
-    border: '2px solid rgba(0,0,0,0.28)',
+    border: '3px solid #000',
     borderRadius: 20,
     padding: 14,
-    background: '#fbfbfb'
+    background: '#fff'
   },
   todayMealCardNoInterest: {
-    borderColor: 'rgba(239,68,68,0.45)',
-    background: '#fff7f7'
+    background: '#fff'
   },
   todayMealTop: {
     display: 'flex',
@@ -713,49 +712,43 @@ const styles: Record<string, React.CSSProperties> = {
   todayChoiceBox: {
     display: 'grid',
     gap: 5,
-    background: '#f1f5f9',
+    background: '#56db3f',
+    border: '3px solid #000',
     borderRadius: 14,
     padding: 12
   },
   todayChoiceBoxNoInterest: {
-    background: '#fee2e2'
+    background: '#ff6b6b'
   },
   todayChoiceLabel: {
-    color: '#475569',
+    color: '#000',
     fontSize: 12,
-    fontWeight: 900
+    fontWeight: 950,
+    opacity: 0.72
   },
   todayChoiceValue: {
     fontSize: 18,
-    fontWeight: 950
+    fontWeight: 950,
+    color: '#000'
   },
   todayRow: {
     display: 'grid',
     gridTemplateColumns: '1fr auto',
     gap: 10,
     alignItems: 'center',
-    color: '#334155',
+    color: '#000',
     fontSize: 14
   },
   todayRowWide: {
     display: 'grid',
     gap: 4,
-    color: '#334155',
+    color: '#000',
     fontSize: 14
   },
   todayMenuText: {
     color: '#000',
     whiteSpace: 'pre-line',
     lineHeight: 1.35
-  },
-  noInterestChoice: {
-    display: 'inline-block',
-    background: '#ef4444',
-    color: '#fff',
-    border: '2px solid #000',
-    borderRadius: 999,
-    padding: '4px 9px',
-    fontWeight: 950
   },
   menuGrid: {
     marginTop: 28,
