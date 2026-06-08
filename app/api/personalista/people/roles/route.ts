@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Chyba osoba.' }, { status: 400 })
     }
 
-    const allowedRoles = ['ADMIN', 'PERSONALISTA', 'ADMIN_VYDAJ', 'VYDAJ', 'GROUP_CREATOR', 'REG_GROUP_MANAGER']
+    const allowedRoles = ['ADMIN', 'PERSONALISTA', 'ADMIN_VYDAJ', 'VYDAJ', 'GROUP_CREATOR']
 
     const invalidRole = requestedRoles.find(role => !allowedRoles.includes(role))
 

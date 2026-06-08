@@ -495,8 +495,7 @@ export default function PersonalistaClient({
     personalista: false,
     adminVydaj: false,
     vydaj: false,
-    groupCreator: false,
-    regGroupManager: false
+    groupCreator: false
   })
 
   const setDetailFeedback = (message: string, type: DetailMessageType, mode: DetailMode = detailMode) => {
@@ -719,8 +718,7 @@ export default function PersonalistaClient({
       personalista: selectedPerson.globalRoles.includes('PERSONALISTA'),
       adminVydaj: selectedPerson.globalRoles.includes('ADMIN_VYDAJ'),
       vydaj: selectedPerson.globalRoles.includes('VYDAJ'),
-      groupCreator: selectedPerson.globalRoles.includes('GROUP_CREATOR'),
-      regGroupManager: selectedPerson.globalRoles.includes('REG_GROUP_MANAGER')
+      groupCreator: selectedPerson.globalRoles.includes('GROUP_CREATOR')
     })
     const preservedMessage = preservedDetailMessageRef.current
 
@@ -2393,8 +2391,7 @@ export default function PersonalistaClient({
       ...(roleForm.personalista ? ['PERSONALISTA'] : []),
       ...(roleForm.adminVydaj ? ['ADMIN_VYDAJ'] : []),
       ...(roleForm.vydaj ? ['VYDAJ'] : []),
-      ...(roleForm.groupCreator ? ['GROUP_CREATOR'] : []),
-      ...(roleForm.regGroupManager ? ['REG_GROUP_MANAGER'] : [])
+      ...(roleForm.groupCreator ? ['GROUP_CREATOR'] : [])
     ]
 
     postDetailAction(
@@ -5077,20 +5074,6 @@ export default function PersonalistaClient({
                         style={styles.checkbox}
                       />
                       <span>Moze vytvarat skupiny</span>
-                    </label>
-
-                    <label style={styles.checkRow}>
-                      <input
-                        type="checkbox"
-                        checked={roleForm.regGroupManager}
-                        onChange={event => setRoleForm(prev => ({
-                          ...prev,
-                          regGroupManager: event.target.checked
-                        }))}
-                        disabled={detailLoading}
-                        style={styles.checkbox}
-                      />
-                      <span>Manager registračnej skupiny</span>
                     </label>
                   </div>
 

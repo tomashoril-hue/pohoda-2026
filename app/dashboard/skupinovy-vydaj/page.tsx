@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { canUseGroupIssue } from '@/lib/registrationGroupManagers'
 import SkupinovyVydajClient from './SkupinovyVydajClient'
 
 function todayIsoDate() {
@@ -27,7 +28,9 @@ export default async function SkupinovyVydajPage() {
 
   const access = await getGlobalAccess(user.id)
 
-  if (!access.canUseGroupIssue) {
+  const allowed = await canUseGroupIssue(user.id, access)
+
+  if (!allowed) {
     redirect('/dashboard')
   }
 

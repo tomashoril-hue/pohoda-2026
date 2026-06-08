@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { canUseGroupIssue } from '@/lib/registrationGroupManagers'
 import { supabaseServer } from '@/lib/supabaseServer'
 import DashboardInvites from './DashboardInvites'
 import DashboardDatePicker from './DashboardDatePicker'
@@ -289,7 +290,7 @@ export default async function DashboardPage({
   const globalAccess = await getGlobalAccess(user.id)
   const canOpenPersonalista = globalAccess.canUsePersonalista
   const canOpenFoodIssue = globalAccess.canUseFoodIssue
-  const canOpenGroupIssue = globalAccess.canUseGroupIssue
+  const canOpenGroupIssue = await canUseGroupIssue(user.id, globalAccess)
   const canOpenMenuDeadline = globalAccess.isAdmin
 
   const getSelection = (typJedla: string) => {
