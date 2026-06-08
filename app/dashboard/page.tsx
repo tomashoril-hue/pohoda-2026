@@ -398,6 +398,10 @@ export default async function DashboardPage({
           .dashboard-meal-title { font-size: 18px !important; }
           .dashboard-entitlement { border-width: 2px !important; font-size: 10px !important; padding: 5px 8px !important; }
           .dashboard-meal-choice { padding: 10px !important; }
+          .dashboard-menu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+          .dashboard-menu-tile { min-height: 104px !important; padding: 12px !important; border-radius: 18px !important; box-shadow: 4px 4px 0 #000 !important; }
+          .dashboard-menu-title { font-size: 16px !important; }
+          .dashboard-menu-kicker { font-size: 10px !important; }
         }
       `}</style>
       <div className="dashboard-top-bar" style={styles.topBar}>
@@ -544,19 +548,40 @@ export default async function DashboardPage({
           </div>
         </section>
 
-        <div style={styles.menuGrid}>
-          <Link href="/dashboard/naroky" style={styles.menuButtonGreen}>Nároky na stravu</Link>
-          <a href="/menu" style={styles.menuButton}>Môj výber</a>
-          <a href="/dashboard/qr" style={styles.menuButton}>Môj QR kód</a>
-          <Link href="/dashboard/groups" style={styles.menuButtonPink}>Skupiny</Link>
+        <div className="dashboard-menu-grid" style={styles.menuGrid}>
+          <a className="dashboard-menu-tile" href="/dashboard/qr" style={{ ...styles.menuTile, ...styles.menuTileBlack }}>
+            <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Náramok</span>
+            <b className="dashboard-menu-title" style={styles.menuTileTitle}>Môj QR kód</b>
+          </a>
+          <a className="dashboard-menu-tile" href="/menu" style={{ ...styles.menuTile, ...styles.menuTileGreen }}>
+            <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Strava</span>
+            <b className="dashboard-menu-title" style={styles.menuTileTitle}>Môj výber</b>
+          </a>
+          <Link className="dashboard-menu-tile" href="/dashboard/naroky" style={{ ...styles.menuTile, ...styles.menuTileWhite }}>
+            <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Prehľad</span>
+            <b className="dashboard-menu-title" style={styles.menuTileTitle}>Nároky na stravu</b>
+          </Link>
+          <Link className="dashboard-menu-tile" href="/dashboard/groups" style={{ ...styles.menuTile, ...styles.menuTilePink }}>
+            <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Tím</span>
+            <b className="dashboard-menu-title" style={styles.menuTileTitle}>Skupiny</b>
+          </Link>
           {canOpenFoodIssue && (
-            <Link href="/dashboard/vydaj-stravy" style={styles.menuButtonGreen}>Výdaj stravy</Link>
+            <Link className="dashboard-menu-tile" href="/dashboard/vydaj-stravy" style={{ ...styles.menuTile, ...styles.menuTileGreen }}>
+              <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Obsluha</span>
+              <b className="dashboard-menu-title" style={styles.menuTileTitle}>Výdaj stravy</b>
+            </Link>
           )}
           {canOpenPersonalista && (
-            <Link href="/dashboard/personalista" style={styles.menuButtonGreen}>Personalista</Link>
+            <Link className="dashboard-menu-tile" href="/dashboard/personalista" style={{ ...styles.menuTile, ...styles.menuTilePink }}>
+              <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Systém</span>
+              <b className="dashboard-menu-title" style={styles.menuTileTitle}>Personalistika</b>
+            </Link>
           )}
           {canOpenMenuDeadline && (
-            <a href="/admin/menu" style={styles.menuButtonGreen}>Menu deadline</a>
+            <a className="dashboard-menu-tile" href="/admin/menu" style={{ ...styles.menuTile, ...styles.menuTileBlack }}>
+              <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Admin</span>
+              <b className="dashboard-menu-title" style={styles.menuTileTitle}>Menu deadline</b>
+            </a>
           )}
         </div>
 
@@ -820,46 +845,54 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.35
   },
   menuGrid: {
-    marginTop: 28,
+    marginTop: 26,
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-    gap: 14
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 12
   },
-  menuButton: {
-    display: 'block',
-    textAlign: 'center',
+  menuTile: {
+    minHeight: 126,
+    border: '3px solid #000',
+    borderRadius: 20,
+    padding: 14,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    gap: 10,
+    color: '#000',
+    textDecoration: 'none',
+    boxShadow: '6px 6px 0 #000',
+    overflow: 'hidden'
+  },
+  menuTileBlack: {
     background: '#000',
-    color: '#fff',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '15px 18px',
-    fontSize: 17,
-    fontWeight: 900,
-    textDecoration: 'none'
+    color: '#fff'
   },
-  menuButtonPink: {
-    display: 'block',
-    textAlign: 'center',
+  menuTilePink: {
     background: '#f25be6',
-    color: '#000',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '15px 18px',
-    fontSize: 17,
-    fontWeight: 900,
-    textDecoration: 'none'
+    color: '#000'
   },
-  menuButtonGreen: {
-    display: 'block',
-    textAlign: 'center',
+  menuTileGreen: {
     background: '#56db3f',
-    color: '#000',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '15px 18px',
-    fontSize: 17,
-    fontWeight: 900,
-    textDecoration: 'none'
+    color: '#000'
+  },
+  menuTileWhite: {
+    background: '#fff',
+    color: '#000'
+  },
+  menuTileKicker: {
+    display: 'block',
+    fontSize: 11,
+    fontWeight: 950,
+    letterSpacing: 0,
+    opacity: 0.72,
+    textTransform: 'uppercase'
+  },
+  menuTileTitle: {
+    display: 'block',
+    fontSize: 18,
+    lineHeight: 1.08,
+    fontWeight: 950
   },
   groupsBox: {
     marginTop: 30,
