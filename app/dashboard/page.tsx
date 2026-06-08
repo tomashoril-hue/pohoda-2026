@@ -303,6 +303,26 @@ export default async function DashboardPage({
   return (
     <main className="dashboard-page" style={styles.page}>
       <style>{`
+        .dashboard-page button,
+        .dashboard-page a[href] {
+          cursor: pointer;
+          touch-action: manipulation;
+          transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+          -webkit-tap-highlight-color: rgba(86, 219, 63, 0.22);
+        }
+
+        .dashboard-page button:not(:disabled):active,
+        .dashboard-page a[href]:active {
+          transform: scale(0.97);
+          filter: brightness(0.92);
+          box-shadow: 0 0 0 3px rgba(86, 219, 63, 0.28) !important;
+        }
+
+        .dashboard-page button:disabled {
+          cursor: wait;
+          opacity: 0.72;
+        }
+
         @media (max-width: 720px) {
           .dashboard-page { padding: 12px !important; }
           .dashboard-top-bar { margin-bottom: 12px !important; gap: 10px !important; }
@@ -318,9 +338,10 @@ export default async function DashboardPage({
           .dashboard-today-box { border: 0 !important; background: transparent !important; padding: 0 !important; margin-top: 18px !important; }
           .dashboard-today-title { font-size: 22px !important; }
           .dashboard-date-picker { font-size: 12px !important; padding: 7px 10px !important; }
-          .dashboard-today-meal { border: 2px solid rgba(0,0,0,0.32) !important; background: rgba(255,255,255,0.84) !important; border-radius: 18px !important; padding: 12px !important; }
+          .dashboard-today-meal { border: 2px solid rgba(0,0,0,0.24) !important; background: rgba(255,255,255,0.9) !important; border-radius: 18px !important; padding: 12px !important; }
           .dashboard-meal-title { font-size: 18px !important; }
           .dashboard-entitlement { border-width: 2px !important; font-size: 10px !important; padding: 5px 8px !important; }
+          .dashboard-meal-choice { padding: 10px !important; }
         }
       `}</style>
       <div className="dashboard-top-bar" style={styles.topBar}>
@@ -331,8 +352,6 @@ export default async function DashboardPage({
       </div>
 
       <section className="dashboard-card" style={styles.card}>
-        <div className="dashboard-badge" style={styles.badge}>Moja aplikácia</div>
-
         <div style={styles.titleRow}>
           <div>
             <h1 className="dashboard-title" style={styles.title}>Vitaj</h1>
@@ -390,7 +409,14 @@ export default async function DashboardPage({
               const noInterest = meal.selection?.volba === 'BEZ_ZAUJMU'
 
               return (
-                <div className="dashboard-today-meal" key={meal.typJedla} style={styles.todayMealCard}>
+                <div
+                  className="dashboard-today-meal"
+                  key={meal.typJedla}
+                  style={{
+                    ...styles.todayMealCard,
+                    ...(noInterest ? styles.todayMealCardNoInterest : {})
+                  }}
+                >
                   <div style={styles.todayMealTop}>
                     <h3 className="dashboard-meal-title" style={styles.todayMealTitle}>
                       {mealLabel(meal.typJedla)}
@@ -412,9 +438,15 @@ export default async function DashboardPage({
                   </div>
 
                   <div style={styles.todayRows}>
-                    <div style={styles.todayRow}>
-                      <span>Výber</span>
-                      <b style={noInterest ? styles.noInterestChoice : undefined}>
+                    <div
+                      className="dashboard-meal-choice"
+                      style={{
+                        ...styles.todayChoiceBox,
+                        ...(noInterest ? styles.todayChoiceBoxNoInterest : {})
+                      }}
+                    >
+                      <span style={styles.todayChoiceLabel}>Môj výber</span>
+                      <b style={noInterest ? styles.noInterestChoice : styles.todayChoiceValue}>
                         {choiceLabel(meal.selection?.volba, defaultFood)}
                       </b>
                     </div>
@@ -445,7 +477,7 @@ export default async function DashboardPage({
 
         <div style={styles.menuGrid}>
           <Link href="/dashboard/naroky" style={styles.menuButtonGreen}>Nároky na stravu</Link>
-          <a href="/menu" style={styles.menuButton}>Výber stravy</a>
+          <a href="/menu" style={styles.menuButton}>Môj výber</a>
           <a href="/dashboard/qr" style={styles.menuButton}>Môj QR kód</a>
           <Link href="/dashboard/groups" style={styles.menuButtonPink}>Skupiny</Link>
           {canOpenFoodIssue && (
@@ -563,15 +595,6 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 32,
     boxShadow: '12px 12px 0 #000'
   },
-  badge: {
-    display: 'inline-block',
-    background: '#56db3f',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '8px 16px',
-    fontWeight: 900,
-    marginBottom: 20
-  },
   titleRow: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -654,10 +677,14 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 12
   },
   todayMealCard: {
-    border: '3px solid #000',
+    border: '2px solid rgba(0,0,0,0.28)',
     borderRadius: 20,
     padding: 14,
-    background: '#f8f8f8'
+    background: '#fbfbfb'
+  },
+  todayMealCardNoInterest: {
+    borderColor: 'rgba(239,68,68,0.45)',
+    background: '#fff7f7'
   },
   todayMealTop: {
     display: 'flex',
@@ -681,25 +708,43 @@ const styles: Record<string, React.CSSProperties> = {
   },
   todayRows: {
     display: 'grid',
-    gap: 8
+    gap: 10
+  },
+  todayChoiceBox: {
+    display: 'grid',
+    gap: 5,
+    background: '#f1f5f9',
+    borderRadius: 14,
+    padding: 12
+  },
+  todayChoiceBoxNoInterest: {
+    background: '#fee2e2'
+  },
+  todayChoiceLabel: {
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: 900
+  },
+  todayChoiceValue: {
+    fontSize: 18,
+    fontWeight: 950
   },
   todayRow: {
     display: 'grid',
     gridTemplateColumns: '1fr auto',
     gap: 10,
     alignItems: 'center',
-    borderTop: '2px solid #000',
-    paddingTop: 8,
+    color: '#334155',
     fontSize: 14
   },
   todayRowWide: {
     display: 'grid',
     gap: 4,
-    borderTop: '2px solid #000',
-    paddingTop: 8,
+    color: '#334155',
     fontSize: 14
   },
   todayMenuText: {
+    color: '#000',
     whiteSpace: 'pre-line',
     lineHeight: 1.35
   },
