@@ -1,0 +1,6 @@
+alter table public.app_user_roles
+  drop constraint if exists app_user_roles_role_check;
+
+alter table public.app_user_roles
+  add constraint app_user_roles_role_check
+  check (role in ('ADMIN', 'PERSONALISTA', 'ADMIN_VYDAJ', 'VYDAJ', 'GROUP_CREATOR', 'REG_GROUP_MANAGER'));

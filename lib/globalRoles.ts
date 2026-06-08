@@ -1,6 +1,6 @@
 import { supabaseServer } from '@/lib/supabaseServer'
 
-export type GlobalRole = 'ADMIN' | 'PERSONALISTA' | 'VYDAJ' | 'ADMIN_VYDAJ' | 'GROUP_CREATOR'
+export type GlobalRole = 'ADMIN' | 'PERSONALISTA' | 'VYDAJ' | 'ADMIN_VYDAJ' | 'GROUP_CREATOR' | 'REG_GROUP_MANAGER'
 
 export type GlobalAccess = {
   roles: GlobalRole[]
@@ -9,9 +9,11 @@ export type GlobalAccess = {
   isVydaj: boolean
   isAdminVydaj: boolean
   isGroupCreator: boolean
+  isRegGroupManager: boolean
   canUsePersonalista: boolean
   canUseFoodIssue: boolean
   canAdminFoodIssue: boolean
+  canUseGroupIssue: boolean
 }
 
 export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
@@ -24,7 +26,7 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
   const roles = (data || [])
     .map(item => String(item.role || '').toUpperCase())
     .filter((role): role is GlobalRole => {
-      return role === 'ADMIN' || role === 'PERSONALISTA' || role === 'VYDAJ' || role === 'ADMIN_VYDAJ' || role === 'GROUP_CREATOR'
+      return role === 'ADMIN' || role === 'PERSONALISTA' || role === 'VYDAJ' || role === 'ADMIN_VYDAJ' || role === 'GROUP_CREATOR' || role === 'REG_GROUP_MANAGER'
     })
 
   const isAdmin = roles.includes('ADMIN')
@@ -32,6 +34,7 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
   const isVydaj = roles.includes('VYDAJ')
   const isAdminVydaj = roles.includes('ADMIN_VYDAJ')
   const isGroupCreator = roles.includes('GROUP_CREATOR')
+  const isRegGroupManager = roles.includes('REG_GROUP_MANAGER')
 
   return {
     roles,
@@ -40,9 +43,11 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
     isVydaj,
     isAdminVydaj,
     isGroupCreator,
+    isRegGroupManager,
     canUsePersonalista: isAdmin || isPersonalista,
     canUseFoodIssue: isAdmin || isAdminVydaj || isVydaj,
-    canAdminFoodIssue: isAdmin || isAdminVydaj
+    canAdminFoodIssue: isAdmin || isAdminVydaj,
+    canUseGroupIssue: isAdmin || isRegGroupManager
   }
 }
 
