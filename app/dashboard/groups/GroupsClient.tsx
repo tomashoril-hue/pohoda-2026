@@ -261,10 +261,10 @@ export default function GroupsClient({
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <div style={styles.breadcrumb}>Prehľad / Skupiny</div>
-          <h1 style={styles.title}>Správa skupín</h1>
+          <div style={styles.breadcrumb}>Prehľad / Stravovacie skupiny</div>
+          <h1 style={styles.title}>Stravovacie skupiny</h1>
           <p style={styles.subtitle}>
-            Prehľad skupín, výdaj, členovia a presun medzi skupinami.
+            Prehľad stravovacích skupín, výdaj, členovia a presun medzi skupinami.
           </p>
         </div>
 

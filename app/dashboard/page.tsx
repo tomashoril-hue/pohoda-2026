@@ -562,8 +562,8 @@ export default async function DashboardPage({
             <b className="dashboard-menu-title" style={styles.menuTileTitle}>Nároky na stravu</b>
           </Link>
           <Link className="dashboard-menu-tile" href="/dashboard/groups" style={{ ...styles.menuTile, ...styles.menuTilePink }}>
-            <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Tím</span>
-            <b className="dashboard-menu-title" style={styles.menuTileTitle}>Skupiny</b>
+            <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Strava</span>
+            <b className="dashboard-menu-title" style={styles.menuTileTitle}>Stravovacie skupiny</b>
           </Link>
           {canOpenFoodIssue && (
             <Link className="dashboard-menu-tile" href="/dashboard/vydaj-stravy" style={{ ...styles.menuTile, ...styles.menuTileGreen }}>
@@ -586,7 +586,7 @@ export default async function DashboardPage({
         </div>
 
         <div style={styles.groupsBox}>
-          <h2 style={styles.groupsTitle}>Moje skupiny</h2>
+          <h2 style={styles.groupsTitle}>Moje stravovacie skupiny</h2>
 
           {!hasMembership ? (
             <>

@@ -72,9 +72,9 @@ export default async function HomePage() {
             <div style={styles.infoIcon}>👥</div>
 
             <div>
-              <div style={styles.infoTitle}>Skupiny</div>
+              <div style={styles.infoTitle}>Stravovacie skupiny</div>
               <div style={styles.infoText}>
-                Vhodné pre tímy, partie a hromadný výdaj.
+                Vhodné pre tímy, partie a spoločné stravovanie.
               </div>
             </div>
           </div>

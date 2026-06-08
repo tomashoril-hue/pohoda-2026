@@ -738,19 +738,19 @@ export default function GroupDetailClient({
     <main style={styles.screen}>
       <header style={styles.mobileHeader}>
         <div>
-          <div style={styles.breadcrumb}>Prehľad / Skupiny / Detail</div>
+          <div style={styles.breadcrumb}>Prehľad / Stravovacie skupiny / Detail</div>
           <h1 style={styles.title}>{group.name}</h1>
-          <p style={styles.subtitle}>Členovia, pozvánky a výdaj pre túto skupinu.</p>
+          <p style={styles.subtitle}>Členovia, pozvánky a výdaj pre túto stravovaciu skupinu.</p>
         </div>
 
         <Link href="/dashboard/groups" style={styles.closeButton}>
-          Skupiny
+          Stravovacie skupiny
         </Link>
       </header>
 
       <section style={styles.modeBar}>
         <div style={styles.modeMain}>
-          <b>Správa skupiny</b>
+          <b>Správa stravovacej skupiny</b>
           <span>Tvoja rola: {myRole}</span>
         </div>
 
