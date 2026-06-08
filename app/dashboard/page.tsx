@@ -82,21 +82,28 @@ function entitlementLabel(value: boolean | null | undefined, hasRow: boolean) {
   return value ? 'ÁNO' : 'NIE'
 }
 
-function issuedLabel(status: string | null | undefined) {
-  if (status === 'VYDANE') return 'VYDANÉ'
-  if (status === 'STORNOVANE') return 'STORNOVANÉ'
-  return 'NEVYDANÉ'
+function dashboardIssuedLabel(value: any) {
+  if (value?.status === 'VYDANE' && value?.sposob === 'HROMADNE') return 'vydané skupinovo'
+  if (value?.status === 'VYDANE') return 'vydané'
+  if (value?.status === 'STORNOVANE') return 'stornované'
+  return 'nevydané'
 }
 
-function bulkLabel(value: any) {
-  if (!value) return 'NIE'
+function bulkLabel(value: any, issued: any, groupName: string) {
+  const suffix = groupName ? ` · ${groupName}` : ''
 
-  if (value.status === 'PLANNED') return 'PRIPRAVENÝ'
-  if (value.status === 'REMOVED') return 'VYRADENÝ'
-  if (value.status === 'INDIVIDUAL_ISSUED') return 'PREVZAL OSOBNE'
-  if (value.status === 'BULK_ISSUED') return 'VYDANÉ HROMADNE'
+  if (issued?.status === 'VYDANE' && issued?.sposob === 'HROMADNE') {
+    return `vydané${suffix}`
+  }
 
-  return value.status || 'NIE'
+  if (!value) return 'nie'
+
+  if (value.status === 'PLANNED') return `pripravený${suffix}`
+  if (value.status === 'REMOVED') return `vyradené${suffix}`
+  if (value.status === 'INDIVIDUAL_ISSUED') return 'prevzaté osobne'
+  if (value.status === 'BULK_ISSUED') return `vydané${suffix}`
+
+  return value.status || 'nie'
 }
 
 function activeRegistrationGroupName(period: any, fallbackGroup: any) {
@@ -108,6 +115,24 @@ function activeRegistrationGroupName(period: any, fallbackGroup: any) {
   if (fallbackGroup?.name) return fallbackGroup.name
 
   return '-'
+}
+
+function fullName(person: any) {
+  return `${person?.meno || ''} ${person?.priezvisko || ''}`.trim()
+}
+
+function formatTime(value: string | null | undefined) {
+  if (!value) return ''
+
+  try {
+    return new Intl.DateTimeFormat('sk-SK', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Europe/Bratislava'
+    }).format(new Date(value))
+  } catch {
+    return ''
+  }
 }
 
 export default async function DashboardPage({
@@ -202,7 +227,7 @@ export default async function DashboardPage({
 
   const { data: issuedMeals } = await supabaseServer
     .from('vydaj_jedal')
-    .select('typ_jedla, status, sposob, issued_at')
+    .select('typ_jedla, status, sposob, issued_at, issued_by, group_id')
     .eq('user_id', user.id)
     .eq('datum', selectedDate)
     .order('issued_at', { ascending: false })
@@ -225,6 +250,37 @@ export default async function DashboardPage({
     `)
     .eq('user_id', user.id)
     .in('status', ['PLANNED', 'REMOVED', 'INDIVIDUAL_ISSUED', 'BULK_ISSUED'])
+
+  const issuedByIds = Array.from(new Set(
+    (issuedMeals || [])
+      .filter((item: any) => item.sposob === 'HROMADNE')
+      .map((item: any) => item.issued_by)
+      .filter(Boolean)
+  ))
+
+  const issuedGroupIds = Array.from(new Set(
+    (issuedMeals || [])
+      .filter((item: any) => item.sposob === 'HROMADNE')
+      .map((item: any) => item.group_id)
+      .filter(Boolean)
+  ))
+
+  const { data: issuedByUsers } = issuedByIds.length > 0
+    ? await supabaseServer
+      .from('users')
+      .select('id, meno, priezvisko')
+      .in('id', issuedByIds)
+    : { data: [] }
+
+  const { data: issuedGroups } = issuedGroupIds.length > 0
+    ? await supabaseServer
+      .from('groups')
+      .select('id, name')
+      .in('id', issuedGroupIds)
+    : { data: [] }
+
+  const issuedByUserMap = new Map((issuedByUsers || []).map((item: any) => [item.id, item]))
+  const issuedGroupMap = new Map((issuedGroups || []).map((item: any) => [item.id, item]))
 
   const hasMembership = !!memberships && memberships.length > 0
   const hasPendingInvites = !!pendingInvites && pendingInvites.length > 0
@@ -403,9 +459,15 @@ export default async function DashboardPage({
                   : issue.groups
                 : null
 
+              const issuedGroup = meal.issued?.group_id ? issuedGroupMap.get(meal.issued.group_id) : null
+              const groupName = issuedGroup?.name || group?.name || ''
+              const issuedByUser = meal.issued?.issued_by ? issuedByUserMap.get(meal.issued.issued_by) : null
+              const issuedByName = fullName(issuedByUser)
+              const issuedTime = formatTime(meal.issued?.issued_at)
+              const showBulkPickup = meal.issued?.status === 'VYDANE' && meal.issued?.sposob === 'HROMADNE'
               const entitlementIsYes = meal.entitlement === 'ÁNO'
               const entitlementIsNo = meal.entitlement === 'NIE'
-              const issuedText = issuedLabel(meal.issued?.status)
+              const issuedText = dashboardIssuedLabel(meal.issued)
               const noInterest = meal.selection?.volba === 'BEZ_ZAUJMU'
 
               return (
@@ -457,17 +519,24 @@ export default async function DashboardPage({
                     </div>
 
                     <div style={styles.todayRow}>
-                      <span>Hromadný výdaj</span>
-                      <b>
-                        {bulkLabel(bulkIssue)}
-                        {group?.name ? ` · ${group.name}` : ''}
-                      </b>
+                      <span>Skupinový výdaj</span>
+                      <b>{bulkLabel(bulkIssue, meal.issued, groupName)}</b>
                     </div>
 
                     <div style={styles.todayRow}>
                       <span>Výdaj</span>
                       <b>{issuedText}</b>
                     </div>
+
+                    {showBulkPickup && (
+                      <div style={styles.todayRow}>
+                        <span>Prevzal</span>
+                        <b>
+                          {issuedByName || '-'}
+                          {issuedTime ? `, ${issuedTime}` : ''}
+                        </b>
+                      </div>
+                    )}
                   </div>
                 </div>
               )
