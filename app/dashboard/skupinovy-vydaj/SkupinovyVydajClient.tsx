@@ -28,6 +28,27 @@ type SearchUser = {
   email: string
 }
 
+type IssuePerson = {
+  id: string
+  name: string
+  email: string
+  choice: 'MASO' | 'VEGE' | 'DIETA'
+  source: 'REGISTRATION_GROUP' | 'SEARCH' | 'QR'
+}
+
+type ExistingIssue = {
+  id: string
+  title: string
+  status: string
+  validAfter: string | null
+  summary: {
+    MASO: number
+    VEGE: number
+    DIETA: number
+    SPOLU: number
+  }
+}
+
 type Props = {
   initialDate: string
   groups: RegistrationGroupOption[]
@@ -50,10 +71,28 @@ function mealLabel(value: MealType) {
   return value === 'OBED' ? 'Obed' : 'Vecera'
 }
 
+function sourceLabel(value: IssuePerson['source']) {
+  if (value === 'REGISTRATION_GROUP') return 'Skupina'
+  if (value === 'QR') return 'QR'
+  return 'Vyhladane'
+}
+
 export default function SkupinovyVydajClient({ initialDate, groups, delegatesByGroupId }: Props) {
   const [date, setDate] = useState(initialDate)
   const [meal, setMeal] = useState<MealType>('OBED')
   const [confirmed, setConfirmed] = useState(false)
+  const [issueTitle, setIssueTitle] = useState('')
+  const [issuePeople, setIssuePeople] = useState<IssuePerson[]>([])
+  const [selectedIssueUserIds, setSelectedIssueUserIds] = useState<string[]>([])
+  const [pickupUserIds, setPickupUserIds] = useState<string[]>([])
+  const [issueSearchQuery, setIssueSearchQuery] = useState('')
+  const [issueSearchResults, setIssueSearchResults] = useState<IssuePerson[]>([])
+  const [existingIssues, setExistingIssues] = useState<ExistingIssue[]>([])
+  const [editingIssueId, setEditingIssueId] = useState('')
+  const [issueLoading, setIssueLoading] = useState(false)
+  const [issueFeedback, setIssueFeedback] = useState('')
+  const [issueFeedbackType, setIssueFeedbackType] = useState<'ok' | 'error'>('ok')
+  const [createdIssue, setCreatedIssue] = useState<any>(null)
   const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id || '')
   const [delegateMap, setDelegateMap] = useState<Record<string, Delegate[]>>(delegatesByGroupId)
   const [searchQuery, setSearchQuery] = useState('')
@@ -68,10 +107,221 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   }, [groups, selectedGroupId])
 
   const delegates = selectedGroupId ? delegateMap[selectedGroupId] || [] : []
+  const selectedIssuePeople = issuePeople.filter(person => selectedIssueUserIds.includes(person.id))
+  const selectedSummary = selectedIssuePeople.reduce((summary, person) => {
+    summary[person.choice] += 1
+    summary.SPOLU += 1
+    return summary
+  }, { MASO: 0, VEGE: 0, DIETA: 0, SPOLU: 0 })
 
   function setMessage(message: string, type: 'ok' | 'error' = 'ok') {
     setFeedback(message)
     setFeedbackType(type)
+  }
+
+  function setIssueMessage(message: string, type: 'ok' | 'error' = 'ok') {
+    setIssueFeedback(message)
+    setIssueFeedbackType(type)
+  }
+
+  function resetIssueState() {
+    setConfirmed(false)
+    setIssuePeople([])
+    setSelectedIssueUserIds([])
+    setPickupUserIds([])
+    setIssueSearchQuery('')
+    setIssueSearchResults([])
+    setExistingIssues([])
+    setEditingIssueId('')
+    setIssueFeedback('')
+    setCreatedIssue(null)
+  }
+
+  async function loadExistingIssues() {
+    if (!selectedGroupId || !date || !meal) return
+
+    const params = new URLSearchParams({
+      registrationGroupId: selectedGroupId,
+      date,
+      meal
+    })
+    const res = await fetch(`/api/skupinovy-vydaj/issues?${params.toString()}`)
+    const json = await res.json()
+
+    if (!res.ok) throw new Error(json.error || 'Existujuce vydaje sa nepodarilo nacitat.')
+
+    setExistingIssues(json.issues || [])
+  }
+
+  async function loadIssuePeople() {
+    if (!selectedGroupId || !date || !meal) return
+
+    setIssueLoading(true)
+    setIssueMessage('')
+    setCreatedIssue(null)
+
+    try {
+      const params = new URLSearchParams({
+        registrationGroupId: selectedGroupId,
+        date,
+        meal
+      })
+      const res = await fetch(`/api/skupinovy-vydaj/options?${params.toString()}`)
+      const json = await res.json()
+
+      if (!res.ok) throw new Error(json.error || 'Ludi sa nepodarilo nacitat.')
+
+      const people: IssuePerson[] = json.people || []
+      setIssuePeople(people)
+      setSelectedIssueUserIds(people.map(person => person.id))
+      setPickupUserIds(people[0]?.id ? [people[0].id] : [])
+      setEditingIssueId('')
+      await loadExistingIssues()
+      setConfirmed(true)
+      setIssueMessage(
+        people.length
+          ? `Nacitanych ${people.length} aktualne vydatelnych osob.`
+          : 'Pre tento vyber nie je aktualne nikto vydatelny.',
+        people.length ? 'ok' : 'error'
+      )
+    } catch (err: any) {
+      setIssueMessage(err?.message || 'Ludi sa nepodarilo nacitat.', 'error')
+    } finally {
+      setIssueLoading(false)
+    }
+  }
+
+  async function editExistingIssue(issueId: string) {
+    setIssueLoading(true)
+    setIssueMessage('')
+    setCreatedIssue(null)
+
+    try {
+      const params = new URLSearchParams({ issueId })
+      const res = await fetch(`/api/skupinovy-vydaj/issues?${params.toString()}`)
+      const json = await res.json()
+
+      if (!res.ok) throw new Error(json.error || 'Skupinovy vydaj sa nepodarilo nacitat.')
+
+      const issue = json.issue
+      const people: IssuePerson[] = issue.people || []
+
+      setEditingIssueId(issue.id)
+      setIssueTitle(issue.title || '')
+      setIssuePeople(people)
+      setSelectedIssueUserIds(people.map(person => person.id))
+      setPickupUserIds((issue.pickupUserIds || []).filter((id: string) => people.some(person => person.id === id)))
+      setConfirmed(true)
+      setIssueMessage('Skupinovy vydaj je nacitany na upravu.')
+    } catch (err: any) {
+      setIssueMessage(err?.message || 'Skupinovy vydaj sa nepodarilo nacitat.', 'error')
+    } finally {
+      setIssueLoading(false)
+    }
+  }
+
+  async function searchIssuePeople(query: string) {
+    setIssueSearchQuery(query)
+    setIssueSearchResults([])
+
+    if (!selectedGroupId || query.trim().length < 2) return
+
+    setIssueLoading(true)
+    setIssueMessage('')
+
+    try {
+      const params = new URLSearchParams({
+        registrationGroupId: selectedGroupId,
+        date,
+        meal,
+        q: query
+      })
+      const res = await fetch(`/api/skupinovy-vydaj/people-search?${params.toString()}`)
+      const json = await res.json()
+
+      if (!res.ok) throw new Error(json.error || 'Vyhladavanie zlyhalo.')
+
+      setIssueSearchResults(json.people || [])
+    } catch (err: any) {
+      setIssueMessage(err?.message || 'Vyhladavanie zlyhalo.', 'error')
+    } finally {
+      setIssueLoading(false)
+    }
+  }
+
+  function addIssuePerson(person: IssuePerson) {
+    setIssuePeople(current => {
+      if (current.some(item => item.id === person.id)) return current
+      return [...current, person]
+    })
+    setSelectedIssueUserIds(current => {
+      if (current.includes(person.id)) return current
+      return [...current, person.id]
+    })
+    setIssueSearchQuery('')
+    setIssueSearchResults([])
+  }
+
+  function toggleIssuePerson(userId: string) {
+    setSelectedIssueUserIds(current => {
+      const next = current.includes(userId)
+        ? current.filter(id => id !== userId)
+        : [...current, userId]
+
+      setPickupUserIds(pickupCurrent => pickupCurrent.filter(id => next.includes(id)))
+      return next
+    })
+  }
+
+  function togglePickupUser(userId: string) {
+    if (!selectedIssueUserIds.includes(userId)) return
+
+    setPickupUserIds(current => {
+      if (current.includes(userId)) return current.filter(id => id !== userId)
+      return [...current, userId]
+    })
+  }
+
+  async function saveIssue() {
+    if (!selectedGroupId || selectedIssuePeople.length === 0) {
+      setIssueMessage('Vyber aspon jednu osobu.', 'error')
+      return
+    }
+
+    setIssueLoading(true)
+    setIssueMessage('')
+    setCreatedIssue(null)
+
+    try {
+      const res = await fetch('/api/skupinovy-vydaj/issues', {
+        method: editingIssueId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          issueId: editingIssueId,
+          registrationGroupId: selectedGroupId,
+          date,
+          meal,
+          title: issueTitle,
+          people: selectedIssuePeople.map(person => ({
+            userId: person.id,
+            source: person.source
+          })),
+          pickupUserIds
+        })
+      })
+      const json = await res.json()
+
+      if (!res.ok) throw new Error(json.error || 'Skupinovy vydaj sa nepodarilo ulozit.')
+
+      setCreatedIssue(json)
+      setEditingIssueId(json.issueId || editingIssueId)
+      await loadExistingIssues()
+      setIssueMessage(json.message || 'Skupinovy vydaj bol vytvoreny.')
+    } catch (err: any) {
+      setIssueMessage(err?.message || 'Skupinovy vydaj sa nepodarilo ulozit.', 'error')
+    } finally {
+      setIssueLoading(false)
+    }
   }
 
   async function searchUsers(query: string) {
@@ -194,6 +444,9 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           .group-issue-actions { grid-template-columns: 1fr !important; }
           .group-issue-top { align-items: stretch !important; flex-direction: column !important; }
           .delegate-row { grid-template-columns: 1fr auto !important; }
+          .issue-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .issue-person-row { grid-template-columns: 1fr !important; }
+          .issue-person-meta { justify-content: flex-start !important; }
         }
       `}</style>
 
@@ -224,7 +477,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   value={date}
                   onChange={event => {
                     setDate(event.target.value)
-                    setConfirmed(false)
+                    resetIssueState()
                   }}
                   style={styles.input}
                 />
@@ -236,7 +489,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   value={selectedGroupId}
                   onChange={event => {
                     setSelectedGroupId(event.target.value)
-                    setConfirmed(false)
+                    resetIssueState()
                     setSearchQuery('')
                     setSearchResults([])
                     setFeedback('')
@@ -258,7 +511,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     type="button"
                     onClick={() => {
                       setMeal('OBED')
-                      setConfirmed(false)
+                      resetIssueState()
                     }}
                     style={{
                       ...styles.segmentButton,
@@ -271,7 +524,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     type="button"
                     onClick={() => {
                       setMeal('VECERA')
-                      setConfirmed(false)
+                      resetIssueState()
                     }}
                     style={{
                       ...styles.segmentButton,
@@ -292,11 +545,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
             <div className="group-issue-actions" style={styles.actions}>
               <button
                 type="button"
-                onClick={() => setConfirmed(true)}
-                disabled={!date || !selectedGroupId}
+                onClick={loadIssuePeople}
+                disabled={!date || !selectedGroupId || issueLoading}
                 style={styles.primaryButton}
               >
-                Pokracovat
+                {issueLoading ? 'Nacitavam...' : 'Nacitat ludi'}
               </button>
 
               <Link href="/dashboard" style={styles.secondaryButton}>
@@ -305,9 +558,189 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
             </div>
 
             {confirmed && (
-              <div style={styles.message}>
-                Tento vyber je pripraveny. Dalsi krok bude vyber ludi zo skupiny, pridanie cez QR a nazov vydaja.
-              </div>
+              <section style={styles.issueBox}>
+                <div style={styles.issueHeader}>
+                  <div>
+                    <h2 style={styles.delegateTitle}>Vytvorenie vydaja</h2>
+                    <p style={styles.delegateHint}>
+                      Zobrazuju sa iba aktualne vydatelne osoby. Pocty sa rataju len z oznacenych osob.
+                    </p>
+                  </div>
+                  <span style={styles.countBadge}>{selectedSummary.SPOLU}</span>
+                </div>
+
+                <div className="issue-count-grid" style={styles.countGrid}>
+                  <div style={styles.countBox}><b>{selectedSummary.MASO}</b><span>MASO</span></div>
+                  <div style={styles.countBox}><b>{selectedSummary.VEGE}</b><span>VEGE</span></div>
+                  <div style={styles.countBox}><b>{selectedSummary.DIETA}</b><span>DIETA</span></div>
+                  <div style={styles.countBoxDark}><b>{selectedSummary.SPOLU}</b><span>SPOLU</span></div>
+                </div>
+
+                <label style={{ ...styles.field, marginTop: 14 }}>
+                  <span style={styles.label}>Nazov skupinoveho vydaja</span>
+                  <input
+                    type="text"
+                    value={issueTitle}
+                    onChange={event => setIssueTitle(event.target.value)}
+                    placeholder="Volitelne, inak sa nazov vytvori automaticky"
+                    style={styles.input}
+                  />
+                </label>
+
+                {existingIssues.length > 0 && (
+                  <div style={styles.existingIssuesBox}>
+                    <b>Existujuce vydaje</b>
+                    <div style={styles.existingIssuesList}>
+                      {existingIssues.map(issue => (
+                        <button
+                          key={issue.id}
+                          type="button"
+                          onClick={() => editExistingIssue(issue.id)}
+                          disabled={issueLoading}
+                          style={{
+                            ...styles.existingIssueButton,
+                            ...(editingIssueId === issue.id ? styles.existingIssueButtonActive : {})
+                          }}
+                        >
+                          <span>{issue.title}</span>
+                          <small>
+                            MASO {issue.summary?.MASO || 0} / VEGE {issue.summary?.VEGE || 0} / DIETA {issue.summary?.DIETA || 0} / SPOLU {issue.summary?.SPOLU || 0}
+                          </small>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div style={styles.issueToolbar}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedIssueUserIds(issuePeople.map(person => person.id))
+                      setPickupUserIds(current => current.filter(id => issuePeople.some(person => person.id === id)))
+                    }}
+                    disabled={issueLoading || issuePeople.length === 0}
+                    style={styles.smallButton}
+                  >
+                    Oznacit vsetkych
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedIssueUserIds([])
+                      setPickupUserIds([])
+                    }}
+                    disabled={issueLoading || issuePeople.length === 0}
+                    style={styles.smallButtonWhite}
+                  >
+                    Odznacit
+                  </button>
+                </div>
+
+                <div style={styles.issuePeopleList}>
+                  {issuePeople.length === 0 ? (
+                    <div style={styles.emptyBox}>Pre tento datum a jedlo nie je aktualne nikto vydatelny.</div>
+                  ) : (
+                    issuePeople.map(person => {
+                      const selected = selectedIssueUserIds.includes(person.id)
+                      const pickup = pickupUserIds.includes(person.id)
+
+                      return (
+                        <div
+                          key={person.id}
+                          className="issue-person-row"
+                          style={{
+                            ...styles.issuePersonRow,
+                            ...(selected ? styles.issuePersonRowSelected : {})
+                          }}
+                        >
+                          <label style={styles.personCheckLabel}>
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => toggleIssuePerson(person.id)}
+                              style={styles.checkbox}
+                            />
+                            <span>
+                              <b>{person.name}</b>
+                              {person.email && <small>{person.email}</small>}
+                            </span>
+                          </label>
+
+                          <div className="issue-person-meta" style={styles.personMeta}>
+                            <span style={styles.choicePill}>{person.choice}</span>
+                            <span style={styles.sourcePill}>{sourceLabel(person.source)}</span>
+                            <label style={styles.pickupLabel}>
+                              <input
+                                type="checkbox"
+                                checked={pickup}
+                                disabled={!selected}
+                                onChange={() => togglePickupUser(person.id)}
+                              />
+                              Prevziat
+                            </label>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+
+                <div style={styles.searchBox}>
+                  <label style={styles.field}>
+                    <span style={styles.label}>Pridat osobu mimo registracnej skupiny</span>
+                    <input
+                      type="search"
+                      value={issueSearchQuery}
+                      onChange={event => searchIssuePeople(event.target.value)}
+                      placeholder="Meno, priezvisko alebo email"
+                      style={styles.input}
+                    />
+                  </label>
+
+                  {issueSearchResults.length > 0 && (
+                    <div style={styles.searchResults}>
+                      {issueSearchResults.map(person => (
+                        <button
+                          key={person.id}
+                          type="button"
+                          onClick={() => addIssuePerson(person)}
+                          disabled={issueLoading || issuePeople.some(item => item.id === person.id)}
+                          style={styles.resultButton}
+                        >
+                          <b>{person.name}</b>
+                          <span>{person.choice} - {person.email || 'bez emailu'}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={saveIssue}
+                  disabled={issueLoading || selectedSummary.SPOLU === 0}
+                  style={{ ...styles.primaryButton, marginTop: 14, width: '100%' }}
+                >
+                  {issueLoading ? 'Ukladam...' : editingIssueId ? 'Ulozit upravy' : 'Vytvorit skupinovy vydaj'}
+                </button>
+
+                {createdIssue && (
+                  <div style={styles.createdBox}>
+                    <b>{createdIssue.title}</b>
+                    <span>
+                      MASO {createdIssue.summary?.MASO || 0} / VEGE {createdIssue.summary?.VEGE || 0} / DIETA {createdIssue.summary?.DIETA || 0} / SPOLU {createdIssue.summary?.SPOLU || 0}
+                    </span>
+                    {createdIssue.status === 'WAITING' && <span>Platnost zacne o 15 minut.</span>}
+                  </div>
+                )}
+
+                {issueFeedback && (
+                  <div style={issueFeedbackType === 'ok' ? styles.feedbackOk : styles.feedbackError}>
+                    {issueFeedback}
+                  </div>
+                )}
+              </section>
             )}
 
             <section style={styles.delegateBox}>
@@ -575,6 +1008,183 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 18,
     padding: 14,
     fontWeight: 950
+  },
+  issueBox: {
+    marginTop: 22,
+    border: '3px solid #000',
+    borderRadius: 22,
+    background: '#f3ffe9',
+    padding: 16
+  },
+  issueHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 12,
+    alignItems: 'flex-start'
+  },
+  countGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 10,
+    marginTop: 14
+  },
+  countBox: {
+    border: '3px solid #000',
+    borderRadius: 14,
+    background: '#fff',
+    minHeight: 72,
+    display: 'grid',
+    placeItems: 'center',
+    alignContent: 'center',
+    gap: 2,
+    fontWeight: 950
+  },
+  countBoxDark: {
+    border: '3px solid #000',
+    borderRadius: 14,
+    background: '#000',
+    color: '#56db3f',
+    minHeight: 72,
+    display: 'grid',
+    placeItems: 'center',
+    alignContent: 'center',
+    gap: 2,
+    fontWeight: 950
+  },
+  issueToolbar: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 14
+  },
+  existingIssuesBox: {
+    marginTop: 14,
+    display: 'grid',
+    gap: 10,
+    border: '3px solid #000',
+    borderRadius: 14,
+    background: '#fff',
+    padding: 12
+  },
+  existingIssuesList: {
+    display: 'grid',
+    gap: 8
+  },
+  existingIssueButton: {
+    border: '3px solid #000',
+    borderRadius: 14,
+    background: '#fff',
+    color: '#000',
+    padding: 10,
+    display: 'grid',
+    gap: 4,
+    textAlign: 'left',
+    fontWeight: 950,
+    boxShadow: '3px 3px 0 #000'
+  },
+  existingIssueButtonActive: {
+    background: '#56db3f'
+  },
+  smallButton: {
+    minHeight: 38,
+    background: '#56db3f',
+    color: '#000',
+    border: '3px solid #000',
+    borderRadius: 999,
+    padding: '0 14px',
+    fontSize: 13,
+    fontWeight: 950,
+    boxShadow: '3px 3px 0 #000'
+  },
+  smallButtonWhite: {
+    minHeight: 38,
+    background: '#fff',
+    color: '#000',
+    border: '3px solid #000',
+    borderRadius: 999,
+    padding: '0 14px',
+    fontSize: 13,
+    fontWeight: 950,
+    boxShadow: '3px 3px 0 #000'
+  },
+  issuePeopleList: {
+    display: 'grid',
+    gap: 10,
+    marginTop: 14,
+    maxHeight: 430,
+    overflow: 'auto',
+    paddingRight: 4
+  },
+  issuePersonRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 12,
+    alignItems: 'center',
+    background: '#fff',
+    border: '3px solid #000',
+    borderRadius: 14,
+    padding: 10
+  },
+  issuePersonRowSelected: {
+    background: '#e7ffd8'
+  },
+  personCheckLabel: {
+    display: 'grid',
+    gridTemplateColumns: 'auto minmax(0, 1fr)',
+    gap: 10,
+    alignItems: 'center',
+    minWidth: 0,
+    fontWeight: 950
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    accentColor: '#56db3f'
+  },
+  personMeta: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'flex-end',
+    alignItems: 'center'
+  },
+  choicePill: {
+    border: '2px solid #000',
+    borderRadius: 999,
+    background: '#f25be6',
+    padding: '5px 9px',
+    fontSize: 12,
+    fontWeight: 950
+  },
+  sourcePill: {
+    border: '2px solid #000',
+    borderRadius: 999,
+    background: '#fff',
+    padding: '5px 9px',
+    fontSize: 12,
+    fontWeight: 950
+  },
+  pickupLabel: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    border: '2px solid #000',
+    borderRadius: 999,
+    background: '#fff7d8',
+    padding: '5px 9px',
+    fontSize: 12,
+    fontWeight: 950
+  },
+  createdBox: {
+    marginTop: 14,
+    border: '3px solid #000',
+    borderRadius: 14,
+    background: '#000',
+    color: '#fff',
+    padding: 12,
+    display: 'grid',
+    gap: 5,
+    fontWeight: 900
   },
   delegateBox: {
     marginTop: 22,
