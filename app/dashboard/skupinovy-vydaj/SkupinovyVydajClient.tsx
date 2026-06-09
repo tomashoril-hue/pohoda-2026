@@ -5,6 +5,7 @@ import Link from 'next/link'
 import QrCameraScanner from './QrCameraScanner'
 
 type MealType = 'OBED' | 'VECERA'
+type MealSelection = MealType | ''
 
 type RegistrationGroupOption = {
   id: string
@@ -65,7 +66,8 @@ function fullDateLabel(value: string) {
   return `${day}-${month}-${year}`
 }
 
-function mealLabel(value: MealType) {
+function mealLabel(value: MealSelection) {
+  if (!value) return 'Vyberte jedlo'
   return value === 'OBED' ? 'Obed' : 'Vecera'
 }
 
@@ -77,15 +79,13 @@ function sourceLabel(value: IssuePerson['source']) {
 
 export default function SkupinovyVydajClient({ initialDate, groups, delegatesByGroupId }: Props) {
   const [date, setDate] = useState(initialDate)
-  const [meal, setMeal] = useState<MealType>('OBED')
+  const [meal, setMeal] = useState<MealSelection>('')
   const [selectionOpen, setSelectionOpen] = useState(true)
   const [confirmed, setConfirmed] = useState(false)
   const [issueTitle, setIssueTitle] = useState('')
   const [issuePeople, setIssuePeople] = useState<IssuePerson[]>([])
   const [selectedIssueUserIds, setSelectedIssueUserIds] = useState<string[]>([])
   const [pickupUserIds, setPickupUserIds] = useState<string[]>([])
-  const [issueSearchQuery, setIssueSearchQuery] = useState('')
-  const [issueSearchResults, setIssueSearchResults] = useState<IssuePerson[]>([])
   const [existingIssues, setExistingIssues] = useState<ExistingIssue[]>([])
   const [editingIssueId, setEditingIssueId] = useState('')
   const [issueLoading, setIssueLoading] = useState(false)
@@ -94,7 +94,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [createdIssue, setCreatedIssue] = useState<any>(null)
   const [qrModalOpen, setQrModalOpen] = useState(false)
   const [existingLoading, setExistingLoading] = useState(false)
-  const [selectedGroupId, setSelectedGroupId] = useState('')
+  const [selectedGroupId, setSelectedGroupId] = useState(groups.length === 1 ? groups[0]?.id || '' : '')
   const [delegateMap, setDelegateMap] = useState<Record<string, Delegate[]>>(delegatesByGroupId)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchUser[]>([])
@@ -108,7 +108,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   }, [groups, selectedGroupId])
 
   const delegates = selectedGroupId ? delegateMap[selectedGroupId] || [] : []
-  const selectionReady = Boolean(date && selectedGroupId)
+  const selectionReady = Boolean(date && selectedGroupId && meal)
   const selectedIssuePeople = issuePeople.filter(person => selectedIssueUserIds.includes(person.id))
   const selectedSummary = selectedIssuePeople.reduce((summary, person) => {
     summary[person.choice] += 1
@@ -153,8 +153,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setIssuePeople([])
     setSelectedIssueUserIds([])
     setPickupUserIds([])
-    setIssueSearchQuery('')
-    setIssueSearchResults([])
     setExistingIssues([])
     setEditingIssueId('')
     setIssueFeedback('')
@@ -193,9 +191,9 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     }
   }
 
-  async function showSelectionResult(nextGroupId: string, nextDate: string, nextMeal: MealType) {
+  async function showSelectionResult(nextGroupId: string, nextDate: string, nextMeal: MealSelection) {
     resetIssueState()
-    if (!nextGroupId || !nextDate) {
+    if (!nextGroupId || !nextDate || !nextMeal) {
       setSelectionOpen(true)
       setExistingIssues([])
       return
@@ -307,35 +305,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     }
   }
 
-  async function searchIssuePeople(query: string) {
-    setIssueSearchQuery(query)
-    setIssueSearchResults([])
-
-    if (!selectedGroupId || query.trim().length < 2) return
-
-    setIssueLoading(true)
-    setIssueMessage('')
-
-    try {
-      const params = new URLSearchParams({
-        registrationGroupId: selectedGroupId,
-        date,
-        meal,
-        q: query
-      })
-      const res = await fetch(`/api/skupinovy-vydaj/people-search?${params.toString()}`)
-      const json = await res.json()
-
-      if (!res.ok) throw new Error(json.error || 'Vyhladavanie zlyhalo.')
-
-      setIssueSearchResults(json.people || [])
-    } catch (err: any) {
-      setIssueMessage(err?.message || 'Vyhladavanie zlyhalo.', 'error')
-    } finally {
-      setIssueLoading(false)
-    }
-  }
-
   async function addIssuePersonByQr(qrCode: string) {
     if (!selectedGroupId || !date || !meal) {
       return {
@@ -384,8 +353,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       if (current.includes(person.id)) return current
       return [...current, person.id]
     })
-    setIssueSearchQuery('')
-    setIssueSearchResults([])
   }
 
   function toggleIssuePerson(userId: string) {
@@ -604,24 +571,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           <div className="group-issue-layout" style={styles.layout}>
             {confirmed && (
               <section className="group-issue-main" style={styles.mainPanel}>
-                <div style={styles.issueHeader}>
-                  <div>
-                    <h2 style={styles.delegateTitle}>Vytvorenie vydaja</h2>
-                    <p style={styles.delegateHint}>
-                      Zobrazuju sa iba aktualne vydatelne osoby. Pocty sa rataju len z oznacenych osob.
-                    </p>
-                  </div>
-                  <span style={styles.countBadge}>{selectedSummary.SPOLU}</span>
-                </div>
-
-                <div style={styles.selectedSummaryBar}>
-                  <b>{editingIssueId ? 'Upravujes existujuci vydaj' : 'Novy skupinovy vydaj'}</b>
-                  <span>
-                    Vybranych {selectedSummary.SPOLU} osob: MASO {selectedSummary.MASO}, VEGE {selectedSummary.VEGE}, DIETA {selectedSummary.DIETA}
-                  </span>
-                </div>
-
-                <label style={{ ...styles.field, marginTop: 14 }}>
+                <label style={styles.field}>
                   <span style={styles.label}>Nazov skupinoveho vydaja</span>
                   <input
                     type="text"
@@ -650,14 +600,22 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                       setSelectedIssueUserIds([])
                       setPickupUserIds([])
                     }}
-                    disabled={issueLoading || issuePeople.length === 0}
-                    style={styles.smallButtonWhite}
-                  >
-                    Odznacit
-                  </button>
-                </div>
+                        disabled={issueLoading || issuePeople.length === 0}
+                        style={styles.smallButtonWhite}
+                      >
+                        Odznacit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQrModalOpen(true)}
+                        disabled={issueLoading || !selectedGroupId || !date || !meal}
+                        style={styles.darkButton}
+                      >
+                        Pridat cez QR
+                      </button>
+                    </div>
 
-                <div style={styles.peopleSectionHeader}>
+                    <div style={styles.peopleSectionHeader}>
                   <b>Osoby vo vydaji</b>
                   <span>{selectedIssueUserIds.length}/{issuePeople.length} oznacenych</span>
                 </div>
@@ -711,53 +669,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   )}
                 </div>
 
-                <div style={styles.addPeoplePanel}>
-                  <label style={styles.field}>
-                    <span style={styles.label}>Pridat osobu mimo registracnej skupiny</span>
-                    <input
-                      type="search"
-                      value={issueSearchQuery}
-                      onChange={event => searchIssuePeople(event.target.value)}
-                      placeholder="Meno, priezvisko alebo email"
-                      style={styles.input}
-                    />
-                  </label>
-
-                  {issueSearchResults.length > 0 && (
-                    <div style={styles.searchResults}>
-                      {issueSearchResults.map(person => (
-                        <button
-                          key={person.id}
-                          type="button"
-                          onClick={() => addIssuePerson(person)}
-                          disabled={issueLoading || issuePeople.some(item => item.id === person.id)}
-                          style={styles.resultButton}
-                        >
-                          <b>{person.name}</b>
-                          <span>{person.choice} - {person.email || 'bez emailu'}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  <div style={styles.qrScannerBox}>
-                    <div>
-                      <b>Pridat cez QR</b>
-                      <span style={styles.qrScannerHint}>Skenovanie sa otvori v samostatnom okne.</span>
-                    </div>
                     <button
                       type="button"
-                      onClick={() => setQrModalOpen(true)}
-                      disabled={issueLoading || !selectedGroupId || !date}
-                      style={styles.darkButton}
-                    >
-                      Otvorit QR skener
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
                   onClick={saveIssue}
                   disabled={issueLoading || selectedSummary.SPOLU === 0}
                   style={{ ...styles.primaryButton, marginTop: 14, width: '100%' }}
@@ -787,7 +700,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
               <section style={{ ...styles.panel, order: 1 }}>
                 {selectionReady && !selectionOpen ? (
                   <div style={styles.selectedChoiceCard}>
-                    <div>
+                    <div style={styles.selectedChoiceInfo}>
                       <span style={styles.summaryLabel}>Vybrate</span>
                       <b>{selectedGroup?.name || '-'}</b>
                       <small>{fullDateLabel(date)} - {mealLabel(meal)}</small>
@@ -795,7 +708,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
                     <button
                       type="button"
-                      onClick={() => setSelectionOpen(true)}
+                      onClick={() => {
+                        setSelectionOpen(true)
+                        resetIssueState()
+                        setExistingIssues([])
+                      }}
                       style={styles.smallButtonWhite}
                     >
                       Zmenit
@@ -1298,6 +1215,11 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#f0fdf4',
     padding: 10,
     flexWrap: 'wrap'
+  },
+  selectedChoiceInfo: {
+    display: 'grid',
+    gap: 3,
+    minWidth: 0
   },
   actions: {
     marginTop: 12,
