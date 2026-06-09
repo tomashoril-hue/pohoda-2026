@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import QrCameraScanner from './QrCameraScanner'
 
 type MealType = 'OBED' | 'VECERA'
 
@@ -246,6 +247,45 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setIssueMessage(err?.message || 'Vyhladavanie zlyhalo.', 'error')
     } finally {
       setIssueLoading(false)
+    }
+  }
+
+  async function addIssuePersonByQr(qrCode: string) {
+    if (!selectedGroupId || !date || !meal) {
+      return {
+        tone: 'error' as const,
+        message: 'Najprv vyber datum, jedlo a registracnu skupinu.'
+      }
+    }
+
+    const res = await fetch('/api/skupinovy-vydaj/qr-person', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        registrationGroupId: selectedGroupId,
+        date,
+        meal,
+        qrCode
+      })
+    })
+    const json = await res.json()
+
+    if (!res.ok || !json.person) {
+      const message = json.error || 'QR sa nepodarilo pridat.'
+      setIssueMessage(message, 'error')
+      return {
+        tone: 'error' as const,
+        message
+      }
+    }
+
+    addIssuePerson(json.person)
+    const message = `${json.person.name || 'Osoba'} pridana cez QR.`
+    setIssueMessage(message)
+
+    return {
+      tone: 'success' as const,
+      message
     }
   }
 
@@ -714,6 +754,14 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                       ))}
                     </div>
                   )}
+
+                  <div style={styles.qrScannerBox}>
+                    <b>Pridat cez QR</b>
+                    <QrCameraScanner
+                      disabled={issueLoading || !selectedGroupId || !date}
+                      onScan={addIssuePersonByQr}
+                    />
+                  </div>
                 </div>
 
                 <button
@@ -1275,6 +1323,14 @@ const styles: Record<string, React.CSSProperties> = {
   searchResults: {
     display: 'grid',
     gap: 8
+  },
+  qrScannerBox: {
+    display: 'grid',
+    gap: 10,
+    border: '3px solid #000',
+    borderRadius: 16,
+    background: '#fff7d8',
+    padding: 12
   },
   resultButton: {
     border: '3px solid #000',
