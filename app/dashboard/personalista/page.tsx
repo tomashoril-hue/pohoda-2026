@@ -237,7 +237,7 @@ async function fetchRegistrationGroupManagersForUsers(userIds: string[]) {
 
   const { data } = await supabaseServer
     .from('registration_group_managers')
-    .select('id, user_id, registration_group_id, active, valid_after')
+    .select('id, user_id, registration_group_id, active')
     .in('user_id', userIds)
     .eq('active', true)
 
@@ -267,8 +267,7 @@ function mapManagedRegistrationGroups(rows: any[], registrationGroupById: Map<st
       return {
         id: row.id,
         registrationGroupId: row.registration_group_id,
-        registrationGroupName: group?.name || '',
-        validAfter: row.valid_after || ''
+        registrationGroupName: group?.name || ''
       }
     })
     .filter(item => item.registrationGroupId && item.registrationGroupName)

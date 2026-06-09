@@ -54,7 +54,6 @@ type ManagedRegistrationGroup = {
   id: string
   registrationGroupId: string
   registrationGroupName: string
-  validAfter: string
 }
 
 type RegistrationPeriodSelectionRow =
@@ -260,28 +259,6 @@ function compactDateTimeLabel(value: string) {
     hour: '2-digit',
     minute: '2-digit'
   })
-}
-
-function managerPermissionStatus(validAfter: string) {
-  if (!validAfter) return 'Platne'
-
-  const date = new Date(validAfter)
-  if (Number.isNaN(date.getTime())) return 'Platne'
-
-  if (date.getTime() > Date.now()) {
-    return `Zacne platit ${compactDateTimeLabel(validAfter)}`
-  }
-
-  return 'Platne'
-}
-
-function managerPermissionIsPending(validAfter: string) {
-  if (!validAfter) return false
-
-  const date = new Date(validAfter)
-  if (Number.isNaN(date.getTime())) return false
-
-  return date.getTime() > Date.now()
 }
 
 function entitlementBounds(entitlements: PersonEntitlement[], fallbackFrom: string, fallbackTo: string) {
@@ -4756,17 +4733,10 @@ export default function PersonalistaClient({
                         </div>
                       ) : (
                         (selectedPerson.managedRegistrationGroups || []).map(manager => (
-                          <div
-                            key={manager.id}
-                            style={{
-                              ...styles.registrationPeriodRow,
-                              ...(managerPermissionIsPending(manager.validAfter) ? styles.registrationPeriodGapRowIdle : {})
-                            }}
-                          >
+                          <div key={manager.id} style={styles.registrationPeriodRow}>
                             <div style={styles.registrationPeriodInfo}>
                               <b>{manager.registrationGroupName || '-'}</b>
-                              <span>{managerPermissionStatus(manager.validAfter)}</span>
-                              <small>Moze vytvarat skupinovy vydaj pre tuto registracnu skupinu</small>
+                              <span>Moze vytvarat skupinovy vydaj pre tuto registracnu skupinu</span>
                             </div>
 
                             <div style={styles.registrationPeriodActions}>
