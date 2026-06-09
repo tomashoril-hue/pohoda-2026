@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
-import { canManagePersonAsPersonalista } from '@/lib/personalistaAccess'
+import { getGlobalAccess } from '@/lib/globalRoles'
+import { canManageRegistrationGroup } from '@/lib/registrationGroupManagers'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function cleanText(value: any) {
@@ -14,6 +15,7 @@ async function loadManagedGroups(userId: string) {
       id,
       registration_group_id,
       active,
+      valid_after,
       registration_groups (
         id,
         name
@@ -33,11 +35,38 @@ async function loadManagedGroups(userId: string) {
       return {
         id: row.id,
         registrationGroupId: row.registration_group_id,
-        registrationGroupName: group?.name || ''
+        registrationGroupName: group?.name || '',
+        validAfter: row.valid_after || ''
       }
     })
     .filter((item: any) => item.registrationGroupId && item.registrationGroupName)
     .sort((a: any, b: any) => a.registrationGroupName.localeCompare(b.registrationGroupName, 'sk'))
+}
+
+function validAfterDate() {
+  return new Date(Date.now() + 15 * 60 * 1000).toISOString()
+}
+
+async function canActorManageManagerPermission(actorId: string, registrationGroupId: string) {
+  const globalAccess = await getGlobalAccess(actorId)
+
+  if (globalAccess.canUsePersonalista) {
+    return { ok: true, globalAccess, source: 'PERSONALISTIKA' }
+  }
+
+  const allowedForGroup = await canManageRegistrationGroup(actorId, registrationGroupId)
+
+  if (allowedForGroup) {
+    return { ok: true, globalAccess, source: 'REGISTRATION_GROUP_MANAGER' }
+  }
+
+  return {
+    ok: false,
+    globalAccess,
+    source: '',
+    error: 'Opravnenie moze menit iba ADMIN, PERSONALISTA alebo manager tejto registracnej skupiny.',
+    status: 403
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -60,12 +89,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Vyber registracnu skupinu.' }, { status: 400 })
     }
 
-    const access = await canManagePersonAsPersonalista(actor.id, userId)
-
-    if (!access.ok) {
-      return NextResponse.json({ error: access.error }, { status: access.status || 403 })
-    }
-
     const { data: registrationGroup, error: registrationGroupError } = await supabaseServer
       .from('registration_groups')
       .select('id, name, active')
@@ -80,13 +103,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Registracna skupina neexistuje alebo nie je aktivna.' }, { status: 404 })
     }
 
+    const access = await canActorManageManagerPermission(actor.id, registrationGroupId)
+
+    if (!access.ok) {
+      return NextResponse.json({ error: access.error }, { status: access.status || 403 })
+    }
+
     const { data: beforeRows } = await supabaseServer
       .from('registration_group_managers')
-      .select('id, user_id, registration_group_id, active')
+      .select('id, user_id, registration_group_id, active, valid_after')
       .eq('user_id', userId)
       .eq('registration_group_id', registrationGroupId)
 
     const now = new Date().toISOString()
+    const validAfter = validAfterDate()
     const { error: upsertError } = await supabaseServer
       .from('registration_group_managers')
       .upsert(
@@ -95,7 +125,8 @@ export async function POST(req: NextRequest) {
           registration_group_id: registrationGroupId,
           active: true,
           created_by: actor.id,
-          updated_at: now
+          updated_at: now,
+          valid_after: validAfter
         },
         { onConflict: 'user_id,registration_group_id' }
       )
@@ -118,13 +149,15 @@ export async function POST(req: NextRequest) {
         after_data: {
           registration_group_id: registrationGroupId,
           registration_group_name: registrationGroup.name,
-          active: true
+          active: true,
+          valid_after: validAfter,
+          permission_source: access.source
         }
       })
 
     return NextResponse.json({
       ok: true,
-      message: 'Opravnenie na skupinovy vydaj bolo pridane.',
+      message: 'Opravnenie na skupinovy vydaj bolo pridane. Zacne platit o 15 minut.',
       managedRegistrationGroups
     })
   } catch (err: any) {
@@ -155,15 +188,9 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Chyba opravnenie.' }, { status: 400 })
     }
 
-    const access = await canManagePersonAsPersonalista(actor.id, userId)
-
-    if (!access.ok) {
-      return NextResponse.json({ error: access.error }, { status: access.status || 403 })
-    }
-
     const { data: beforeRow, error: beforeError } = await supabaseServer
       .from('registration_group_managers')
-      .select('id, user_id, registration_group_id, active')
+      .select('id, user_id, registration_group_id, active, valid_after')
       .eq('id', managerId)
       .eq('user_id', userId)
       .maybeSingle()
@@ -174,6 +201,12 @@ export async function DELETE(req: NextRequest) {
 
     if (!beforeRow) {
       return NextResponse.json({ error: 'Opravnenie neexistuje.' }, { status: 404 })
+    }
+
+    const access = await canActorManageManagerPermission(actor.id, beforeRow.registration_group_id)
+
+    if (!access.ok) {
+      return NextResponse.json({ error: access.error }, { status: access.status || 403 })
     }
 
     const { error: updateError } = await supabaseServer
