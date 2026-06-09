@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { supabaseServer } from '@/lib/supabaseServer'
 import {
   choiceSummary,
   filterIssuablePeople,
@@ -9,6 +10,30 @@ import {
   normalizeDate,
   normalizeMeal
 } from '@/lib/registrationGroupIssue'
+
+async function loadPlannedGroupIssueUserIds(date: string, meal: string) {
+  const { data: issues, error: issuesError } = await supabaseServer
+    .from('registration_group_issues')
+    .select('id')
+    .eq('datum', date)
+    .eq('typ_jedla', meal)
+    .in('status', ['READY', 'WAITING'])
+
+  if (issuesError) throw issuesError
+
+  const issueIds = (issues || []).map((row: any) => row.id).filter(Boolean)
+  if (issueIds.length === 0) return new Set<string>()
+
+  const { data: items, error: itemsError } = await supabaseServer
+    .from('registration_group_issue_items')
+    .select('user_id')
+    .in('issue_id', issueIds)
+    .eq('status', 'PLANNED')
+
+  if (itemsError) throw itemsError
+
+  return new Set((items || []).map((row: any) => row.user_id).filter(Boolean))
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -38,7 +63,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Registracna skupina neexistuje alebo nie je aktivna.' }, { status: 404 })
     }
 
-    const groupUsers = await loadRegistrationGroupPeople(registrationGroupId, date)
+    const plannedIssueUserIds = await loadPlannedGroupIssueUserIds(date, meal)
+    const groupUsers = (await loadRegistrationGroupPeople(registrationGroupId, date))
+      .filter((user: any) => !plannedIssueUserIds.has(user.id))
     const people = await filterIssuablePeople({
       users: groupUsers,
       date,
@@ -54,7 +81,8 @@ export async function GET(req: NextRequest) {
         name: registrationGroup.name || ''
       },
       people,
-      summary: choiceSummary(people)
+      summary: choiceSummary(people),
+      plannedExcludedCount: plannedIssueUserIds.size
     })
   } catch (err: any) {
     return NextResponse.json(

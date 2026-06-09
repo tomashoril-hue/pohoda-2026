@@ -68,6 +68,13 @@ function formatDate(value: string) {
   }
 }
 
+function fullDateLabel(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value || '-'
+
+  const [year, month, day] = value.split('-')
+  return `${day}-${month}-${year}`
+}
+
 function mealLabel(value: MealType) {
   return value === 'OBED' ? 'Obed' : 'Vecera'
 }
@@ -126,6 +133,28 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setIssueFeedbackType(type)
   }
 
+  const renderDateInput = (
+    value: string,
+    onChange: (value: string) => void,
+    disabled: boolean,
+    placeholder = 'Vyber datum'
+  ) => (
+    <div style={styles.mobileDateControl}>
+      <span style={styles.mobileDateValue}>
+        {value ? fullDateLabel(value) : placeholder}
+      </span>
+
+      <input
+        type="date"
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        style={styles.mobileDateNativeInput}
+        disabled={disabled}
+        aria-label={placeholder}
+      />
+    </div>
+  )
+
   function resetIssueState() {
     setConfirmed(false)
     setIssuePeople([])
@@ -180,9 +209,12 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setEditingIssueId('')
       await loadExistingIssues()
       setConfirmed(true)
+      const excludedCount = Number(json.plannedExcludedCount || 0)
       setIssueMessage(
         people.length
-          ? `Nacitanych ${people.length} aktualne vydatelnych osob.`
+          ? excludedCount > 0
+            ? `Nacitanych ${people.length} zvysnych vydatelnych osob. Ludia uz pripraveni v inom skupinovom vydaji su vynechani.`
+            : `Nacitanych ${people.length} aktualne vydatelnych osob.`
           : 'Pre tento vyber nie je aktualne nikto vydatelny.',
         people.length ? 'ok' : 'error'
       )
@@ -489,7 +521,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           .group-issue-shell { gap: 8px !important; }
           .group-issue-layout { grid-template-columns: 1fr !important; }
           .group-issue-sidebar { order: 1 !important; }
-          .group-issue-main { order: 2 !important; }
+          .group-issue-main { order: 3 !important; }
           .group-issue-header { align-items: stretch !important; flex-direction: column !important; }
           .group-issue-title { font-size: 24px !important; }
           .group-issue-actions { grid-template-columns: 1fr !important; }
@@ -530,11 +562,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   <span style={styles.countBadge}>{selectedSummary.SPOLU}</span>
                 </div>
 
-                <div className="issue-count-grid" style={styles.countGrid}>
-                  <div style={styles.countBox}><b>{selectedSummary.MASO}</b><span>MASO</span></div>
-                  <div style={styles.countBox}><b>{selectedSummary.VEGE}</b><span>VEGE</span></div>
-                  <div style={styles.countBox}><b>{selectedSummary.DIETA}</b><span>DIETA</span></div>
-                  <div style={styles.countBoxDark}><b>{selectedSummary.SPOLU}</b><span>SPOLU</span></div>
+                <div style={styles.selectedSummaryBar}>
+                  <b>{editingIssueId ? 'Upravujes existujuci vydaj' : 'Novy skupinovy vydaj'}</b>
+                  <span>
+                    Vybranych {selectedSummary.SPOLU} osob: MASO {selectedSummary.MASO}, VEGE {selectedSummary.VEGE}, DIETA {selectedSummary.DIETA}
+                  </span>
                 </div>
 
                 <label style={{ ...styles.field, marginTop: 14 }}>
@@ -547,31 +579,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     style={styles.input}
                   />
                 </label>
-
-                {existingIssues.length > 0 && (
-                  <div style={styles.existingIssuesBox}>
-                    <b>Existujuce vydaje</b>
-                    <div style={styles.existingIssuesList}>
-                      {existingIssues.map(issue => (
-                        <button
-                          key={issue.id}
-                          type="button"
-                          onClick={() => editExistingIssue(issue.id)}
-                          disabled={issueLoading}
-                          style={{
-                            ...styles.existingIssueButton,
-                            ...(editingIssueId === issue.id ? styles.existingIssueButtonActive : {})
-                          }}
-                        >
-                          <span>{issue.title}</span>
-                          <small>
-                            MASO {issue.summary?.MASO || 0} / VEGE {issue.summary?.VEGE || 0} / DIETA {issue.summary?.DIETA || 0} / SPOLU {issue.summary?.SPOLU || 0}
-                          </small>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 <div style={styles.issueToolbar}>
                   <button
@@ -596,6 +603,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   >
                     Odznacit
                   </button>
+                </div>
+
+                <div style={styles.peopleSectionHeader}>
+                  <b>Osoby vo vydaji</b>
+                  <span>{selectedIssueUserIds.length}/{issuePeople.length} oznacenych</span>
                 </div>
 
                 <div style={styles.issuePeopleList}>
@@ -647,7 +659,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   )}
                 </div>
 
-                <div style={styles.searchBox}>
+                <div style={styles.addPeoplePanel}>
                   <label style={styles.field}>
                     <span style={styles.label}>Pridat osobu mimo registracnej skupiny</span>
                     <input
@@ -719,8 +731,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 </>
               ) : (
                 <div style={styles.placeholderBox}>
-                  <b>Najprv nacitaj ludi pre vybrany datum, jedlo a registracnu skupinu.</b>
-                  <span>Potom sa tu zobrazia vydatelne osoby, pocty, QR pridanie a ulozenie skupinoveho vydaja.</span>
+                  <b>1. Vyber datum, jedlo a registracnu skupinu.</b>
+                  <span>2. Klikni Nacitat ludi. Potom vyber osoby, pridaj dalsich cez hladanie alebo QR a vydaj uloz.</span>
                 </div>
               )}
             </section>
@@ -735,15 +747,15 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 <div style={styles.formGrid}>
                   <label style={styles.field}>
                     <span style={styles.label}>Datum</span>
-                    <input
-                      type="date"
-                      value={date}
-                      onChange={event => {
-                        setDate(event.target.value)
+                    {renderDateInput(
+                      date,
+                      value => {
+                        setDate(value)
                         resetIssueState()
-                      }}
-                      style={styles.input}
-                    />
+                      },
+                      issueLoading,
+                      'Vyber datum'
+                    )}
                   </label>
 
                   <label style={styles.field}>
@@ -822,7 +834,54 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 </div>
               </section>
 
-              <section style={{ ...styles.panel, order: 3 }}>
+              <section style={{ ...styles.panel, order: 2 }}>
+                <div style={styles.delegateHeader}>
+                  <div>
+                    <h2 style={styles.delegateTitle}>Existujuce vydaje</h2>
+                    <p style={styles.delegateHint}>Pre vybrany datum, jedlo a registracnu skupinu.</p>
+                  </div>
+                  <span style={styles.countBadge}>{existingIssues.length}</span>
+                </div>
+
+                {!confirmed ? (
+                  <div style={styles.emptyBox}>Zobrazia sa po nacitani ludi.</div>
+                ) : existingIssues.length === 0 ? (
+                  <div style={styles.emptyBox}>Zatial nie je vytvoreny ziaden vydaj.</div>
+                ) : (
+                  <div style={styles.existingIssuesList}>
+                    {existingIssues.map(issue => (
+                      <button
+                        key={issue.id}
+                        type="button"
+                        onClick={() => editExistingIssue(issue.id)}
+                        disabled={issueLoading}
+                        style={{
+                          ...styles.existingIssueButton,
+                          ...(editingIssueId === issue.id ? styles.existingIssueButtonActive : {})
+                        }}
+                      >
+                        <span>{issue.title}</span>
+                        <small>
+                          MASO {issue.summary?.MASO || 0} / VEGE {issue.summary?.VEGE || 0} / DIETA {issue.summary?.DIETA || 0} / SPOLU {issue.summary?.SPOLU || 0}
+                        </small>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {confirmed && (
+                  <button
+                    type="button"
+                    onClick={loadIssuePeople}
+                    disabled={issueLoading}
+                    style={{ ...styles.secondaryButton, marginTop: 10, width: '100%' }}
+                  >
+                    Novy vydaj zo zvysnych ludi
+                  </button>
+                )}
+              </section>
+
+              <section style={{ ...styles.panel, order: 4 }}>
                 <div style={styles.delegateHeader}>
                   <div>
                     <h2 style={styles.delegateTitle}>Povereni ludia</h2>
@@ -952,7 +1011,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'Arial, Helvetica, sans-serif'
   },
   shell: {
-    maxWidth: 1360,
+    maxWidth: 1040,
     margin: '0 auto',
     display: 'grid',
     gap: 10
@@ -1020,7 +1079,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     padding: 12,
     boxShadow: '0 1px 2px rgba(17, 24, 39, 0.04)',
-    order: 2
+    order: 3
   },
   panelHeaderRow: {
     display: 'flex',
@@ -1074,6 +1133,47 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 800,
     background: '#fff',
     color: '#111827'
+  },
+  mobileDateControl: {
+    position: 'relative',
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    height: 38,
+    boxSizing: 'border-box',
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
+    background: '#fff',
+    overflow: 'hidden'
+  },
+  mobileDateValue: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    padding: '0 9px',
+    boxSizing: 'border-box',
+    color: '#111827',
+    fontSize: 13,
+    fontWeight: 900,
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    pointerEvents: 'none'
+  },
+  mobileDateNativeInput: {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    opacity: 0,
+    border: 0,
+    padding: 0,
+    margin: 0,
+    cursor: 'pointer'
   },
   segment: {
     display: 'grid',
@@ -1191,6 +1291,21 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontWeight: 950
   },
+  selectedSummaryBar: {
+    marginTop: 10,
+    border: '1px solid #d1d5db',
+    borderRadius: 8,
+    background: '#f9fafb',
+    padding: '8px 10px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    color: '#374151',
+    fontSize: 12,
+    fontWeight: 850
+  },
   issueToolbar: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -1253,6 +1368,16 @@ const styles: Record<string, React.CSSProperties> = {
     maxHeight: 560,
     overflow: 'auto',
     paddingRight: 3
+  },
+  peopleSectionHeader: {
+    marginTop: 12,
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    color: '#374151',
+    fontSize: 12,
+    fontWeight: 900
   },
   issuePersonRow: {
     display: 'grid',
@@ -1418,6 +1543,15 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 12,
     display: 'grid',
     gap: 10
+  },
+  addPeoplePanel: {
+    marginTop: 12,
+    display: 'grid',
+    gap: 10,
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    background: '#f9fafb',
+    padding: 10
   },
   searchResults: {
     display: 'grid',
