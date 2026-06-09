@@ -73,8 +73,9 @@ async function loadGroupIssueAccess(userId: string, isAdmin: boolean) {
       .in('registration_group_id', managedGroupIds)
       .eq('active', true)
 
-    if (error) throw error
-    delegateRows = data || []
+    if (!error) {
+      delegateRows = data || []
+    }
   }
 
   const delegatesByGroupId: Record<string, any[]> = {}
