@@ -82,6 +82,19 @@ async function loadActiveIssueIds(date: string, meal: MealType, excludedIssueId:
   return (data || []).map((row: any) => row.id).filter(Boolean)
 }
 
+async function nextIssueSequence(registrationGroupId: string, date: string, meal: MealType) {
+  const { count, error } = await supabaseServer
+    .from('registration_group_issues')
+    .select('id', { count: 'exact', head: true })
+    .eq('registration_group_id', registrationGroupId)
+    .eq('datum', date)
+    .eq('typ_jedla', meal)
+
+  if (error) throw error
+
+  return (count || 0) + 1
+}
+
 async function movePeopleFromOtherIssues({
   date,
   meal,
@@ -371,12 +384,14 @@ export async function POST(req: NextRequest) {
 
     const nextStatus = statusForAccess(access)
     const now = new Date().toISOString()
+    const sequence = await nextIssueSequence(registrationGroupId, date, meal)
+    const title = issueTitle(registrationGroup.name, body.title, sequence)
 
     const { data: issue, error: issueError } = await supabaseServer
       .from('registration_group_issues')
       .insert({
         registration_group_id: registrationGroupId,
-        title: issueTitle(registrationGroup.name, date, meal, body.title),
+        title,
         datum: date,
         typ_jedla: meal,
         status: nextStatus.status,
@@ -502,11 +517,12 @@ export async function PUT(req: NextRequest) {
 
     const nextStatus = statusForAccess(access)
     const now = new Date().toISOString()
+    const title = cleanText(body.title) || issue.title
 
     const { error: updateIssueError } = await supabaseServer
       .from('registration_group_issues')
       .update({
-        title: issueTitle(registrationGroup.name, date, meal, body.title),
+        title,
         status: nextStatus.status,
         valid_after: nextStatus.validAfter,
         updated_at: now
@@ -574,7 +590,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       issueId: issue.id,
-      title: issueTitle(registrationGroup.name, date, meal, body.title),
+      title,
       status: nextStatus.status,
       validAfter: nextStatus.validAfter,
       summary,

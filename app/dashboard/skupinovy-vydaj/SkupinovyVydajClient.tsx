@@ -150,6 +150,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
   function resetIssueState() {
     setConfirmed(false)
+    setIssueTitle('')
     setIssuePeople([])
     setSelectedIssueUserIds([])
     setPickupUserIds([])
@@ -412,17 +413,9 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
         ? 'Skupinovy vydaj bol upraveny.'
         : 'Skupinovy vydaj bol vytvoreny.')
 
-      if (wasEditing) {
-        resetIssueState()
-        setQrModalOpen(false)
-        setSelectionOpen(false)
-        await loadExistingIssuesFor()
-        setIssueMessage(successMessage)
-        return
-      }
-
-      setCreatedIssue(json)
-      setEditingIssueId(json.issueId || editingIssueId)
+      resetIssueState()
+      setQrModalOpen(false)
+      setSelectionOpen(false)
       await loadExistingIssuesFor()
       setIssueMessage(successMessage)
     } catch (err: any) {
