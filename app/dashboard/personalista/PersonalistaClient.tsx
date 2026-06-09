@@ -1599,7 +1599,7 @@ export default function PersonalistaClient({
     if (!selectedPerson) return
 
     if (!registrationGroupManagerForm.registrationGroupId) {
-      setDetailFeedback('Vyber registracnu skupinu pre skupinovy vydaj.', 'error', 'registrationPeriods')
+      setDetailFeedback('Vyber registracnu skupinu pre managera registracnej skupiny.', 'error', 'registrationPeriods')
       return
     }
 
@@ -1609,7 +1609,7 @@ export default function PersonalistaClient({
         userId: selectedPerson.id,
         registrationGroupId: registrationGroupManagerForm.registrationGroupId
       },
-      'Opravnenie na skupinovy vydaj sa nepodarilo pridat.',
+      'Managera registracnej skupiny sa nepodarilo pridat.',
       'registrationPeriods'
     )
 
@@ -1630,7 +1630,7 @@ export default function PersonalistaClient({
         userId: selectedPerson.id,
         managerId: manager.id
       },
-      'Opravnenie na skupinovy vydaj sa nepodarilo odobrat.',
+      'Managera registracnej skupiny sa nepodarilo odobrat.',
       'registrationPeriods',
       'DELETE'
     )
@@ -4720,7 +4720,7 @@ export default function PersonalistaClient({
                   </div>
 
                   <div style={styles.detailEditBoxSoft}>
-                    <div style={styles.detailEditTitle}>Opravnenie na skupinovy vydaj</div>
+                    <div style={styles.detailEditTitle}>Manager registracnej skupiny</div>
                     <div style={styles.optionHint}>
                       Tieto registracne skupiny moze osoba pouzit pri vytvarani skupinoveho vydaja. Osoba nemusi byt zaradena v tej istej registracnej skupine.
                     </div>
@@ -4757,7 +4757,7 @@ export default function PersonalistaClient({
 
                     <div style={styles.detailEditGridWide}>
                       <label style={styles.field}>
-                        <span>Registracna skupina pre skupinovy vydaj</span>
+                        <span>Manager registracnej skupiny</span>
                         <select
                           value={registrationGroupManagerForm.registrationGroupId}
                           onChange={event => setRegistrationGroupManagerForm({ registrationGroupId: event.target.value })}
