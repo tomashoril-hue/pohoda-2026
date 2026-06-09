@@ -56,17 +56,7 @@ type Props = {
   delegatesByGroupId: Record<string, Delegate[]>
 }
 
-function formatDate(value: string) {
-  try {
-    return new Intl.DateTimeFormat('sk-SK', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    }).format(new Date(`${value}T12:00:00`))
-  } catch {
-    return value
-  }
-}
+const SHOW_DELEGATES = false
 
 function fullDateLabel(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value || '-'
@@ -88,6 +78,7 @@ function sourceLabel(value: IssuePerson['source']) {
 export default function SkupinovyVydajClient({ initialDate, groups, delegatesByGroupId }: Props) {
   const [date, setDate] = useState(initialDate)
   const [meal, setMeal] = useState<MealType>('OBED')
+  const [selectionOpen, setSelectionOpen] = useState(true)
   const [confirmed, setConfirmed] = useState(false)
   const [issueTitle, setIssueTitle] = useState('')
   const [issuePeople, setIssuePeople] = useState<IssuePerson[]>([])
@@ -102,7 +93,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [issueFeedbackType, setIssueFeedbackType] = useState<'ok' | 'error'>('ok')
   const [createdIssue, setCreatedIssue] = useState<any>(null)
   const [qrModalOpen, setQrModalOpen] = useState(false)
-  const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id || '')
+  const [existingLoading, setExistingLoading] = useState(false)
+  const [selectedGroupId, setSelectedGroupId] = useState('')
   const [delegateMap, setDelegateMap] = useState<Record<string, Delegate[]>>(delegatesByGroupId)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchUser[]>([])
@@ -116,6 +108,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   }, [groups, selectedGroupId])
 
   const delegates = selectedGroupId ? delegateMap[selectedGroupId] || [] : []
+  const selectionReady = Boolean(date && selectedGroupId)
   const selectedIssuePeople = issuePeople.filter(person => selectedIssueUserIds.includes(person.id))
   const selectedSummary = selectedIssuePeople.reduce((summary, person) => {
     summary[person.choice] += 1
@@ -168,20 +161,53 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setCreatedIssue(null)
   }
 
-  async function loadExistingIssues() {
-    if (!selectedGroupId || !date || !meal) return
+  async function loadExistingIssuesFor(
+    nextGroupId = selectedGroupId,
+    nextDate = date,
+    nextMeal = meal
+  ) {
+    if (!nextGroupId || !nextDate || !nextMeal) {
+      setExistingIssues([])
+      return []
+    }
 
     const params = new URLSearchParams({
-      registrationGroupId: selectedGroupId,
-      date,
-      meal
+      registrationGroupId: nextGroupId,
+      date: nextDate,
+      meal: nextMeal
     })
-    const res = await fetch(`/api/skupinovy-vydaj/issues?${params.toString()}`)
-    const json = await res.json()
 
-    if (!res.ok) throw new Error(json.error || 'Existujuce vydaje sa nepodarilo nacitat.')
+    setExistingLoading(true)
 
-    setExistingIssues(json.issues || [])
+    try {
+      const res = await fetch(`/api/skupinovy-vydaj/issues?${params.toString()}`)
+      const json = await res.json()
+
+      if (!res.ok) throw new Error(json.error || 'Existujuce vydaje sa nepodarilo nacitat.')
+
+      const issues = json.issues || []
+      setExistingIssues(issues)
+      return issues
+    } finally {
+      setExistingLoading(false)
+    }
+  }
+
+  async function showSelectionResult(nextGroupId: string, nextDate: string, nextMeal: MealType) {
+    resetIssueState()
+    if (!nextGroupId || !nextDate) {
+      setSelectionOpen(true)
+      setExistingIssues([])
+      return
+    }
+
+    setSelectionOpen(false)
+
+    try {
+      await loadExistingIssuesFor(nextGroupId, nextDate, nextMeal)
+    } catch (err: any) {
+      setIssueMessage(err?.message || 'Existujuce vydaje sa nepodarilo nacitat.', 'error')
+    }
   }
 
   async function loadIssuePeople() {
@@ -207,7 +233,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setSelectedIssueUserIds(people.map(person => person.id))
       setPickupUserIds(people[0]?.id ? [people[0].id] : [])
       setEditingIssueId('')
-      await loadExistingIssues()
+      await loadExistingIssuesFor()
       setConfirmed(true)
       const excludedCount = Number(json.plannedExcludedCount || 0)
       setIssueMessage(
@@ -249,6 +275,33 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setIssueMessage('Skupinovy vydaj je nacitany na upravu.')
     } catch (err: any) {
       setIssueMessage(err?.message || 'Skupinovy vydaj sa nepodarilo nacitat.', 'error')
+    } finally {
+      setIssueLoading(false)
+    }
+  }
+
+  async function cancelExistingIssue(issue: ExistingIssue) {
+    const ok = window.confirm(`Zrusit skupinovy vydaj "${issue.title}"?`)
+    if (!ok) return
+
+    setIssueLoading(true)
+    setIssueMessage('')
+
+    try {
+      const res = await fetch('/api/skupinovy-vydaj/issues', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issueId: issue.id })
+      })
+      const json = await res.json()
+
+      if (!res.ok) throw new Error(json.error || 'Skupinovy vydaj sa nepodarilo zrusit.')
+
+      if (editingIssueId === issue.id) resetIssueState()
+      await loadExistingIssuesFor()
+      setIssueMessage(json.message || 'Skupinovy vydaj bol zruseny.')
+    } catch (err: any) {
+      setIssueMessage(err?.message || 'Skupinovy vydaj sa nepodarilo zrusit.', 'error')
     } finally {
       setIssueLoading(false)
     }
@@ -388,7 +441,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
       setCreatedIssue(json)
       setEditingIssueId(json.issueId || editingIssueId)
-      await loadExistingIssues()
+      await loadExistingIssuesFor()
       setIssueMessage(json.message || 'Skupinovy vydaj bol vytvoreny.')
     } catch (err: any) {
       setIssueMessage(err?.message || 'Skupinovy vydaj sa nepodarilo ulozit.', 'error')
@@ -549,9 +602,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           <div style={styles.messageError}>Nemate pridelenu registracnu skupinu pre skupinovy vydaj.</div>
         ) : (
           <div className="group-issue-layout" style={styles.layout}>
-            <section className="group-issue-main" style={styles.mainPanel}>
-              {confirmed ? (
-                <>
+            {confirmed && (
+              <section className="group-issue-main" style={styles.mainPanel}>
                 <div style={styles.issueHeader}>
                   <div>
                     <h2 style={styles.delegateTitle}>Vytvorenie vydaja</h2>
@@ -728,159 +780,181 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     {issueFeedback}
                   </div>
                 )}
-                </>
-              ) : (
-                <div style={styles.placeholderBox}>
-                  <b>1. Vyber datum, jedlo a registracnu skupinu.</b>
-                  <span>2. Klikni Nacitat ludi. Potom vyber osoby, pridaj dalsich cez hladanie alebo QR a vydaj uloz.</span>
-                </div>
-              )}
-            </section>
+              </section>
+            )}
 
             <aside className="group-issue-sidebar" style={styles.sidebar}>
               <section style={{ ...styles.panel, order: 1 }}>
-                <div style={styles.panelHeaderRow}>
-                  <div style={styles.panelTitle}>Nastavenie vydaja</div>
-                  <span style={styles.kicker}>Strava</span>
-                </div>
-
-                <div style={styles.formGrid}>
-                  <label style={styles.field}>
-                    <span style={styles.label}>Datum</span>
-                    {renderDateInput(
-                      date,
-                      value => {
-                        setDate(value)
-                        resetIssueState()
-                      },
-                      issueLoading,
-                      'Vyber datum'
-                    )}
-                  </label>
-
-                  <label style={styles.field}>
-                    <span style={styles.label}>Registracna skupina</span>
-                    <select
-                      value={selectedGroupId}
-                      onChange={event => {
-                        setSelectedGroupId(event.target.value)
-                        resetIssueState()
-                        setSearchQuery('')
-                        setSearchResults([])
-                        setFeedback('')
-                      }}
-                      style={styles.input}
-                    >
-                      {groups.map(group => (
-                        <option key={group.id} value={group.id}>
-                          {group.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <div style={styles.field}>
-                    <span style={styles.label}>Jedlo</span>
-                    <div style={styles.segment}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMeal('OBED')
-                          resetIssueState()
-                        }}
-                        style={{
-                          ...styles.segmentButton,
-                          ...(meal === 'OBED' ? styles.segmentButtonActive : {})
-                        }}
-                      >
-                        Obed
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMeal('VECERA')
-                          resetIssueState()
-                        }}
-                        style={{
-                          ...styles.segmentButton,
-                          ...(meal === 'VECERA' ? styles.segmentButtonActive : {})
-                        }}
-                      >
-                        Vecera
-                      </button>
+                {selectionReady && !selectionOpen ? (
+                  <div style={styles.selectedChoiceCard}>
+                    <div>
+                      <span style={styles.summaryLabel}>Vybrate</span>
+                      <b>{selectedGroup?.name || '-'}</b>
+                      <small>{fullDateLabel(date)} - {mealLabel(meal)}</small>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectionOpen(true)}
+                      style={styles.smallButtonWhite}
+                    >
+                      Zmenit
+                    </button>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div style={styles.panelHeaderRow}>
+                      <div style={styles.panelTitle}>Vyber vydaja</div>
+                      <span style={styles.kicker}>Krok 1</span>
+                    </div>
 
-                <div style={styles.summaryBox}>
-                  <span style={styles.summaryLabel}>Vybrane</span>
-                  <b>{selectedGroup?.name || '-'}</b>
-                  <span>{formatDate(date)} - {mealLabel(meal)}</span>
-                </div>
+                    <div style={styles.formGrid}>
+                      <label style={styles.field}>
+                        <span>Datum</span>
+                        {renderDateInput(
+                          date,
+                          value => {
+                            setDate(value)
+                            void showSelectionResult(selectedGroupId, value, meal)
+                          },
+                          issueLoading,
+                          'Vyber datum'
+                        )}
+                      </label>
 
-                <div className="group-issue-actions" style={styles.actions}>
-                  <button
-                    type="button"
-                    onClick={loadIssuePeople}
-                    disabled={!date || !selectedGroupId || issueLoading}
-                    style={styles.primaryButton}
-                  >
-                    {issueLoading ? 'Nacitavam...' : 'Nacitat ludi'}
-                  </button>
+                      <label style={styles.field}>
+                        <span>Registracna skupina</span>
+                        <select
+                          value={selectedGroupId}
+                          onChange={event => {
+                            const nextGroupId = event.target.value
+                            setSelectedGroupId(nextGroupId)
+                            setSearchQuery('')
+                            setSearchResults([])
+                            setFeedback('')
+                            void showSelectionResult(nextGroupId, date, meal)
+                          }}
+                          style={styles.input}
+                        >
+                          <option value="">Vyberte</option>
+                          {groups.map(group => (
+                            <option key={group.id} value={group.id}>
+                              {group.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
 
-                  <Link href="/dashboard" style={styles.secondaryButton}>
-                    Zrusit
-                  </Link>
-                </div>
+                      <div style={styles.field}>
+                        <span>Jedlo</span>
+                        <div style={styles.segment}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMeal('OBED')
+                              void showSelectionResult(selectedGroupId, date, 'OBED')
+                            }}
+                            style={{
+                              ...styles.segmentButton,
+                              ...(meal === 'OBED' ? styles.segmentButtonActive : {})
+                            }}
+                          >
+                            Obed
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMeal('VECERA')
+                              void showSelectionResult(selectedGroupId, date, 'VECERA')
+                            }}
+                            style={{
+                              ...styles.segmentButton,
+                              ...(meal === 'VECERA' ? styles.segmentButtonActive : {})
+                            }}
+                          >
+                            Vecera
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </section>
 
-              <section style={{ ...styles.panel, order: 2 }}>
-                <div style={styles.delegateHeader}>
-                  <div>
-                    <h2 style={styles.delegateTitle}>Existujuce vydaje</h2>
-                    <p style={styles.delegateHint}>Pre vybrany datum, jedlo a registracnu skupinu.</p>
+              {selectionReady && (
+                <section style={{ ...styles.panel, order: 2 }}>
+                  <div style={styles.delegateHeader}>
+                    <div>
+                      <h2 style={styles.delegateTitle}>Existujuce skupinove vydaje</h2>
+                      <p style={styles.delegateHint}>{selectedGroup?.name || '-'} / {fullDateLabel(date)} / {mealLabel(meal)}</p>
+                    </div>
+                    <span style={styles.countBadge}>{existingIssues.length}</span>
                   </div>
-                  <span style={styles.countBadge}>{existingIssues.length}</span>
-                </div>
 
-                {!confirmed ? (
-                  <div style={styles.emptyBox}>Zobrazia sa po nacitani ludi.</div>
-                ) : existingIssues.length === 0 ? (
-                  <div style={styles.emptyBox}>Zatial nie je vytvoreny ziaden vydaj.</div>
-                ) : (
-                  <div style={styles.existingIssuesList}>
-                    {existingIssues.map(issue => (
-                      <button
-                        key={issue.id}
-                        type="button"
-                        onClick={() => editExistingIssue(issue.id)}
-                        disabled={issueLoading}
-                        style={{
-                          ...styles.existingIssueButton,
-                          ...(editingIssueId === issue.id ? styles.existingIssueButtonActive : {})
-                        }}
-                      >
-                        <span>{issue.title}</span>
-                        <small>
-                          MASO {issue.summary?.MASO || 0} / VEGE {issue.summary?.VEGE || 0} / DIETA {issue.summary?.DIETA || 0} / SPOLU {issue.summary?.SPOLU || 0}
-                        </small>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                  {existingLoading ? (
+                    <div style={styles.emptyBox}>Nacitavam existujuce vydaje...</div>
+                  ) : existingIssues.length === 0 ? (
+                    <div style={styles.emptyBox}>Pre tento vyber zatial nie je vytvoreny ziaden vydaj.</div>
+                  ) : (
+                    <div style={styles.existingIssuesList}>
+                      {existingIssues.map(issue => (
+                        <div
+                          key={issue.id}
+                          style={{
+                            ...styles.existingIssueRow,
+                            ...(editingIssueId === issue.id ? styles.existingIssueRowActive : {})
+                          }}
+                        >
+                          <div style={styles.existingIssueInfo}>
+                            <b>{issue.title}</b>
+                            <small>
+                              MASO {issue.summary?.MASO || 0} / VEGE {issue.summary?.VEGE || 0} / DIETA {issue.summary?.DIETA || 0} / SPOLU {issue.summary?.SPOLU || 0}
+                            </small>
+                          </div>
 
-                {confirmed && (
+                          <div style={styles.existingIssueActions}>
+                            <button
+                              type="button"
+                              onClick={() => editExistingIssue(issue.id)}
+                              disabled={issueLoading}
+                              style={styles.smallEditButton}
+                              title="Zmenit vydaj"
+                            >
+                              Z
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => cancelExistingIssue(issue)}
+                              disabled={issueLoading}
+                              style={styles.smallRemoveButton}
+                              title="Zrusit vydaj"
+                            >
+                              x
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     onClick={loadIssuePeople}
                     disabled={issueLoading}
-                    style={{ ...styles.secondaryButton, marginTop: 10, width: '100%' }}
+                    style={{ ...styles.primaryButton, marginTop: 10, width: '100%' }}
                   >
-                    Novy vydaj zo zvysnych ludi
+                    {issueLoading ? 'Nacitavam...' : 'Pripravit skupinovy vydaj'}
                   </button>
-                )}
-              </section>
 
+                  {!confirmed && issueFeedback && (
+                    <div style={issueFeedbackType === 'ok' ? styles.feedbackOk : styles.feedbackError}>
+                      {issueFeedback}
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {SHOW_DELEGATES && (
               <section style={{ ...styles.panel, order: 4 }}>
                 <div style={styles.delegateHeader}>
                   <div>
@@ -967,6 +1041,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   </div>
                 )}
               </section>
+              )}
             </aside>
           </div>
         )}
@@ -1213,6 +1288,17 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 950,
     textTransform: 'uppercase'
   },
+  selectedChoiceCard: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    border: '1px solid #bbf7d0',
+    borderRadius: 8,
+    background: '#f0fdf4',
+    padding: 10,
+    flexWrap: 'wrap'
+  },
   actions: {
     marginTop: 12,
     display: 'grid',
@@ -1324,6 +1410,54 @@ const styles: Record<string, React.CSSProperties> = {
   existingIssuesList: {
     display: 'grid',
     gap: 6
+  },
+  existingIssueRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    alignItems: 'center',
+    gap: 8,
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
+    background: '#fff',
+    color: '#111827',
+    padding: 8
+  },
+  existingIssueRowActive: {
+    background: '#ecfdf5',
+    borderColor: '#22c55e',
+    boxShadow: 'inset 3px 0 0 #22c55e'
+  },
+  existingIssueInfo: {
+    display: 'grid',
+    gap: 3,
+    minWidth: 0,
+    fontSize: 12,
+    fontWeight: 900
+  },
+  existingIssueActions: {
+    display: 'flex',
+    gap: 5,
+    alignItems: 'center'
+  },
+  smallEditButton: {
+    width: 30,
+    height: 30,
+    border: '1px solid #bfdbfe',
+    borderRadius: 6,
+    background: '#eff6ff',
+    color: '#1d4ed8',
+    fontSize: 12,
+    fontWeight: 950
+  },
+  smallRemoveButton: {
+    width: 30,
+    height: 30,
+    border: '1px solid #fecaca',
+    borderRadius: 6,
+    background: '#fef2f2',
+    color: '#991b1b',
+    fontSize: 14,
+    fontWeight: 950
   },
   existingIssueButton: {
     border: '1px solid #d1d5db',

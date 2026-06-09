@@ -590,3 +590,64 @@ export async function PUT(req: NextRequest) {
     )
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const actor = await getCurrentUser()
+
+    if (!actor) {
+      return NextResponse.json({ error: 'Nie si prihlaseny.' }, { status: 401 })
+    }
+
+    const body = await req.json()
+    const issueId = cleanText(body.issueId)
+
+    if (!issueId) {
+      return NextResponse.json({ error: 'Chyba skupinovy vydaj.' }, { status: 400 })
+    }
+
+    const issue = await loadIssueOr404(issueId)
+
+    if (issue.status === 'CANCELLED') {
+      return NextResponse.json({ ok: true, message: 'Skupinovy vydaj uz bol zruseny.' })
+    }
+
+    await validateIssueAccess(actor.id, issue.registration_group_id)
+
+    const now = new Date().toISOString()
+
+    const { error: issueError } = await supabaseServer
+      .from('registration_group_issues')
+      .update({
+        status: 'CANCELLED',
+        updated_at: now
+      })
+      .eq('id', issue.id)
+
+    if (issueError) throw issueError
+
+    const { error: itemsError } = await supabaseServer
+      .from('registration_group_issue_items')
+      .update({
+        status: 'REMOVED',
+        remove_reason: 'GROUP_CANCELLED',
+        removed_at: now,
+        removed_by: actor.id,
+        updated_at: now
+      })
+      .eq('issue_id', issue.id)
+      .eq('status', 'PLANNED')
+
+    if (itemsError) throw itemsError
+
+    return NextResponse.json({
+      ok: true,
+      message: 'Skupinovy vydaj bol zruseny.'
+    })
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message || 'Neznama chyba servera.' },
+      { status: err?.status || 500 }
+    )
+  }
+}
