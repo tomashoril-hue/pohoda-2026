@@ -80,6 +80,20 @@ async function fetchRegistrationGroupPeriodsForUsers(userIds: string[]) {
   return data || []
 }
 
+async function fetchRegistrationGroupManagersForUsers(userIds: string[]) {
+  if (userIds.length === 0) return []
+
+  const { data, error } = await supabaseServer
+    .from('registration_group_managers')
+    .select('id, user_id, registration_group_id, active')
+    .in('user_id', userIds)
+    .eq('active', true)
+
+  if (error) throw error
+
+  return data || []
+}
+
 async function fetchLatestAuditForUsers(userIds: string[]) {
   if (userIds.length === 0) return new Map<string, any>()
 
@@ -161,6 +175,21 @@ function currentRegistrationGroupSnapshot(profile: any, periods: any[], registra
   }
 }
 
+function mapManagedRegistrationGroups(rows: any[], registrationGroupById: Map<string, any>) {
+  return rows
+    .map(row => {
+      const group = registrationGroupById.get(row.registration_group_id)
+
+      return {
+        id: row.id,
+        registrationGroupId: row.registration_group_id,
+        registrationGroupName: group?.name || ''
+      }
+    })
+    .filter(item => item.registrationGroupId && item.registrationGroupName)
+    .sort((a, b) => a.registrationGroupName.localeCompare(b.registrationGroupName, 'sk'))
+}
+
 export async function GET(req: NextRequest) {
   try {
     const actor = await getCurrentUser()
@@ -224,6 +253,7 @@ export async function GET(req: NextRequest) {
       nfcResult,
       roleResult,
       registrationGroupsResult,
+      registrationGroupManagers,
       latestAuditByUserId
     ] = await Promise.all([
       fetchMembershipsForUsers(userIds),
@@ -239,6 +269,7 @@ export async function GET(req: NextRequest) {
         ? supabaseServer.from('app_user_roles').select('user_id, role, active').in('user_id', userIds)
         : Promise.resolve({ data: [], error: null }),
       supabaseServer.from('registration_groups').select('id, name, active'),
+      fetchRegistrationGroupManagersForUsers(userIds),
       fetchLatestAuditForUsers(userIds)
     ])
 
@@ -275,6 +306,13 @@ export async function GET(req: NextRequest) {
       registrationGroupPeriodsByUserId.set(row.user_id, list)
     })
 
+    const registrationGroupManagersByUserId = new Map<string, any[]>()
+    registrationGroupManagers.forEach((row: any) => {
+      const list = registrationGroupManagersByUserId.get(row.user_id) || []
+      list.push(row)
+      registrationGroupManagersByUserId.set(row.user_id, list)
+    })
+
     const activeQrByUserId = new Map<string, number>()
     ;(qrResult.data || []).forEach((row: any) => {
       if (!row.active) return
@@ -307,6 +345,10 @@ export async function GET(req: NextRequest) {
         registrationGroupById,
         slovakiaDateIso()
       )
+      const managedRegistrationGroups = mapManagedRegistrationGroups(
+        registrationGroupManagersByUserId.get(profile.id) || [],
+        registrationGroupById
+      )
       const lastAudit = latestAuditByUserId.get(profile.id)
 
       return {
@@ -323,6 +365,7 @@ export async function GET(req: NextRequest) {
         registrationGroupName: registrationGroup.name,
         registrationGroupNote: registrationGroup.note,
         registrationGroupPeriods,
+        managedRegistrationGroups,
         lastEditedAt: lastAudit?.created_at || profile.updated_at || '',
         lastEditedById: lastAudit?.actor_user_id || '',
         lastEditedByName: lastAudit?.actor_name || '',

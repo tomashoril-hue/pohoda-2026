@@ -50,6 +50,12 @@ type PersonRegistrationGroupPeriod = {
   note: string
 }
 
+type ManagedRegistrationGroup = {
+  id: string
+  registrationGroupId: string
+  registrationGroupName: string
+}
+
 type RegistrationPeriodSelectionRow =
   | { type: 'period'; key: string; period: PersonRegistrationGroupPeriod }
   | { type: 'gap'; key: string; id: string; validFrom: string; validTo: string }
@@ -78,6 +84,7 @@ type PersonItem = {
   registrationGroupName: string
   registrationGroupNote: string
   registrationGroupPeriods: PersonRegistrationGroupPeriod[]
+  managedRegistrationGroups: ManagedRegistrationGroup[]
   lastEditedAt: string
   lastEditedById: string
   lastEditedByName: string
@@ -451,6 +458,9 @@ export default function PersonalistaClient({
     validTo: '',
     note: ''
   })
+  const [registrationGroupManagerForm, setRegistrationGroupManagerForm] = useState({
+    registrationGroupId: ''
+  })
   const [selectedRegistrationPeriodKeys, setSelectedRegistrationPeriodKeys] = useState<string[]>([])
   const [entitlementForm, setEntitlementForm] = useState({
     validFrom: fromDate,
@@ -696,6 +706,7 @@ export default function PersonalistaClient({
     })
 
     setRegistrationPeriodForm(defaultRegistrationPeriodForm(selectedPerson))
+    setRegistrationGroupManagerForm({ registrationGroupId: '' })
     setSelectedRegistrationPeriodKeys([])
 
     const bounds = entitlementBounds(selectedPerson.entitlements, fromDate, toDate)
@@ -1579,6 +1590,47 @@ export default function PersonalistaClient({
         periodId: period.id
       },
       'Zaradenie sa nepodarilo vymazat.',
+      'registrationPeriods',
+      'DELETE'
+    )
+  }
+
+  const addRegistrationGroupManager = async () => {
+    if (!selectedPerson) return
+
+    if (!registrationGroupManagerForm.registrationGroupId) {
+      setDetailFeedback('Vyber registracnu skupinu pre skupinovy vydaj.', 'error', 'registrationPeriods')
+      return
+    }
+
+    const saved = await postDetailAction(
+      '/api/personalista/people/registration-group-managers',
+      {
+        userId: selectedPerson.id,
+        registrationGroupId: registrationGroupManagerForm.registrationGroupId
+      },
+      'Opravnenie na skupinovy vydaj sa nepodarilo pridat.',
+      'registrationPeriods'
+    )
+
+    if (saved) {
+      setRegistrationGroupManagerForm({ registrationGroupId: '' })
+    }
+  }
+
+  const removeRegistrationGroupManager = (manager: ManagedRegistrationGroup) => {
+    if (!selectedPerson) return
+
+    const ok = window.confirm(`Odobrat opravnenie na skupinovy vydaj pre ${manager.registrationGroupName || 'registracnu skupinu'}?`)
+    if (!ok) return
+
+    postDetailAction(
+      '/api/personalista/people/registration-group-managers',
+      {
+        userId: selectedPerson.id,
+        managerId: manager.id
+      },
+      'Opravnenie na skupinovy vydaj sa nepodarilo odobrat.',
       'registrationPeriods',
       'DELETE'
     )
@@ -4667,6 +4719,75 @@ export default function PersonalistaClient({
                     )}
                   </div>
 
+                  <div style={styles.detailEditBoxSoft}>
+                    <div style={styles.detailEditTitle}>Opravnenie na skupinovy vydaj</div>
+                    <div style={styles.optionHint}>
+                      Tieto registracne skupiny moze osoba pouzit pri vytvarani skupinoveho vydaja. Osoba nemusi byt zaradena v tej istej registracnej skupine.
+                    </div>
+
+                    <div style={styles.detailGroups}>
+                      {(selectedPerson.managedRegistrationGroups || []).length === 0 ? (
+                        <div style={styles.detailGroupRow}>
+                          <b>Bez opravnenia</b>
+                          <span>Skupinovy vydaj sa tejto osobe na dashboarde nezobrazi.</span>
+                        </div>
+                      ) : (
+                        (selectedPerson.managedRegistrationGroups || []).map(manager => (
+                          <div key={manager.id} style={styles.registrationPeriodRow}>
+                            <div style={styles.registrationPeriodInfo}>
+                              <b>{manager.registrationGroupName || '-'}</b>
+                              <span>Moze vytvarat skupinovy vydaj pre tuto registracnu skupinu</span>
+                            </div>
+
+                            <div style={styles.registrationPeriodActions}>
+                              <button
+                                type="button"
+                                style={styles.smallRemoveButton}
+                                disabled={detailLoading}
+                                onClick={() => removeRegistrationGroupManager(manager)}
+                                title="Odobrat opravnenie"
+                              >
+                                x
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div style={styles.detailEditGridWide}>
+                      <label style={styles.field}>
+                        <span>Registracna skupina pre skupinovy vydaj</span>
+                        <select
+                          value={registrationGroupManagerForm.registrationGroupId}
+                          onChange={event => setRegistrationGroupManagerForm({ registrationGroupId: event.target.value })}
+                          style={styles.input}
+                          disabled={detailLoading}
+                        >
+                          <option value="">Vyber registracnu skupinu</option>
+                          {registrationGroups
+                            .filter(group => !(selectedPerson.managedRegistrationGroups || []).some(manager => manager.registrationGroupId === group.id))
+                            .map(group => (
+                              <option key={group.id} value={group.id}>
+                                {group.name}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    <div style={styles.calendarToolbar}>
+                      <button
+                        type="button"
+                        style={styles.confirmButton}
+                        disabled={detailLoading || !registrationGroupManagerForm.registrationGroupId}
+                        onClick={addRegistrationGroupManager}
+                      >
+                        {detailLoading ? 'Ukladam...' : 'Pridat opravnenie'}
+                      </button>
+                    </div>
+                  </div>
+
                   {registrationPeriodForm.periodId && (
                     <div style={styles.optionHint}>
                       Upravujes existujuce zaradenie. Ak chces pridat nove obdobie, zrus upravu.
@@ -5955,6 +6076,15 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gap: 6,
     background: '#f9fafb',
+    minWidth: 0
+  },
+  detailEditBoxSoft: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 5,
+    padding: 6,
+    display: 'grid',
+    gap: 6,
+    background: '#fff',
     minWidth: 0
   },
   detailEditTitle: {

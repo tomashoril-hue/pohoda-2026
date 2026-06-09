@@ -232,6 +232,18 @@ async function fetchRegistrationGroupPeriodsForUsers(userIds: string[]) {
   }
 }
 
+async function fetchRegistrationGroupManagersForUsers(userIds: string[]) {
+  if (userIds.length === 0) return []
+
+  const { data } = await supabaseServer
+    .from('registration_group_managers')
+    .select('id, user_id, registration_group_id, active')
+    .in('user_id', userIds)
+    .eq('active', true)
+
+  return data || []
+}
+
 function mapRegistrationGroupPeriod(row: any, registrationGroupById: Map<string, any>) {
   const group = Array.isArray(row.registration_groups)
     ? row.registration_groups[0]
@@ -245,6 +257,21 @@ function mapRegistrationGroupPeriod(row: any, registrationGroupById: Map<string,
     validTo: row.valid_to || '',
     note: row.note || ''
   }
+}
+
+function mapManagedRegistrationGroups(rows: any[], registrationGroupById: Map<string, any>) {
+  return rows
+    .map(row => {
+      const group = registrationGroupById.get(row.registration_group_id)
+
+      return {
+        id: row.id,
+        registrationGroupId: row.registration_group_id,
+        registrationGroupName: group?.name || ''
+      }
+    })
+    .filter(item => item.registrationGroupId && item.registrationGroupName)
+    .sort((a, b) => a.registrationGroupName.localeCompare(b.registrationGroupName, 'sk'))
 }
 
 function currentRegistrationGroupSnapshot(profile: any, periods: any[], registrationGroupById: Map<string, any>, today: string) {
@@ -411,6 +438,7 @@ export default async function PersonalistaPage({
   let roleRows: any[] = []
   let entitlementRows: any[] = []
   let registrationGroupPeriodRows: any[] = []
+  let registrationGroupManagerRows: any[] = []
 
   if (userIds.length > 0) {
     const { data: qrData } = await supabaseServer
@@ -436,6 +464,7 @@ export default async function PersonalistaPage({
 
     entitlementRows = await fetchEntitlementsForUsers(userIds)
     registrationGroupPeriodRows = await fetchRegistrationGroupPeriodsForUsers(userIds)
+    registrationGroupManagerRows = await fetchRegistrationGroupManagersForUsers(userIds)
   }
 
   const activeQrByUserId = new Map<string, number>()
@@ -485,6 +514,14 @@ export default async function PersonalistaPage({
     registrationGroupPeriodsByUserId.set(row.user_id, list)
   })
 
+  const registrationGroupManagersByUserId = new Map<string, any[]>()
+
+  registrationGroupManagerRows.forEach((row: any) => {
+    const list = registrationGroupManagersByUserId.get(row.user_id) || []
+    list.push(row)
+    registrationGroupManagersByUserId.set(row.user_id, list)
+  })
+
   const personMap = new Map<string, any>()
   const visibleProfileById = new Map(
     allVisibleUsers.map((profile: any) => [profile.id, profile])
@@ -520,6 +557,10 @@ export default async function PersonalistaPage({
     const lunchClaims = rows.filter(row => row.obed).length
     const dinnerClaims = rows.filter(row => row.vecera).length
     const mealClaims = lunchClaims + dinnerClaims
+    const managedRegistrationGroups = mapManagedRegistrationGroups(
+      registrationGroupManagersByUserId.get(membership.user_id) || [],
+      registrationGroupById
+    )
 
     personMap.set(membership.user_id, {
       id: membership.user_id,
@@ -535,6 +576,7 @@ export default async function PersonalistaPage({
       registrationGroupName: registrationGroup.name,
       registrationGroupNote: registrationGroup.note,
       registrationGroupPeriods,
+      managedRegistrationGroups,
       lastEditedAt: profile?.last_edited_at || profile?.updated_at || '',
       lastEditedById: profile?.last_edited_by_id || '',
       lastEditedByName: profile?.last_edited_by_name || '',
@@ -570,6 +612,10 @@ export default async function PersonalistaPage({
       )
       const lunchClaims = rows.filter(row => row.obed).length
       const dinnerClaims = rows.filter(row => row.vecera).length
+      const managedRegistrationGroups = mapManagedRegistrationGroups(
+        registrationGroupManagersByUserId.get(profile.id) || [],
+        registrationGroupById
+      )
 
       personMap.set(profile.id, {
         id: profile.id,
@@ -585,6 +631,7 @@ export default async function PersonalistaPage({
         registrationGroupName: registrationGroup.name,
         registrationGroupNote: registrationGroup.note,
         registrationGroupPeriods,
+        managedRegistrationGroups,
         lastEditedAt: profile.last_edited_at || profile.updated_at || '',
         lastEditedById: profile.last_edited_by_id || '',
         lastEditedByName: profile.last_edited_by_name || '',
