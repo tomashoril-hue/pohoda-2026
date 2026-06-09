@@ -432,27 +432,28 @@ const styles: Record<string, CSSProperties> = {
     flexWrap: 'wrap'
   },
   button: {
-    minHeight: 42,
-    border: '3px solid #000',
-    borderRadius: 999,
-    background: '#56db3f',
-    color: '#000',
-    padding: '0 14px',
-    fontWeight: 950,
-    boxShadow: '3px 3px 0 #000'
-  },
-  status: {
+    minHeight: 38,
+    border: '1px solid #111827',
+    borderRadius: 6,
+    background: '#111827',
+    color: '#fff',
+    padding: '0 12px',
     fontSize: 13,
     fontWeight: 900
+  },
+  status: {
+    fontSize: 12,
+    fontWeight: 850,
+    color: '#6b7280'
   },
   cameraBox: {
     position: 'relative',
     overflow: 'hidden',
-    border: '3px solid #000',
-    borderRadius: 18,
-    background: '#000',
-    aspectRatio: '4 / 3',
-    maxHeight: 360
+    border: '1px solid #111827',
+    borderRadius: 16,
+    background: '#111827',
+    aspectRatio: '1 / 1',
+    maxHeight: 420
   },
   video: {
     width: '100%',
@@ -465,10 +466,10 @@ const styles: Record<string, CSSProperties> = {
   },
   frame: {
     position: 'absolute',
-    inset: '18%',
+    inset: 28,
     border: '4px solid #22c55e',
     borderRadius: 18,
-    boxShadow: '0 0 0 999px rgba(0,0,0,0.25)',
+    boxShadow: '0 0 0 999px rgba(0,0,0,0.22)',
     pointerEvents: 'none',
     transition: 'border-color 120ms ease, box-shadow 120ms ease'
   },
@@ -479,7 +480,8 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     color: '#fff',
-    fontWeight: 950,
+    fontSize: 13,
+    fontWeight: 900,
     background: 'rgba(0,0,0,0.55)',
     padding: 16,
     textAlign: 'center'
@@ -491,7 +493,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     color: '#000',
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: 950,
     letterSpacing: 0
   },
@@ -500,19 +502,22 @@ const styles: Record<string, CSSProperties> = {
     right: 12,
     bottom: 12,
     minHeight: 38,
-    border: '3px solid #000',
+    border: '2px solid rgba(255,255,255,0.85)',
     borderRadius: 999,
-    background: '#fff',
-    color: '#000',
+    background: '#111827',
+    color: '#fff',
     padding: '0 12px',
+    fontSize: 13,
     fontWeight: 950,
-    boxShadow: '3px 3px 0 #000'
+    boxShadow: '0 10px 24px rgba(0,0,0,0.24)'
   },
   lastMessage: {
-    border: '3px solid #000',
-    borderRadius: 14,
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
     background: '#fff',
     padding: 10,
-    fontWeight: 900
+    color: '#374151',
+    fontSize: 12,
+    fontWeight: 850
   }
 }

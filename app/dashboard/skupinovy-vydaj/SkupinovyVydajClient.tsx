@@ -514,191 +514,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           <div style={styles.messageError}>Nemate pridelenu registracnu skupinu pre skupinovy vydaj.</div>
         ) : (
           <div className="group-issue-layout" style={styles.layout}>
-            <aside style={styles.sidebar}>
-              <section style={styles.panel}>
-                <div style={styles.panelHeaderRow}>
-                  <div style={styles.panelTitle}>Nastavenie vydaja</div>
-                  <span style={styles.kicker}>Strava</span>
-                </div>
-
-                <div style={styles.formGrid}>
-                  <label style={styles.field}>
-                    <span style={styles.label}>Datum</span>
-                    <input
-                      type="date"
-                      value={date}
-                      onChange={event => {
-                        setDate(event.target.value)
-                        resetIssueState()
-                      }}
-                      style={styles.input}
-                    />
-                  </label>
-
-                  <label style={styles.field}>
-                    <span style={styles.label}>Registracna skupina</span>
-                    <select
-                      value={selectedGroupId}
-                      onChange={event => {
-                        setSelectedGroupId(event.target.value)
-                        resetIssueState()
-                        setSearchQuery('')
-                        setSearchResults([])
-                        setFeedback('')
-                      }}
-                      style={styles.input}
-                    >
-                      {groups.map(group => (
-                        <option key={group.id} value={group.id}>
-                          {group.name} - {group.accessLabel}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <div style={styles.field}>
-                    <span style={styles.label}>Jedlo</span>
-                    <div style={styles.segment}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMeal('OBED')
-                          resetIssueState()
-                        }}
-                        style={{
-                          ...styles.segmentButton,
-                          ...(meal === 'OBED' ? styles.segmentButtonActive : {})
-                        }}
-                      >
-                        Obed
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMeal('VECERA')
-                          resetIssueState()
-                        }}
-                        style={{
-                          ...styles.segmentButton,
-                          ...(meal === 'VECERA' ? styles.segmentButtonActive : {})
-                        }}
-                      >
-                        Vecera
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div style={styles.summaryBox}>
-                  <span style={styles.summaryLabel}>Vybrane</span>
-                  <b>{selectedGroup?.name || '-'}</b>
-                  <span>{formatDate(date)} - {mealLabel(meal)}</span>
-                </div>
-
-                <div className="group-issue-actions" style={styles.actions}>
-                  <button
-                    type="button"
-                    onClick={loadIssuePeople}
-                    disabled={!date || !selectedGroupId || issueLoading}
-                    style={styles.primaryButton}
-                  >
-                    {issueLoading ? 'Nacitavam...' : 'Nacitat ludi'}
-                  </button>
-
-                  <Link href="/dashboard" style={styles.secondaryButton}>
-                    Zrusit
-                  </Link>
-                </div>
-              </section>
-
-              <section style={styles.panel}>
-                <div style={styles.delegateHeader}>
-                  <div>
-                    <h2 style={styles.delegateTitle}>Povereni ludia</h2>
-                    <p style={styles.delegateHint}>Povereny vydaj plati az po 15 minutach.</p>
-                  </div>
-                  <span style={styles.countBadge}>{delegates.length}</span>
-                </div>
-
-                {!selectedGroup?.canManageDelegates ? (
-                  <div style={styles.infoBox}>Tuto cast moze menit iba manager registracnej skupiny.</div>
-                ) : (
-                  <>
-                    <div style={styles.delegateList}>
-                      {delegates.length === 0 ? (
-                        <div style={styles.emptyBox}>Zatial nie je povereny nikto.</div>
-                      ) : (
-                        delegates.map(delegate => (
-                          <div className="delegate-row" key={delegate.id} style={styles.delegateRow}>
-                            <div style={styles.delegateName}>
-                              <b>{delegate.name}</b>
-                              {delegate.email && <span>{delegate.email}</span>}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeDelegate(delegate)}
-                              disabled={loading}
-                              style={styles.removeButton}
-                              title="Odobrat poverenie"
-                            >
-                              x
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    <div style={styles.searchBox}>
-                      <label style={styles.field}>
-                        <span style={styles.label}>Vyhladat osobu</span>
-                        <input
-                          type="search"
-                          value={searchQuery}
-                          onChange={event => searchUsers(event.target.value)}
-                          placeholder="Meno, priezvisko alebo email"
-                          style={styles.input}
-                        />
-                      </label>
-
-                      <label style={styles.field}>
-                        <span style={styles.label}>Poznamka</span>
-                        <input
-                          type="text"
-                          value={delegateNote}
-                          onChange={event => setDelegateNote(event.target.value)}
-                          placeholder="Volitelne"
-                          style={styles.input}
-                        />
-                      </label>
-
-                      {searchResults.length > 0 && (
-                        <div style={styles.searchResults}>
-                          {searchResults.map(user => (
-                            <button
-                              key={user.id}
-                              type="button"
-                              onClick={() => addDelegate(user)}
-                              disabled={loading || delegates.some(delegate => delegate.userId === user.id)}
-                              style={styles.resultButton}
-                            >
-                              <b>{user.name}</b>
-                              {user.email && <span>{user.email}</span>}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {feedback && (
-                  <div style={feedbackType === 'ok' ? styles.feedbackOk : styles.feedbackError}>
-                    {feedback}
-                  </div>
-                )}
-              </section>
-            </aside>
-
             <section style={styles.mainPanel}>
               {confirmed ? (
                 <>
@@ -899,6 +714,191 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 </div>
               )}
             </section>
+
+            <aside style={styles.sidebar}>
+              <section style={styles.panel}>
+                <div style={styles.panelHeaderRow}>
+                  <div style={styles.panelTitle}>Nastavenie vydaja</div>
+                  <span style={styles.kicker}>Strava</span>
+                </div>
+
+                <div style={styles.formGrid}>
+                  <label style={styles.field}>
+                    <span style={styles.label}>Datum</span>
+                    <input
+                      type="date"
+                      value={date}
+                      onChange={event => {
+                        setDate(event.target.value)
+                        resetIssueState()
+                      }}
+                      style={styles.input}
+                    />
+                  </label>
+
+                  <label style={styles.field}>
+                    <span style={styles.label}>Registracna skupina</span>
+                    <select
+                      value={selectedGroupId}
+                      onChange={event => {
+                        setSelectedGroupId(event.target.value)
+                        resetIssueState()
+                        setSearchQuery('')
+                        setSearchResults([])
+                        setFeedback('')
+                      }}
+                      style={styles.input}
+                    >
+                      {groups.map(group => (
+                        <option key={group.id} value={group.id}>
+                          {group.name} - {group.accessLabel}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div style={styles.field}>
+                    <span style={styles.label}>Jedlo</span>
+                    <div style={styles.segment}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMeal('OBED')
+                          resetIssueState()
+                        }}
+                        style={{
+                          ...styles.segmentButton,
+                          ...(meal === 'OBED' ? styles.segmentButtonActive : {})
+                        }}
+                      >
+                        Obed
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMeal('VECERA')
+                          resetIssueState()
+                        }}
+                        style={{
+                          ...styles.segmentButton,
+                          ...(meal === 'VECERA' ? styles.segmentButtonActive : {})
+                        }}
+                      >
+                        Vecera
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={styles.summaryBox}>
+                  <span style={styles.summaryLabel}>Vybrane</span>
+                  <b>{selectedGroup?.name || '-'}</b>
+                  <span>{formatDate(date)} - {mealLabel(meal)}</span>
+                </div>
+
+                <div className="group-issue-actions" style={styles.actions}>
+                  <button
+                    type="button"
+                    onClick={loadIssuePeople}
+                    disabled={!date || !selectedGroupId || issueLoading}
+                    style={styles.primaryButton}
+                  >
+                    {issueLoading ? 'Nacitavam...' : 'Nacitat ludi'}
+                  </button>
+
+                  <Link href="/dashboard" style={styles.secondaryButton}>
+                    Zrusit
+                  </Link>
+                </div>
+              </section>
+
+              <section style={styles.panel}>
+                <div style={styles.delegateHeader}>
+                  <div>
+                    <h2 style={styles.delegateTitle}>Povereni ludia</h2>
+                    <p style={styles.delegateHint}>Povereny vydaj plati az po 15 minutach.</p>
+                  </div>
+                  <span style={styles.countBadge}>{delegates.length}</span>
+                </div>
+
+                {!selectedGroup?.canManageDelegates ? (
+                  <div style={styles.infoBox}>Tuto cast moze menit iba manager registracnej skupiny.</div>
+                ) : (
+                  <>
+                    <div style={styles.delegateList}>
+                      {delegates.length === 0 ? (
+                        <div style={styles.emptyBox}>Zatial nie je povereny nikto.</div>
+                      ) : (
+                        delegates.map(delegate => (
+                          <div className="delegate-row" key={delegate.id} style={styles.delegateRow}>
+                            <div style={styles.delegateName}>
+                              <b>{delegate.name}</b>
+                              {delegate.email && <span>{delegate.email}</span>}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeDelegate(delegate)}
+                              disabled={loading}
+                              style={styles.removeButton}
+                              title="Odobrat poverenie"
+                            >
+                              x
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div style={styles.searchBox}>
+                      <label style={styles.field}>
+                        <span style={styles.label}>Vyhladat osobu</span>
+                        <input
+                          type="search"
+                          value={searchQuery}
+                          onChange={event => searchUsers(event.target.value)}
+                          placeholder="Meno, priezvisko alebo email"
+                          style={styles.input}
+                        />
+                      </label>
+
+                      <label style={styles.field}>
+                        <span style={styles.label}>Poznamka</span>
+                        <input
+                          type="text"
+                          value={delegateNote}
+                          onChange={event => setDelegateNote(event.target.value)}
+                          placeholder="Volitelne"
+                          style={styles.input}
+                        />
+                      </label>
+
+                      {searchResults.length > 0 && (
+                        <div style={styles.searchResults}>
+                          {searchResults.map(user => (
+                            <button
+                              key={user.id}
+                              type="button"
+                              onClick={() => addDelegate(user)}
+                              disabled={loading || delegates.some(delegate => delegate.userId === user.id)}
+                              style={styles.resultButton}
+                            >
+                              <b>{user.name}</b>
+                              {user.email && <span>{user.email}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {feedback && (
+                  <div style={feedbackType === 'ok' ? styles.feedbackOk : styles.feedbackError}>
+                    {feedback}
+                  </div>
+                )}
+              </section>
+            </aside>
           </div>
         )}
       </div>
@@ -961,7 +961,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   layout: {
     display: 'grid',
-    gridTemplateColumns: '360px minmax(0, 1fr)',
+    gridTemplateColumns: 'minmax(0, 1fr) 360px',
     gap: 10,
     alignItems: 'start'
   },
