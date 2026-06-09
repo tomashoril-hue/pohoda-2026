@@ -726,7 +726,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
             </section>
 
             <aside className="group-issue-sidebar" style={styles.sidebar}>
-              <section style={styles.panel}>
+              <section style={{ ...styles.panel, order: 1 }}>
                 <div style={styles.panelHeaderRow}>
                   <div style={styles.panelTitle}>Nastavenie vydaja</div>
                   <span style={styles.kicker}>Strava</span>
@@ -822,7 +822,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 </div>
               </section>
 
-              <section style={styles.panel}>
+              <section style={{ ...styles.panel, order: 3 }}>
                 <div style={styles.delegateHeader}>
                   <div>
                     <h2 style={styles.delegateTitle}>Povereni ludia</h2>
@@ -998,15 +998,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   layout: {
     display: 'grid',
-    gridTemplateColumns: '360px minmax(0, 1fr)',
+    gridTemplateColumns: 'minmax(0, 1fr)',
     gap: 10,
     alignItems: 'start'
   },
   sidebar: {
-    display: 'grid',
-    gap: 10,
-    minWidth: 0,
-    order: 1
+    display: 'contents',
+    minWidth: 0
   },
   panel: {
     background: '#fff',
