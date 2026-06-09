@@ -94,6 +94,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [issueFeedback, setIssueFeedback] = useState('')
   const [issueFeedbackType, setIssueFeedbackType] = useState<'ok' | 'error'>('ok')
   const [createdIssue, setCreatedIssue] = useState<any>(null)
+  const [qrModalOpen, setQrModalOpen] = useState(false)
   const [selectedGroupId, setSelectedGroupId] = useState(groups[0]?.id || '')
   const [delegateMap, setDelegateMap] = useState<Record<string, Delegate[]>>(delegatesByGroupId)
   const [searchQuery, setSearchQuery] = useState('')
@@ -487,6 +488,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           .group-issue-page { padding: 10px !important; }
           .group-issue-shell { gap: 8px !important; }
           .group-issue-layout { grid-template-columns: 1fr !important; }
+          .group-issue-sidebar { order: 1 !important; }
+          .group-issue-main { order: 2 !important; }
           .group-issue-header { align-items: stretch !important; flex-direction: column !important; }
           .group-issue-title { font-size: 24px !important; }
           .group-issue-actions { grid-template-columns: 1fr !important; }
@@ -514,7 +517,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           <div style={styles.messageError}>Nemate pridelenu registracnu skupinu pre skupinovy vydaj.</div>
         ) : (
           <div className="group-issue-layout" style={styles.layout}>
-            <section style={styles.mainPanel}>
+            <section className="group-issue-main" style={styles.mainPanel}>
               {confirmed ? (
                 <>
                 <div style={styles.issueHeader}>
@@ -674,11 +677,18 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   )}
 
                   <div style={styles.qrScannerBox}>
-                    <b>Pridat cez QR</b>
-                    <QrCameraScanner
+                    <div>
+                      <b>Pridat cez QR</b>
+                      <span style={styles.qrScannerHint}>Skenovanie sa otvori v samostatnom okne.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setQrModalOpen(true)}
                       disabled={issueLoading || !selectedGroupId || !date}
-                      onScan={addIssuePersonByQr}
-                    />
+                      style={styles.darkButton}
+                    >
+                      Otvorit QR skener
+                    </button>
                   </div>
                 </div>
 
@@ -715,7 +725,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
               )}
             </section>
 
-            <aside style={styles.sidebar}>
+            <aside className="group-issue-sidebar" style={styles.sidebar}>
               <section style={styles.panel}>
                 <div style={styles.panelHeaderRow}>
                   <div style={styles.panelTitle}>Nastavenie vydaja</div>
@@ -751,7 +761,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     >
                       {groups.map(group => (
                         <option key={group.id} value={group.id}>
-                          {group.name} - {group.accessLabel}
+                          {group.name}
                         </option>
                       ))}
                     </select>
@@ -901,6 +911,33 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
             </aside>
           </div>
         )}
+
+        {qrModalOpen && (
+          <div style={styles.modalOverlay} onClick={() => setQrModalOpen(false)}>
+            <div style={styles.qrModal} onClick={event => event.stopPropagation()}>
+              <div style={styles.qrModalHeader}>
+                <div>
+                  <b>Pridat cez QR</b>
+                  <span>Skenujte QR kody postupne. Osoby sa budu pridavat do pripravovaneho vydaja.</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setQrModalOpen(false)}
+                  style={styles.qrCloseButton}
+                  disabled={issueLoading}
+                >
+                  x
+                </button>
+              </div>
+
+              <QrCameraScanner
+                disabled={issueLoading || !selectedGroupId || !date}
+                onScan={addIssuePersonByQr}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </main>
   )
@@ -961,14 +998,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
   layout: {
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) 360px',
+    gridTemplateColumns: '360px minmax(0, 1fr)',
     gap: 10,
     alignItems: 'start'
   },
   sidebar: {
     display: 'grid',
     gap: 10,
-    minWidth: 0
+    minWidth: 0,
+    order: 1
   },
   panel: {
     background: '#fff',
@@ -983,7 +1021,8 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #e5e7eb',
     borderRadius: 8,
     padding: 12,
-    boxShadow: '0 1px 2px rgba(17, 24, 39, 0.04)'
+    boxShadow: '0 1px 2px rgba(17, 24, 39, 0.04)',
+    order: 2
   },
   panelHeaderRow: {
     display: 'flex',
@@ -1124,19 +1163,20 @@ const styles: Record<string, React.CSSProperties> = {
   },
   countGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-    gap: 8,
+    gridTemplateColumns: 'repeat(4, minmax(72px, 96px))',
+    gap: 6,
     marginTop: 12
   },
   countBox: {
     border: '1px solid #e5e7eb',
     borderRadius: 8,
     background: '#f9fafb',
-    minHeight: 64,
+    minHeight: 44,
     display: 'grid',
     placeItems: 'center',
     alignContent: 'center',
     gap: 2,
+    fontSize: 11,
     fontWeight: 950,
     color: '#111827'
   },
@@ -1145,11 +1185,12 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     background: '#111827',
     color: '#86efac',
-    minHeight: 64,
+    minHeight: 44,
     display: 'grid',
     placeItems: 'center',
     alignContent: 'center',
     gap: 2,
+    fontSize: 11,
     fontWeight: 950
   },
   issueToolbar: {
@@ -1209,21 +1250,21 @@ const styles: Record<string, React.CSSProperties> = {
   },
   issuePeopleList: {
     display: 'grid',
-    gap: 6,
+    gap: 4,
     marginTop: 12,
-    maxHeight: 430,
+    maxHeight: 560,
     overflow: 'auto',
     paddingRight: 3
   },
   issuePersonRow: {
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) auto',
-    gap: 10,
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(210px, auto)',
+    gap: 8,
     alignItems: 'center',
     background: '#fff',
     border: '1px solid #e5e7eb',
     borderRadius: 6,
-    padding: '8px 9px'
+    padding: '6px 8px'
   },
   issuePersonRowSelected: {
     background: '#f0fdf4',
@@ -1236,11 +1277,12 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     alignItems: 'center',
     minWidth: 0,
+    fontSize: 13,
     fontWeight: 900
   },
   checkbox: {
-    width: 18,
-    height: 18,
+    width: 17,
+    height: 17,
     accentColor: '#22c55e'
   },
   personMeta: {
@@ -1384,12 +1426,32 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 6
   },
   qrScannerBox: {
-    display: 'grid',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
     border: '1px solid #e5e7eb',
     borderRadius: 8,
     background: '#f9fafb',
-    padding: 10
+    padding: 10,
+    flexWrap: 'wrap'
+  },
+  qrScannerHint: {
+    display: 'block',
+    marginTop: 3,
+    color: '#6b7280',
+    fontSize: 12,
+    fontWeight: 800
+  },
+  darkButton: {
+    minHeight: 36,
+    background: '#111827',
+    color: '#fff',
+    border: '1px solid #111827',
+    borderRadius: 6,
+    padding: '0 12px',
+    fontSize: 12,
+    fontWeight: 900
   },
   resultButton: {
     border: '1px solid #d1d5db',
@@ -1437,5 +1499,44 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 20,
     fontSize: 13,
     fontWeight: 850
+  },
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(17, 24, 39, 0.55)',
+    zIndex: 50,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16
+  },
+  qrModal: {
+    width: '100%',
+    maxWidth: 430,
+    maxHeight: 'calc(100vh - 32px)',
+    overflow: 'auto',
+    background: '#fff',
+    borderRadius: 18,
+    padding: 14,
+    boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
+    display: 'grid',
+    gap: 12
+  },
+  qrModalHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 10,
+    alignItems: 'flex-start'
+  },
+  qrCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    border: '1px solid #e5e7eb',
+    background: '#f3f4f6',
+    color: '#111827',
+    fontSize: 20,
+    fontWeight: 900,
+    lineHeight: 1
   }
 }
