@@ -461,15 +461,14 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
         .group-issue-page a[href] {
           cursor: pointer;
           touch-action: manipulation;
-          transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
-          -webkit-tap-highlight-color: rgba(86, 219, 63, 0.22);
+          transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease, border-color 120ms ease, opacity 120ms ease;
+          -webkit-tap-highlight-color: rgba(34, 197, 94, 0.18);
         }
 
         .group-issue-page button:not(:disabled):active,
         .group-issue-page a[href]:active {
-          transform: translate(2px, 2px) scale(0.98);
-          filter: brightness(0.94);
-          box-shadow: 2px 2px 0 #000 !important;
+          transform: translateY(1px) scale(0.99);
+          filter: brightness(0.97);
         }
 
         .group-issue-page button:disabled {
@@ -477,10 +476,19 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           opacity: 0.7;
         }
 
+        .group-issue-page small {
+          display: block;
+          color: #6b7280;
+          font-weight: 700;
+          overflow-wrap: anywhere;
+        }
+
         @media (max-width: 720px) {
-          .group-issue-page { padding: 12px !important; }
-          .group-issue-card { padding: 18px !important; border-radius: 22px !important; box-shadow: 7px 7px 0 #000 !important; }
-          .group-issue-title { font-size: 31px !important; }
+          .group-issue-page { padding: 10px !important; }
+          .group-issue-shell { gap: 8px !important; }
+          .group-issue-layout { grid-template-columns: 1fr !important; }
+          .group-issue-header { align-items: stretch !important; flex-direction: column !important; }
+          .group-issue-title { font-size: 24px !important; }
           .group-issue-actions { grid-template-columns: 1fr !important; }
           .group-issue-top { align-items: stretch !important; flex-direction: column !important; }
           .delegate-row { grid-template-columns: 1fr auto !important; }
@@ -490,115 +498,210 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
         }
       `}</style>
 
-      <section className="group-issue-card" style={styles.card}>
-        <div className="group-issue-top" style={styles.topRow}>
+      <div className="group-issue-shell" style={styles.shell}>
+        <header className="group-issue-header" style={styles.header}>
           <div>
-            <div style={styles.kicker}>Strava</div>
             <h1 className="group-issue-title" style={styles.title}>Skupinovy vydaj</h1>
-            <p style={styles.subtitle}>Vyber den, jedlo a registracnu skupinu. Manager tu spravuje aj poverenych ludi.</p>
+            <p style={styles.subtitle}>Priprava vydaja pre registracne skupiny a poverenych ludi.</p>
           </div>
 
           <Link href="/dashboard" style={styles.backButton}>
             Spat
           </Link>
-        </div>
+        </header>
 
         {groups.length === 0 ? (
           <div style={styles.messageError}>Nemate pridelenu registracnu skupinu pre skupinovy vydaj.</div>
         ) : (
-          <>
-            <div style={styles.stepBadge}>Krok 1</div>
-
-            <div style={styles.formGrid}>
-              <label style={styles.field}>
-                <span style={styles.label}>Datum skupinoveho vydaja</span>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={event => {
-                    setDate(event.target.value)
-                    resetIssueState()
-                  }}
-                  style={styles.input}
-                />
-              </label>
-
-              <label style={styles.field}>
-                <span style={styles.label}>Registracna skupina</span>
-                <select
-                  value={selectedGroupId}
-                  onChange={event => {
-                    setSelectedGroupId(event.target.value)
-                    resetIssueState()
-                    setSearchQuery('')
-                    setSearchResults([])
-                    setFeedback('')
-                  }}
-                  style={styles.input}
-                >
-                  {groups.map(group => (
-                    <option key={group.id} value={group.id}>
-                      {group.name} - {group.accessLabel}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div style={styles.field}>
-                <span style={styles.label}>Jedlo</span>
-                <div style={styles.segment}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMeal('OBED')
-                      resetIssueState()
-                    }}
-                    style={{
-                      ...styles.segmentButton,
-                      ...(meal === 'OBED' ? styles.segmentButtonActive : {})
-                    }}
-                  >
-                    Obed
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMeal('VECERA')
-                      resetIssueState()
-                    }}
-                    style={{
-                      ...styles.segmentButton,
-                      ...(meal === 'VECERA' ? styles.segmentButtonActive : {})
-                    }}
-                  >
-                    Vecera
-                  </button>
+          <div className="group-issue-layout" style={styles.layout}>
+            <aside style={styles.sidebar}>
+              <section style={styles.panel}>
+                <div style={styles.panelHeaderRow}>
+                  <div style={styles.panelTitle}>Nastavenie vydaja</div>
+                  <span style={styles.kicker}>Strava</span>
                 </div>
-              </div>
-            </div>
 
-            <div style={styles.summaryBox}>
-              <span style={styles.summaryLabel}>Vybrane</span>
-              <b>{selectedGroup?.name || '-'} - {formatDate(date)} - {mealLabel(meal)}</b>
-            </div>
+                <div style={styles.formGrid}>
+                  <label style={styles.field}>
+                    <span style={styles.label}>Datum</span>
+                    <input
+                      type="date"
+                      value={date}
+                      onChange={event => {
+                        setDate(event.target.value)
+                        resetIssueState()
+                      }}
+                      style={styles.input}
+                    />
+                  </label>
 
-            <div className="group-issue-actions" style={styles.actions}>
-              <button
-                type="button"
-                onClick={loadIssuePeople}
-                disabled={!date || !selectedGroupId || issueLoading}
-                style={styles.primaryButton}
-              >
-                {issueLoading ? 'Nacitavam...' : 'Nacitat ludi'}
-              </button>
+                  <label style={styles.field}>
+                    <span style={styles.label}>Registracna skupina</span>
+                    <select
+                      value={selectedGroupId}
+                      onChange={event => {
+                        setSelectedGroupId(event.target.value)
+                        resetIssueState()
+                        setSearchQuery('')
+                        setSearchResults([])
+                        setFeedback('')
+                      }}
+                      style={styles.input}
+                    >
+                      {groups.map(group => (
+                        <option key={group.id} value={group.id}>
+                          {group.name} - {group.accessLabel}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-              <Link href="/dashboard" style={styles.secondaryButton}>
-                Zrusit
-              </Link>
-            </div>
+                  <div style={styles.field}>
+                    <span style={styles.label}>Jedlo</span>
+                    <div style={styles.segment}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMeal('OBED')
+                          resetIssueState()
+                        }}
+                        style={{
+                          ...styles.segmentButton,
+                          ...(meal === 'OBED' ? styles.segmentButtonActive : {})
+                        }}
+                      >
+                        Obed
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMeal('VECERA')
+                          resetIssueState()
+                        }}
+                        style={{
+                          ...styles.segmentButton,
+                          ...(meal === 'VECERA' ? styles.segmentButtonActive : {})
+                        }}
+                      >
+                        Vecera
+                      </button>
+                    </div>
+                  </div>
+                </div>
 
-            {confirmed && (
-              <section style={styles.issueBox}>
+                <div style={styles.summaryBox}>
+                  <span style={styles.summaryLabel}>Vybrane</span>
+                  <b>{selectedGroup?.name || '-'}</b>
+                  <span>{formatDate(date)} - {mealLabel(meal)}</span>
+                </div>
+
+                <div className="group-issue-actions" style={styles.actions}>
+                  <button
+                    type="button"
+                    onClick={loadIssuePeople}
+                    disabled={!date || !selectedGroupId || issueLoading}
+                    style={styles.primaryButton}
+                  >
+                    {issueLoading ? 'Nacitavam...' : 'Nacitat ludi'}
+                  </button>
+
+                  <Link href="/dashboard" style={styles.secondaryButton}>
+                    Zrusit
+                  </Link>
+                </div>
+              </section>
+
+              <section style={styles.panel}>
+                <div style={styles.delegateHeader}>
+                  <div>
+                    <h2 style={styles.delegateTitle}>Povereni ludia</h2>
+                    <p style={styles.delegateHint}>Povereny vydaj plati az po 15 minutach.</p>
+                  </div>
+                  <span style={styles.countBadge}>{delegates.length}</span>
+                </div>
+
+                {!selectedGroup?.canManageDelegates ? (
+                  <div style={styles.infoBox}>Tuto cast moze menit iba manager registracnej skupiny.</div>
+                ) : (
+                  <>
+                    <div style={styles.delegateList}>
+                      {delegates.length === 0 ? (
+                        <div style={styles.emptyBox}>Zatial nie je povereny nikto.</div>
+                      ) : (
+                        delegates.map(delegate => (
+                          <div className="delegate-row" key={delegate.id} style={styles.delegateRow}>
+                            <div style={styles.delegateName}>
+                              <b>{delegate.name}</b>
+                              {delegate.email && <span>{delegate.email}</span>}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeDelegate(delegate)}
+                              disabled={loading}
+                              style={styles.removeButton}
+                              title="Odobrat poverenie"
+                            >
+                              x
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div style={styles.searchBox}>
+                      <label style={styles.field}>
+                        <span style={styles.label}>Vyhladat osobu</span>
+                        <input
+                          type="search"
+                          value={searchQuery}
+                          onChange={event => searchUsers(event.target.value)}
+                          placeholder="Meno, priezvisko alebo email"
+                          style={styles.input}
+                        />
+                      </label>
+
+                      <label style={styles.field}>
+                        <span style={styles.label}>Poznamka</span>
+                        <input
+                          type="text"
+                          value={delegateNote}
+                          onChange={event => setDelegateNote(event.target.value)}
+                          placeholder="Volitelne"
+                          style={styles.input}
+                        />
+                      </label>
+
+                      {searchResults.length > 0 && (
+                        <div style={styles.searchResults}>
+                          {searchResults.map(user => (
+                            <button
+                              key={user.id}
+                              type="button"
+                              onClick={() => addDelegate(user)}
+                              disabled={loading || delegates.some(delegate => delegate.userId === user.id)}
+                              style={styles.resultButton}
+                            >
+                              <b>{user.name}</b>
+                              {user.email && <span>{user.email}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {feedback && (
+                  <div style={feedbackType === 'ok' ? styles.feedbackOk : styles.feedbackError}>
+                    {feedback}
+                  </div>
+                )}
+              </section>
+            </aside>
+
+            <section style={styles.mainPanel}>
+              {confirmed ? (
+                <>
                 <div style={styles.issueHeader}>
                   <div>
                     <h2 style={styles.delegateTitle}>Vytvorenie vydaja</h2>
@@ -788,100 +891,17 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     {issueFeedback}
                   </div>
                 )}
-              </section>
-            )}
-
-            <section style={styles.delegateBox}>
-              <div style={styles.delegateHeader}>
-                <div>
-                  <h2 style={styles.delegateTitle}>Povereni ludia</h2>
-                  <p style={styles.delegateHint}>
-                    Povereny clovek bude moct vytvorit skupinovy vydaj pre tuto registracnu skupinu. Vydaj od povereneho bude platny az po 15 minutach.
-                  </p>
-                </div>
-                <span style={styles.countBadge}>{delegates.length}</span>
-              </div>
-
-              {!selectedGroup?.canManageDelegates ? (
-                <div style={styles.infoBox}>Tuto cast moze menit iba manager registracnej skupiny.</div>
-              ) : (
-                <>
-                  <div style={styles.delegateList}>
-                    {delegates.length === 0 ? (
-                      <div style={styles.emptyBox}>Zatial nie je povereny nikto.</div>
-                    ) : (
-                      delegates.map(delegate => (
-                        <div className="delegate-row" key={delegate.id} style={styles.delegateRow}>
-                          <div style={styles.delegateName}>
-                            <b>{delegate.name}</b>
-                            {delegate.email && <span>{delegate.email}</span>}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeDelegate(delegate)}
-                            disabled={loading}
-                            style={styles.removeButton}
-                            title="Odobrat poverenie"
-                          >
-                            x
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  <div style={styles.searchBox}>
-                    <label style={styles.field}>
-                      <span style={styles.label}>Vyhladat osobu</span>
-                      <input
-                        type="search"
-                        value={searchQuery}
-                        onChange={event => searchUsers(event.target.value)}
-                        placeholder="Meno, priezvisko alebo email"
-                        style={styles.input}
-                      />
-                    </label>
-
-                    <label style={styles.field}>
-                      <span style={styles.label}>Poznamka</span>
-                      <input
-                        type="text"
-                        value={delegateNote}
-                        onChange={event => setDelegateNote(event.target.value)}
-                        placeholder="Volitelne"
-                        style={styles.input}
-                      />
-                    </label>
-
-                    {searchResults.length > 0 && (
-                      <div style={styles.searchResults}>
-                        {searchResults.map(user => (
-                          <button
-                            key={user.id}
-                            type="button"
-                            onClick={() => addDelegate(user)}
-                            disabled={loading || delegates.some(delegate => delegate.userId === user.id)}
-                            style={styles.resultButton}
-                          >
-                            <b>{user.name}</b>
-                            {user.email && <span>{user.email}</span>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
                 </>
-              )}
-
-              {feedback && (
-                <div style={feedbackType === 'ok' ? styles.feedbackOk : styles.feedbackError}>
-                  {feedback}
+              ) : (
+                <div style={styles.placeholderBox}>
+                  <b>Najprv nacitaj ludi pre vybrany datum, jedlo a registracnu skupinu.</b>
+                  <span>Potom sa tu zobrazia vydatelne osoby, pocty, QR pridanie a ulozenie skupinoveho vydaja.</span>
                 </div>
               )}
             </section>
-          </>
+          </div>
         )}
-      </section>
+      </div>
     </main>
   )
 }
@@ -889,210 +909,243 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: '100vh',
-    background: 'linear-gradient(135deg, #7417e8 0%, #ed59dc 45%, #56db3f 100%)',
-    padding: 24,
-    color: '#000',
+    background: '#f3f4f6',
+    padding: 14,
+    color: '#111827',
     fontFamily: 'Arial, Helvetica, sans-serif'
   },
-  card: {
-    maxWidth: 960,
+  shell: {
+    maxWidth: 1360,
     margin: '0 auto',
-    background: '#fff',
-    border: '4px solid #000',
-    borderRadius: 28,
-    padding: 30,
-    boxShadow: '12px 12px 0 #000'
+    display: 'grid',
+    gap: 10
   },
-  topRow: {
+  header: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: '10px 12px',
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 16,
-    marginBottom: 22
-  },
-  kicker: {
-    display: 'inline-block',
-    background: '#56db3f',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '6px 12px',
-    fontWeight: 950,
-    fontSize: 12,
-    textTransform: 'uppercase'
+    alignItems: 'center',
+    gap: 12
   },
   title: {
-    margin: '14px 0 8px 0',
-    fontSize: 44,
-    lineHeight: 1,
-    fontWeight: 950
+    margin: 0,
+    fontSize: 28,
+    lineHeight: 1.05,
+    fontWeight: 950,
+    color: '#111827'
   },
   subtitle: {
-    margin: 0,
-    maxWidth: 620,
-    fontSize: 15,
+    margin: '4px 0 0 0',
+    fontSize: 12,
     fontWeight: 800,
-    lineHeight: 1.35
+    color: '#6b7280',
+    lineHeight: 1.3
   },
   backButton: {
-    background: '#000',
-    color: '#56db3f',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '10px 15px',
-    fontWeight: 950,
+    minHeight: 34,
+    background: '#111827',
+    color: '#fff',
+    border: '1px solid #111827',
+    borderRadius: 6,
+    padding: '8px 12px',
+    fontSize: 12,
+    fontWeight: 900,
     textDecoration: 'none',
-    boxShadow: '4px 4px 0 #000',
-    whiteSpace: 'nowrap'
+    whiteSpace: 'nowrap',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  stepBadge: {
-    display: 'inline-block',
-    background: '#f25be6',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '7px 14px',
+  layout: {
+    display: 'grid',
+    gridTemplateColumns: '360px minmax(0, 1fr)',
+    gap: 10,
+    alignItems: 'start'
+  },
+  sidebar: {
+    display: 'grid',
+    gap: 10,
+    minWidth: 0
+  },
+  panel: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 12,
+    boxShadow: '0 1px 2px rgba(17, 24, 39, 0.04)'
+  },
+  mainPanel: {
+    minWidth: 0,
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 12,
+    boxShadow: '0 1px 2px rgba(17, 24, 39, 0.04)'
+  },
+  panelHeaderRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10
+  },
+  panelTitle: {
+    margin: 0,
+    fontSize: 13,
     fontWeight: 950,
-    marginBottom: 14
+    color: '#111827'
+  },
+  kicker: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    border: '1px solid #bbf7d0',
+    borderRadius: 999,
+    background: '#f0fdf4',
+    color: '#166534',
+    padding: '4px 8px',
+    fontSize: 10,
+    fontWeight: 950,
+    textTransform: 'uppercase'
   },
   formGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-    gap: 14
+    gridTemplateColumns: 'minmax(0, 1fr)',
+    gap: 10
   },
   field: {
     display: 'grid',
-    gap: 8
+    gap: 4,
+    minWidth: 0
   },
   label: {
-    fontSize: 13,
-    fontWeight: 950
+    fontSize: 11,
+    fontWeight: 900,
+    color: '#6b7280'
   },
   input: {
     width: '100%',
-    minHeight: 50,
+    minWidth: 0,
+    minHeight: 38,
     boxSizing: 'border-box',
-    border: '3px solid #000',
-    borderRadius: 14,
-    padding: '0 13px',
-    fontSize: 16,
-    fontWeight: 900,
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
+    padding: '0 9px',
+    fontSize: 13,
+    fontWeight: 800,
     background: '#fff',
-    color: '#000'
+    color: '#111827'
   },
   segment: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
-    gap: 10
+    gap: 6
   },
   segmentButton: {
-    minHeight: 50,
-    border: '3px solid #000',
-    borderRadius: 14,
+    minHeight: 38,
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
     background: '#fff',
-    color: '#000',
-    fontSize: 16,
-    fontWeight: 950,
-    boxShadow: '4px 4px 0 #000'
+    color: '#374151',
+    fontSize: 13,
+    fontWeight: 900
   },
   segmentButtonActive: {
-    background: '#56db3f'
+    background: '#dcfce7',
+    borderColor: '#22c55e',
+    color: '#14532d',
+    boxShadow: 'inset 0 0 0 1px #22c55e'
   },
   summaryBox: {
-    marginTop: 18,
-    border: '3px solid #000',
-    borderRadius: 18,
-    background: '#000',
-    color: '#fff',
-    padding: 14,
+    marginTop: 12,
+    border: '1px solid #d1d5db',
+    borderRadius: 8,
+    background: '#f9fafb',
+    color: '#111827',
+    padding: 10,
     display: 'grid',
-    gap: 4
+    gap: 3,
+    fontSize: 12,
+    fontWeight: 800
   },
   summaryLabel: {
-    color: '#56db3f',
-    fontSize: 12,
+    color: '#6b7280',
+    fontSize: 10,
     fontWeight: 950,
     textTransform: 'uppercase'
   },
   actions: {
-    marginTop: 18,
+    marginTop: 12,
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 12
+    gridTemplateColumns: '1fr auto',
+    gap: 8
   },
   primaryButton: {
-    minHeight: 52,
-    background: '#56db3f',
-    color: '#000',
-    border: '3px solid #000',
-    borderRadius: 999,
-    fontSize: 16,
-    fontWeight: 950,
-    boxShadow: '4px 4px 0 #000'
+    minHeight: 40,
+    background: '#22c55e',
+    color: '#052e16',
+    border: '1px solid #16a34a',
+    borderRadius: 6,
+    padding: '0 12px',
+    fontSize: 13,
+    fontWeight: 950
   },
   secondaryButton: {
-    minHeight: 52,
+    minHeight: 40,
     background: '#fff',
-    color: '#000',
-    border: '3px solid #000',
-    borderRadius: 999,
+    color: '#374151',
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
+    padding: '0 12px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 16,
-    fontWeight: 950,
-    textDecoration: 'none',
-    boxShadow: '4px 4px 0 #000'
-  },
-  message: {
-    marginTop: 16,
-    background: '#f25be6',
-    border: '3px solid #000',
-    borderRadius: 18,
-    padding: 14,
-    fontWeight: 950
+    fontSize: 13,
+    fontWeight: 900,
+    textDecoration: 'none'
   },
   messageError: {
-    background: '#ffe2e2',
-    border: '3px solid #000',
-    borderRadius: 18,
-    padding: 14,
-    fontWeight: 950
-  },
-  issueBox: {
-    marginTop: 22,
-    border: '3px solid #000',
-    borderRadius: 22,
-    background: '#f3ffe9',
-    padding: 16
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: 8,
+    padding: 12,
+    color: '#991b1b',
+    fontWeight: 900
   },
   issueHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     gap: 12,
-    alignItems: 'flex-start'
+    alignItems: 'flex-start',
+    paddingBottom: 10,
+    borderBottom: '1px solid #e5e7eb'
   },
   countGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-    gap: 10,
-    marginTop: 14
+    gap: 8,
+    marginTop: 12
   },
   countBox: {
-    border: '3px solid #000',
-    borderRadius: 14,
-    background: '#fff',
-    minHeight: 72,
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    background: '#f9fafb',
+    minHeight: 64,
     display: 'grid',
     placeItems: 'center',
     alignContent: 'center',
     gap: 2,
-    fontWeight: 950
+    fontWeight: 950,
+    color: '#111827'
   },
   countBoxDark: {
-    border: '3px solid #000',
-    borderRadius: 14,
-    background: '#000',
-    color: '#56db3f',
-    minHeight: 72,
+    border: '1px solid #111827',
+    borderRadius: 8,
+    background: '#111827',
+    color: '#86efac',
+    minHeight: 64,
     display: 'grid',
     placeItems: 'center',
     alignContent: 'center',
@@ -1102,262 +1155,287 @@ const styles: Record<string, React.CSSProperties> = {
   issueToolbar: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 14
+    gap: 8,
+    marginTop: 12
   },
   existingIssuesBox: {
-    marginTop: 14,
+    marginTop: 12,
     display: 'grid',
-    gap: 10,
-    border: '3px solid #000',
-    borderRadius: 14,
-    background: '#fff',
-    padding: 12
+    gap: 8,
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    background: '#f9fafb',
+    padding: 10
   },
   existingIssuesList: {
     display: 'grid',
-    gap: 8
+    gap: 6
   },
   existingIssueButton: {
-    border: '3px solid #000',
-    borderRadius: 14,
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
     background: '#fff',
-    color: '#000',
-    padding: 10,
+    color: '#111827',
+    padding: 9,
     display: 'grid',
-    gap: 4,
+    gap: 3,
     textAlign: 'left',
-    fontWeight: 950,
-    boxShadow: '3px 3px 0 #000'
+    fontWeight: 900
   },
   existingIssueButtonActive: {
-    background: '#56db3f'
+    background: '#ecfdf5',
+    borderColor: '#22c55e',
+    boxShadow: 'inset 3px 0 0 #22c55e'
   },
   smallButton: {
-    minHeight: 38,
-    background: '#56db3f',
-    color: '#000',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '0 14px',
-    fontSize: 13,
-    fontWeight: 950,
-    boxShadow: '3px 3px 0 #000'
+    minHeight: 34,
+    background: '#dcfce7',
+    color: '#14532d',
+    border: '1px solid #86efac',
+    borderRadius: 6,
+    padding: '0 10px',
+    fontSize: 12,
+    fontWeight: 950
   },
   smallButtonWhite: {
-    minHeight: 38,
+    minHeight: 34,
     background: '#fff',
-    color: '#000',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '0 14px',
-    fontSize: 13,
-    fontWeight: 950,
-    boxShadow: '3px 3px 0 #000'
+    color: '#374151',
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
+    padding: '0 10px',
+    fontSize: 12,
+    fontWeight: 900
   },
   issuePeopleList: {
     display: 'grid',
-    gap: 10,
-    marginTop: 14,
+    gap: 6,
+    marginTop: 12,
     maxHeight: 430,
     overflow: 'auto',
-    paddingRight: 4
+    paddingRight: 3
   },
   issuePersonRow: {
     display: 'grid',
     gridTemplateColumns: 'minmax(0, 1fr) auto',
-    gap: 12,
+    gap: 10,
     alignItems: 'center',
     background: '#fff',
-    border: '3px solid #000',
-    borderRadius: 14,
-    padding: 10
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    padding: '8px 9px'
   },
   issuePersonRowSelected: {
-    background: '#e7ffd8'
+    background: '#f0fdf4',
+    borderColor: '#86efac',
+    boxShadow: 'inset 3px 0 0 #22c55e'
   },
   personCheckLabel: {
     display: 'grid',
     gridTemplateColumns: 'auto minmax(0, 1fr)',
-    gap: 10,
+    gap: 8,
     alignItems: 'center',
     minWidth: 0,
-    fontWeight: 950
+    fontWeight: 900
   },
   checkbox: {
-    width: 22,
-    height: 22,
-    accentColor: '#56db3f'
+    width: 18,
+    height: 18,
+    accentColor: '#22c55e'
   },
   personMeta: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
     justifyContent: 'flex-end',
     alignItems: 'center'
   },
   choicePill: {
-    border: '2px solid #000',
+    border: '1px solid #bfdbfe',
     borderRadius: 999,
-    background: '#f25be6',
-    padding: '5px 9px',
-    fontSize: 12,
+    background: '#eff6ff',
+    color: '#1d4ed8',
+    padding: '4px 8px',
+    fontSize: 11,
     fontWeight: 950
   },
   sourcePill: {
-    border: '2px solid #000',
+    border: '1px solid #e5e7eb',
     borderRadius: 999,
-    background: '#fff',
-    padding: '5px 9px',
-    fontSize: 12,
-    fontWeight: 950
+    background: '#f9fafb',
+    color: '#374151',
+    padding: '4px 8px',
+    fontSize: 11,
+    fontWeight: 900
   },
   pickupLabel: {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 5,
-    border: '2px solid #000',
+    border: '1px solid #fed7aa',
     borderRadius: 999,
-    background: '#fff7d8',
-    padding: '5px 9px',
-    fontSize: 12,
+    background: '#fff7ed',
+    color: '#9a3412',
+    padding: '4px 8px',
+    fontSize: 11,
     fontWeight: 950
   },
   createdBox: {
-    marginTop: 14,
-    border: '3px solid #000',
-    borderRadius: 14,
-    background: '#000',
-    color: '#fff',
-    padding: 12,
+    marginTop: 12,
+    border: '1px solid #bbf7d0',
+    borderRadius: 8,
+    background: '#f0fdf4',
+    color: '#14532d',
+    padding: 10,
     display: 'grid',
-    gap: 5,
+    gap: 4,
+    fontSize: 12,
     fontWeight: 900
-  },
-  delegateBox: {
-    marginTop: 22,
-    border: '3px solid #000',
-    borderRadius: 22,
-    background: '#fff7d8',
-    padding: 16
   },
   delegateHeader: {
     display: 'flex',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 10,
     alignItems: 'flex-start'
   },
   delegateTitle: {
     margin: 0,
-    fontSize: 22,
-    fontWeight: 950
+    fontSize: 15,
+    fontWeight: 950,
+    color: '#111827'
   },
   delegateHint: {
-    margin: '6px 0 0 0',
-    fontSize: 13,
+    margin: '4px 0 0 0',
+    fontSize: 12,
     fontWeight: 800,
+    color: '#6b7280',
     lineHeight: 1.35
   },
   countBadge: {
-    minWidth: 40,
-    height: 40,
-    border: '3px solid #000',
+    minWidth: 34,
+    height: 34,
+    border: '1px solid #86efac',
     borderRadius: 999,
-    background: '#56db3f',
+    background: '#dcfce7',
+    color: '#14532d',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    fontSize: 13,
     fontWeight: 950
   },
   delegateList: {
     display: 'grid',
-    gap: 10,
-    marginTop: 14
+    gap: 6,
+    marginTop: 10
   },
   delegateRow: {
     display: 'grid',
-    gridTemplateColumns: '1fr auto',
-    gap: 10,
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 8,
     alignItems: 'center',
-    background: '#fff',
-    border: '3px solid #000',
-    borderRadius: 14,
-    padding: 10
+    background: '#f9fafb',
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    padding: 8
   },
   delegateName: {
     display: 'grid',
-    gap: 3,
-    minWidth: 0
+    gap: 2,
+    minWidth: 0,
+    fontSize: 12
   },
   removeButton: {
-    width: 38,
-    height: 38,
-    border: '3px solid #000',
-    borderRadius: 999,
-    background: '#ff6b6b',
-    color: '#000',
-    fontSize: 22,
-    fontWeight: 950,
-    boxShadow: '3px 3px 0 #000'
+    width: 30,
+    height: 30,
+    border: '1px solid #fecaca',
+    borderRadius: 6,
+    background: '#fef2f2',
+    color: '#991b1b',
+    fontSize: 17,
+    fontWeight: 950
   },
   emptyBox: {
-    background: '#fff',
-    border: '3px dashed #000',
-    borderRadius: 14,
-    padding: 12,
-    fontWeight: 900
+    background: '#f9fafb',
+    border: '1px dashed #d1d5db',
+    borderRadius: 6,
+    padding: 10,
+    color: '#6b7280',
+    fontSize: 12,
+    fontWeight: 850
   },
   infoBox: {
-    marginTop: 14,
-    background: '#fff',
-    border: '3px solid #000',
-    borderRadius: 14,
-    padding: 12,
-    fontWeight: 900
+    marginTop: 10,
+    background: '#f9fafb',
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    padding: 10,
+    color: '#6b7280',
+    fontSize: 12,
+    fontWeight: 850
   },
   searchBox: {
-    marginTop: 14,
+    marginTop: 12,
     display: 'grid',
-    gap: 12
+    gap: 10
   },
   searchResults: {
     display: 'grid',
-    gap: 8
+    gap: 6
   },
   qrScannerBox: {
     display: 'grid',
-    gap: 10,
-    border: '3px solid #000',
-    borderRadius: 16,
-    background: '#fff7d8',
-    padding: 12
+    gap: 8,
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    background: '#f9fafb',
+    padding: 10
   },
   resultButton: {
-    border: '3px solid #000',
-    borderRadius: 14,
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
     background: '#fff',
-    color: '#000',
-    padding: 11,
+    color: '#111827',
+    padding: 9,
     display: 'grid',
     gap: 3,
     textAlign: 'left',
-    fontWeight: 900,
-    boxShadow: '3px 3px 0 #000'
+    fontSize: 12,
+    fontWeight: 850
   },
   feedbackOk: {
-    marginTop: 14,
-    background: '#dfffd9',
-    border: '3px solid #000',
-    borderRadius: 14,
-    padding: 12,
-    fontWeight: 950
+    marginTop: 12,
+    background: '#f0fdf4',
+    border: '1px solid #bbf7d0',
+    borderRadius: 6,
+    padding: 10,
+    color: '#14532d',
+    fontSize: 12,
+    fontWeight: 900
   },
   feedbackError: {
-    marginTop: 14,
-    background: '#ffe2e2',
-    border: '3px solid #000',
-    borderRadius: 14,
-    padding: 12,
-    fontWeight: 950
+    marginTop: 12,
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: 6,
+    padding: 10,
+    color: '#991b1b',
+    fontSize: 12,
+    fontWeight: 900
+  },
+  placeholderBox: {
+    minHeight: 360,
+    display: 'grid',
+    alignContent: 'center',
+    justifyItems: 'center',
+    gap: 8,
+    textAlign: 'center',
+    border: '1px dashed #d1d5db',
+    borderRadius: 8,
+    background: '#f9fafb',
+    color: '#6b7280',
+    padding: 20,
+    fontSize: 13,
+    fontWeight: 850
   }
 }
