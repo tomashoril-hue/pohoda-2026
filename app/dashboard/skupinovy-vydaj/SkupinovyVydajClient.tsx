@@ -381,6 +381,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       return
     }
 
+    const wasEditing = Boolean(editingIssueId)
+
     setIssueLoading(true)
     setIssueMessage('')
     setCreatedIssue(null)
@@ -406,10 +408,23 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
       if (!res.ok) throw new Error(json.error || 'Skupinovy vydaj sa nepodarilo ulozit.')
 
+      const successMessage = json.message || (wasEditing
+        ? 'Skupinovy vydaj bol upraveny.'
+        : 'Skupinovy vydaj bol vytvoreny.')
+
+      if (wasEditing) {
+        resetIssueState()
+        setQrModalOpen(false)
+        setSelectionOpen(false)
+        await loadExistingIssuesFor()
+        setIssueMessage(successMessage)
+        return
+      }
+
       setCreatedIssue(json)
       setEditingIssueId(json.issueId || editingIssueId)
       await loadExistingIssuesFor()
-      setIssueMessage(json.message || 'Skupinovy vydaj bol vytvoreny.')
+      setIssueMessage(successMessage)
     } catch (err: any) {
       setIssueMessage(err?.message || 'Skupinovy vydaj sa nepodarilo ulozit.', 'error')
     } finally {
