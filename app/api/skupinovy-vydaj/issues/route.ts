@@ -299,31 +299,39 @@ export async function GET(req: NextRequest) {
     const date = normalizeDate(req.nextUrl.searchParams.get('date'))
     const meal = normalizeMeal(req.nextUrl.searchParams.get('meal'))
 
-    if (!registrationGroupId || !date || !meal) {
-      return NextResponse.json({ error: 'Chyba registracna skupina, datum alebo jedlo.' }, { status: 400 })
+    if (!registrationGroupId || !date) {
+      return NextResponse.json({ error: 'Chyba registracna skupina alebo datum.' }, { status: 400 })
     }
 
     await validateIssueAccess(actor.id, registrationGroupId)
 
-    const { data: issues, error } = await supabaseServer
+    let query = supabaseServer
       .from('registration_group_issues')
       .select('id, title, datum, typ_jedla, status, valid_after, created_at')
       .eq('registration_group_id', registrationGroupId)
       .eq('datum', date)
-      .eq('typ_jedla', meal)
       .in('status', ['READY', 'WAITING'])
+      .order('typ_jedla', { ascending: true })
       .order('created_at', { ascending: false })
-      .limit(20)
+      .limit(50)
+
+    if (meal) query = query.eq('typ_jedla', meal)
+
+    const { data: issues, error } = await query
 
     if (error) throw error
 
     const result = []
 
     for (const issue of issues || []) {
-      const people = await loadIssuePeople(issue.id, date, meal)
+      const issueMeal = normalizeMeal(issue.typ_jedla)
+      if (!issueMeal) continue
+
+      const people = await loadIssuePeople(issue.id, date, issueMeal)
       result.push({
         id: issue.id,
         title: issue.title,
+        meal: issueMeal,
         status: issue.status,
         validAfter: issue.valid_after,
         summary: choiceSummary(people)
@@ -385,7 +393,7 @@ export async function POST(req: NextRequest) {
     const nextStatus = statusForAccess(access)
     const now = new Date().toISOString()
     const sequence = await nextIssueSequence(registrationGroupId, date, meal)
-    const title = issueTitle(registrationGroup.name, body.title, sequence)
+    const title = issueTitle(registrationGroup.name, meal, body.title, sequence)
 
     const { data: issue, error: issueError } = await supabaseServer
       .from('registration_group_issues')

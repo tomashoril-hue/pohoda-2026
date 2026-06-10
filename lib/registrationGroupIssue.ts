@@ -54,10 +54,12 @@ export function entitlementOk(row: any, meal: MealType) {
   return row.vecera === true
 }
 
-export function issueTitle(groupName: string, customTitle?: string, sequence = 1) {
+export function issueTitle(groupName: string, meal: MealType, customTitle?: string, sequence = 1) {
   const title = cleanText(customTitle)
   if (title) return title
-  return `${groupName || 'Skupinovy vydaj'} výdaj č. ${Math.max(1, sequence)}`
+
+  const mealText = meal === 'OBED' ? 'obed' : 'večera'
+  return `${groupName || 'Skupinovy vydaj'} ${mealText} výdaj č. ${Math.max(1, sequence)}`
 }
 
 export function choiceSummary(rows: Array<{ choice: FoodChoice }>) {

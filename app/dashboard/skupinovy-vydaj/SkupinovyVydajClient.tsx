@@ -41,6 +41,7 @@ type IssuePerson = {
 type ExistingIssue = {
   id: string
   title: string
+  meal: MealType
   status: string
   validAfter: string | null
   summary: {
@@ -94,6 +95,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [createdIssue, setCreatedIssue] = useState<any>(null)
   const [qrModalOpen, setQrModalOpen] = useState(false)
   const [existingLoading, setExistingLoading] = useState(false)
+  const [existingIssuesLoaded, setExistingIssuesLoaded] = useState(false)
   const [selectedGroupId, setSelectedGroupId] = useState(groups.length === 1 ? groups[0]?.id || '' : '')
   const [delegateMap, setDelegateMap] = useState<Record<string, Delegate[]>>(delegatesByGroupId)
   const [searchQuery, setSearchQuery] = useState('')
@@ -108,7 +110,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   }, [groups, selectedGroupId])
 
   const delegates = selectedGroupId ? delegateMap[selectedGroupId] || [] : []
-  const selectionReady = Boolean(date && selectedGroupId && meal)
+  const selectionReady = Boolean(date && selectedGroupId)
   const selectedIssuePeople = issuePeople.filter(person => selectedIssueUserIds.includes(person.id))
   const selectedSummary = selectedIssuePeople.reduce((summary, person) => {
     summary[person.choice] += 1
@@ -152,11 +154,15 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     const clearExisting = options.clearExisting ?? true
 
     setConfirmed(false)
+    setMeal('')
     setIssueTitle('')
     setIssuePeople([])
     setSelectedIssueUserIds([])
     setPickupUserIds([])
-    if (clearExisting) setExistingIssues([])
+    if (clearExisting) {
+      setExistingIssues([])
+      setExistingIssuesLoaded(false)
+    }
     setEditingIssueId('')
     setIssueFeedback('')
     setCreatedIssue(null)
@@ -165,18 +171,19 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   async function loadExistingIssuesFor(
     nextGroupId = selectedGroupId,
     nextDate = date,
-    nextMeal = meal
+    nextMeal: MealSelection = ''
   ) {
-    if (!nextGroupId || !nextDate || !nextMeal) {
+    if (!nextGroupId || !nextDate) {
       setExistingIssues([])
+      setExistingIssuesLoaded(false)
       return []
     }
 
     const params = new URLSearchParams({
       registrationGroupId: nextGroupId,
-      date: nextDate,
-      meal: nextMeal
+      date: nextDate
     })
+    if (nextMeal) params.set('meal', nextMeal)
 
     setExistingLoading(true)
 
@@ -188,41 +195,44 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
       const issues = json.issues || []
       setExistingIssues(issues)
+      setExistingIssuesLoaded(true)
       return issues
     } finally {
       setExistingLoading(false)
     }
   }
 
-  async function showSelectionResult(nextGroupId: string, nextDate: string, nextMeal: MealSelection) {
+  async function showSelectionResult(nextGroupId: string, nextDate: string) {
     resetIssueState()
-    if (!nextGroupId || !nextDate || !nextMeal) {
+    if (!nextGroupId || !nextDate) {
       setSelectionOpen(true)
       setExistingIssues([])
+      setExistingIssuesLoaded(false)
       return
     }
 
     setSelectionOpen(false)
 
     try {
-      await loadExistingIssuesFor(nextGroupId, nextDate, nextMeal)
+      await loadExistingIssuesFor(nextGroupId, nextDate)
     } catch (err: any) {
       setIssueMessage(err?.message || 'Existujuce vydaje sa nepodarilo nacitat.', 'error')
     }
   }
 
-  async function loadIssuePeople() {
-    if (!selectedGroupId || !date || !meal) return
+  async function loadIssuePeople(nextMeal: MealType) {
+    if (!selectedGroupId || !date) return
 
     setIssueLoading(true)
     setIssueMessage('')
     setCreatedIssue(null)
+    setMeal(nextMeal)
 
     try {
       const params = new URLSearchParams({
         registrationGroupId: selectedGroupId,
         date,
-        meal
+        meal: nextMeal
       })
       const res = await fetch(`/api/skupinovy-vydaj/options?${params.toString()}`)
       const json = await res.json()
@@ -235,7 +245,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setSelectedIssueUserIds(people.map(person => person.id))
       setPickupUserIds(people[0]?.id ? [people[0].id] : [])
       setEditingIssueId('')
-      await loadExistingIssuesFor()
+      await loadExistingIssuesFor(selectedGroupId, date)
       setConfirmed(true)
       const excludedCount = Number(json.plannedExcludedCount || 0)
       setIssueMessage(
@@ -269,6 +279,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       const people: IssuePerson[] = issue.people || []
 
       setEditingIssueId(issue.id)
+      setMeal(issue.meal || '')
       setIssueTitle(issue.title || '')
       setIssuePeople(people)
       setSelectedIssueUserIds(people.map(person => person.id))
@@ -380,7 +391,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   }
 
   async function saveIssue() {
-    if (!selectedGroupId || selectedIssuePeople.length === 0) {
+    if (!selectedGroupId || !date || !meal || selectedIssuePeople.length === 0) {
       setIssueMessage('Vyber aspon jednu osobu.', 'error')
       return
     }
@@ -714,7 +725,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     <div style={styles.selectedChoiceInfo}>
                       <span style={styles.summaryLabel}>Vybrate</span>
                       <b>{selectedGroup?.name || '-'}</b>
-                      <small>{fullDateLabel(date)} - {mealLabel(meal)}</small>
+                      <small>{fullDateLabel(date)}</small>
                     </div>
 
                     <button
@@ -743,7 +754,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                           date,
                           value => {
                             setDate(value)
-                            void showSelectionResult(selectedGroupId, value, meal)
+                            void showSelectionResult(selectedGroupId, value)
                           },
                           issueLoading,
                           'Vyber datum'
@@ -760,7 +771,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                             setSearchQuery('')
                             setSearchResults([])
                             setFeedback('')
-                            void showSelectionResult(nextGroupId, date, meal)
+                            void showSelectionResult(nextGroupId, date)
                           }}
                           style={styles.input}
                         >
@@ -773,48 +784,27 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                         </select>
                       </label>
 
-                      <div style={styles.field}>
-                        <span>Jedlo</span>
-                        <div style={styles.segment}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMeal('OBED')
-                              void showSelectionResult(selectedGroupId, date, 'OBED')
-                            }}
-                            style={{
-                              ...styles.segmentButton,
-                              ...(meal === 'OBED' ? styles.segmentButtonActive : {})
-                            }}
-                          >
-                            Obed
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMeal('VECERA')
-                              void showSelectionResult(selectedGroupId, date, 'VECERA')
-                            }}
-                            style={{
-                              ...styles.segmentButton,
-                              ...(meal === 'VECERA' ? styles.segmentButtonActive : {})
-                            }}
-                          >
-                            Vecera
-                          </button>
-                        </div>
-                      </div>
+                      {selectionReady && (
+                        <button
+                          type="button"
+                          onClick={() => void showSelectionResult(selectedGroupId, date)}
+                          disabled={issueLoading}
+                          style={styles.primaryButton}
+                        >
+                          Zobrazit vydaje
+                        </button>
+                      )}
                     </div>
                   </>
                 )}
               </section>
 
-              {selectionReady && (
+              {selectionReady && (!selectionOpen || existingIssuesLoaded) && (
                 <section style={{ ...styles.panel, order: 2 }}>
                   <div style={styles.delegateHeader}>
                     <div>
-                      <h2 style={styles.delegateTitle}>Existujuce skupinove vydaje</h2>
-                      <p style={styles.delegateHint}>{selectedGroup?.name || '-'} / {fullDateLabel(date)} / {mealLabel(meal)}</p>
+                      <h2 style={styles.delegateTitle}>Vydaje pre tento den</h2>
+                      <p style={styles.delegateHint}>{selectedGroup?.name || '-'} / {fullDateLabel(date)}</p>
                     </div>
                     <span style={styles.countBadge}>{existingIssues.length}</span>
                   </div>
@@ -836,6 +826,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                           <div style={styles.existingIssueInfo}>
                             <b>{issue.title}</b>
                             <small>
+                              <span style={styles.mealBadge}>{mealLabel(issue.meal)}</span>
                               MASO {issue.summary?.MASO || 0} / VEGE {issue.summary?.VEGE || 0} / DIETA {issue.summary?.DIETA || 0} / SPOLU {issue.summary?.SPOLU || 0}
                             </small>
                           </div>
@@ -865,14 +856,24 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     </div>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={loadIssuePeople}
-                    disabled={issueLoading}
-                    style={{ ...styles.primaryButton, marginTop: 10, width: '100%' }}
-                  >
-                    {issueLoading ? 'Nacitavam...' : 'Pripravit novy vydaj'}
-                  </button>
+                  <div style={styles.prepareActions}>
+                    <button
+                      type="button"
+                      onClick={() => loadIssuePeople('OBED')}
+                      disabled={issueLoading}
+                      style={styles.primaryButton}
+                    >
+                      {issueLoading ? 'Nacitavam...' : 'Pripravit obed'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => loadIssuePeople('VECERA')}
+                      disabled={issueLoading}
+                      style={styles.primaryButton}
+                    >
+                      {issueLoading ? 'Nacitavam...' : 'Pripravit veceru'}
+                    </button>
+                  </div>
 
                   {!confirmed && issueFeedback && (
                     <div style={issueFeedbackType === 'ok' ? styles.feedbackOk : styles.feedbackError}>
@@ -1331,6 +1332,12 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     marginTop: 12
   },
+  prepareActions: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+    gap: 8,
+    marginTop: 10
+  },
   existingIssuesBox: {
     marginTop: 12,
     display: 'grid',
@@ -1366,6 +1373,19 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 0,
     fontSize: 12,
     fontWeight: 900
+  },
+  mealBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    border: '1px solid #fed7aa',
+    borderRadius: 999,
+    background: '#fff7ed',
+    color: '#9a3412',
+    padding: '2px 7px',
+    marginRight: 6,
+    fontSize: 10,
+    fontWeight: 950,
+    textTransform: 'uppercase'
   },
   existingIssueActions: {
     display: 'flex',
