@@ -148,13 +148,15 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     </div>
   )
 
-  function resetIssueState() {
+  function resetIssueState(options: { clearExisting?: boolean } = {}) {
+    const clearExisting = options.clearExisting ?? true
+
     setConfirmed(false)
     setIssueTitle('')
     setIssuePeople([])
     setSelectedIssueUserIds([])
     setPickupUserIds([])
-    setExistingIssues([])
+    if (clearExisting) setExistingIssues([])
     setEditingIssueId('')
     setIssueFeedback('')
     setCreatedIssue(null)
@@ -719,8 +721,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                       type="button"
                       onClick={() => {
                         setSelectionOpen(true)
-                        resetIssueState()
-                        setExistingIssues([])
+                        resetIssueState({ clearExisting: false })
                       }}
                       style={styles.smallButtonWhite}
                     >
