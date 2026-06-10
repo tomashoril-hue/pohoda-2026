@@ -59,6 +59,10 @@ type Props = {
 }
 
 const SHOW_DELEGATES = false
+const MEAL_OPTIONS: Array<{ value: MealType, label: string }> = [
+  { value: 'OBED', label: 'Obed' },
+  { value: 'VECERA', label: 'Vecera' }
+]
 
 function fullDateLabel(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value || '-'
@@ -68,8 +72,7 @@ function fullDateLabel(value: string) {
 }
 
 function mealLabel(value: MealSelection) {
-  if (!value) return 'Vyberte jedlo'
-  return value === 'OBED' ? 'Obed' : 'Vecera'
+  return MEAL_OPTIONS.find(option => option.value === value)?.label || 'Vyberte jedlo'
 }
 
 function sourceLabel(value: IssuePerson['source']) {
@@ -593,6 +596,12 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           <div className="group-issue-layout" style={styles.layout}>
             {confirmed && (
               <section className="group-issue-main" style={styles.mainPanel}>
+                <div style={styles.prepHeading}>
+                  <span style={styles.summaryLabel}>Pripravujes</span>
+                  <b>{mealLabel(meal)}</b>
+                  <small>{selectedGroup?.name || '-'} / {fullDateLabel(date)}</small>
+                </div>
+
                 <label style={styles.field}>
                   <span style={styles.label}>Nazov skupinoveho vydaja</span>
                   <input
@@ -799,7 +808,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 )}
               </section>
 
-              {selectionReady && (!selectionOpen || existingIssuesLoaded) && (
+              {!confirmed && selectionReady && (!selectionOpen || existingIssuesLoaded) && (
                 <section style={{ ...styles.panel, order: 2 }}>
                   <div style={styles.delegateHeader}>
                     <div>
@@ -857,21 +866,31 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   )}
 
                   <div style={styles.prepareActions}>
+                    <label style={styles.field}>
+                      <span style={styles.label}>Jedlo</span>
+                      <select
+                        value={meal}
+                        onChange={event => setMeal(event.target.value as MealSelection)}
+                        disabled={issueLoading}
+                        style={styles.input}
+                      >
+                        <option value="">Vyberte jedlo</option>
+                        {MEAL_OPTIONS.map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <button
                       type="button"
-                      onClick={() => loadIssuePeople('OBED')}
-                      disabled={issueLoading}
-                      style={styles.primaryButton}
+                      onClick={() => {
+                        if (meal) void loadIssuePeople(meal)
+                      }}
+                      disabled={issueLoading || !meal}
+                      style={{ ...styles.primaryButton, alignSelf: 'end' }}
                     >
-                      {issueLoading ? 'Nacitavam...' : 'Pripravit obed'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => loadIssuePeople('VECERA')}
-                      disabled={issueLoading}
-                      style={styles.primaryButton}
-                    >
-                      {issueLoading ? 'Nacitavam...' : 'Pripravit veceru'}
+                      {issueLoading ? 'Nacitavam...' : 'Pripravit vydaj'}
                     </button>
                   </div>
 
@@ -1084,6 +1103,18 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 12,
     boxShadow: '0 1px 2px rgba(17, 24, 39, 0.04)',
     order: 3
+  },
+  prepHeading: {
+    border: '1px solid #bbf7d0',
+    borderRadius: 8,
+    background: '#f0fdf4',
+    padding: 10,
+    marginBottom: 10,
+    display: 'grid',
+    gap: 3,
+    color: '#14532d',
+    fontSize: 13,
+    fontWeight: 900
   },
   panelHeaderRow: {
     display: 'flex',
@@ -1334,9 +1365,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   prepareActions: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(140px, auto)',
     gap: 8,
-    marginTop: 10
+    marginTop: 10,
+    alignItems: 'end'
   },
   existingIssuesBox: {
     marginTop: 12,
