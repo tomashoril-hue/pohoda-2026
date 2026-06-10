@@ -722,6 +722,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                       onClick={() => {
                         setSelectionOpen(true)
                         resetIssueState({ clearExisting: false })
+                        void loadExistingIssuesFor()
                       }}
                       style={styles.smallButtonWhite}
                     >
