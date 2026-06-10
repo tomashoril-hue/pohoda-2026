@@ -887,7 +887,7 @@ export async function POST(req: NextRequest) {
     ))
     let bulkIssueOptions: any[] = []
 
-    if (authorizedGroupIds.length > 0) {
+    if (!issueAction && authorizedGroupIds.length > 0) {
       const { data: candidateIssues, error: candidateIssuesError } = await supabaseServer
         .from('hromadne_vydaje')
         .select(`
@@ -1028,139 +1028,141 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const registrationIssueMap = new Map<string, any>()
+    if (!issueAction) {
+      const registrationIssueMap = new Map<string, any>()
 
-    ;(registrationPickupIssues || []).forEach((row: any) => {
-      const issue = registrationIssueOf(row)
-      if (!issue?.id) return
-      registrationIssueMap.set(issue.id, issue)
-    })
-    matchingRegistrationPlannedItems.forEach((item: any) => {
-      const issue = registrationIssueOf(item)
-      if (!issue?.id) return
-      registrationIssueMap.set(issue.id, issue)
-    })
+      ;(registrationPickupIssues || []).forEach((row: any) => {
+        const issue = registrationIssueOf(row)
+        if (!issue?.id) return
+        registrationIssueMap.set(issue.id, issue)
+      })
+      matchingRegistrationPlannedItems.forEach((item: any) => {
+        const issue = registrationIssueOf(item)
+        if (!issue?.id) return
+        registrationIssueMap.set(issue.id, issue)
+      })
 
-    const activeRegistrationIssues = Array.from(registrationIssueMap.values()).filter((issue: any) => {
-      if (issue.datum !== datum || issue.typ_jedla !== typJedla) return false
-      if (!isActiveIssue(issue, now)) return false
-      return true
-    })
-    const activeRegistrationIssueIds = activeRegistrationIssues.map((issue: any) => issue.id)
+      const activeRegistrationIssues = Array.from(registrationIssueMap.values()).filter((issue: any) => {
+        if (issue.datum !== datum || issue.typ_jedla !== typJedla) return false
+        if (!isActiveIssue(issue, now)) return false
+        return true
+      })
+      const activeRegistrationIssueIds = activeRegistrationIssues.map((issue: any) => issue.id)
 
-    if (activeRegistrationIssueIds.length > 0) {
-      const { data: candidateRegistrationItems, error: candidateRegistrationItemsError } = await supabaseServer
-        .from('registration_group_issue_items')
-        .select('id, issue_id, user_id, volba')
-        .in('issue_id', activeRegistrationIssueIds)
-        .eq('status', 'PLANNED')
+      if (activeRegistrationIssueIds.length > 0) {
+        const { data: candidateRegistrationItems, error: candidateRegistrationItemsError } = await supabaseServer
+          .from('registration_group_issue_items')
+          .select('id, issue_id, user_id, volba')
+          .in('issue_id', activeRegistrationIssueIds)
+          .eq('status', 'PLANNED')
 
-      if (candidateRegistrationItemsError) {
-        return NextResponse.json({ error: candidateRegistrationItemsError.message }, { status: 500 })
-      }
-
-      const candidateUserIds = Array.from(new Set(
-        (candidateRegistrationItems || []).map((item: any) => item.user_id).filter(Boolean)
-      ))
-
-      if (candidateUserIds.length > 0) {
-        const [
-          candidateIssuedResult,
-          candidateProfilesResult,
-          candidateEntitlementsResult,
-          candidateSelectionsResult
-        ] = await Promise.all([
-          supabaseServer
-            .from('vydaj_jedal')
-            .select('user_id')
-            .eq('datum', datum)
-            .eq('typ_jedla', typJedla)
-            .eq('status', 'VYDANE')
-            .in('user_id', candidateUserIds),
-          supabaseServer
-            .from('users')
-            .select('id, aktivny, typ_stravy')
-            .in('id', candidateUserIds),
-          supabaseServer
-            .from('user_food_entitlements')
-            .select('user_id, obed, vecera')
-            .eq('datum', datum)
-            .in('user_id', candidateUserIds),
-          supabaseServer
-            .from('vyber_jedal')
-            .select('user_id, volba')
-            .eq('datum', datum)
-            .eq('typ_jedla', typJedla)
-            .in('user_id', candidateUserIds)
-        ])
-
-        if (candidateIssuedResult.error) {
-          return NextResponse.json({ error: candidateIssuedResult.error.message }, { status: 500 })
+        if (candidateRegistrationItemsError) {
+          return NextResponse.json({ error: candidateRegistrationItemsError.message }, { status: 500 })
         }
 
-        if (candidateProfilesResult.error) {
-          return NextResponse.json({ error: candidateProfilesResult.error.message }, { status: 500 })
+        const candidateUserIds = Array.from(new Set(
+          (candidateRegistrationItems || []).map((item: any) => item.user_id).filter(Boolean)
+        ))
+
+        if (candidateUserIds.length > 0) {
+          const [
+            candidateIssuedResult,
+            candidateProfilesResult,
+            candidateEntitlementsResult,
+            candidateSelectionsResult
+          ] = await Promise.all([
+            supabaseServer
+              .from('vydaj_jedal')
+              .select('user_id')
+              .eq('datum', datum)
+              .eq('typ_jedla', typJedla)
+              .eq('status', 'VYDANE')
+              .in('user_id', candidateUserIds),
+            supabaseServer
+              .from('users')
+              .select('id, aktivny, typ_stravy')
+              .in('id', candidateUserIds),
+            supabaseServer
+              .from('user_food_entitlements')
+              .select('user_id, obed, vecera')
+              .eq('datum', datum)
+              .in('user_id', candidateUserIds),
+            supabaseServer
+              .from('vyber_jedal')
+              .select('user_id, volba')
+              .eq('datum', datum)
+              .eq('typ_jedla', typJedla)
+              .in('user_id', candidateUserIds)
+          ])
+
+          if (candidateIssuedResult.error) {
+            return NextResponse.json({ error: candidateIssuedResult.error.message }, { status: 500 })
+          }
+
+          if (candidateProfilesResult.error) {
+            return NextResponse.json({ error: candidateProfilesResult.error.message }, { status: 500 })
+          }
+
+          if (candidateEntitlementsResult.error) {
+            return NextResponse.json({ error: candidateEntitlementsResult.error.message }, { status: 500 })
+          }
+
+          if (candidateSelectionsResult.error) {
+            return NextResponse.json({ error: candidateSelectionsResult.error.message }, { status: 500 })
+          }
+
+          const candidateIssuedIds = new Set(
+            (candidateIssuedResult.data || []).map((row: any) => row.user_id)
+          )
+          const candidateProfileMap = new Map(
+            (candidateProfilesResult.data || []).map((row: any) => [row.id, row])
+          )
+          const candidateEntitlementMap = new Map(
+            (candidateEntitlementsResult.data || []).map((row: any) => [row.user_id, row])
+          )
+          const candidateSelectionMap = new Map(
+            (candidateSelectionsResult.data || []).map((row: any) => [row.user_id, normalizeSelectionChoice(row.volba)])
+          )
+          const itemsByIssue = new Map<string, any[]>()
+
+          for (const item of candidateRegistrationItems || []) {
+            const profileRow = candidateProfileMap.get(item.user_id)
+
+            if (!isActiveUser(profileRow)) continue
+            if (!entitlementOk(candidateEntitlementMap.get(item.user_id), typJedla)) continue
+            if (candidateIssuedIds.has(item.user_id)) continue
+
+            const itemChoice = candidateSelectionMap.get(item.user_id) || normalizeChoice(profileRow?.typ_stravy) || null
+
+            if (itemChoice === 'BEZ_ZAUJMU') continue
+
+            const items = itemsByIssue.get(item.issue_id) || []
+            items.push({
+              ...item,
+              volba: itemChoice
+            })
+            itemsByIssue.set(item.issue_id, items)
+          }
+
+          bulkIssueOptions = [
+            ...bulkIssueOptions,
+            ...activeRegistrationIssues.flatMap((issue: any) => {
+              const items = itemsByIssue.get(issue.id) || []
+              if (items.length === 0) return []
+
+              return [{
+                kind: 'REGISTRATION_GROUP',
+                issue,
+                id: `registration:${issue.id}`,
+                groupId: issue.registration_group_id,
+                groupName: issue.title || registrationGroupOf(issue)?.name || '',
+                count: items.length,
+                summary: choiceSummary(items),
+                includesScannedPerson: items.some((item: any) => item.user_id === targetUserId)
+              }]
+            })
+          ]
         }
-
-        if (candidateEntitlementsResult.error) {
-          return NextResponse.json({ error: candidateEntitlementsResult.error.message }, { status: 500 })
-        }
-
-        if (candidateSelectionsResult.error) {
-          return NextResponse.json({ error: candidateSelectionsResult.error.message }, { status: 500 })
-        }
-
-        const candidateIssuedIds = new Set(
-          (candidateIssuedResult.data || []).map((row: any) => row.user_id)
-        )
-        const candidateProfileMap = new Map(
-          (candidateProfilesResult.data || []).map((row: any) => [row.id, row])
-        )
-        const candidateEntitlementMap = new Map(
-          (candidateEntitlementsResult.data || []).map((row: any) => [row.user_id, row])
-        )
-        const candidateSelectionMap = new Map(
-          (candidateSelectionsResult.data || []).map((row: any) => [row.user_id, normalizeSelectionChoice(row.volba)])
-        )
-        const itemsByIssue = new Map<string, any[]>()
-
-        for (const item of candidateRegistrationItems || []) {
-          const profileRow = candidateProfileMap.get(item.user_id)
-
-          if (!isActiveUser(profileRow)) continue
-          if (!entitlementOk(candidateEntitlementMap.get(item.user_id), typJedla)) continue
-          if (candidateIssuedIds.has(item.user_id)) continue
-
-          const itemChoice = candidateSelectionMap.get(item.user_id) || normalizeChoice(profileRow?.typ_stravy) || null
-
-          if (itemChoice === 'BEZ_ZAUJMU') continue
-
-          const items = itemsByIssue.get(item.issue_id) || []
-          items.push({
-            ...item,
-            volba: itemChoice
-          })
-          itemsByIssue.set(item.issue_id, items)
-        }
-
-        bulkIssueOptions = [
-          ...bulkIssueOptions,
-          ...activeRegistrationIssues.flatMap((issue: any) => {
-            const items = itemsByIssue.get(issue.id) || []
-            if (items.length === 0) return []
-
-            return [{
-              kind: 'REGISTRATION_GROUP',
-              issue,
-              id: `registration:${issue.id}`,
-              groupId: issue.registration_group_id,
-              groupName: issue.title || registrationGroupOf(issue)?.name || '',
-              count: items.length,
-              summary: choiceSummary(items),
-              includesScannedPerson: items.some((item: any) => item.user_id === targetUserId)
-            }]
-          })
-        ]
       }
     }
 
@@ -1192,9 +1194,76 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const selectedBulkOption = issueAction === 'BULK'
+    let selectedBulkOption = issueAction === 'BULK'
       ? bulkIssueOptions.find(option => option.id === bulkIssueId) || null
       : null
+
+    if (issueAction === 'BULK' && !selectedBulkOption && bulkIssueId.startsWith('registration:')) {
+      const selectedIssueId = bulkIssueId.replace(/^registration:/, '')
+      const selectedRegistrationIssue = [
+        ...(registrationPickupIssues || []).map((row: any) => registrationIssueOf(row)),
+        ...matchingRegistrationPlannedItems.map((item: any) => registrationIssueOf(item))
+      ].find((issue: any) => {
+        return issue?.id === selectedIssueId &&
+          issue.datum === datum &&
+          issue.typ_jedla === typJedla &&
+          isActiveIssue(issue, now)
+      })
+
+      if (selectedRegistrationIssue?.id) {
+        selectedBulkOption = {
+          kind: 'REGISTRATION_GROUP',
+          issue: selectedRegistrationIssue,
+          id: `registration:${selectedRegistrationIssue.id}`,
+          groupId: selectedRegistrationIssue.registration_group_id,
+          groupName: selectedRegistrationIssue.title || registrationGroupOf(selectedRegistrationIssue)?.name || '',
+          count: 0,
+          summary: { MASO: 0, VEGE: 0, DIETA: 0, NEZADANE: 0 },
+          includesScannedPerson: matchingRegistrationPlannedItems.some((item: any) => item.issue_id === selectedIssueId)
+        }
+      }
+    }
+
+    if (issueAction === 'BULK' && !selectedBulkOption && bulkIssueId && !bulkIssueId.startsWith('registration:')) {
+      const { data: selectedLegacyIssue, error: selectedLegacyIssueError } = await supabaseServer
+        .from('hromadne_vydaje')
+        .select(`
+          id,
+          group_id,
+          datum,
+          typ_jedla,
+          status,
+          valid_after,
+          groups (
+            name
+          )
+        `)
+        .eq('id', bulkIssueId)
+        .maybeSingle()
+
+      if (selectedLegacyIssueError) {
+        return NextResponse.json({ error: selectedLegacyIssueError.message }, { status: 500 })
+      }
+
+      if (
+        selectedLegacyIssue?.id &&
+        selectedLegacyIssue.datum === datum &&
+        selectedLegacyIssue.typ_jedla === typJedla &&
+        isActiveIssue(selectedLegacyIssue, now) &&
+        authorizedGroupIds.includes(selectedLegacyIssue.group_id)
+      ) {
+        selectedBulkOption = {
+          kind: 'LEGACY',
+          issue: selectedLegacyIssue,
+          id: selectedLegacyIssue.id,
+          groupId: selectedLegacyIssue.group_id,
+          groupName: groupOf(selectedLegacyIssue)?.name || '',
+          count: 0,
+          summary: { MASO: 0, VEGE: 0, DIETA: 0, NEZADANE: 0 },
+          includesScannedPerson: matchingPlannedItems.some((item: any) => item.hromadny_vydaj_id === selectedLegacyIssue.id)
+        }
+      }
+    }
 
     if (issueAction === 'BULK' && !selectedBulkOption) {
       return NextResponse.json({
