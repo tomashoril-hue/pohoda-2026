@@ -627,15 +627,32 @@ async function attachRegistrationGroupIssueToIndividualMeal({
 
 export async function POST(req: NextRequest) {
   const startedAt = Date.now()
+  const scanTiming: Record<string, number> = {}
+  let phaseStartedAt = startedAt
+  const markPhase = (key: string) => {
+    const now = Date.now()
+    scanTiming[key] = now - phaseStartedAt
+    phaseStartedAt = now
+  }
+  const timedScanJson = (
+    body: any,
+    init: ResponseInit | undefined,
+    metric: Record<string, string | number | boolean | null | undefined>
+  ) => scanJson(startedAt, body, init, {
+    ...scanTiming,
+    ...metric
+  })
 
   try {
     const actor = await getCurrentUser()
+    markPhase('authMs')
 
     if (!actor) {
       return NextResponse.json({ error: 'Nie si prihlásený.' }, { status: 401 })
     }
 
     const body = await req.json()
+    markPhase('parseMs')
     const qrCode = clean(body.qrCode)
     const datum = normalizeDate(body.datum)
     const typJedla = normalizeMeal(body.typJedla)
@@ -664,6 +681,7 @@ export async function POST(req: NextRequest) {
     }
 
     const access = await issuerAccess(actor.id)
+    markPhase('accessMs')
 
     if (!access.canUse) {
       return NextResponse.json(
@@ -673,9 +691,10 @@ export async function POST(req: NextRequest) {
     }
 
     const targetUserId = await findUserIdByQr(qrCode)
+    markPhase('qrLookupMs')
 
     if (!targetUserId) {
-      return scanJson(startedAt, {
+      return timedScanJson({
         ok: false,
         status: 'UNKNOWN_QR',
         tone: 'error',
@@ -809,6 +828,7 @@ export async function POST(req: NextRequest) {
           .eq('user_id', targetUserId)
         : emptyRowsResult
     ])
+    markPhase('baseQueriesMs')
 
     const { data: profile, error: profileError } = profileResult
 
@@ -1211,9 +1231,10 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+    markPhase('optionQueriesMs')
 
     if (!issueAction && bulkIssueOptions.length > 0) {
-      return scanJson(startedAt, {
+      return timedScanJson({
         ok: false,
         status: 'ISSUE_DECISION_REQUIRED',
         tone: 'warning',
@@ -1313,9 +1334,10 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+    markPhase('resolveMs')
 
     if (issueAction === 'BULK' && !selectedBulkOption) {
-      return scanJson(startedAt, {
+      return timedScanJson({
         ok: false,
         status: 'BULK_NOT_AVAILABLE',
         tone: 'error',
@@ -1329,7 +1351,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!selectedBulkOption && alreadyIssued) {
-      return scanJson(startedAt, {
+      return timedScanJson({
         ok: false,
         status: 'ALREADY_ISSUED',
         tone: 'error',
@@ -1346,7 +1368,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!selectedBulkOption && choice === 'BEZ_ZAUJMU') {
-      return scanJson(startedAt, {
+      return timedScanJson({
         ok: false,
         status: 'NO_INTEREST',
         tone: 'error',
@@ -1362,7 +1384,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!selectedBulkOption && !entitlementOk(entitlement, typJedla)) {
-      return scanJson(startedAt, {
+      return timedScanJson({
         ok: false,
         status: 'NO_ENTITLEMENT',
         tone: 'error',
@@ -1394,7 +1416,7 @@ export async function POST(req: NextRequest) {
       )
 
       if (bulkUserIds.length === 0) {
-        return scanJson(startedAt, {
+        return timedScanJson({
           ok: false,
           status: 'EMPTY_BULK',
           tone: 'error',
@@ -1507,7 +1529,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (eligibleBulkItems.length === 0) {
-        return scanJson(startedAt, {
+        return timedScanJson({
           ok: false,
           status: 'EMPTY_BULK',
           tone: 'error',
@@ -1528,7 +1550,7 @@ export async function POST(req: NextRequest) {
       const bulkRowsToIssue = eligibleBulkItems.filter((item: any) => !alreadyBulkIssuedIds.has(item.user_id))
 
       if (bulkRowsToIssue.length === 0) {
-        return scanJson(startedAt, {
+        return timedScanJson({
           ok: false,
           status: 'ALREADY_ISSUED',
           tone: 'error',
@@ -1545,6 +1567,7 @@ export async function POST(req: NextRequest) {
         })
       }
 
+      const writeStartedAt = Date.now()
       const { issuedBulkRows, issueBulkError, stateChangedMessage } = await issueRegistrationGroupBulkMeal({
         relatedIssue,
         datum,
@@ -1554,10 +1577,11 @@ export async function POST(req: NextRequest) {
         qrCode,
         bulkRowsToIssue
       })
+      scanTiming.writeMs = Date.now() - writeStartedAt
 
       if (issueBulkError) {
         if (issueBulkError.code === '23505') {
-          return scanJson(startedAt, {
+          return timedScanJson({
             ok: false,
             status: 'ALREADY_ISSUED',
             tone: 'error',
@@ -1574,7 +1598,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (stateChangedMessage) {
-        return scanJson(startedAt, {
+        return timedScanJson({
           ok: false,
           status: 'BULK_STATE_CHANGED',
           tone: 'error',
@@ -1591,7 +1615,7 @@ export async function POST(req: NextRequest) {
       const summary = choiceSummary(bulkRowsToIssue)
       const summaryText = formatChoiceSummary(summary)
 
-      return scanJson(startedAt, {
+      return timedScanJson({
         ok: true,
         status: 'ISSUED',
         tone: 'success',
@@ -1650,7 +1674,7 @@ export async function POST(req: NextRequest) {
       )
 
       if (bulkUserIds.length === 0) {
-        return scanJson(startedAt, {
+        return timedScanJson({
           ok: false,
           status: 'EMPTY_BULK',
           tone: 'error',
@@ -1781,7 +1805,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (eligibleBulkItems.length === 0) {
-        return scanJson(startedAt, {
+        return timedScanJson({
           ok: false,
           status: 'EMPTY_BULK',
           tone: 'error',
@@ -1802,7 +1826,7 @@ export async function POST(req: NextRequest) {
       const bulkRowsToIssue = eligibleBulkItems.filter((item: any) => !alreadyBulkIssuedIds.has(item.user_id))
 
       if (bulkRowsToIssue.length === 0) {
-        return scanJson(startedAt, {
+        return timedScanJson({
           ok: false,
           status: 'ALREADY_ISSUED',
           tone: 'error',
@@ -1819,6 +1843,7 @@ export async function POST(req: NextRequest) {
         })
       }
 
+      const writeStartedAt = Date.now()
       const { issuedBulkRows, issueBulkError, stateChangedMessage } = await issueBulkMealAtomicOrFallback({
         relatedIssue,
         datum,
@@ -1828,10 +1853,11 @@ export async function POST(req: NextRequest) {
         qrCode,
         bulkRowsToIssue
       })
+      scanTiming.writeMs = Date.now() - writeStartedAt
 
       if (issueBulkError) {
         if (issueBulkError.code === '23505') {
-          return scanJson(startedAt, {
+          return timedScanJson({
             ok: false,
             status: 'ALREADY_ISSUED',
             tone: 'error',
@@ -1848,7 +1874,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (stateChangedMessage) {
-        return scanJson(startedAt, {
+        return timedScanJson({
           ok: false,
           status: 'BULK_STATE_CHANGED',
           tone: 'error',
@@ -1865,7 +1891,7 @@ export async function POST(req: NextRequest) {
       const summary = choiceSummary(bulkRowsToIssue)
       const summaryText = formatChoiceSummary(summary)
 
-      return scanJson(startedAt, {
+      return timedScanJson({
         ok: true,
         status: 'ISSUED',
         tone: 'success',
@@ -1900,6 +1926,7 @@ export async function POST(req: NextRequest) {
       : 'Individuálny výdaj cez QR.'
     const plannedItemIds = matchingPlannedItems.map((item: any) => item.id)
     const registrationPlannedItemIds = matchingRegistrationPlannedItems.map((item: any) => item.id)
+    const writeStartedAt = Date.now()
     const { issued, issueError, stateChangedMessage } = await issueIndividualMealAtomicOrFallback({
       targetUserId,
       groupId: fallbackGroupId,
@@ -1913,10 +1940,11 @@ export async function POST(req: NextRequest) {
       qrCode,
       note: individualNote
     })
+    scanTiming.writeMs = Date.now() - writeStartedAt
 
     if (issueError) {
       if (issueError.code === '23505') {
-        return scanJson(startedAt, {
+        return timedScanJson({
           ok: false,
           status: 'ALREADY_ISSUED',
           tone: 'error',
@@ -1934,7 +1962,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (stateChangedMessage || !issued) {
-      return scanJson(startedAt, {
+      return timedScanJson({
         ok: false,
         status: 'ISSUE_STATE_CHANGED',
         tone: 'error',
@@ -1956,7 +1984,7 @@ export async function POST(req: NextRequest) {
       })
 
       if (!attachResult.ok) {
-        return scanJson(startedAt, {
+        return timedScanJson({
           ok: false,
           status: 'ISSUE_STATE_CHANGED',
           tone: 'error',
@@ -1970,7 +1998,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return scanJson(startedAt, {
+    return timedScanJson({
       ok: true,
       status: 'ISSUED',
       tone: 'success',
@@ -1996,8 +2024,7 @@ export async function POST(req: NextRequest) {
       issuedCount: 1
     })
   } catch (err: any) {
-    return scanJson(
-      startedAt,
+    return timedScanJson(
       { error: err?.message || 'Neznáma chyba servera.' },
       { status: 500 },
       { mode: 'ERROR', result: 'UNHANDLED_ERROR' }
