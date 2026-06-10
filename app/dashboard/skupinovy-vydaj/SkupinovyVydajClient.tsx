@@ -228,6 +228,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       if (!res.ok) throw new Error(json.error || 'Ludi sa nepodarilo nacitat.')
 
       const people: IssuePerson[] = json.people || []
+      setIssueTitle('')
       setIssuePeople(people)
       setSelectedIssueUserIds(people.map(person => person.id))
       setPickupUserIds(people[0]?.id ? [people[0].id] : [])
@@ -868,7 +869,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     disabled={issueLoading}
                     style={{ ...styles.primaryButton, marginTop: 10, width: '100%' }}
                   >
-                    {issueLoading ? 'Nacitavam...' : 'Pripravit skupinovy vydaj'}
+                    {issueLoading ? 'Nacitavam...' : 'Pripravit novy vydaj'}
                   </button>
 
                   {!confirmed && issueFeedback && (
