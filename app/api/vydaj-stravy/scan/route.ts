@@ -113,6 +113,36 @@ function formatChoiceSummary(summary: { MASO: number; VEGE: number; DIETA: numbe
   ].filter(Boolean).join(' · ')
 }
 
+function logFoodScanMetric(startedAt: number, metric: Record<string, string | number | boolean | null | undefined>) {
+  if (process.env.FOOD_ISSUE_SCAN_METRICS !== 'true') return
+
+  const entries = {
+    ...metric,
+    durationMs: Date.now() - startedAt
+  }
+  const text = Object.entries(entries as Record<string, unknown>)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([key, value]) => `${key}=${String(value).replace(/\s+/g, '_')}`)
+    .join(' ')
+
+  console.log(`[food-scan] ${text}`)
+}
+
+function scanJson(
+  startedAt: number,
+  body: any,
+  init: ResponseInit | undefined,
+  metric: Record<string, string | number | boolean | null | undefined>
+) {
+  logFoodScanMetric(startedAt, {
+    result: body?.status || body?.error || metric.result,
+    httpStatus: init?.status || 200,
+    ...metric
+  })
+
+  return NextResponse.json(body, init)
+}
+
 async function issuerAccess(actorId: string) {
   const globalAccess = await getGlobalAccess(actorId)
 
@@ -596,6 +626,8 @@ async function attachRegistrationGroupIssueToIndividualMeal({
 }
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now()
+
   try {
     const actor = await getCurrentUser()
 
@@ -643,12 +675,12 @@ export async function POST(req: NextRequest) {
     const targetUserId = await findUserIdByQr(qrCode)
 
     if (!targetUserId) {
-      return NextResponse.json({
+      return scanJson(startedAt, {
         ok: false,
         status: 'UNKNOWN_QR',
         tone: 'error',
         message: 'QR kód nebol nájdený alebo nie je aktívny.'
-      }, { status: 404 })
+      }, { status: 404 }, { mode: 'LOOKUP', result: 'UNKNOWN_QR' })
     }
 
     const selectedRegistrationIssueId = bulkIssueId.startsWith('registration:')
@@ -1181,7 +1213,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!issueAction && bulkIssueOptions.length > 0) {
-      return NextResponse.json({
+      return scanJson(startedAt, {
         ok: false,
         status: 'ISSUE_DECISION_REQUIRED',
         tone: 'warning',
@@ -1205,6 +1237,10 @@ export async function POST(req: NextRequest) {
           includesScannedPerson: option.includesScannedPerson
         })),
         message: 'Vyber spôsob výdaja.'
+      }, undefined, {
+        mode: 'MODAL',
+        result: 'ISSUE_DECISION_REQUIRED',
+        options: bulkIssueOptions.length
       })
     }
 
@@ -1279,7 +1315,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (issueAction === 'BULK' && !selectedBulkOption) {
-      return NextResponse.json({
+      return scanJson(startedAt, {
         ok: false,
         status: 'BULK_NOT_AVAILABLE',
         tone: 'error',
@@ -1289,11 +1325,11 @@ export async function POST(req: NextRequest) {
           email: profile.email || ''
         },
         message: 'Vybraná hromadná príprava už nie je dostupná.'
-      }, { status: 409 })
+      }, { status: 409 }, { mode: 'BULK', result: 'BULK_NOT_AVAILABLE' })
     }
 
     if (!selectedBulkOption && alreadyIssued) {
-      return NextResponse.json({
+      return scanJson(startedAt, {
         ok: false,
         status: 'ALREADY_ISSUED',
         tone: 'error',
@@ -1306,11 +1342,11 @@ export async function POST(req: NextRequest) {
         },
         choice: normalizeChoice(alreadyIssued.volba) || choice,
         message: 'Už vydané'
-      }, { status: 409 })
+      }, { status: 409 }, { mode: 'INDIVIDUAL', result: 'ALREADY_ISSUED' })
     }
 
     if (!selectedBulkOption && choice === 'BEZ_ZAUJMU') {
-      return NextResponse.json({
+      return scanJson(startedAt, {
         ok: false,
         status: 'NO_INTEREST',
         tone: 'error',
@@ -1322,11 +1358,11 @@ export async function POST(req: NextRequest) {
         message: typJedla === 'OBED'
           ? 'Osoba sa odhlásila z obeda na tento deň.'
           : 'Osoba sa odhlásila z večere na tento deň.'
-      }, { status: 403 })
+      }, { status: 403 }, { mode: 'INDIVIDUAL', result: 'NO_INTEREST' })
     }
 
     if (!selectedBulkOption && !entitlementOk(entitlement, typJedla)) {
-      return NextResponse.json({
+      return scanJson(startedAt, {
         ok: false,
         status: 'NO_ENTITLEMENT',
         tone: 'error',
@@ -1336,7 +1372,7 @@ export async function POST(req: NextRequest) {
           email: profile.email || ''
         },
         message: 'Bez nároku'
-      }, { status: 403 })
+      }, { status: 403 }, { mode: 'INDIVIDUAL', result: 'NO_ENTITLEMENT' })
     }
 
     if (selectedBulkOption?.kind === 'REGISTRATION_GROUP') {
@@ -1358,7 +1394,7 @@ export async function POST(req: NextRequest) {
       )
 
       if (bulkUserIds.length === 0) {
-        return NextResponse.json({
+        return scanJson(startedAt, {
           ok: false,
           status: 'EMPTY_BULK',
           tone: 'error',
@@ -1368,7 +1404,7 @@ export async function POST(req: NextRequest) {
             email: profile.email || ''
           },
           message: 'Skupinovy vydaj nema ziadne nevydane polozky.'
-        }, { status: 409 })
+        }, { status: 409 }, { mode: 'REGISTRATION_GROUP_BULK', result: 'EMPTY_BULK' })
       }
 
       const [alreadyBulkIssuedResult, bulkProfilesResult, bulkEntitlementsResult, bulkSelectionsResult] = await Promise.all([
@@ -1471,7 +1507,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (eligibleBulkItems.length === 0) {
-        return NextResponse.json({
+        return scanJson(startedAt, {
           ok: false,
           status: 'EMPTY_BULK',
           tone: 'error',
@@ -1481,14 +1517,18 @@ export async function POST(req: NextRequest) {
             email: profile.email || ''
           },
           message: 'Skupinovy vydaj nema ziadne vydatelne polozky.'
-        }, { status: 409 })
+        }, { status: 409 }, {
+          mode: 'REGISTRATION_GROUP_BULK',
+          result: 'EMPTY_BULK',
+          skippedCount: invalidBulkItems.length
+        })
       }
 
       const alreadyBulkIssuedIds = new Set((alreadyBulkIssuedResult.data || []).map((row: any) => row.user_id))
       const bulkRowsToIssue = eligibleBulkItems.filter((item: any) => !alreadyBulkIssuedIds.has(item.user_id))
 
       if (bulkRowsToIssue.length === 0) {
-        return NextResponse.json({
+        return scanJson(startedAt, {
           ok: false,
           status: 'ALREADY_ISSUED',
           tone: 'error',
@@ -1498,7 +1538,11 @@ export async function POST(req: NextRequest) {
             email: profile.email || ''
           },
           message: 'Uz vydane'
-        }, { status: 409 })
+        }, { status: 409 }, {
+          mode: 'REGISTRATION_GROUP_BULK',
+          result: 'ALREADY_ISSUED',
+          totalCount: bulkItems?.length || 0
+        })
       }
 
       const { issuedBulkRows, issueBulkError, stateChangedMessage } = await issueRegistrationGroupBulkMeal({
@@ -1513,7 +1557,7 @@ export async function POST(req: NextRequest) {
 
       if (issueBulkError) {
         if (issueBulkError.code === '23505') {
-          return NextResponse.json({
+          return scanJson(startedAt, {
             ok: false,
             status: 'ALREADY_ISSUED',
             tone: 'error',
@@ -1523,14 +1567,14 @@ export async function POST(req: NextRequest) {
               email: profile.email || ''
             },
             message: 'Niektore jedlo uz bolo vydane. Obnov stranku a skontroluj stav.'
-          }, { status: 409 })
+          }, { status: 409 }, { mode: 'REGISTRATION_GROUP_BULK', result: 'ALREADY_ISSUED' })
         }
 
         return NextResponse.json({ error: issueBulkError.message }, { status: 500 })
       }
 
       if (stateChangedMessage) {
-        return NextResponse.json({
+        return scanJson(startedAt, {
           ok: false,
           status: 'BULK_STATE_CHANGED',
           tone: 'error',
@@ -1540,14 +1584,14 @@ export async function POST(req: NextRequest) {
             email: profile.email || ''
           },
           message: stateChangedMessage
-        }, { status: 409 })
+        }, { status: 409 }, { mode: 'REGISTRATION_GROUP_BULK', result: 'BULK_STATE_CHANGED' })
       }
 
       const firstIssuedRow = issuedBulkRows?.[0]
       const summary = choiceSummary(bulkRowsToIssue)
       const summaryText = formatChoiceSummary(summary)
 
-      return NextResponse.json({
+      return scanJson(startedAt, {
         ok: true,
         status: 'ISSUED',
         tone: 'success',
@@ -1568,6 +1612,12 @@ export async function POST(req: NextRequest) {
         message: summaryText
           ? `Vydane hromadne: ${summaryText}${invalidBulkItems.length ? ` · preskocene ${invalidBulkItems.length}` : ''}`
           : `Vydane hromadne (${bulkRowsToIssue.length})`
+      }, undefined, {
+        mode: 'REGISTRATION_GROUP_BULK',
+        result: 'ISSUED',
+        issuedCount: bulkRowsToIssue.length,
+        totalCount: bulkItems?.length || bulkRowsToIssue.length,
+        skippedCount: invalidBulkItems.length
       })
     }
 
@@ -1600,7 +1650,7 @@ export async function POST(req: NextRequest) {
       )
 
       if (bulkUserIds.length === 0) {
-        return NextResponse.json({
+        return scanJson(startedAt, {
           ok: false,
           status: 'EMPTY_BULK',
           tone: 'error',
@@ -1610,7 +1660,7 @@ export async function POST(req: NextRequest) {
             email: profile.email || ''
           },
           message: 'Hromadná príprava nemá žiadne nevydané položky.'
-        }, { status: 409 })
+        }, { status: 409 }, { mode: 'LEGACY_BULK', result: 'EMPTY_BULK' })
       }
 
       const [alreadyBulkIssuedResult, bulkProfilesResult, bulkEntitlementsResult, bulkSelectionsResult] = await Promise.all([
@@ -1731,7 +1781,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (eligibleBulkItems.length === 0) {
-        return NextResponse.json({
+        return scanJson(startedAt, {
           ok: false,
           status: 'EMPTY_BULK',
           tone: 'error',
@@ -1741,14 +1791,18 @@ export async function POST(req: NextRequest) {
             email: profile.email || ''
           },
           message: 'Hromadná príprava nemá žiadne vydateľné položky.'
-        }, { status: 409 })
+        }, { status: 409 }, {
+          mode: 'LEGACY_BULK',
+          result: 'EMPTY_BULK',
+          skippedCount: invalidBulkItems.length
+        })
       }
 
       const alreadyBulkIssuedIds = new Set((alreadyBulkIssuedResult.data || []).map((row: any) => row.user_id))
       const bulkRowsToIssue = eligibleBulkItems.filter((item: any) => !alreadyBulkIssuedIds.has(item.user_id))
 
       if (bulkRowsToIssue.length === 0) {
-        return NextResponse.json({
+        return scanJson(startedAt, {
           ok: false,
           status: 'ALREADY_ISSUED',
           tone: 'error',
@@ -1758,7 +1812,11 @@ export async function POST(req: NextRequest) {
             email: profile.email || ''
           },
           message: 'Už vydané'
-        }, { status: 409 })
+        }, { status: 409 }, {
+          mode: 'LEGACY_BULK',
+          result: 'ALREADY_ISSUED',
+          totalCount: bulkItems?.length || 0
+        })
       }
 
       const { issuedBulkRows, issueBulkError, stateChangedMessage } = await issueBulkMealAtomicOrFallback({
@@ -1773,7 +1831,7 @@ export async function POST(req: NextRequest) {
 
       if (issueBulkError) {
         if (issueBulkError.code === '23505') {
-          return NextResponse.json({
+          return scanJson(startedAt, {
             ok: false,
             status: 'ALREADY_ISSUED',
             tone: 'error',
@@ -1783,14 +1841,14 @@ export async function POST(req: NextRequest) {
               email: profile.email || ''
             },
             message: 'Niektoré jedlo už bolo vydané. Obnov stránku a skontroluj stav.'
-          }, { status: 409 })
+          }, { status: 409 }, { mode: 'LEGACY_BULK', result: 'ALREADY_ISSUED' })
         }
 
         return NextResponse.json({ error: issueBulkError.message }, { status: 500 })
       }
 
       if (stateChangedMessage) {
-        return NextResponse.json({
+        return scanJson(startedAt, {
           ok: false,
           status: 'BULK_STATE_CHANGED',
           tone: 'error',
@@ -1800,14 +1858,14 @@ export async function POST(req: NextRequest) {
             email: profile.email || ''
           },
           message: stateChangedMessage
-        }, { status: 409 })
+        }, { status: 409 }, { mode: 'LEGACY_BULK', result: 'BULK_STATE_CHANGED' })
       }
 
       const firstIssuedRow = issuedBulkRows?.[0]
       const summary = choiceSummary(bulkRowsToIssue)
       const summaryText = formatChoiceSummary(summary)
 
-      return NextResponse.json({
+      return scanJson(startedAt, {
         ok: true,
         status: 'ISSUED',
         tone: 'success',
@@ -1828,6 +1886,12 @@ export async function POST(req: NextRequest) {
         message: summaryText
           ? `Vydané hromadne: ${summaryText}${invalidBulkItems.length ? ` · preskočené ${invalidBulkItems.length}` : ''}`
           : `Vydané hromadne (${bulkRowsToIssue.length})`
+      }, undefined, {
+        mode: 'LEGACY_BULK',
+        result: 'ISSUED',
+        issuedCount: bulkRowsToIssue.length,
+        totalCount: bulkItems?.length || bulkRowsToIssue.length,
+        skippedCount: invalidBulkItems.length
       })
     }
 
@@ -1852,7 +1916,7 @@ export async function POST(req: NextRequest) {
 
     if (issueError) {
       if (issueError.code === '23505') {
-        return NextResponse.json({
+        return scanJson(startedAt, {
           ok: false,
           status: 'ALREADY_ISSUED',
           tone: 'error',
@@ -1863,14 +1927,14 @@ export async function POST(req: NextRequest) {
           },
           choice,
           message: 'Už vydané'
-        }, { status: 409 })
+        }, { status: 409 }, { mode: 'INDIVIDUAL', result: 'ALREADY_ISSUED' })
       }
 
       return NextResponse.json({ error: issueError.message }, { status: 500 })
     }
 
     if (stateChangedMessage || !issued) {
-      return NextResponse.json({
+      return scanJson(startedAt, {
         ok: false,
         status: 'ISSUE_STATE_CHANGED',
         tone: 'error',
@@ -1880,7 +1944,7 @@ export async function POST(req: NextRequest) {
           email: profile.email || ''
         },
         message: stateChangedMessage || 'Výdaj sa nepodarilo uložiť. Skontroluj stav a skús znova.'
-      }, { status: 409 })
+      }, { status: 409 }, { mode: 'INDIVIDUAL', result: 'ISSUE_STATE_CHANGED' })
     }
 
     if (relatedRegistrationIssue?.id && registrationPlannedItemIds.length > 0) {
@@ -1892,7 +1956,7 @@ export async function POST(req: NextRequest) {
       })
 
       if (!attachResult.ok) {
-        return NextResponse.json({
+        return scanJson(startedAt, {
           ok: false,
           status: 'ISSUE_STATE_CHANGED',
           tone: 'error',
@@ -1902,11 +1966,11 @@ export async function POST(req: NextRequest) {
             email: profile.email || ''
           },
           message: attachResult.stateChangedMessage || 'Priprava sa medzitym zmenila. Skontroluj stav a skus znova.'
-        }, { status: 409 })
+        }, { status: 409 }, { mode: 'REGISTRATION_GROUP_INDIVIDUAL', result: 'ISSUE_STATE_CHANGED' })
       }
     }
 
-    return NextResponse.json({
+    return scanJson(startedAt, {
       ok: true,
       status: 'ISSUED',
       tone: 'success',
@@ -1922,11 +1986,21 @@ export async function POST(req: NextRequest) {
       method: sposob,
       groupName: relatedGroup?.name || relatedRegistrationIssue?.title || relatedRegistrationGroup?.name || '',
       message: relatedPlannedItem ? 'Vydané individuálne' : 'Vydané'
+    }, undefined, {
+      mode: relatedRegistrationIssue?.id
+        ? 'REGISTRATION_GROUP_INDIVIDUAL'
+        : relatedIssue?.id
+          ? 'LEGACY_INDIVIDUAL'
+          : 'INDIVIDUAL',
+      result: 'ISSUED',
+      issuedCount: 1
     })
   } catch (err: any) {
-    return NextResponse.json(
+    return scanJson(
+      startedAt,
       { error: err?.message || 'Neznáma chyba servera.' },
-      { status: 500 }
+      { status: 500 },
+      { mode: 'ERROR', result: 'UNHANDLED_ERROR' }
     )
   }
 }
