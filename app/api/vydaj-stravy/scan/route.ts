@@ -651,6 +651,14 @@ export async function POST(req: NextRequest) {
       }, { status: 404 })
     }
 
+    const selectedRegistrationIssueId = bulkIssueId.startsWith('registration:')
+      ? bulkIssueId.replace(/^registration:/, '')
+      : ''
+    const needsLegacyPlannedItems = !issueAction || issueAction === 'INDIVIDUAL'
+    const needsRegistrationPlannedItems = !issueAction || issueAction === 'INDIVIDUAL' || Boolean(selectedRegistrationIssueId)
+    const needsRegistrationPickupIssues = !issueAction || Boolean(selectedRegistrationIssueId)
+    const emptyRowsResult = Promise.resolve({ data: [], error: null })
+
     const [
       profileResult,
       targetMembershipsResult,
@@ -699,69 +707,75 @@ export async function POST(req: NextRequest) {
         .eq('datum', datum)
         .eq('typ_jedla', typJedla)
         .maybeSingle(),
-      supabaseServer
-        .from('hromadny_vydaj_polozky')
-        .select(`
-          id,
-          hromadny_vydaj_id,
-          user_id,
-          status,
-          volba,
-          hromadne_vydaje (
+      needsLegacyPlannedItems
+        ? supabaseServer
+          .from('hromadny_vydaj_polozky')
+          .select(`
             id,
-            group_id,
-            datum,
-            typ_jedla,
+            hromadny_vydaj_id,
+            user_id,
             status,
-            valid_after,
-            groups (
-              name
+            volba,
+            hromadne_vydaje (
+              id,
+              group_id,
+              datum,
+              typ_jedla,
+              status,
+              valid_after,
+              groups (
+                name
+              )
             )
-          )
-        `)
-        .eq('user_id', targetUserId)
-        .eq('status', 'PLANNED'),
-      supabaseServer
-        .from('registration_group_issue_items')
-        .select(`
-          id,
-          issue_id,
-          user_id,
-          status,
-          volba,
-          registration_group_issues:registration_group_issues!registration_group_issue_items_issue_id_fkey (
+          `)
+          .eq('user_id', targetUserId)
+          .eq('status', 'PLANNED')
+        : emptyRowsResult,
+      needsRegistrationPlannedItems
+        ? supabaseServer
+          .from('registration_group_issue_items')
+          .select(`
             id,
-            registration_group_id,
-            title,
-            datum,
-            typ_jedla,
+            issue_id,
+            user_id,
             status,
-            valid_after,
-            registration_groups (
-              name
+            volba,
+            registration_group_issues:registration_group_issues!registration_group_issue_items_issue_id_fkey (
+              id,
+              registration_group_id,
+              title,
+              datum,
+              typ_jedla,
+              status,
+              valid_after,
+              registration_groups (
+                name
+              )
             )
-          )
-        `)
-        .eq('user_id', targetUserId)
-        .eq('status', 'PLANNED'),
-      supabaseServer
-        .from('registration_group_issue_pickup_users')
-        .select(`
-          issue_id,
-          registration_group_issues (
-            id,
-            registration_group_id,
-            title,
-            datum,
-            typ_jedla,
-            status,
-            valid_after,
-            registration_groups (
-              name
+          `)
+          .eq('user_id', targetUserId)
+          .eq('status', 'PLANNED')
+        : emptyRowsResult,
+      needsRegistrationPickupIssues
+        ? supabaseServer
+          .from('registration_group_issue_pickup_users')
+          .select(`
+            issue_id,
+            registration_group_issues (
+              id,
+              registration_group_id,
+              title,
+              datum,
+              typ_jedla,
+              status,
+              valid_after,
+              registration_groups (
+                name
+              )
             )
-          )
-        `)
-        .eq('user_id', targetUserId)
+          `)
+          .eq('user_id', targetUserId)
+        : emptyRowsResult
     ])
 
     const { data: profile, error: profileError } = profileResult
@@ -1198,13 +1212,12 @@ export async function POST(req: NextRequest) {
       ? bulkIssueOptions.find(option => option.id === bulkIssueId) || null
       : null
 
-    if (issueAction === 'BULK' && !selectedBulkOption && bulkIssueId.startsWith('registration:')) {
-      const selectedIssueId = bulkIssueId.replace(/^registration:/, '')
+    if (issueAction === 'BULK' && !selectedBulkOption && selectedRegistrationIssueId) {
       const selectedRegistrationIssue = [
         ...(registrationPickupIssues || []).map((row: any) => registrationIssueOf(row)),
         ...matchingRegistrationPlannedItems.map((item: any) => registrationIssueOf(item))
       ].find((issue: any) => {
-        return issue?.id === selectedIssueId &&
+        return issue?.id === selectedRegistrationIssueId &&
           issue.datum === datum &&
           issue.typ_jedla === typJedla &&
           isActiveIssue(issue, now)
@@ -1219,7 +1232,7 @@ export async function POST(req: NextRequest) {
           groupName: selectedRegistrationIssue.title || registrationGroupOf(selectedRegistrationIssue)?.name || '',
           count: 0,
           summary: { MASO: 0, VEGE: 0, DIETA: 0, NEZADANE: 0 },
-          includesScannedPerson: matchingRegistrationPlannedItems.some((item: any) => item.issue_id === selectedIssueId)
+          includesScannedPerson: matchingRegistrationPlannedItems.some((item: any) => item.issue_id === selectedRegistrationIssueId)
         }
       }
     }
