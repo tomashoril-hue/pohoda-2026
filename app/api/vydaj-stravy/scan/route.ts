@@ -729,7 +729,7 @@ export async function POST(req: NextRequest) {
           user_id,
           status,
           volba,
-          registration_group_issues (
+          registration_group_issues:registration_group_issues!registration_group_issue_items_issue_id_fkey (
             id,
             registration_group_id,
             title,
