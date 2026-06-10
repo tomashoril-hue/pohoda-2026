@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
 import {
-  FoodChoice,
   IssueAccess,
   IssuablePerson,
   MealType,
   choiceSummary,
   cleanText,
+  entitlementOk,
   filterIssuablePeople,
+  fullName,
   getIssueAccess,
   issueTitle,
   loadRegistrationGroup,
@@ -16,12 +17,20 @@ import {
   loadUsersByIds,
   normalizeChoice,
   normalizeDate,
-  normalizeMeal
+  normalizeMeal,
+  normalizeSelectionChoice
 } from '@/lib/registrationGroupIssue'
 
 type RequestedPerson = {
   userId: string
   source: 'REGISTRATION_GROUP' | 'SEARCH' | 'QR'
+}
+
+type IssuePersonView = IssuablePerson & {
+  issuable: boolean
+  issueStatus: string
+  issueStatusLabel: string
+  itemStatus: string
 }
 
 function normalizeRequestedPeople(value: any): RequestedPerson[] {
@@ -176,29 +185,106 @@ async function loadIssuePeople(issueId: string, date: string, meal: MealType) {
     .from('registration_group_issue_items')
     .select('id, user_id, source, volba, status')
     .eq('issue_id', issueId)
-    .eq('status', 'PLANNED')
+    .neq('status', 'REMOVED')
 
   if (itemsError) throw itemsError
 
   const userIds = (items || []).map((item: any) => item.user_id).filter(Boolean)
-  const users = await loadUsersByIds(userIds)
-  const sourceByUserId = new Map((items || []).map((item: any) => [item.user_id, item.source || 'SEARCH']))
-  const storedChoiceByUserId = new Map((items || []).map((item: any) => [item.user_id, normalizeChoice(item.volba)]))
-  const people = await filterIssuablePeople({
-    users,
-    date,
-    meal,
-    source: 'SEARCH'
-  })
+  if (userIds.length === 0) return []
 
-  return people.map((person: IssuablePerson) => ({
-    ...person,
-    choice: storedChoiceByUserId.get(person.id) as FoodChoice || person.choice,
-    source: sourceByUserId.get(person.id) || person.source
-  }))
+  const users = await loadUsersByIds(userIds)
+  const userById = new Map(users.map((user: any) => [user.id, user]))
+
+  const [entitlementResult, selectionResult, issuedResult] = await Promise.all([
+    supabaseServer
+      .from('user_food_entitlements')
+      .select('user_id, datum, obed, vecera')
+      .eq('datum', date)
+      .in('user_id', userIds),
+    supabaseServer
+      .from('vyber_jedal')
+      .select('user_id, datum, typ_jedla, volba')
+      .eq('datum', date)
+      .eq('typ_jedla', meal)
+      .in('user_id', userIds),
+    supabaseServer
+      .from('vydaj_jedal')
+      .select('user_id')
+      .eq('datum', date)
+      .eq('typ_jedla', meal)
+      .eq('status', 'VYDANE')
+      .in('user_id', userIds)
+  ])
+
+  if (entitlementResult.error) throw entitlementResult.error
+  if (selectionResult.error) throw selectionResult.error
+  if (issuedResult.error) throw issuedResult.error
+
+  const entitlementByUserId = new Map((entitlementResult.data || []).map((row: any) => [row.user_id, row]))
+  const selectionByUserId = new Map((selectionResult.data || []).map((row: any) => [row.user_id, row]))
+  const issuedUserIds = new Set((issuedResult.data || []).map((row: any) => row.user_id))
+
+  return (items || []).map((item: any): IssuePersonView => {
+    const user: any = userById.get(item.user_id)
+    const selectionChoice = normalizeSelectionChoice(selectionByUserId.get(item.user_id)?.volba)
+    const storedChoice = normalizeChoice(item.volba)
+    const choice = normalizeChoice(selectionChoice || user?.typ_stravy || item.volba) || storedChoice || 'MASO'
+    const source = item.source === 'REGISTRATION_GROUP' || item.source === 'QR' ? item.source : 'SEARCH'
+    const base = {
+      id: item.user_id,
+      name: fullName(user) || item.user_id,
+      email: user?.email || '',
+      choice,
+      source,
+      itemStatus: item.status || 'PLANNED'
+    }
+
+    if (item.status === 'BULK_ISSUED' || item.status === 'INDIVIDUAL_ISSUED' || issuedUserIds.has(item.user_id)) {
+      return {
+        ...base,
+        issuable: false,
+        issueStatus: 'ALREADY_ISSUED',
+        issueStatusLabel: 'Uz vydane'
+      }
+    }
+
+    if (String(user?.aktivny || '').toUpperCase() !== 'ANO') {
+      return {
+        ...base,
+        issuable: false,
+        issueStatus: 'INACTIVE',
+        issueStatusLabel: 'Neaktivny'
+      }
+    }
+
+    if (!entitlementOk(entitlementByUserId.get(item.user_id), meal)) {
+      return {
+        ...base,
+        issuable: false,
+        issueStatus: 'NO_ENTITLEMENT',
+        issueStatusLabel: 'Bez naroku'
+      }
+    }
+
+    if (selectionChoice === 'BEZ_ZAUJMU') {
+      return {
+        ...base,
+        issuable: false,
+        issueStatus: 'NO_INTEREST',
+        issueStatusLabel: 'Odhlasene'
+      }
+    }
+
+    return {
+      ...base,
+      issuable: true,
+      issueStatus: 'READY',
+      issueStatusLabel: 'Pripravene'
+    }
+  })
 }
 
-async function loadPickupUserIds(issueId: string) {
+async function loadPickupUsers(issueId: string) {
   const { data, error } = await supabaseServer
     .from('registration_group_issue_pickup_users')
     .select('user_id')
@@ -206,7 +292,18 @@ async function loadPickupUserIds(issueId: string) {
 
   if (error) throw error
 
-  return (data || []).map((row: any) => row.user_id).filter(Boolean)
+  const userIds = (data || []).map((row: any) => row.user_id).filter(Boolean)
+  const users = await loadUsersByIds(userIds)
+  const userById = new Map(users.map((user: any) => [user.id, user]))
+
+  return userIds.map((userId: string) => {
+    const user: any = userById.get(userId)
+    return {
+      id: userId,
+      name: fullName(user) || userId,
+      email: user?.email || ''
+    }
+  })
 }
 
 async function replacePickupUsers(issueId: string, userIds: string[], actorId: string) {
@@ -274,10 +371,12 @@ export async function GET(req: NextRequest) {
 
       await validateIssueAccess(actor.id, issue.registration_group_id)
 
-      const [people, pickupUserIds] = await Promise.all([
+      const [people, pickupUsers] = await Promise.all([
         loadIssuePeople(issue.id, date, meal),
-        loadPickupUserIds(issue.id)
+        loadPickupUsers(issue.id)
       ])
+      const pickupUserIds = pickupUsers.map(user => user.id)
+      const issuablePeople = people.filter(person => person.issuable)
 
       return NextResponse.json({
         issue: {
@@ -289,8 +388,9 @@ export async function GET(req: NextRequest) {
           status: issue.status,
           validAfter: issue.valid_after,
           people,
+          pickupUsers,
           pickupUserIds,
-          summary: choiceSummary(people)
+          summary: choiceSummary(issuablePeople)
         }
       })
     }
@@ -334,7 +434,7 @@ export async function GET(req: NextRequest) {
         meal: issueMeal,
         status: issue.status,
         validAfter: issue.valid_after,
-        summary: choiceSummary(people)
+        summary: choiceSummary(people.filter(person => person.issuable))
       })
     }
 
@@ -387,8 +487,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const finalPickupUserIds = pickupUserIds.filter(userId => issuableUserIds.includes(userId))
-    if (finalPickupUserIds.length === 0) finalPickupUserIds.push(issuableUserIds[0])
+    const finalPickupUserIds = pickupUserIds.length > 0 ? pickupUserIds : [actor.id]
 
     const nextStatus = statusForAccess(access)
     const now = new Date().toISOString()
@@ -505,23 +604,38 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Registracna skupina neexistuje alebo nie je aktivna.' }, { status: 404 })
     }
 
+    const { data: currentItems, error: currentItemsError } = await supabaseServer
+      .from('registration_group_issue_items')
+      .select('id, user_id, source, volba, status')
+      .eq('issue_id', issue.id)
+      .neq('status', 'REMOVED')
+
+    if (currentItemsError) {
+      return NextResponse.json({ error: currentItemsError.message }, { status: 500 })
+    }
+
+    const currentByUserId = new Map((currentItems || []).map((item: any) => [item.user_id, item]))
+    const newRequestedPeople = requestedPeople.filter(person => !currentByUserId.has(person.userId))
+    const existingRequestedUserIds = requestedPeople
+      .filter(person => currentByUserId.has(person.userId))
+      .map(person => person.userId)
     const issuablePeople = await prepareIssuablePeople({
       registrationGroupId: issue.registration_group_id,
       date,
       meal,
-      requestedPeople
+      requestedPeople: newRequestedPeople
     })
     const issuableUserIds = issuablePeople.map(person => person.id)
+    const retainedUserIds = Array.from(new Set([...existingRequestedUserIds, ...issuableUserIds]))
 
-    if (issuablePeople.length === 0) {
+    if (retainedUserIds.length === 0) {
       return NextResponse.json(
         { error: 'Z vybranych osob nie je aktualne nikto vydatelny.' },
         { status: 400 }
       )
     }
 
-    const finalPickupUserIds = pickupUserIds.filter(userId => issuableUserIds.includes(userId))
-    if (finalPickupUserIds.length === 0) finalPickupUserIds.push(issuableUserIds[0])
+    const finalPickupUserIds = pickupUserIds.length > 0 ? pickupUserIds : [actor.id]
 
     const nextStatus = statusForAccess(access)
     const now = new Date().toISOString()
@@ -562,38 +676,70 @@ export async function PUT(req: NextRequest) {
         })
         .eq('issue_id', issue.id)
         .eq('status', 'PLANNED')
-        .not('user_id', 'in', `(${issuableUserIds.join(',')})`)
+        .not('user_id', 'in', `(${retainedUserIds.join(',')})`)
 
       if (removeOldError) throw removeOldError
 
-      const { error: upsertItemsError } = await supabaseServer
-        .from('registration_group_issue_items')
-        .upsert(
-          issuablePeople.map(person => ({
-            issue_id: issue.id,
-            user_id: person.id,
-            source: person.source,
-            volba: person.choice,
-            status: 'PLANNED',
-            remove_reason: null,
-            moved_to_issue_id: null,
-            removed_at: null,
-            removed_by: null,
-            added_by: actor.id,
-            updated_at: now
-          })),
-          { onConflict: 'issue_id,user_id' }
-        )
+      if (issuablePeople.length > 0) {
+        const { error: upsertItemsError } = await supabaseServer
+          .from('registration_group_issue_items')
+          .upsert(
+            issuablePeople.map(person => ({
+              issue_id: issue.id,
+              user_id: person.id,
+              source: person.source,
+              volba: person.choice,
+              status: 'PLANNED',
+              remove_reason: null,
+              moved_to_issue_id: null,
+              removed_at: null,
+              removed_by: null,
+              added_by: actor.id,
+              updated_at: now
+            })),
+            { onConflict: 'issue_id,user_id' }
+          )
 
-      if (upsertItemsError) throw upsertItemsError
+        if (upsertItemsError) throw upsertItemsError
+      }
+
+      const existingPlannedRequestedRows = (currentItems || [])
+        .filter((item: any) => item.status === 'PLANNED' && existingRequestedUserIds.includes(item.user_id))
+
+      if (existingPlannedRequestedRows.length > 0) {
+        const { error: keepExistingError } = await supabaseServer
+          .from('registration_group_issue_items')
+          .upsert(
+            existingPlannedRequestedRows.map((item: any) => {
+              const requested = requestedPeople.find(person => person.userId === item.user_id)
+              return {
+                issue_id: issue.id,
+                user_id: item.user_id,
+                source: requested?.source || item.source || 'SEARCH',
+                volba: normalizeChoice(item.volba) || 'MASO',
+                status: 'PLANNED',
+                remove_reason: null,
+                moved_to_issue_id: null,
+                removed_at: null,
+                removed_by: null,
+                added_by: actor.id,
+                updated_at: now
+              }
+            }),
+            { onConflict: 'issue_id,user_id' }
+          )
+
+        if (keepExistingError) throw keepExistingError
+      }
 
       await replacePickupUsers(issue.id, finalPickupUserIds, actor.id)
     } catch (error: any) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    const summary = choiceSummary(issuablePeople)
-    const skippedCount = requestedPeople.length - issuablePeople.length
+    const refreshedPeople = await loadIssuePeople(issue.id, date, meal)
+    const summary = choiceSummary(refreshedPeople.filter(person => person.issuable))
+    const skippedCount = newRequestedPeople.length - issuablePeople.length
 
     return NextResponse.json({
       ok: true,

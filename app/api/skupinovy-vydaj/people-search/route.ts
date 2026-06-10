@@ -4,6 +4,7 @@ import { supabaseServer } from '@/lib/supabaseServer'
 import {
   cleanText,
   filterIssuablePeople,
+  fullName,
   getIssueAccess,
   normalizeDate,
   normalizeMeal
@@ -20,9 +21,10 @@ export async function GET(req: NextRequest) {
     const registrationGroupId = cleanText(req.nextUrl.searchParams.get('registrationGroupId'))
     const date = normalizeDate(req.nextUrl.searchParams.get('date'))
     const meal = normalizeMeal(req.nextUrl.searchParams.get('meal'))
+    const mode = cleanText(req.nextUrl.searchParams.get('mode')).toUpperCase()
     const query = cleanText(req.nextUrl.searchParams.get('q')).replaceAll('%', '').replaceAll(',', ' ')
 
-    if (!registrationGroupId || !date || !meal) {
+    if (!registrationGroupId || (mode !== 'PICKUP' && (!date || !meal))) {
       return NextResponse.json({ error: 'Chyba registracna skupina, datum alebo jedlo.' }, { status: 400 })
     }
 
@@ -48,6 +50,20 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    if (mode === 'PICKUP') {
+      return NextResponse.json({
+        people: (data || []).map((user: any) => ({
+          id: user.id,
+          name: fullName(user),
+          email: user.email || ''
+        }))
+      })
+    }
+
+    if (!date || !meal) {
+      return NextResponse.json({ error: 'Chyba datum alebo jedlo.' }, { status: 400 })
     }
 
     const people = await filterIssuablePeople({

@@ -36,6 +36,10 @@ type IssuePerson = {
   email: string
   choice: 'MASO' | 'VEGE' | 'DIETA'
   source: 'REGISTRATION_GROUP' | 'SEARCH' | 'QR'
+  issuable?: boolean
+  issueStatus?: string
+  issueStatusLabel?: string
+  itemStatus?: string
 }
 
 type ExistingIssue = {
@@ -81,6 +85,10 @@ function sourceLabel(value: IssuePerson['source']) {
   return 'Vyhladane'
 }
 
+function isIssuePersonReady(person: IssuePerson) {
+  return person.issuable !== false
+}
+
 export default function SkupinovyVydajClient({ initialDate, groups, delegatesByGroupId }: Props) {
   const [date, setDate] = useState(initialDate)
   const [meal, setMeal] = useState<MealSelection>('')
@@ -90,6 +98,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [issuePeople, setIssuePeople] = useState<IssuePerson[]>([])
   const [selectedIssueUserIds, setSelectedIssueUserIds] = useState<string[]>([])
   const [pickupUserIds, setPickupUserIds] = useState<string[]>([])
+  const [pickupUsers, setPickupUsers] = useState<SearchUser[]>([])
+  const [issuePersonFilter, setIssuePersonFilter] = useState('')
+  const [pickupQuery, setPickupQuery] = useState('')
+  const [pickupResults, setPickupResults] = useState<SearchUser[]>([])
+  const [pickupLoading, setPickupLoading] = useState(false)
   const [existingIssues, setExistingIssues] = useState<ExistingIssue[]>([])
   const [editingIssueId, setEditingIssueId] = useState('')
   const [issueLoading, setIssueLoading] = useState(false)
@@ -115,11 +128,26 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const delegates = selectedGroupId ? delegateMap[selectedGroupId] || [] : []
   const selectionReady = Boolean(date && selectedGroupId)
   const selectedIssuePeople = issuePeople.filter(person => selectedIssueUserIds.includes(person.id))
-  const selectedSummary = selectedIssuePeople.reduce((summary, person) => {
+  const selectedIssuablePeople = selectedIssuePeople.filter(isIssuePersonReady)
+  const selectedSummary = selectedIssuablePeople.reduce((summary, person) => {
     summary[person.choice] += 1
     summary.SPOLU += 1
     return summary
   }, { MASO: 0, VEGE: 0, DIETA: 0, SPOLU: 0 })
+  const filteredIssuePeople = useMemo(() => {
+    const query = issuePersonFilter.trim().toLowerCase()
+    if (!query) return issuePeople
+
+    return issuePeople.filter(person => {
+      return [
+        person.name,
+        person.email,
+        person.choice,
+        sourceLabel(person.source),
+        person.issueStatusLabel || ''
+      ].join(' ').toLowerCase().includes(query)
+    })
+  }, [issuePeople, issuePersonFilter])
 
   function setMessage(message: string, type: 'ok' | 'error' = 'ok') {
     setFeedback(message)
@@ -162,6 +190,10 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setIssuePeople([])
     setSelectedIssueUserIds([])
     setPickupUserIds([])
+    setPickupUsers([])
+    setIssuePersonFilter('')
+    setPickupQuery('')
+    setPickupResults([])
     if (clearExisting) {
       setExistingIssues([])
       setExistingIssuesLoaded(false)
@@ -246,7 +278,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setIssueTitle('')
       setIssuePeople(people)
       setSelectedIssueUserIds(people.map(person => person.id))
-      setPickupUserIds(people[0]?.id ? [people[0].id] : [])
+      setPickupUserIds([])
+      setPickupUsers([])
+      setIssuePersonFilter('')
+      setPickupQuery('')
+      setPickupResults([])
       setEditingIssueId('')
       await loadExistingIssuesFor(selectedGroupId, date)
       setConfirmed(true)
@@ -286,7 +322,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setIssueTitle(issue.title || '')
       setIssuePeople(people)
       setSelectedIssueUserIds(people.map(person => person.id))
-      setPickupUserIds((issue.pickupUserIds || []).filter((id: string) => people.some(person => person.id === id)))
+      setPickupUserIds(issue.pickupUserIds || [])
+      setPickupUsers(issue.pickupUsers || [])
+      setIssuePersonFilter('')
+      setPickupQuery('')
+      setPickupResults([])
       setConfirmed(true)
       setIssueMessage('Skupinovy vydaj je nacitany na upravu.')
     } catch (err: any) {
@@ -375,22 +415,71 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
   function toggleIssuePerson(userId: string) {
     setSelectedIssueUserIds(current => {
-      const next = current.includes(userId)
+      return current.includes(userId)
         ? current.filter(id => id !== userId)
         : [...current, userId]
-
-      setPickupUserIds(pickupCurrent => pickupCurrent.filter(id => next.includes(id)))
-      return next
     })
   }
 
-  function togglePickupUser(userId: string) {
-    if (!selectedIssueUserIds.includes(userId)) return
+  function handleBulkIssueSelection(action: string) {
+    if (action === 'ALL') {
+      setSelectedIssueUserIds(issuePeople.map(person => person.id))
+      return
+    }
 
-    setPickupUserIds(current => {
-      if (current.includes(userId)) return current.filter(id => id !== userId)
-      return [...current, userId]
+    if (action === 'READY') {
+      setSelectedIssueUserIds(issuePeople.filter(isIssuePersonReady).map(person => person.id))
+      return
+    }
+
+    if (action === 'NONE') {
+      setSelectedIssueUserIds([])
+    }
+  }
+
+  async function searchPickupUsers(query: string) {
+    setPickupQuery(query)
+    setPickupResults([])
+
+    if (!selectedGroupId || query.trim().length < 2) return
+
+    setPickupLoading(true)
+
+    try {
+      const params = new URLSearchParams({
+        registrationGroupId: selectedGroupId,
+        mode: 'pickup',
+        q: query
+      })
+      const res = await fetch(`/api/skupinovy-vydaj/people-search?${params.toString()}`)
+      const json = await res.json()
+
+      if (!res.ok) throw new Error(json.error || 'Vyhladavanie zlyhalo.')
+
+      setPickupResults(json.people || [])
+    } catch (err: any) {
+      setIssueMessage(err?.message || 'Vyhladavanie zlyhalo.', 'error')
+    } finally {
+      setPickupLoading(false)
+    }
+  }
+
+  function addPickupUser(user: SearchUser) {
+    setPickupUsers(current => {
+      if (current.some(item => item.id === user.id)) return current
+      return [...current, user]
     })
+    setPickupUserIds(current => {
+      if (current.includes(user.id)) return current
+      return [...current, user.id]
+    })
+    setPickupQuery('')
+    setPickupResults([])
+  }
+
+  function removePickupUser(userId: string) {
+    setPickupUsers(current => current.filter(user => user.id !== userId))
+    setPickupUserIds(current => current.filter(id => id !== userId))
   }
 
   async function saveIssue() {
@@ -628,50 +717,52 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 </label>
 
                 <div style={styles.issueToolbar}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedIssueUserIds(issuePeople.map(person => person.id))
-                      setPickupUserIds(current => current.filter(id => issuePeople.some(person => person.id === id)))
-                    }}
+                  <select
+                    value=""
+                    onChange={event => handleBulkIssueSelection(event.target.value)}
                     disabled={issueLoading || issuePeople.length === 0}
-                    style={styles.smallButton}
+                    style={styles.toolbarSelect}
+                    aria-label="Hromadne oznacenie"
                   >
-                    Oznacit vsetkych
-                  </button>
+                    <option value="">Hromadne oznacenie</option>
+                    <option value="ALL">Oznacit vsetkych</option>
+                    <option value="READY">Oznacit vydatelnych</option>
+                    <option value="NONE">Odznacit vsetkych</option>
+                  </select>
+
                   <button
                     type="button"
-                    onClick={() => {
-                      setSelectedIssueUserIds([])
-                      setPickupUserIds([])
-                    }}
-                        disabled={issueLoading || issuePeople.length === 0}
-                        style={styles.smallButtonWhite}
-                      >
-                        Odznacit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setQrModalOpen(true)}
-                        disabled={issueLoading || !selectedGroupId || !date || !meal}
-                        style={styles.darkButton}
-                      >
-                        Pridat cez QR
-                      </button>
-                    </div>
-
-                    <div style={styles.peopleSectionHeader}>
-                  <b>Osoby vo vydaji</b>
-                  <span>{selectedIssueUserIds.length}/{issuePeople.length} oznacenych</span>
+                    onClick={() => setQrModalOpen(true)}
+                    disabled={issueLoading || !selectedGroupId || !date || !meal}
+                    style={styles.darkButton}
+                  >
+                    Pridat cez QR
+                  </button>
                 </div>
+
+                <div style={styles.peopleSectionHeader}>
+                  <b>Osoby vo vydaji</b>
+                  <span>{selectedSummary.SPOLU} vydatelnych / {selectedIssueUserIds.length} oznacenych / {issuePeople.length} spolu</span>
+                </div>
+
+                <input
+                  type="search"
+                  value={issuePersonFilter}
+                  onChange={event => setIssuePersonFilter(event.target.value)}
+                  placeholder="Hladat v osobach vo vydaji"
+                  style={styles.filterInput}
+                  disabled={issuePeople.length === 0}
+                />
 
                 <div style={styles.issuePeopleList}>
                   {issuePeople.length === 0 ? (
                     <div style={styles.emptyBox}>Pre tento datum a jedlo nie je aktualne nikto vydatelny.</div>
+                  ) : filteredIssuePeople.length === 0 ? (
+                    <div style={styles.emptyBox}>Nic sa nenaslo.</div>
                   ) : (
-                    issuePeople.map(person => {
+                    filteredIssuePeople.map(person => {
                       const selected = selectedIssueUserIds.includes(person.id)
-                      const pickup = pickupUserIds.includes(person.id)
+                      const ready = isIssuePersonReady(person)
 
                       return (
                         <div
@@ -679,7 +770,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                           className="issue-person-row"
                           style={{
                             ...styles.issuePersonRow,
-                            ...(selected ? styles.issuePersonRowSelected : {})
+                            ...(selected ? styles.issuePersonRowSelected : {}),
+                            ...(!ready ? styles.issuePersonRowMuted : {})
                           }}
                         >
                           <label style={styles.personCheckLabel}>
@@ -697,16 +789,10 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
                           <div className="issue-person-meta" style={styles.personMeta}>
                             <span style={styles.choicePill}>{person.choice}</span>
+                            <span style={ready ? styles.statusPillReady : styles.statusPillWarning}>
+                              {person.issueStatusLabel || (ready ? 'Pripravene' : 'Nevydatelne')}
+                            </span>
                             <span style={styles.sourcePill}>{sourceLabel(person.source)}</span>
-                            <label style={styles.pickupLabel}>
-                              <input
-                                type="checkbox"
-                                checked={pickup}
-                                disabled={!selected}
-                                onChange={() => togglePickupUser(person.id)}
-                              />
-                              Prevziat
-                            </label>
                           </div>
                         </div>
                       )
@@ -714,10 +800,72 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   )}
                 </div>
 
+                <div style={styles.pickupPanel}>
+                  <div style={styles.peopleSectionHeader}>
+                    <b>Opravneni prevziat</b>
+                    <span>{pickupUserIds.length} osob</span>
+                  </div>
+
+                  {pickupUsers.length === 0 ? (
+                    <div style={styles.emptyBox}>Ak nikoho nezvolis, prevziat bude moct vytvarajuca osoba.</div>
+                  ) : (
+                    <div style={styles.pickupList}>
+                      {pickupUsers.map(user => (
+                        <div key={user.id} style={styles.pickupUserRow}>
+                          <span>
+                            <b>{user.name}</b>
+                            {user.email && <small>{user.email}</small>}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removePickupUser(user.id)}
+                            disabled={issueLoading}
+                            style={styles.removeButton}
+                            title="Odobrat opravnenie"
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <label style={styles.field}>
+                    <span style={styles.label}>Pridat osobu na prevzatie</span>
+                    <input
+                      type="search"
+                      value={pickupQuery}
+                      onChange={event => searchPickupUsers(event.target.value)}
+                      placeholder="Meno, priezvisko alebo email"
+                      style={styles.input}
+                      disabled={issueLoading}
+                    />
+                  </label>
+
+                  {pickupLoading && <div style={styles.emptyBox}>Vyhladavam...</div>}
+
+                  {pickupResults.length > 0 && (
+                    <div style={styles.searchResults}>
+                      {pickupResults.map(user => (
+                        <button
+                          key={user.id}
+                          type="button"
+                          onClick={() => addPickupUser(user)}
+                          disabled={pickupUserIds.includes(user.id)}
+                          style={styles.resultButton}
+                        >
+                          <b>{user.name}</b>
+                          {user.email && <span>{user.email}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                     <button
                       type="button"
                   onClick={saveIssue}
-                  disabled={issueLoading || selectedSummary.SPOLU === 0}
+                  disabled={issueLoading || selectedIssuePeople.length === 0}
                   style={{ ...styles.primaryButton, marginTop: 14, width: '100%' }}
                 >
                   {issueLoading ? 'Ukladam...' : editingIssueId ? 'Ulozit upravy' : 'Vytvorit skupinovy vydaj'}
@@ -906,7 +1054,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                       disabled={issueLoading || !meal}
                       style={{ ...styles.primaryButton, alignSelf: 'end' }}
                     >
-                      {issueLoading ? 'Nacitavam...' : 'Pripravit vydaj'}
+                      {issueLoading ? 'Nacitavam...' : 'Pripravit novy vydaj'}
                     </button>
                   </div>
 
@@ -1387,6 +1535,17 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     marginTop: 12
   },
+  toolbarSelect: {
+    minHeight: 36,
+    minWidth: 190,
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
+    background: '#fff',
+    color: '#111827',
+    padding: '0 9px',
+    fontSize: 12,
+    fontWeight: 900
+  },
   prepareActions: {
     display: 'grid',
     gridTemplateColumns: 'minmax(0, 1fr) minmax(140px, auto)',
@@ -1507,10 +1666,23 @@ const styles: Record<string, React.CSSProperties> = {
   issuePeopleList: {
     display: 'grid',
     gap: 4,
-    marginTop: 12,
+    marginTop: 8,
     maxHeight: 560,
     overflow: 'auto',
     paddingRight: 3
+  },
+  filterInput: {
+    width: '100%',
+    minHeight: 36,
+    boxSizing: 'border-box',
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
+    padding: '0 9px',
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: 850,
+    background: '#fff',
+    color: '#111827'
   },
   peopleSectionHeader: {
     marginTop: 12,
@@ -1536,6 +1708,10 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#f0fdf4',
     borderColor: '#86efac',
     boxShadow: 'inset 3px 0 0 #22c55e'
+  },
+  issuePersonRowMuted: {
+    background: '#f9fafb',
+    color: '#6b7280'
   },
   personCheckLabel: {
     display: 'grid',
@@ -1576,6 +1752,24 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontWeight: 900
   },
+  statusPillReady: {
+    border: '1px solid #bbf7d0',
+    borderRadius: 999,
+    background: '#f0fdf4',
+    color: '#166534',
+    padding: '4px 8px',
+    fontSize: 11,
+    fontWeight: 950
+  },
+  statusPillWarning: {
+    border: '1px solid #fecaca',
+    borderRadius: 999,
+    background: '#fef2f2',
+    color: '#991b1b',
+    padding: '4px 8px',
+    fontSize: 11,
+    fontWeight: 950
+  },
   pickupLabel: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -1587,6 +1781,31 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '4px 8px',
     fontSize: 11,
     fontWeight: 950
+  },
+  pickupPanel: {
+    marginTop: 12,
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    background: '#f9fafb',
+    padding: 10,
+    display: 'grid',
+    gap: 8
+  },
+  pickupList: {
+    display: 'grid',
+    gap: 6
+  },
+  pickupUserRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 8,
+    alignItems: 'center',
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
+    background: '#fff',
+    padding: 8,
+    fontSize: 12,
+    fontWeight: 900
   },
   createdBox: {
     marginTop: 12,
