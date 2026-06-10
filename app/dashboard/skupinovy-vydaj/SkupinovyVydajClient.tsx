@@ -597,9 +597,23 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
             {confirmed && (
               <section className="group-issue-main" style={styles.mainPanel}>
                 <div style={styles.prepHeading}>
-                  <span style={styles.summaryLabel}>Pripravujes</span>
-                  <b>{mealLabel(meal)}</b>
-                  <small>{selectedGroup?.name || '-'} / {fullDateLabel(date)}</small>
+                  <div style={styles.prepHeadingInfo}>
+                    <span style={styles.summaryLabel}>Pripravujes</span>
+                    <b>{mealLabel(meal)}</b>
+                    <small>{selectedGroup?.name || '-'} / {fullDateLabel(date)}</small>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectionOpen(true)
+                      resetIssueState({ clearExisting: false })
+                      void loadExistingIssuesFor()
+                    }}
+                    style={styles.smallButtonWhite}
+                  >
+                    Zmenit
+                  </button>
                 </div>
 
                 <label style={styles.field}>
@@ -728,6 +742,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
             )}
 
             <aside className="group-issue-sidebar" style={styles.sidebar}>
+              {!confirmed && (
               <section style={{ ...styles.panel, order: 1 }}>
                 {selectionReady && !selectionOpen ? (
                   <div style={styles.selectedChoiceCard}>
@@ -807,6 +822,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   </>
                 )}
               </section>
+              )}
 
               {!confirmed && selectionReady && (!selectionOpen || existingIssuesLoaded) && (
                 <section style={{ ...styles.panel, order: 2 }}>
@@ -1110,11 +1126,19 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#f0fdf4',
     padding: 10,
     marginBottom: 10,
-    display: 'grid',
-    gap: 3,
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
     color: '#14532d',
     fontSize: 13,
     fontWeight: 900
+  },
+  prepHeadingInfo: {
+    display: 'grid',
+    gap: 3,
+    minWidth: 0
   },
   panelHeaderRow: {
     display: 'flex',
