@@ -321,7 +321,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setMeal(issue.meal || '')
       setIssueTitle(issue.title || '')
       setIssuePeople(people)
-      setSelectedIssueUserIds(people.map(person => person.id))
+      setSelectedIssueUserIds(people.filter(person => person.itemStatus !== 'REMOVED').map(person => person.id))
       setPickupUserIds(issue.pickupUserIds || [])
       setPickupUsers(issue.pickupUsers || [])
       setIssuePersonFilter('')

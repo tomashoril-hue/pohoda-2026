@@ -183,9 +183,8 @@ async function prepareIssuablePeople({
 async function loadIssuePeople(issueId: string, date: string, meal: MealType) {
   const { data: items, error: itemsError } = await supabaseServer
     .from('registration_group_issue_items')
-    .select('id, user_id, source, volba, status')
+    .select('id, user_id, source, volba, status, remove_reason')
     .eq('issue_id', issueId)
-    .neq('status', 'REMOVED')
 
   if (itemsError) throw itemsError
 
@@ -237,6 +236,17 @@ async function loadIssuePeople(issueId: string, date: string, meal: MealType) {
       choice,
       source,
       itemStatus: item.status || 'PLANNED'
+    }
+
+    if (item.status === 'REMOVED') {
+      return {
+        ...base,
+        issuable: false,
+        issueStatus: 'REMOVED',
+        issueStatusLabel: item.remove_reason === 'MOVED_TO_OTHER_ISSUE'
+          ? 'V inom vydaji'
+          : 'Vyradeny'
+      }
     }
 
     if (item.status === 'BULK_ISSUED' || item.status === 'INDIVIDUAL_ISSUED' || issuedUserIds.has(item.user_id)) {
