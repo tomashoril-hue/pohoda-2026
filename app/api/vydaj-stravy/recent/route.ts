@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Chýba dátum alebo typ jedla.' }, { status: 400 })
     }
 
-    const selectIssued = 'id, user_id, group_id, hromadny_vydaj_id, datum, typ_jedla, volba, sposob, issued_by, issued_at'
+    const selectIssued = 'id, user_id, group_id, hromadny_vydaj_id, registration_group_issue_id, datum, typ_jedla, volba, sposob, issued_by, issued_at'
     const { data, error } = await supabaseServer
       .from('vydaj_jedal')
       .select(selectIssued)
@@ -69,6 +69,13 @@ export async function GET(req: NextRequest) {
         visibleBaseRows
           .filter((row: any) => row.sposob === 'HROMADNE' && row.hromadny_vydaj_id)
           .map((row: any) => row.hromadny_vydaj_id)
+      )
+    )
+    const registrationIssueIds = Array.from(
+      new Set(
+        visibleBaseRows
+          .filter((row: any) => row.sposob === 'HROMADNE' && row.registration_group_issue_id)
+          .map((row: any) => row.registration_group_issue_id)
       )
     )
 
@@ -94,8 +101,29 @@ export async function GET(req: NextRequest) {
       visibleRows = Array.from(rowMap.values())
     }
 
+    if (registrationIssueIds.length > 0) {
+      const { data: registrationRows, error: registrationRowsError } = await supabaseServer
+        .from('vydaj_jedal')
+        .select(selectIssued)
+        .eq('datum', datum)
+        .eq('typ_jedla', typJedla)
+        .eq('status', 'VYDANE')
+        .in('registration_group_issue_id', registrationIssueIds)
+
+      if (registrationRowsError) {
+        return NextResponse.json({ error: registrationRowsError.message }, { status: 500 })
+      }
+
+      const rowMap = new Map<string, any>()
+      visibleRows.forEach((row: any) => rowMap.set(row.id, row))
+      ;(registrationRows || [])
+        .forEach((row: any) => rowMap.set(row.id, row))
+      visibleRows = Array.from(rowMap.values())
+    }
+
     const userIds = Array.from(new Set(visibleRows.map((row: any) => row.user_id).filter(Boolean)))
     const groupIds = Array.from(new Set(visibleRows.map((row: any) => row.group_id).filter(Boolean)))
+    const allRegistrationIssueIds = Array.from(new Set(visibleRows.map((row: any) => row.registration_group_issue_id).filter(Boolean)))
 
     const { data: usersData } = userIds.length > 0
       ? await supabaseServer
@@ -111,8 +139,22 @@ export async function GET(req: NextRequest) {
         .in('id', groupIds)
       : { data: [] }
 
+    const { data: registrationIssuesData } = allRegistrationIssueIds.length > 0
+      ? await supabaseServer
+        .from('registration_group_issues')
+        .select(`
+          id,
+          title,
+          registration_groups (
+            name
+          )
+        `)
+        .in('id', allRegistrationIssueIds)
+      : { data: [] }
+
     const userMap = new Map((usersData || []).map((user: any) => [user.id, user]))
     const groupMap = new Map((groupsData || []).map((group: any) => [group.id, group]))
+    const registrationIssueMap = new Map((registrationIssuesData || []).map((issue: any) => [issue.id, issue]))
 
     const rowToItem = (row: any) => {
         const person = userMap.get(row.user_id)
@@ -131,12 +173,19 @@ export async function GET(req: NextRequest) {
     }
 
     const bulkGroups = new Map<string, any[]>()
+    const registrationBulkGroups = new Map<string, any[]>()
     const items: any[] = []
 
     visibleRows.forEach((row: any) => {
       if (row.sposob === 'HROMADNE' && row.hromadny_vydaj_id) {
         const key = row.hromadny_vydaj_id
         bulkGroups.set(key, [...(bulkGroups.get(key) || []), row])
+        return
+      }
+
+      if (row.sposob === 'HROMADNE' && row.registration_group_issue_id) {
+        const key = row.registration_group_issue_id
+        registrationBulkGroups.set(key, [...(registrationBulkGroups.get(key) || []), row])
         return
       }
 
@@ -169,6 +218,36 @@ export async function GET(req: NextRequest) {
         choice: '',
         method: 'HROMADNE',
         groupName: group?.name || '',
+        summary,
+        children
+      })
+    })
+
+    registrationBulkGroups.forEach((rows, issueId) => {
+      const first = rows[0]
+      const issue: any = registrationIssueMap.get(issueId)
+      const group = Array.isArray(issue?.registration_groups)
+        ? issue.registration_groups[0]
+        : issue?.registration_groups
+      const children = rows.map(rowToItem)
+      const summary = rows.reduce((acc: any, row: any) => {
+        const choice = row.volba === 'MASO' || row.volba === 'VEGE' || row.volba === 'DIETA'
+          ? row.volba
+          : 'NEZADANE'
+        acc[choice] = (acc[choice] || 0) + 1
+        return acc
+      }, { MASO: 0, VEGE: 0, DIETA: 0, NEZADANE: 0 })
+
+      items.push({
+        issuedId: `registration:${issueId}`,
+        itemType: 'BULK',
+        typJedla: first.typ_jedla,
+        issuedAt: first.issued_at,
+        personName: issue?.title || group?.name || 'Skupinovy vydaj',
+        email: '',
+        choice: '',
+        method: 'HROMADNE',
+        groupName: issue?.title || group?.name || '',
         summary,
         children
       })

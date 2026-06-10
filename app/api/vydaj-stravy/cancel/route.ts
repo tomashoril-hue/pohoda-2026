@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     const { data: issuedMeals, error: issuedMealError } = await supabaseServer
       .from('vydaj_jedal')
-      .select('id, user_id, group_id, hromadny_vydaj_id, issued_by, status')
+      .select('id, user_id, group_id, hromadny_vydaj_id, registration_group_issue_id, issued_by, status')
       .in('id', idsToCancel)
 
     if (issuedMealError) {
@@ -69,13 +69,22 @@ export async function POST(req: NextRequest) {
     }
 
     const issuedMealsByIssue = new Map<string, string[]>()
+    const issuedMealsByRegistrationIssue = new Map<string, string[]>()
 
     issuedMeals.forEach((issuedMeal: any) => {
-      if (!issuedMeal.hromadny_vydaj_id) return
-      issuedMealsByIssue.set(
-        issuedMeal.hromadny_vydaj_id,
-        [...(issuedMealsByIssue.get(issuedMeal.hromadny_vydaj_id) || []), issuedMeal.user_id]
-      )
+      if (issuedMeal.hromadny_vydaj_id) {
+        issuedMealsByIssue.set(
+          issuedMeal.hromadny_vydaj_id,
+          [...(issuedMealsByIssue.get(issuedMeal.hromadny_vydaj_id) || []), issuedMeal.user_id]
+        )
+      }
+
+      if (issuedMeal.registration_group_issue_id) {
+        issuedMealsByRegistrationIssue.set(
+          issuedMeal.registration_group_issue_id,
+          [...(issuedMealsByRegistrationIssue.get(issuedMeal.registration_group_issue_id) || []), issuedMeal.user_id]
+        )
+      }
     })
 
     for (const [issueId, userIds] of issuedMealsByIssue.entries()) {
@@ -86,6 +95,18 @@ export async function POST(req: NextRequest) {
           updated_at: now
         })
         .eq('hromadny_vydaj_id', issueId)
+        .in('user_id', userIds)
+        .in('status', ['BULK_ISSUED', 'INDIVIDUAL_ISSUED'])
+    }
+
+    for (const [issueId, userIds] of issuedMealsByRegistrationIssue.entries()) {
+      await supabaseServer
+        .from('registration_group_issue_items')
+        .update({
+          status: 'PLANNED',
+          updated_at: now
+        })
+        .eq('issue_id', issueId)
         .in('user_id', userIds)
         .in('status', ['BULK_ISSUED', 'INDIVIDUAL_ISSUED'])
     }
