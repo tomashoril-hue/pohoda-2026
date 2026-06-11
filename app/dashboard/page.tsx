@@ -83,30 +83,6 @@ function entitlementLabel(value: boolean | null | undefined, hasRow: boolean) {
   return value ? 'ÁNO' : 'NIE'
 }
 
-function dashboardIssuedLabel(value: any) {
-  if (value?.status === 'VYDANE' && value?.sposob === 'HROMADNE') return 'vydané skupinovo'
-  if (value?.status === 'VYDANE') return 'vydané'
-  if (value?.status === 'STORNOVANE') return 'stornované'
-  return 'nevydané'
-}
-
-function bulkLabel(value: any, issued: any, groupName: string) {
-  const suffix = groupName ? ` · ${groupName}` : ''
-
-  if (issued?.status === 'VYDANE' && issued?.sposob === 'HROMADNE') {
-    return `vydané${suffix}`
-  }
-
-  if (!value) return 'nie'
-
-  if (value.status === 'PLANNED') return `pripravený${suffix}`
-  if (value.status === 'REMOVED') return `vyradené${suffix}`
-  if (value.status === 'INDIVIDUAL_ISSUED') return 'prevzaté osobne'
-  if (value.status === 'BULK_ISSUED') return `vydané${suffix}`
-
-  return value.status || 'nie'
-}
-
 function activeRegistrationGroupName(period: any, fallbackGroup: any) {
   const group = Array.isArray(period?.registration_groups)
     ? period.registration_groups[0]
@@ -122,6 +98,19 @@ function fullName(person: any) {
   return `${person?.meno || ''} ${person?.priezvisko || ''}`.trim()
 }
 
+function relationOne(value: any) {
+  return Array.isArray(value) ? value[0] : value
+}
+
+function issueGroupName(issue: any) {
+  const group = relationOne(issue?.registration_groups || issue?.groups)
+  return group?.name || ''
+}
+
+function issueTitle(issue: any) {
+  return issue?.title || issueGroupName(issue)
+}
+
 function formatTime(value: string | null | undefined) {
   if (!value) return ''
 
@@ -134,6 +123,72 @@ function formatTime(value: string | null | undefined) {
   } catch {
     return ''
   }
+}
+
+function mealState({
+  entitlement,
+  noInterest,
+  issued,
+  legacyBulkItem,
+  registrationBulkItem,
+  issuedGroup,
+  issuedRegistrationIssue
+}: {
+  entitlement: string
+  noInterest: boolean
+  issued: any
+  legacyBulkItem: any
+  registrationBulkItem: any
+  issuedGroup: any
+  issuedRegistrationIssue: any
+}) {
+  if (issued?.status === 'VYDANE') {
+    if (issued.sposob === 'HROMADNE' && issued.registration_group_issue_id) {
+      return {
+        label: 'Vydané skupinovo',
+        detail: issueTitle(issuedRegistrationIssue),
+        tone: 'issued'
+      }
+    }
+
+    if (issued.sposob === 'HROMADNE') {
+      return {
+        label: 'Vydané hromadne',
+        detail: issuedGroup?.name || '',
+        tone: 'issued'
+      }
+    }
+
+    return { label: 'Vydané osobne', detail: '', tone: 'issued' }
+  }
+
+  if (entitlement === 'NIE') {
+    return { label: 'Bez nároku', detail: '', tone: 'blocked' }
+  }
+
+  if (noInterest) {
+    return { label: 'Odhlásené', detail: 'Jedlo je odhlásené vo výbere.', tone: 'blocked' }
+  }
+
+  const registrationIssue = relationOne(registrationBulkItem?.registration_group_issues)
+  if (registrationIssue && (registrationIssue.status === 'READY' || registrationIssue.status === 'WAITING')) {
+    return {
+      label: registrationBulkItem.status === 'REMOVED' ? 'Vyradené zo skupinového výdaja' : 'Pripravené skupinovo',
+      detail: issueTitle(registrationIssue),
+      tone: registrationBulkItem.status === 'REMOVED' ? 'blocked' : 'prepared'
+    }
+  }
+
+  const legacyIssue = relationOne(legacyBulkItem?.hromadne_vydaje)
+  if (legacyIssue && (legacyIssue.status === 'READY' || legacyIssue.status === 'WAITING')) {
+    return {
+      label: legacyBulkItem.status === 'REMOVED' ? 'Vyradené z hromadného výdaja' : 'Pripravené hromadne',
+      detail: issueGroupName(legacyIssue),
+      tone: legacyBulkItem.status === 'REMOVED' ? 'blocked' : 'prepared'
+    }
+  }
+
+  return { label: 'Nevydané', detail: '', tone: 'neutral' }
 }
 
 export default async function DashboardPage({
@@ -228,7 +283,7 @@ export default async function DashboardPage({
 
   const { data: issuedMeals } = await supabaseServer
     .from('vydaj_jedal')
-    .select('typ_jedla, status, sposob, issued_at, issued_by, group_id')
+    .select('typ_jedla, status, sposob, issued_at, issued_by, group_id, hromadny_vydaj_id, registration_group_issue_id')
     .eq('user_id', user.id)
     .eq('datum', selectedDate)
     .order('issued_at', { ascending: false })
@@ -250,7 +305,26 @@ export default async function DashboardPage({
       )
     `)
     .eq('user_id', user.id)
-    .in('status', ['PLANNED', 'REMOVED', 'INDIVIDUAL_ISSUED', 'BULK_ISSUED'])
+    .in('status', ['PLANNED', 'REMOVED'])
+
+  const { data: registrationBulkItems } = await supabaseServer
+    .from('registration_group_issue_items')
+    .select(`
+      id,
+      status,
+      registration_group_issues:registration_group_issues!registration_group_issue_items_issue_id_fkey (
+        id,
+        title,
+        datum,
+        typ_jedla,
+        status,
+        registration_groups (
+          name
+        )
+      )
+    `)
+    .eq('user_id', user.id)
+    .in('status', ['PLANNED', 'REMOVED'])
 
   const issuedByIds = Array.from(new Set(
     (issuedMeals || [])
@@ -263,6 +337,12 @@ export default async function DashboardPage({
     (issuedMeals || [])
       .filter((item: any) => item.sposob === 'HROMADNE')
       .map((item: any) => item.group_id)
+      .filter(Boolean)
+  ))
+  const issuedRegistrationIssueIds = Array.from(new Set(
+    (issuedMeals || [])
+      .filter((item: any) => item.sposob === 'HROMADNE')
+      .map((item: any) => item.registration_group_issue_id)
       .filter(Boolean)
   ))
 
@@ -280,8 +360,22 @@ export default async function DashboardPage({
       .in('id', issuedGroupIds)
     : { data: [] }
 
+  const { data: issuedRegistrationIssues } = issuedRegistrationIssueIds.length > 0
+    ? await supabaseServer
+      .from('registration_group_issues')
+      .select(`
+        id,
+        title,
+        registration_groups (
+          name
+        )
+      `)
+      .in('id', issuedRegistrationIssueIds)
+    : { data: [] }
+
   const issuedByUserMap = new Map((issuedByUsers || []).map((item: any) => [item.id, item]))
   const issuedGroupMap = new Map((issuedGroups || []).map((item: any) => [item.id, item]))
+  const issuedRegistrationIssueMap = new Map((issuedRegistrationIssues || []).map((item: any) => [item.id, item]))
 
   const hasMembership = !!memberships && memberships.length > 0
   const hasPendingInvites = !!pendingInvites && pendingInvites.length > 0
@@ -321,7 +415,7 @@ export default async function DashboardPage({
   }
 
   const getBulk = (typJedla: string) => {
-    return (bulkItems || []).find((item: any) => {
+    const matchingItems = (bulkItems || []).filter((item: any) => {
       const issue = Array.isArray(item.hromadne_vydaje)
         ? item.hromadne_vydaje[0]
         : item.hromadne_vydaje
@@ -332,6 +426,30 @@ export default async function DashboardPage({
         (issue?.status === 'READY' || issue?.status === 'WAITING')
       )
     })
+
+    return matchingItems.sort((a: any, b: any) => {
+      if (a.status === 'PLANNED' && b.status !== 'PLANNED') return -1
+      if (a.status !== 'PLANNED' && b.status === 'PLANNED') return 1
+      return 0
+    })[0]
+  }
+
+  const getRegistrationBulk = (typJedla: string) => {
+    const matchingItems = (registrationBulkItems || []).filter((item: any) => {
+      const issue = relationOne(item.registration_group_issues)
+
+      return (
+        issue?.datum === selectedDate &&
+        issue?.typ_jedla === typJedla &&
+        (issue?.status === 'READY' || issue?.status === 'WAITING')
+      )
+    })
+
+    return matchingItems.sort((a: any, b: any) => {
+      if (a.status === 'PLANNED' && b.status !== 'PLANNED') return -1
+      if (a.status !== 'PLANNED' && b.status === 'PLANNED') return 1
+      return 0
+    })[0]
   }
 
   const obedSelection = getSelection('OBED')
@@ -346,7 +464,8 @@ export default async function DashboardPage({
       selection: obedSelection,
       menuText: getMenuText('OBED', showDiet),
       issued: getIssued('OBED'),
-      bulk: getBulk('OBED')
+      bulk: getBulk('OBED'),
+      registrationBulk: getRegistrationBulk('OBED')
     },
     {
       typJedla: 'VECERA',
@@ -354,7 +473,8 @@ export default async function DashboardPage({
       selection: veceraSelection,
       menuText: getMenuText('VECERA', showDiet),
       issued: getIssued('VECERA'),
-      bulk: getBulk('VECERA')
+      bulk: getBulk('VECERA'),
+      registrationBulk: getRegistrationBulk('VECERA')
     }
   ]
 
@@ -452,29 +572,26 @@ export default async function DashboardPage({
 
           <div style={styles.todayGrid}>
             {todayMeals.map(meal => {
-              const bulkIssue = meal.bulk
-              const issue = bulkIssue
-                ? Array.isArray(bulkIssue.hromadne_vydaje)
-                  ? bulkIssue.hromadne_vydaje[0]
-                  : bulkIssue.hromadne_vydaje
-                : null
-
-              const group = issue?.groups
-                ? Array.isArray(issue.groups)
-                  ? issue.groups[0]
-                  : issue.groups
-                : null
-
               const issuedGroup = meal.issued?.group_id ? issuedGroupMap.get(meal.issued.group_id) : null
-              const groupName = issuedGroup?.name || group?.name || ''
+              const issuedRegistrationIssue = meal.issued?.registration_group_issue_id
+                ? issuedRegistrationIssueMap.get(meal.issued.registration_group_issue_id)
+                : null
               const issuedByUser = meal.issued?.issued_by ? issuedByUserMap.get(meal.issued.issued_by) : null
               const issuedByName = fullName(issuedByUser)
               const issuedTime = formatTime(meal.issued?.issued_at)
               const showBulkPickup = meal.issued?.status === 'VYDANE' && meal.issued?.sposob === 'HROMADNE'
               const entitlementIsYes = meal.entitlement === 'ÁNO'
               const entitlementIsNo = meal.entitlement === 'NIE'
-              const issuedText = dashboardIssuedLabel(meal.issued)
               const noInterest = meal.selection?.volba === 'BEZ_ZAUJMU'
+              const state = mealState({
+                entitlement: meal.entitlement,
+                noInterest,
+                issued: meal.issued,
+                legacyBulkItem: meal.bulk,
+                registrationBulkItem: meal.registrationBulk,
+                issuedGroup,
+                issuedRegistrationIssue
+              })
 
               return (
                 <div
@@ -524,14 +641,19 @@ export default async function DashboardPage({
                       <b style={styles.todayMenuText}>{meal.menuText}</b>
                     </div>
 
-                    <div style={styles.todayRow}>
-                      <span>Skupinový výdaj</span>
-                      <b>{bulkLabel(bulkIssue, meal.issued, groupName)}</b>
-                    </div>
-
-                    <div style={styles.todayRow}>
-                      <span>Výdaj</span>
-                      <b>{issuedText}</b>
+                    <div
+                      style={{
+                        ...styles.todayStateBox,
+                        ...(state.tone === 'issued' ? styles.todayStateBoxIssued : {}),
+                        ...(state.tone === 'prepared' ? styles.todayStateBoxPrepared : {}),
+                        ...(state.tone === 'blocked' ? styles.todayStateBoxBlocked : {})
+                      }}
+                    >
+                      <span style={styles.todayChoiceLabel}>Stav jedla</span>
+                      <b style={styles.todayStateValue}>{state.label}</b>
+                      {state.detail && (
+                        <small style={styles.todayStateDetail}>{state.detail}</small>
+                      )}
                     </div>
 
                     {showBulkPickup && (
@@ -831,6 +953,35 @@ const styles: Record<string, React.CSSProperties> = {
   todayChoiceValue: {
     fontSize: 18,
     fontWeight: 950,
+    color: '#000'
+  },
+  todayStateBox: {
+    display: 'grid',
+    gap: 5,
+    background: '#fff',
+    border: '3px solid #000',
+    borderRadius: 14,
+    padding: 12,
+    color: '#000'
+  },
+  todayStateBoxIssued: {
+    background: '#56db3f'
+  },
+  todayStateBoxPrepared: {
+    background: '#fff3bf'
+  },
+  todayStateBoxBlocked: {
+    background: '#ff6b6b'
+  },
+  todayStateValue: {
+    fontSize: 18,
+    fontWeight: 950,
+    color: '#000'
+  },
+  todayStateDetail: {
+    fontSize: 12,
+    fontWeight: 850,
+    lineHeight: 1.25,
     color: '#000'
   },
   todayRow: {
