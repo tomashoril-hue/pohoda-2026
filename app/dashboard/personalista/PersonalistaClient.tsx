@@ -459,10 +459,7 @@ export default function PersonalistaClient({
     validTo: '',
     note: ''
   })
-  const [registrationGroupManagerForm, setRegistrationGroupManagerForm] = useState({
-    registrationGroupId: ''
-  })
-  const [registrationGroupDelegateForm, setRegistrationGroupDelegateForm] = useState({
+  const [registrationGroupAccessForm, setRegistrationGroupAccessForm] = useState({
     registrationGroupId: ''
   })
   const [selectedRegistrationPeriodKeys, setSelectedRegistrationPeriodKeys] = useState<string[]>([])
@@ -710,8 +707,7 @@ export default function PersonalistaClient({
     })
 
     setRegistrationPeriodForm(defaultRegistrationPeriodForm(selectedPerson))
-    setRegistrationGroupManagerForm({ registrationGroupId: '' })
-    setRegistrationGroupDelegateForm({ registrationGroupId: '' })
+    setRegistrationGroupAccessForm({ registrationGroupId: '' })
     setSelectedRegistrationPeriodKeys([])
 
     const bounds = entitlementBounds(selectedPerson.entitlements, fromDate, toDate)
@@ -1603,7 +1599,7 @@ export default function PersonalistaClient({
   const addRegistrationGroupManager = async () => {
     if (!selectedPerson) return
 
-    if (!registrationGroupManagerForm.registrationGroupId) {
+    if (!registrationGroupAccessForm.registrationGroupId) {
       setDetailFeedback('Vyber registracnu skupinu pre managera registracnej skupiny.', 'error', 'registrationPeriods')
       return
     }
@@ -1612,14 +1608,14 @@ export default function PersonalistaClient({
       '/api/personalista/people/registration-group-managers',
       {
         userId: selectedPerson.id,
-        registrationGroupId: registrationGroupManagerForm.registrationGroupId
+        registrationGroupId: registrationGroupAccessForm.registrationGroupId
       },
       'Managera registracnej skupiny sa nepodarilo pridat.',
       'registrationPeriods'
     )
 
     if (saved) {
-      setRegistrationGroupManagerForm({ registrationGroupId: '' })
+      setRegistrationGroupAccessForm({ registrationGroupId: '' })
     }
   }
 
@@ -1644,7 +1640,7 @@ export default function PersonalistaClient({
   const addRegistrationGroupDelegate = async () => {
     if (!selectedPerson) return
 
-    if (!registrationGroupDelegateForm.registrationGroupId) {
+    if (!registrationGroupAccessForm.registrationGroupId) {
       setDetailFeedback('Vyber registracnu skupinu pre poverenu osobu.', 'error', 'registrationPeriods')
       return
     }
@@ -1653,14 +1649,14 @@ export default function PersonalistaClient({
       '/api/personalista/people/registration-group-delegates',
       {
         userId: selectedPerson.id,
-        registrationGroupId: registrationGroupDelegateForm.registrationGroupId
+        registrationGroupId: registrationGroupAccessForm.registrationGroupId
       },
       'Poverenu osobu sa nepodarilo pridat.',
       'registrationPeriods'
     )
 
     if (saved) {
-      setRegistrationGroupDelegateForm({ registrationGroupId: '' })
+      setRegistrationGroupAccessForm({ registrationGroupId: '' })
     }
   }
 
@@ -4862,143 +4858,107 @@ export default function PersonalistaClient({
                     </button>
                   </div>
 
-                  <div style={styles.registrationAccessGrid}>
-                    <div style={styles.detailEditBoxSoft}>
-                      <div style={styles.detailEditTitle}>Manager registracnej skupiny</div>
-                      <div style={styles.optionHint}>
-                        Manager moze vytvarat a upravovat skupinovy vydaj pre vybranu registracnu skupinu hned.
-                      </div>
-
-                      <div style={styles.detailEditGridWide}>
-                        <label style={styles.field}>
-                          <span>Registracna skupina</span>
-                          <select
-                            value={registrationGroupManagerForm.registrationGroupId}
-                            onChange={event => setRegistrationGroupManagerForm({ registrationGroupId: event.target.value })}
-                            style={styles.input}
-                            disabled={detailLoading}
-                          >
-                            <option value="">Vyber registracnu skupinu</option>
-                            {registrationGroups
-                              .filter(group => !(selectedPerson.managedRegistrationGroups || []).some(manager => manager.registrationGroupId === group.id))
-                              .map(group => (
-                                <option key={group.id} value={group.id}>
-                                  {group.name}
-                                </option>
-                              ))}
-                          </select>
-                        </label>
-                      </div>
-
-                      <div style={styles.calendarToolbar}>
-                        <button
-                          type="button"
-                          style={styles.confirmButton}
-                          disabled={detailLoading || !registrationGroupManagerForm.registrationGroupId}
-                          onClick={() => void addRegistrationGroupManager()}
-                        >
-                          {detailLoading ? 'Ukladam...' : 'Pridat managera'}
-                        </button>
-                      </div>
-
-                      <div style={styles.detailGroups}>
-                        {(selectedPerson.managedRegistrationGroups || []).length === 0 ? (
-                          <div style={styles.detailGroupRow}>
-                            <b>Bez manager opravnenia</b>
-                            <span>Osoba nie je manager ziadnej registracnej skupiny.</span>
-                          </div>
-                        ) : (
-                          (selectedPerson.managedRegistrationGroups || []).map(manager => (
-                            <div key={manager.id} style={styles.registrationPeriodRow}>
-                              <div style={styles.registrationPeriodInfo}>
-                                <b>{manager.registrationGroupName || '-'}</b>
-                                <span>Manager registracnej skupiny</span>
-                              </div>
-
-                              <div style={styles.registrationPeriodActions}>
-                                <button
-                                  type="button"
-                                  style={styles.smallRemoveButton}
-                                  disabled={detailLoading}
-                                  onClick={() => removeRegistrationGroupManager(manager)}
-                                  title="Odobrat managera"
-                                >
-                                  x
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
+                  <div style={styles.detailEditBoxSoft}>
+                    <div style={styles.detailEditTitle}>Skupinovy vydaj - opravnenia</div>
+                    <div style={styles.optionHint}>
+                      Manager plati hned. Povereny moze vytvorit alebo upravit skupinovy vydaj, ale zmena zacne platit az po 15 minutach.
                     </div>
 
-                    <div style={styles.detailEditBoxSoft}>
-                      <div style={styles.detailEditTitle}>Povereny registracnej skupiny</div>
-                      <div style={styles.optionHint}>
-                        Poverena osoba moze vytvorit skupinovy vydaj, ale vytvorenie alebo zmena zacne platit az po 15 minutach.
-                      </div>
-
-                      <div style={styles.detailEditGridWide}>
-                        <label style={styles.field}>
-                          <span>Registracna skupina</span>
-                          <select
-                            value={registrationGroupDelegateForm.registrationGroupId}
-                            onChange={event => setRegistrationGroupDelegateForm({ registrationGroupId: event.target.value })}
-                            style={styles.input}
-                            disabled={detailLoading}
-                          >
-                            <option value="">Vyber registracnu skupinu</option>
-                            {registrationGroups
-                              .filter(group => !(selectedPerson.delegatedRegistrationGroups || []).some(delegate => delegate.registrationGroupId === group.id))
-                              .map(group => (
-                                <option key={group.id} value={group.id}>
-                                  {group.name}
-                                </option>
-                              ))}
-                          </select>
-                        </label>
-                      </div>
-
-                      <div style={styles.calendarToolbar}>
-                        <button
-                          type="button"
-                          style={styles.darkButton}
-                          disabled={detailLoading || !registrationGroupDelegateForm.registrationGroupId}
-                          onClick={() => void addRegistrationGroupDelegate()}
-                        >
-                          {detailLoading ? 'Ukladam...' : 'Pridat povereneho'}
-                        </button>
-                      </div>
-
-                      <div style={styles.detailGroups}>
-                        {(selectedPerson.delegatedRegistrationGroups || []).length === 0 ? (
-                          <div style={styles.detailGroupRow}>
-                            <b>Bez poverenia</b>
-                            <span>Osoba nie je poverena pre ziadnu registracnu skupinu.</span>
-                          </div>
-                        ) : (
-                          (selectedPerson.delegatedRegistrationGroups || []).map(delegate => (
-                            <div key={delegate.id} style={styles.registrationPeriodRow}>
-                              <div style={styles.registrationPeriodInfo}>
-                                <b>{delegate.registrationGroupName || '-'}</b>
-                                <span>Povereny skupinovy vydaj s 15 minutovym cakanim</span>
-                              </div>
-
-                              <div style={styles.registrationPeriodActions}>
-                                <button
-                                  type="button"
-                                  style={styles.smallRemoveButton}
-                                  disabled={detailLoading}
-                                  onClick={() => removeRegistrationGroupDelegate(delegate)}
-                                  title="Odobrat poverenie"
-                                >
-                                  x
-                                </button>
-                              </div>
+                    <div style={styles.detailGroups}>
+                      {(selectedPerson.managedRegistrationGroups || []).length === 0 ? (
+                        <div style={styles.detailGroupRow}>
+                          <b>Bez manager opravnenia</b>
+                          <span>Osoba nie je manager ziadnej registracnej skupiny.</span>
+                        </div>
+                      ) : (
+                        (selectedPerson.managedRegistrationGroups || []).map(manager => (
+                          <div key={manager.id} style={styles.registrationPeriodRow}>
+                            <div style={styles.registrationPeriodInfo}>
+                              <b>{manager.registrationGroupName || '-'}</b>
+                              <span>Manager registracnej skupiny</span>
                             </div>
-                          ))
-                        )}
-                      </div>
+
+                            <div style={styles.registrationPeriodActions}>
+                              <button
+                                type="button"
+                                style={styles.smallRemoveButton}
+                                disabled={detailLoading}
+                                onClick={() => removeRegistrationGroupManager(manager)}
+                                title="Odobrat managera"
+                              >
+                                x
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+
+                      {(selectedPerson.delegatedRegistrationGroups || []).length === 0 ? (
+                        <div style={styles.detailGroupRow}>
+                          <b>Bez poverenia</b>
+                          <span>Osoba nie je poverena pre ziadnu registracnu skupinu.</span>
+                        </div>
+                      ) : (
+                        (selectedPerson.delegatedRegistrationGroups || []).map(delegate => (
+                          <div key={delegate.id} style={styles.registrationPeriodRow}>
+                            <div style={styles.registrationPeriodInfo}>
+                              <b>{delegate.registrationGroupName || '-'}</b>
+                              <span>Povereny skupinovy vydaj s 15 minutovym cakanim</span>
+                            </div>
+
+                            <div style={styles.registrationPeriodActions}>
+                              <button
+                                type="button"
+                                style={styles.smallRemoveButton}
+                                disabled={detailLoading}
+                                onClick={() => removeRegistrationGroupDelegate(delegate)}
+                                title="Odobrat poverenie"
+                              >
+                                x
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div style={styles.detailEditGridWide}>
+                      <label style={{ ...styles.field, ...styles.detailEditFullRow }}>
+                        <span>Registracna skupina</span>
+                        <select
+                          value={registrationGroupAccessForm.registrationGroupId}
+                          onChange={event => setRegistrationGroupAccessForm({ registrationGroupId: event.target.value })}
+                          style={styles.input}
+                          disabled={detailLoading}
+                        >
+                          <option value="">Vyber registracnu skupinu</option>
+                          {registrationGroups.map(group => (
+                            <option key={group.id} value={group.id}>
+                              {group.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    <div style={styles.calendarToolbar}>
+                      <button
+                        type="button"
+                        style={styles.confirmButton}
+                        disabled={detailLoading || !registrationGroupAccessForm.registrationGroupId || (selectedPerson.managedRegistrationGroups || []).some(manager => manager.registrationGroupId === registrationGroupAccessForm.registrationGroupId)}
+                        onClick={() => void addRegistrationGroupManager()}
+                      >
+                        {detailLoading ? 'Ukladam...' : 'Pridat managera'}
+                      </button>
+
+                      <button
+                        type="button"
+                        style={styles.darkButton}
+                        disabled={detailLoading || !registrationGroupAccessForm.registrationGroupId || (selectedPerson.delegatedRegistrationGroups || []).some(delegate => delegate.registrationGroupId === registrationGroupAccessForm.registrationGroupId)}
+                        onClick={() => void addRegistrationGroupDelegate()}
+                      >
+                        {detailLoading ? 'Ukladam...' : 'Pridat povereneho'}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -6222,12 +6182,6 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     width: '100%',
     boxSizing: 'border-box'
-  },
-  registrationAccessGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))',
-    gap: 6,
-    minWidth: 0
   },
   detailEditFullRow: {
     gridColumn: '1 / -1'
