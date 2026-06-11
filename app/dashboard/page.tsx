@@ -207,124 +207,141 @@ export default async function DashboardPage({
   const selectedDate = normalizeDateParam(resolvedSearchParams.datum, today)
   const isTodaySelected = selectedDate === today
 
-  const { data: memberships } = await supabaseServer
-    .from('group_members')
-    .select(`
-      role,
-      group_id,
-      groups (
-        id,
-        name
-      )
-    `)
-    .eq('user_id', user.id)
-
-  const { data: pendingInvites } = await supabaseServer
-    .from('group_invites')
-    .select(`
-      id,
-      email,
-      status,
-      created_at,
-      groups (
-        id,
-        name
-      )
-    `)
-    .eq('email', String(user.email || '').toLowerCase())
-    .eq('status', 'PENDING')
-    .order('created_at', { ascending: false })
-
-  const { data: activeRegistrationPeriod } = await supabaseServer
-    .from('user_registration_group_periods')
-    .select(`
-      registration_group_id,
-      valid_from,
-      valid_to,
-      registration_groups (
-        name
-      )
-    `)
-    .eq('user_id', user.id)
-    .lte('valid_from', selectedDate)
-    .or(`valid_to.is.null,valid_to.gte.${selectedDate}`)
-    .order('valid_from', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  const { data: fallbackRegistrationGroup } = user.registration_group_id
-    ? await supabaseServer
-      .from('registration_groups')
-      .select('name')
-      .eq('id', user.registration_group_id)
-      .maybeSingle()
-    : { data: null }
-
-  const { data: entitlement } = await supabaseServer
-    .from('user_food_entitlements')
-    .select('datum, obed, vecera')
-    .eq('user_id', user.id)
-    .eq('datum', selectedDate)
-    .maybeSingle()
-
-  const { data: selections } = await supabaseServer
-    .from('vyber_jedal')
-    .select('typ_jedla, volba')
-    .eq('user_id', user.id)
-    .eq('datum', selectedDate)
-
-  const { data: menuItems } = await supabaseServer
-    .from('jedalny_listok')
-    .select('typ_jedla, varianta, nazov, popis')
-    .eq('datum', selectedDate)
-    .eq('aktivne', true)
-    .order('typ_jedla', { ascending: true })
-    .order('poradie', { ascending: true })
-
-  const { data: issuedMeals } = await supabaseServer
-    .from('vydaj_jedal')
-    .select('typ_jedla, status, sposob, issued_at, issued_by, group_id, hromadny_vydaj_id, registration_group_issue_id')
-    .eq('user_id', user.id)
-    .eq('datum', selectedDate)
-    .order('issued_at', { ascending: false })
-
-  const { data: bulkItems } = await supabaseServer
-    .from('hromadny_vydaj_polozky')
-    .select(`
-      id,
-      status,
-      hromadne_vydaje (
-        id,
-        datum,
-        typ_jedla,
-        status,
+  const [
+    membershipsResult,
+    pendingInvitesResult,
+    activeRegistrationPeriodResult,
+    fallbackRegistrationGroupResult,
+    entitlementResult,
+    selectionsResult,
+    menuItemsResult,
+    issuedMealsResult,
+    bulkItemsResult,
+    registrationBulkItemsResult,
+    globalAccess
+  ] = await Promise.all([
+    supabaseServer
+      .from('group_members')
+      .select(`
+        role,
         group_id,
         groups (
+          id,
           name
         )
-      )
-    `)
-    .eq('user_id', user.id)
-    .in('status', ['PLANNED', 'REMOVED'])
-
-  const { data: registrationBulkItems } = await supabaseServer
-    .from('registration_group_issue_items')
-    .select(`
-      id,
-      status,
-      registration_group_issues:registration_group_issues!registration_group_issue_items_issue_id_fkey (
+      `)
+      .eq('user_id', user.id),
+    supabaseServer
+      .from('group_invites')
+      .select(`
         id,
-        title,
-        datum,
-        typ_jedla,
+        email,
         status,
+        created_at,
+        groups (
+          id,
+          name
+        )
+      `)
+      .eq('email', String(user.email || '').toLowerCase())
+      .eq('status', 'PENDING')
+      .order('created_at', { ascending: false }),
+    supabaseServer
+      .from('user_registration_group_periods')
+      .select(`
+        registration_group_id,
+        valid_from,
+        valid_to,
         registration_groups (
           name
         )
-      )
-    `)
-    .eq('user_id', user.id)
-    .in('status', ['PLANNED', 'REMOVED'])
+      `)
+      .eq('user_id', user.id)
+      .lte('valid_from', selectedDate)
+      .or(`valid_to.is.null,valid_to.gte.${selectedDate}`)
+      .order('valid_from', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    user.registration_group_id
+      ? supabaseServer
+        .from('registration_groups')
+        .select('name')
+        .eq('id', user.registration_group_id)
+        .maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabaseServer
+      .from('user_food_entitlements')
+      .select('datum, obed, vecera')
+      .eq('user_id', user.id)
+      .eq('datum', selectedDate)
+      .maybeSingle(),
+    supabaseServer
+      .from('vyber_jedal')
+      .select('typ_jedla, volba')
+      .eq('user_id', user.id)
+      .eq('datum', selectedDate),
+    supabaseServer
+      .from('jedalny_listok')
+      .select('typ_jedla, varianta, nazov, popis')
+      .eq('datum', selectedDate)
+      .eq('aktivne', true)
+      .order('typ_jedla', { ascending: true })
+      .order('poradie', { ascending: true }),
+    supabaseServer
+      .from('vydaj_jedal')
+      .select('typ_jedla, status, sposob, issued_at, issued_by, group_id, hromadny_vydaj_id, registration_group_issue_id')
+      .eq('user_id', user.id)
+      .eq('datum', selectedDate)
+      .order('issued_at', { ascending: false }),
+    supabaseServer
+      .from('hromadny_vydaj_polozky')
+      .select(`
+        id,
+        status,
+        hromadne_vydaje (
+          id,
+          datum,
+          typ_jedla,
+          status,
+          group_id,
+          groups (
+            name
+          )
+        )
+      `)
+      .eq('user_id', user.id)
+      .in('status', ['PLANNED', 'REMOVED']),
+    supabaseServer
+      .from('registration_group_issue_items')
+      .select(`
+        id,
+        status,
+        registration_group_issues:registration_group_issues!registration_group_issue_items_issue_id_fkey (
+          id,
+          title,
+          datum,
+          typ_jedla,
+          status,
+          registration_groups (
+            name
+          )
+        )
+      `)
+      .eq('user_id', user.id)
+      .in('status', ['PLANNED', 'REMOVED']),
+    getGlobalAccess(user.id)
+  ])
+
+  const memberships = membershipsResult.data || []
+  const pendingInvites = pendingInvitesResult.data || []
+  const activeRegistrationPeriod = activeRegistrationPeriodResult.data
+  const fallbackRegistrationGroup = fallbackRegistrationGroupResult.data
+  const entitlement = entitlementResult.data
+  const selections = selectionsResult.data || []
+  const menuItems = menuItemsResult.data || []
+  const issuedMeals = issuedMealsResult.data || []
+  const bulkItems = bulkItemsResult.data || []
+  const registrationBulkItems = registrationBulkItemsResult.data || []
 
   const issuedByIds = Array.from(new Set(
     (issuedMeals || [])
@@ -346,32 +363,42 @@ export default async function DashboardPage({
       .filter(Boolean)
   ))
 
-  const { data: issuedByUsers } = issuedByIds.length > 0
-    ? await supabaseServer
-      .from('users')
-      .select('id, meno, priezvisko')
-      .in('id', issuedByIds)
-    : { data: [] }
+  const [
+    issuedByUsersResult,
+    issuedGroupsResult,
+    issuedRegistrationIssuesResult,
+    canOpenGroupIssue
+  ] = await Promise.all([
+    issuedByIds.length > 0
+      ? supabaseServer
+        .from('users')
+        .select('id, meno, priezvisko')
+        .in('id', issuedByIds)
+      : Promise.resolve({ data: [] }),
+    issuedGroupIds.length > 0
+      ? supabaseServer
+        .from('groups')
+        .select('id, name')
+        .in('id', issuedGroupIds)
+      : Promise.resolve({ data: [] }),
+    issuedRegistrationIssueIds.length > 0
+      ? supabaseServer
+        .from('registration_group_issues')
+        .select(`
+          id,
+          title,
+          registration_groups (
+            name
+          )
+        `)
+        .in('id', issuedRegistrationIssueIds)
+      : Promise.resolve({ data: [] }),
+    canUseGroupIssue(user.id, globalAccess)
+  ])
 
-  const { data: issuedGroups } = issuedGroupIds.length > 0
-    ? await supabaseServer
-      .from('groups')
-      .select('id, name')
-      .in('id', issuedGroupIds)
-    : { data: [] }
-
-  const { data: issuedRegistrationIssues } = issuedRegistrationIssueIds.length > 0
-    ? await supabaseServer
-      .from('registration_group_issues')
-      .select(`
-        id,
-        title,
-        registration_groups (
-          name
-        )
-      `)
-      .in('id', issuedRegistrationIssueIds)
-    : { data: [] }
+  const issuedByUsers = issuedByUsersResult.data || []
+  const issuedGroups = issuedGroupsResult.data || []
+  const issuedRegistrationIssues = issuedRegistrationIssuesResult.data || []
 
   const issuedByUserMap = new Map((issuedByUsers || []).map((item: any) => [item.id, item]))
   const issuedGroupMap = new Map((issuedGroups || []).map((item: any) => [item.id, item]))
@@ -381,10 +408,8 @@ export default async function DashboardPage({
   const hasPendingInvites = !!pendingInvites && pendingInvites.length > 0
   const hasEntitlementRow = !!entitlement
   const registrationGroupName = activeRegistrationGroupName(activeRegistrationPeriod, fallbackRegistrationGroup)
-  const globalAccess = await getGlobalAccess(user.id)
   const canOpenPersonalista = globalAccess.canUsePersonalista
   const canOpenFoodIssue = globalAccess.canUseFoodIssue
-  const canOpenGroupIssue = await canUseGroupIssue(user.id, globalAccess)
   const canOpenMenuDeadline = globalAccess.isAdmin
 
   const getSelection = (typJedla: string) => {
