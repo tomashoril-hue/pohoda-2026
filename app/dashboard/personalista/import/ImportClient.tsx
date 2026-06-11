@@ -16,7 +16,8 @@ type ParsedRow = {
   email: string
   telefon: string
   typStravy: string
-  groupIds: string[]
+  registrationGroupId: string
+  registrationGroupName: string
   validFrom: string
   validTo: string
   obed: boolean
@@ -143,7 +144,7 @@ function parseDelimited(text: string) {
   return rows
 }
 
-function groupNamesFromText(value: string) {
+function namesFromText(value: string) {
   return String(value || '')
     .split('|')
     .map(item => item.trim())
@@ -151,16 +152,16 @@ function groupNamesFromText(value: string) {
 }
 
 export default function ImportClient({
-  groups,
+  registrationGroups,
   fromDate,
   toDate
 }: {
-  groups: GroupItem[]
+  registrationGroups: GroupItem[]
   fromDate: string
   toDate: string
 }) {
   const router = useRouter()
-  const [defaultGroupId, setDefaultGroupId] = useState('')
+  const [defaultRegistrationGroupId, setDefaultRegistrationGroupId] = useState('')
   const [defaultFrom, setDefaultFrom] = useState(fromDate)
   const [defaultTo, setDefaultTo] = useState(toDate)
   const [defaultObed, setDefaultObed] = useState(true)
@@ -171,9 +172,13 @@ export default function ImportClient({
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
 
-  const groupByName = useMemo(() => {
-    return new Map(groups.map(group => [normalizeKey(group.name), group]))
-  }, [groups])
+  const registrationGroupByName = useMemo(() => {
+    return new Map(registrationGroups.map(group => [normalizeKey(group.name), group]))
+  }, [registrationGroups])
+
+  const registrationGroupById = useMemo(() => {
+    return new Map(registrationGroups.map(group => [group.id, group]))
+  }, [registrationGroups])
 
   const stats = useMemo(() => {
     return {
@@ -208,14 +213,21 @@ export default function ImportClient({
         raw[header] = cells[headerIndex] || ''
       })
 
-      const groupText = firstValue(raw, ['skupina', 'skupiny', 'group', 'groups'])
-      const groupIds = groupNamesFromText(groupText)
-        .map(name => groupByName.get(normalizeKey(name))?.id || '')
-        .filter(Boolean)
-
-      if (groupIds.length === 0 && defaultGroupId) {
-        groupIds.push(defaultGroupId)
-      }
+      const registrationGroupText = firstValue(raw, [
+        'registracna_skupina',
+        'reg_skupina',
+        'registration_group',
+        'skupina',
+        'group'
+      ])
+      const requestedRegistrationGroups = namesFromText(registrationGroupText)
+      const matchedRegistrationGroups = requestedRegistrationGroups
+        .map(name => registrationGroupByName.get(normalizeKey(name)))
+        .filter(Boolean) as GroupItem[]
+      const fallbackRegistrationGroup = defaultRegistrationGroupId
+        ? registrationGroupById.get(defaultRegistrationGroupId)
+        : null
+      const registrationGroup = matchedRegistrationGroups[0] || fallbackRegistrationGroup || null
 
       const meno = firstValue(raw, ['meno', 'krstne_meno', 'first_name'])
       const priezvisko = firstValue(raw, ['priezvisko', 'surname', 'last_name'])
@@ -233,6 +245,12 @@ export default function ImportClient({
       } else if (!obed && !vecera) {
         status = 'SKIP'
         rowMessage = 'Bez nároku na obed alebo večeru.'
+      } else if (requestedRegistrationGroups.length > 1) {
+        status = 'SKIP'
+        rowMessage = 'Pouzi iba jednu registracnu skupinu.'
+      } else if (requestedRegistrationGroups.length === 1 && matchedRegistrationGroups.length === 0) {
+        status = 'SKIP'
+        rowMessage = 'Registracna skupina sa nenasla.'
       }
 
       return {
@@ -243,7 +261,8 @@ export default function ImportClient({
         email: firstValue(raw, ['email', 'e_mail', 'mail']),
         telefon: firstValue(raw, ['telefon', 'telefón', 'phone', 'tel']),
         typStravy: normalizeFood(firstValue(raw, ['typ_stravy', 'strava', 'jedlo', 'food'])),
-        groupIds,
+        registrationGroupId: registrationGroup?.id || '',
+        registrationGroupName: registrationGroup?.name || '',
         validFrom,
         validTo,
         obed,
@@ -287,7 +306,7 @@ export default function ImportClient({
             email: row.email,
             telefon: row.telefon,
             typStravy: row.typStravy,
-            groupIds: row.groupIds,
+            registrationGroupId: row.registrationGroupId,
             validFrom: row.validFrom,
             validTo: row.validTo,
             obed: row.obed,
@@ -342,7 +361,7 @@ export default function ImportClient({
           <div style={styles.breadcrumb}>Personalistika / Import</div>
           <h1 style={styles.title}>Import Excel/CSV</h1>
           <p style={styles.subtitle}>
-            Excel ulož ako CSV. Podporované stĺpce: meno, priezvisko, email, telefon, strava, skupina, od, do, obed, vecera, qr.
+            Excel ulož ako CSV. Podporované stĺpce: meno, priezvisko, email, telefon, strava, skupina, od, do, obed, vecera, qr. Stĺpec skupina sa používa ako registračná skupina.
           </p>
         </div>
 
@@ -354,15 +373,15 @@ export default function ImportClient({
       <section style={styles.panel}>
         <div style={styles.settingsGrid}>
           <label style={styles.field}>
-            <span>Predvolená skupina</span>
+            <span>Predvolená registračná skupina</span>
             <select
-              value={defaultGroupId}
-              onChange={event => setDefaultGroupId(event.target.value)}
+              value={defaultRegistrationGroupId}
+              onChange={event => setDefaultRegistrationGroupId(event.target.value)}
               style={styles.input}
               disabled={loading}
             >
-              <option value="">Žiadna skupina</option>
-              {groups.map(group => (
+              <option value="">Žiadna registračná skupina</option>
+              {registrationGroups.map(group => (
                 <option key={group.id} value={group.id}>
                   {group.name}
                 </option>
@@ -472,14 +491,14 @@ export default function ImportClient({
       <section style={styles.tableCard}>
         {rows.length === 0 ? (
           <div style={styles.emptyState}>
-            Vyber CSV subor. Stravovacie skupiny v stlpci skupina oddeluj znakom |.
+            Vyber CSV subor. Stĺpec skupina sa páruje na registračnú skupinu v aplikácii.
           </div>
         ) : (
           <>
             <div style={styles.tableHeader}>
               <span>Riadok</span>
               <span>Osoba</span>
-              <span>Stravovacie skupiny</span>
+              <span>Registračná skupina</span>
               <span>Nárok</span>
               <span>Stav</span>
             </div>
@@ -491,7 +510,7 @@ export default function ImportClient({
                   <b>{row.meno} {row.priezvisko}</b>
                   <span>{row.email || '-'}</span>
                 </div>
-                <span>{row.groupIds.length || 'Bez skupiny'}</span>
+                <span>{row.registrationGroupName || 'Bez registračnej skupiny'}</span>
                 <span>{row.validFrom} - {row.validTo} / {row.obed ? 'O' : '-'} {row.vecera ? 'V' : '-'}</span>
                 <span
                   style={{

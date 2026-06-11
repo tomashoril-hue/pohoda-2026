@@ -28,61 +28,15 @@ export default async function PersonalistaImportPage() {
     redirect('/dashboard')
   }
 
-  const { data: memberships } = await supabaseServer
-    .from('group_members')
-    .select(`
-      group_id,
-      user_id,
-      role,
-      groups (
-        id,
-        name
-      )
-    `)
-    .order('created_at', { ascending: true })
-
-  const manageableGroupIds = (memberships || [])
-    .filter((membership: any) => {
-      const role = String(membership.role || '').toUpperCase()
-      return membership.user_id === user.id && role === 'MANAGER'
-    })
-    .map((membership: any) => membership.group_id)
-
-  let groups: any[] = []
-
-  if (globalAccess.canUsePersonalista) {
-    const { data: allGroups } = await supabaseServer
-      .from('groups')
-      .select('id, name')
-      .order('name', { ascending: true })
-
-    groups = allGroups || []
-  } else {
-    const groupMap = new Map<string, any>()
-
-    ;(memberships || []).forEach((membership: any) => {
-      if (!manageableGroupIds.includes(membership.group_id)) return
-
-      const group = Array.isArray(membership.groups)
-        ? membership.groups[0]
-        : membership.groups
-
-      if (group?.id) {
-        groupMap.set(group.id, {
-          id: group.id,
-          name: group.name || 'Skupina bez nazvu'
-        })
-      }
-    })
-
-    groups = Array.from(groupMap.values()).sort((a, b) => {
-      return a.name.localeCompare(b.name, 'sk')
-    })
-  }
+  const { data: registrationGroups } = await supabaseServer
+    .from('registration_groups')
+    .select('id, name')
+    .eq('active', true)
+    .order('name', { ascending: true })
 
   return (
     <ImportClient
-      groups={groups}
+      registrationGroups={registrationGroups || []}
       fromDate={isoDateOffset(0)}
       toDate={isoDateOffset(0)}
     />
