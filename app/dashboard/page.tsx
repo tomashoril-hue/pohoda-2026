@@ -641,16 +641,19 @@ export default async function DashboardPage({
                       <b style={styles.todayMenuText}>{meal.menuText}</b>
                     </div>
 
-                    <div
-                      style={{
-                        ...styles.todayStateBox,
-                        ...(state.tone === 'issued' ? styles.todayStateBoxIssued : {}),
-                        ...(state.tone === 'prepared' ? styles.todayStateBoxPrepared : {}),
-                        ...(state.tone === 'blocked' ? styles.todayStateBoxBlocked : {})
-                      }}
-                    >
-                      <span style={styles.todayChoiceLabel}>Stav jedla</span>
-                      <b style={styles.todayStateValue}>{state.label}</b>
+                    <div style={styles.todayRowWide}>
+                      <span>Stav jedla</span>
+                      <b style={styles.todayStateInline}>
+                        <span
+                          style={{
+                            ...styles.todayStateDot,
+                            ...(state.tone === 'issued' ? styles.todayStateDotIssued : {}),
+                            ...(state.tone === 'prepared' ? styles.todayStateDotPrepared : {}),
+                            ...(state.tone === 'blocked' ? styles.todayStateDotBlocked : {})
+                          }}
+                        />
+                        {state.label}
+                      </b>
                       {state.detail && (
                         <small style={styles.todayStateDetail}>{state.detail}</small>
                       )}
@@ -955,34 +958,37 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 950,
     color: '#000'
   },
-  todayStateBox: {
-    display: 'grid',
-    gap: 5,
-    background: '#fff',
-    border: '3px solid #000',
-    borderRadius: 14,
-    padding: 12,
-    color: '#000'
-  },
-  todayStateBoxIssued: {
-    background: '#56db3f'
-  },
-  todayStateBoxPrepared: {
-    background: '#fff3bf'
-  },
-  todayStateBoxBlocked: {
-    background: '#ff6b6b'
-  },
-  todayStateValue: {
-    fontSize: 18,
+  todayStateInline: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 7,
+    fontSize: 15,
     fontWeight: 950,
     color: '#000'
   },
+  todayStateDot: {
+    width: 9,
+    height: 9,
+    border: '2px solid #000',
+    borderRadius: 999,
+    background: '#fff',
+    flex: '0 0 auto'
+  },
+  todayStateDotIssued: {
+    background: '#56db3f'
+  },
+  todayStateDotPrepared: {
+    background: '#fff3bf'
+  },
+  todayStateDotBlocked: {
+    background: '#ff6b6b'
+  },
   todayStateDetail: {
     fontSize: 12,
-    fontWeight: 850,
+    fontWeight: 800,
     lineHeight: 1.25,
-    color: '#000'
+    color: '#000',
+    opacity: 0.72
   },
   todayRow: {
     display: 'grid',
