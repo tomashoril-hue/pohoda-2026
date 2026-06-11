@@ -94,6 +94,20 @@ async function fetchRegistrationGroupManagersForUsers(userIds: string[]) {
   return data || []
 }
 
+async function fetchRegistrationGroupDelegatesForUsers(userIds: string[]) {
+  if (userIds.length === 0) return []
+
+  const { data, error } = await supabaseServer
+    .from('registration_group_issue_delegates')
+    .select('id, user_id, registration_group_id, active')
+    .in('user_id', userIds)
+    .eq('active', true)
+
+  if (error) throw error
+
+  return data || []
+}
+
 async function fetchLatestAuditForUsers(userIds: string[]) {
   if (userIds.length === 0) return new Map<string, any>()
 
@@ -175,7 +189,7 @@ function currentRegistrationGroupSnapshot(profile: any, periods: any[], registra
   }
 }
 
-function mapManagedRegistrationGroups(rows: any[], registrationGroupById: Map<string, any>) {
+function mapRegistrationGroupAccessRows(rows: any[], registrationGroupById: Map<string, any>) {
   return rows
     .map(row => {
       const group = registrationGroupById.get(row.registration_group_id)
@@ -254,6 +268,7 @@ export async function GET(req: NextRequest) {
       roleResult,
       registrationGroupsResult,
       registrationGroupManagers,
+      registrationGroupDelegates,
       latestAuditByUserId
     ] = await Promise.all([
       fetchMembershipsForUsers(userIds),
@@ -270,6 +285,7 @@ export async function GET(req: NextRequest) {
         : Promise.resolve({ data: [], error: null }),
       supabaseServer.from('registration_groups').select('id, name, active'),
       fetchRegistrationGroupManagersForUsers(userIds),
+      fetchRegistrationGroupDelegatesForUsers(userIds),
       fetchLatestAuditForUsers(userIds)
     ])
 
@@ -313,6 +329,13 @@ export async function GET(req: NextRequest) {
       registrationGroupManagersByUserId.set(row.user_id, list)
     })
 
+    const registrationGroupDelegatesByUserId = new Map<string, any[]>()
+    registrationGroupDelegates.forEach((row: any) => {
+      const list = registrationGroupDelegatesByUserId.get(row.user_id) || []
+      list.push(row)
+      registrationGroupDelegatesByUserId.set(row.user_id, list)
+    })
+
     const activeQrByUserId = new Map<string, number>()
     ;(qrResult.data || []).forEach((row: any) => {
       if (!row.active) return
@@ -345,8 +368,12 @@ export async function GET(req: NextRequest) {
         registrationGroupById,
         slovakiaDateIso()
       )
-      const managedRegistrationGroups = mapManagedRegistrationGroups(
+      const managedRegistrationGroups = mapRegistrationGroupAccessRows(
         registrationGroupManagersByUserId.get(profile.id) || [],
+        registrationGroupById
+      )
+      const delegatedRegistrationGroups = mapRegistrationGroupAccessRows(
+        registrationGroupDelegatesByUserId.get(profile.id) || [],
         registrationGroupById
       )
       const lastAudit = latestAuditByUserId.get(profile.id)
@@ -366,6 +393,7 @@ export async function GET(req: NextRequest) {
         registrationGroupNote: registrationGroup.note,
         registrationGroupPeriods,
         managedRegistrationGroups,
+        delegatedRegistrationGroups,
         lastEditedAt: lastAudit?.created_at || profile.updated_at || '',
         lastEditedById: lastAudit?.actor_user_id || '',
         lastEditedByName: lastAudit?.actor_name || '',

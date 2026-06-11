@@ -244,6 +244,18 @@ async function fetchRegistrationGroupManagersForUsers(userIds: string[]) {
   return data || []
 }
 
+async function fetchRegistrationGroupDelegatesForUsers(userIds: string[]) {
+  if (userIds.length === 0) return []
+
+  const { data } = await supabaseServer
+    .from('registration_group_issue_delegates')
+    .select('id, user_id, registration_group_id, active')
+    .in('user_id', userIds)
+    .eq('active', true)
+
+  return data || []
+}
+
 function mapRegistrationGroupPeriod(row: any, registrationGroupById: Map<string, any>) {
   const group = Array.isArray(row.registration_groups)
     ? row.registration_groups[0]
@@ -259,7 +271,7 @@ function mapRegistrationGroupPeriod(row: any, registrationGroupById: Map<string,
   }
 }
 
-function mapManagedRegistrationGroups(rows: any[], registrationGroupById: Map<string, any>) {
+function mapRegistrationGroupAccessRows(rows: any[], registrationGroupById: Map<string, any>) {
   return rows
     .map(row => {
       const group = registrationGroupById.get(row.registration_group_id)
@@ -439,6 +451,7 @@ export default async function PersonalistaPage({
   let entitlementRows: any[] = []
   let registrationGroupPeriodRows: any[] = []
   let registrationGroupManagerRows: any[] = []
+  let registrationGroupDelegateRows: any[] = []
 
   if (userIds.length > 0) {
     const { data: qrData } = await supabaseServer
@@ -465,6 +478,7 @@ export default async function PersonalistaPage({
     entitlementRows = await fetchEntitlementsForUsers(userIds)
     registrationGroupPeriodRows = await fetchRegistrationGroupPeriodsForUsers(userIds)
     registrationGroupManagerRows = await fetchRegistrationGroupManagersForUsers(userIds)
+    registrationGroupDelegateRows = await fetchRegistrationGroupDelegatesForUsers(userIds)
   }
 
   const activeQrByUserId = new Map<string, number>()
@@ -522,6 +536,14 @@ export default async function PersonalistaPage({
     registrationGroupManagersByUserId.set(row.user_id, list)
   })
 
+  const registrationGroupDelegatesByUserId = new Map<string, any[]>()
+
+  registrationGroupDelegateRows.forEach((row: any) => {
+    const list = registrationGroupDelegatesByUserId.get(row.user_id) || []
+    list.push(row)
+    registrationGroupDelegatesByUserId.set(row.user_id, list)
+  })
+
   const personMap = new Map<string, any>()
   const visibleProfileById = new Map(
     allVisibleUsers.map((profile: any) => [profile.id, profile])
@@ -557,8 +579,12 @@ export default async function PersonalistaPage({
     const lunchClaims = rows.filter(row => row.obed).length
     const dinnerClaims = rows.filter(row => row.vecera).length
     const mealClaims = lunchClaims + dinnerClaims
-    const managedRegistrationGroups = mapManagedRegistrationGroups(
+    const managedRegistrationGroups = mapRegistrationGroupAccessRows(
       registrationGroupManagersByUserId.get(membership.user_id) || [],
+      registrationGroupById
+    )
+    const delegatedRegistrationGroups = mapRegistrationGroupAccessRows(
+      registrationGroupDelegatesByUserId.get(membership.user_id) || [],
       registrationGroupById
     )
 
@@ -577,6 +603,7 @@ export default async function PersonalistaPage({
       registrationGroupNote: registrationGroup.note,
       registrationGroupPeriods,
       managedRegistrationGroups,
+      delegatedRegistrationGroups,
       lastEditedAt: profile?.last_edited_at || profile?.updated_at || '',
       lastEditedById: profile?.last_edited_by_id || '',
       lastEditedByName: profile?.last_edited_by_name || '',
@@ -612,8 +639,12 @@ export default async function PersonalistaPage({
       )
       const lunchClaims = rows.filter(row => row.obed).length
       const dinnerClaims = rows.filter(row => row.vecera).length
-      const managedRegistrationGroups = mapManagedRegistrationGroups(
+      const managedRegistrationGroups = mapRegistrationGroupAccessRows(
         registrationGroupManagersByUserId.get(profile.id) || [],
+        registrationGroupById
+      )
+      const delegatedRegistrationGroups = mapRegistrationGroupAccessRows(
+        registrationGroupDelegatesByUserId.get(profile.id) || [],
         registrationGroupById
       )
 
@@ -632,6 +663,7 @@ export default async function PersonalistaPage({
         registrationGroupNote: registrationGroup.note,
         registrationGroupPeriods,
         managedRegistrationGroups,
+        delegatedRegistrationGroups,
         lastEditedAt: profile.last_edited_at || profile.updated_at || '',
         lastEditedById: profile.last_edited_by_id || '',
         lastEditedByName: profile.last_edited_by_name || '',
