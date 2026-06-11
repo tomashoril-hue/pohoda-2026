@@ -62,7 +62,7 @@ type Props = {
   delegatesByGroupId: Record<string, Delegate[]>
 }
 
-const SHOW_DELEGATES = false
+const SHOW_DELEGATES = true
 const MEAL_OPTIONS: Array<{ value: MealType, label: string }> = [
   { value: 'OBED', label: 'Obed' },
   { value: 'VECERA', label: 'Vecera' }
