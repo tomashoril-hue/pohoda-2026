@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { createAccessCode, hashAccessCode, normalizeAccessName } from '@/lib/accessCode'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
@@ -62,6 +63,9 @@ export async function POST(req: NextRequest) {
     const validFrom = normalizeText(body.validFrom)
     const validTo = normalizeText(body.validTo)
     const registrationGroupId = normalizeText(body.registrationGroupId) || null
+    const importBatchId = normalizeText(body.importBatchId) || null
+    const importRowId = normalizeText(body.importRowId) || null
+    const generateAccessCode = body.generateAccessCode === true
     const obed = !!body.obed
     const vecera = !!body.vecera
     const assignQr = body.assignQr !== false
@@ -222,6 +226,7 @@ export async function POST(req: NextRequest) {
 
     const now = new Date().toISOString()
     let assignedQrCode: string | null = null
+    let accessCodePlain: string | null = null
 
     const { data: newUser, error: userError } = await supabaseServer
       .from('users')
@@ -249,6 +254,11 @@ export async function POST(req: NextRequest) {
     }
 
     const rollbackUser = async () => {
+      await supabaseServer
+        .from('user_access_codes')
+        .delete()
+        .eq('user_id', newUser.id)
+
       await supabaseServer
         .from('user_qr_codes')
         .delete()
@@ -376,6 +386,63 @@ export async function POST(req: NextRequest) {
       assignedQrCode = assignedQr.qr_code
     }
 
+    if (generateAccessCode) {
+      accessCodePlain = createAccessCode()
+
+      const { error: accessCodeError } = await supabaseServer
+        .from('user_access_codes')
+        .insert({
+          user_id: newUser.id,
+          code_hash: hashAccessCode(meno, priezvisko, accessCodePlain),
+          meno_key: normalizeAccessName(meno),
+          priezvisko_key: normalizeAccessName(priezvisko),
+          label: 'Importny pristupovy kod',
+          created_by: currentUser.id
+        })
+
+      if (accessCodeError) {
+        await rollbackUser()
+
+        return NextResponse.json(
+          { error: accessCodeError.message || 'Pristupovy kod sa nepodarilo vytvorit.' },
+          { status: 500 }
+        )
+      }
+    }
+
+    if (importBatchId && importRowId) {
+      await supabaseServer
+        .from('personnel_import_rows')
+        .update({
+          status: 'IMPORTED',
+          message: 'Importovane.',
+          created_user_id: newUser.id,
+          access_code_plain: accessCodePlain,
+          updated_at: now
+        })
+        .eq('id', importRowId)
+        .eq('batch_id', importBatchId)
+
+      const { count: remainingCount } = await supabaseServer
+        .from('personnel_import_rows')
+        .select('id', { count: 'exact', head: true })
+        .eq('batch_id', importBatchId)
+        .eq('status', 'READY')
+
+      if (remainingCount === 0) {
+        await supabaseServer
+          .from('personnel_import_batches')
+          .update({
+            status: 'IMPORTED',
+            imported_at: now,
+            imported_by: currentUser.id,
+            updated_at: now
+          })
+          .eq('id', importBatchId)
+          .eq('status', 'DRAFT')
+      }
+    }
+
     await supabaseServer
       .from('personnel_audit_log')
       .insert({
@@ -397,7 +464,10 @@ export async function POST(req: NextRequest) {
           valid_to: validTo,
           obed,
           vecera,
-          qr_assigned: !!assignedQrCode
+          qr_assigned: !!assignedQrCode,
+          access_code_generated: !!accessCodePlain,
+          import_batch_id: importBatchId,
+          import_row_id: importRowId
         }
       })
 
@@ -405,6 +475,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       user: newUser,
       qrAssigned: !!assignedQrCode,
+      accessCode: accessCodePlain,
       entitlementDays: dates.length,
       message: 'Osoba bola vytvorena.'
     })

@@ -9,6 +9,7 @@ type GroupItem = {
 }
 
 type ParsedRow = {
+  id?: string
   rowNumber: number
   raw: Record<string, string>
   meno: string
@@ -23,8 +24,21 @@ type ParsedRow = {
   obed: boolean
   vecera: boolean
   assignQr: boolean
+  generateAccessCode: boolean
+  accessCode?: string
+  welcomeEmailStatus?: string
   status: 'READY' | 'SKIP' | 'OK' | 'ERROR'
   message: string
+}
+
+type BulkEdit = {
+  registrationGroupId: string
+  validFrom: string
+  validTo: string
+  obed: '' | 'true' | 'false'
+  vecera: '' | 'true' | 'false'
+  assignQr: '' | 'true' | 'false'
+  generateAccessCode: '' | 'true' | 'false'
 }
 
 function normalizeKey(value: string) {
@@ -50,7 +64,7 @@ function normalizeFood(value: string) {
   const food = String(value || '').trim().toUpperCase()
 
   if (food === 'VEGE') return 'VEGE'
-  if (food === 'DIETA' || food === 'DIÉTA' || food === 'DIĂ‰TA') return 'DIETA'
+  if (food === 'DIETA' || food === 'DIÉTA') return 'DIETA'
 
   return 'MASO'
 }
@@ -151,6 +165,18 @@ function namesFromText(value: string) {
     .filter(Boolean)
 }
 
+function emptyBulkEdit(): BulkEdit {
+  return {
+    registrationGroupId: '',
+    validFrom: '',
+    validTo: '',
+    obed: '',
+    vecera: '',
+    assignQr: '',
+    generateAccessCode: ''
+  }
+}
+
 export default function ImportClient({
   registrationGroups,
   fromDate,
@@ -161,13 +187,20 @@ export default function ImportClient({
   toDate: string
 }) {
   const router = useRouter()
+  const [batchId, setBatchId] = useState('')
+  const [batchName, setBatchName] = useState('')
+  const [sourceFileName, setSourceFileName] = useState('')
   const [defaultRegistrationGroupId, setDefaultRegistrationGroupId] = useState('')
   const [defaultFrom, setDefaultFrom] = useState(fromDate)
   const [defaultTo, setDefaultTo] = useState(toDate)
   const [defaultObed, setDefaultObed] = useState(true)
   const [defaultVecera, setDefaultVecera] = useState(false)
   const [defaultAssignQr, setDefaultAssignQr] = useState(true)
+  const [defaultGenerateAccessCode, setDefaultGenerateAccessCode] = useState(false)
   const [rows, setRows] = useState<ParsedRow[]>([])
+  const [selectedRows, setSelectedRows] = useState<number[]>([])
+  const [bulkEdit, setBulkEdit] = useState<BulkEdit>(emptyBulkEdit())
+  const [emailRegistrationGroupId, setEmailRegistrationGroupId] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
@@ -180,26 +213,65 @@ export default function ImportClient({
     return new Map(registrationGroups.map(group => [group.id, group]))
   }, [registrationGroups])
 
+  const selectedSet = useMemo(() => new Set(selectedRows), [selectedRows])
+
   const stats = useMemo(() => {
     return {
       total: rows.length,
       ready: rows.filter(row => row.status === 'READY').length,
       ok: rows.filter(row => row.status === 'OK').length,
       error: rows.filter(row => row.status === 'ERROR').length,
-      skip: rows.filter(row => row.status === 'SKIP').length
+      skip: rows.filter(row => row.status === 'SKIP').length,
+      selected: selectedRows.length,
+      withEmail: rows.filter(row => row.email && row.status === 'OK').length,
+      sent: rows.filter(row => row.welcomeEmailStatus === 'SENT').length
     }
-  }, [rows])
+  }, [rows, selectedRows.length])
+
+  const updateRow = (rowNumber: number, patch: Partial<ParsedRow>) => {
+    setRows(current => current.map(row => {
+      if (row.rowNumber !== rowNumber) return row
+
+      const next = { ...row, ...patch }
+
+      if (patch.registrationGroupId !== undefined) {
+        next.registrationGroupName = registrationGroupById.get(patch.registrationGroupId)?.name || ''
+      }
+
+      if (next.status === 'OK') return next
+
+      if (!next.meno || !next.priezvisko) {
+        next.status = 'SKIP'
+        next.message = 'Chyba meno alebo priezvisko.'
+      } else if (!next.validFrom || !next.validTo || next.validTo < next.validFrom) {
+        next.status = 'ERROR'
+        next.message = 'Neplatne datumy od/do.'
+      } else if (!next.obed && !next.vecera) {
+        next.status = 'SKIP'
+        next.message = 'Bez naroku na obed alebo veceru.'
+      } else {
+        next.status = 'READY'
+        next.message = ''
+      }
+
+      return next
+    }))
+  }
 
   const parseFile = async (file: File) => {
     setMessage('')
     setMessageType('')
+    setBatchId('')
+    setSelectedRows([])
+    setSourceFileName(file.name)
+    setBatchName(file.name.replace(/\.[^.]+$/, '') || `Import ${new Date().toLocaleString('sk-SK')}`)
 
     const text = await file.text()
     const table = parseDelimited(text)
 
     if (table.length < 2) {
       setRows([])
-      setMessage('Súbor musí obsahovať hlavičku a aspoň jeden riadok.')
+      setMessage('Subor musi obsahovat hlavicku a aspon jeden riadok.')
       setMessageType('error')
       return
     }
@@ -241,10 +313,10 @@ export default function ImportClient({
 
       if (!meno || !priezvisko) {
         status = 'SKIP'
-        rowMessage = 'Chýba meno alebo priezvisko.'
+        rowMessage = 'Chyba meno alebo priezvisko.'
       } else if (!obed && !vecera) {
         status = 'SKIP'
-        rowMessage = 'Bez nároku na obed alebo večeru.'
+        rowMessage = 'Bez naroku na obed alebo veceru.'
       } else if (requestedRegistrationGroups.length > 1) {
         status = 'SKIP'
         rowMessage = 'Pouzi iba jednu registracnu skupinu.'
@@ -268,21 +340,89 @@ export default function ImportClient({
         obed,
         vecera,
         assignQr: boolValue(firstValue(raw, ['qr', 'assign_qr', 'priradit_qr']), defaultAssignQr),
+        generateAccessCode: boolValue(firstValue(raw, ['kod', 'access_code', 'pristupovy_kod']), defaultGenerateAccessCode),
         status,
         message: rowMessage
       }
     })
 
     setRows(parsed)
-    setMessage(`Načítané riadky: ${parsed.length}.`)
+    setMessage(`Nacitane riadky: ${parsed.length}. Skontroluj ich a potom uloz davku alebo spusti import.`)
     setMessageType('ok')
   }
 
+  const createOrUpdateBatch = async () => {
+    if (rows.length === 0) {
+      setMessage('Nie je co ulozit.')
+      setMessageType('error')
+      return null
+    }
+
+    setLoading(true)
+    setMessage('')
+    setMessageType('')
+
+    try {
+      const method = batchId ? 'PATCH' : 'POST'
+      const url = batchId
+        ? `/api/personalista/import-batches/${batchId}/rows`
+        : '/api/personalista/import-batches'
+      const body = batchId
+        ? { rows }
+        : { name: batchName || 'Import', sourceFileName, rows }
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      const json = await res.json()
+
+      if (!res.ok || json.error) {
+        setMessage(json.error || 'Davku sa nepodarilo ulozit.')
+        setMessageType('error')
+        return null
+      }
+
+      const nextBatchId = json.batch?.id || batchId
+
+      if (nextBatchId) {
+        setBatchId(nextBatchId)
+      }
+
+      const rowStatusByNumber = new Map((json.rows || []).map((row: any) => [Number(row.row_number), row]))
+      const mergedRows = rows.map(row => {
+        const saved: any = rowStatusByNumber.get(row.rowNumber)
+        if (!saved) return row
+
+        return {
+          ...row,
+          id: saved.id || row.id,
+          status: saved.status === 'IMPORTED' ? 'OK' : saved.status,
+          message: saved.message || ''
+        }
+      })
+
+      setRows(mergedRows)
+      setMessage('Importna davka je ulozena.')
+      setMessageType('ok')
+      return { batchId: nextBatchId, rows: mergedRows }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const runImport = async () => {
-    const readyRows = rows.filter(row => row.status === 'READY')
+    const savedBatch = await createOrUpdateBatch()
+
+    if (!savedBatch?.batchId) return
+
+    const activeBatchId = savedBatch.batchId
+    const activeRows = savedBatch.rows.length > 0 ? savedBatch.rows : rows
+    const readyRows = activeRows.filter(row => row.status === 'READY')
 
     if (readyRows.length === 0) {
-      setMessage('Nie je čo importovať.')
+      setMessage('Nie je co importovat.')
       setMessageType('error')
       return
     }
@@ -291,7 +431,7 @@ export default function ImportClient({
     setMessage('')
     setMessageType('')
 
-    const nextRows = [...rows]
+    const nextRows = [...activeRows]
 
     for (const row of readyRows) {
       const index = nextRows.findIndex(item => item.rowNumber === row.rowNumber)
@@ -301,6 +441,8 @@ export default function ImportClient({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            importBatchId: activeBatchId,
+            importRowId: row.id,
             meno: row.meno,
             priezvisko: row.priezvisko,
             email: row.email,
@@ -311,7 +453,8 @@ export default function ImportClient({
             validTo: row.validTo,
             obed: row.obed,
             vecera: row.vecera,
-            assignQr: row.assignQr
+            assignQr: row.assignQr,
+            generateAccessCode: row.generateAccessCode
           })
         })
 
@@ -321,7 +464,7 @@ export default function ImportClient({
         try {
           json = text ? JSON.parse(text) : {}
         } catch {
-          json = { error: 'Server vrátil neplatnú odpoveď.' }
+          json = { error: 'Server vratil neplatnu odpoved.' }
         }
 
         if (!res.ok || json.error) {
@@ -334,7 +477,8 @@ export default function ImportClient({
           nextRows[index] = {
             ...nextRows[index],
             status: 'OK',
-            message: json.message || 'Importované.'
+            accessCode: json.accessCode || nextRows[index].accessCode,
+            message: json.message || 'Importovane.'
           }
         }
       } catch (err) {
@@ -349,9 +493,100 @@ export default function ImportClient({
     }
 
     setLoading(false)
-    setMessage('Import dokončený.')
+    setMessage('Import dokonceny.')
     setMessageType('ok')
     router.refresh()
+  }
+
+  const toggleSelected = (rowNumber: number) => {
+    setSelectedRows(current => {
+      if (current.includes(rowNumber)) return current.filter(item => item !== rowNumber)
+      return [...current, rowNumber]
+    })
+  }
+
+  const toggleAll = () => {
+    const editableRows = rows.filter(row => row.status !== 'OK').map(row => row.rowNumber)
+    setSelectedRows(current => current.length === editableRows.length ? [] : editableRows)
+  }
+
+  const applyBulkEdit = () => {
+    if (selectedRows.length === 0) {
+      setMessage('Najprv oznac riadky.')
+      setMessageType('error')
+      return
+    }
+
+    setRows(current => current.map(row => {
+      if (!selectedSet.has(row.rowNumber) || row.status === 'OK') return row
+
+      const patch: Partial<ParsedRow> = {}
+
+      if (bulkEdit.registrationGroupId) {
+        patch.registrationGroupId = bulkEdit.registrationGroupId
+        patch.registrationGroupName = registrationGroupById.get(bulkEdit.registrationGroupId)?.name || ''
+      }
+
+      if (bulkEdit.validFrom) patch.validFrom = bulkEdit.validFrom
+      if (bulkEdit.validTo) patch.validTo = bulkEdit.validTo
+      if (bulkEdit.obed) patch.obed = bulkEdit.obed === 'true'
+      if (bulkEdit.vecera) patch.vecera = bulkEdit.vecera === 'true'
+      if (bulkEdit.assignQr) patch.assignQr = bulkEdit.assignQr === 'true'
+      if (bulkEdit.generateAccessCode) patch.generateAccessCode = bulkEdit.generateAccessCode === 'true'
+
+      return { ...row, ...patch, status: 'READY', message: '' }
+    }))
+
+    setBulkEdit(emptyBulkEdit())
+    setMessage(`Hromadna uprava pouzita na ${selectedRows.length} riadkov.`)
+    setMessageType('ok')
+  }
+
+  const sendWelcomeEmails = async (selectedOnly = false) => {
+    if (!batchId) {
+      setMessage('Najprv uloz a importuj davku.')
+      setMessageType('error')
+      return
+    }
+
+    setLoading(true)
+    setMessage('')
+    setMessageType('')
+
+    try {
+      const rowIds = selectedOnly
+        ? rows.filter(row => selectedSet.has(row.rowNumber) && row.id).map(row => row.id)
+        : []
+
+      const res = await fetch(`/api/personalista/import-batches/${batchId}/send-welcome-emails`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          registrationGroupId: emailRegistrationGroupId,
+          rowIds,
+          resend: false
+        })
+      })
+      const json = await res.json()
+
+      if (!res.ok || json.error) {
+        setMessage(json.error || 'E-maily sa nepodarilo odoslat.')
+        setMessageType('error')
+        return
+      }
+
+      setRows(current => current.map(row => {
+        const matchesSelection = !selectedOnly || selectedSet.has(row.rowNumber)
+        const matchesGroup = !emailRegistrationGroupId || row.registrationGroupId === emailRegistrationGroupId
+        if (row.status !== 'OK' || !row.email || !matchesSelection || !matchesGroup) return row
+        return { ...row, welcomeEmailStatus: 'SENT' }
+      }))
+
+      setMessage(`E-maily odoslane: ${json.sent}, chyby: ${json.failed}.`)
+      setMessageType(json.failed ? 'error' : 'ok')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -361,26 +596,38 @@ export default function ImportClient({
           <div style={styles.breadcrumb}>Personalistika / Import</div>
           <h1 style={styles.title}>Import Excel/CSV</h1>
           <p style={styles.subtitle}>
-            Excel ulož ako CSV. Podporované stĺpce: meno, priezvisko, email, telefon, strava, skupina, od, do, obed, vecera, qr. Stĺpec skupina sa používa ako registračná skupina.
+            CSV stlpce: meno, priezvisko, email, telefon, strava, skupina, od, do, obed, vecera, qr, kod.
+            Stlpec skupina je registracna skupina.
           </p>
         </div>
 
         <a href="/dashboard/personalista" style={styles.lightButton}>
-          Späť
+          Spat
         </a>
       </header>
 
       <section style={styles.panel}>
         <div style={styles.settingsGrid}>
           <label style={styles.field}>
-            <span>Predvolená registračná skupina</span>
+            <span>Nazov davky</span>
+            <input
+              value={batchName}
+              onChange={event => setBatchName(event.target.value)}
+              style={styles.input}
+              disabled={loading || !!batchId}
+              placeholder="Import dodavatelov"
+            />
+          </label>
+
+          <label style={styles.field}>
+            <span>Predvolena registracna skupina</span>
             <select
               value={defaultRegistrationGroupId}
               onChange={event => setDefaultRegistrationGroupId(event.target.value)}
               style={styles.input}
               disabled={loading}
             >
-              <option value="">Žiadna registračná skupina</option>
+              <option value="">Ziadna registracna skupina</option>
               {registrationGroups.map(group => (
                 <option key={group.id} value={group.id}>
                   {group.name}
@@ -391,56 +638,31 @@ export default function ImportClient({
 
           <label style={styles.field}>
             <span>Od</span>
-            <input
-              type="date"
-              value={defaultFrom}
-              onChange={event => setDefaultFrom(event.target.value)}
-              style={styles.input}
-              disabled={loading}
-            />
+            <input type="date" value={defaultFrom} onChange={event => setDefaultFrom(event.target.value)} style={styles.input} disabled={loading} />
           </label>
 
           <label style={styles.field}>
             <span>Do</span>
-            <input
-              type="date"
-              value={defaultTo}
-              onChange={event => setDefaultTo(event.target.value)}
-              style={styles.input}
-              disabled={loading}
-            />
+            <input type="date" value={defaultTo} onChange={event => setDefaultTo(event.target.value)} style={styles.input} disabled={loading} />
           </label>
         </div>
 
         <div style={styles.checkGrid}>
           <label style={styles.checkRow}>
-            <input
-              type="checkbox"
-              checked={defaultObed}
-              onChange={event => setDefaultObed(event.target.checked)}
-              disabled={loading}
-            />
+            <input type="checkbox" checked={defaultObed} onChange={event => setDefaultObed(event.target.checked)} disabled={loading} />
             <span>Predvolene obed</span>
           </label>
-
           <label style={styles.checkRow}>
-            <input
-              type="checkbox"
-              checked={defaultVecera}
-              onChange={event => setDefaultVecera(event.target.checked)}
-              disabled={loading}
-            />
-            <span>Predvolene večera</span>
+            <input type="checkbox" checked={defaultVecera} onChange={event => setDefaultVecera(event.target.checked)} disabled={loading} />
+            <span>Predvolene vecera</span>
           </label>
-
           <label style={styles.checkRow}>
-            <input
-              type="checkbox"
-              checked={defaultAssignQr}
-              onChange={event => setDefaultAssignQr(event.target.checked)}
-              disabled={loading}
-            />
-            <span>Priradiť voľný QR</span>
+            <input type="checkbox" checked={defaultAssignQr} onChange={event => setDefaultAssignQr(event.target.checked)} disabled={loading} />
+            <span>Priradit volny QR</span>
+          </label>
+          <label style={styles.checkRow}>
+            <input type="checkbox" checked={defaultGenerateAccessCode} onChange={event => setDefaultGenerateAccessCode(event.target.checked)} disabled={loading} />
+            <span>Generovat pristupovy kod</span>
           </label>
         </div>
 
@@ -450,21 +672,26 @@ export default function ImportClient({
             accept=".csv,.txt,.tsv"
             onChange={event => {
               const file = event.target.files?.[0]
-              if (file) parseFile(file)
+              if (file) void parseFile(file)
             }}
             style={styles.fileInput}
             disabled={loading}
           />
 
-          <button
-            type="button"
-            style={styles.primaryButton}
-            disabled={loading || stats.ready === 0}
-            onClick={runImport}
-          >
-            {loading ? 'Importujem...' : `Importovať ${stats.ready}`}
+          <button type="button" style={styles.lightButton} disabled={loading || rows.length === 0} onClick={() => void createOrUpdateBatch()}>
+            {batchId ? 'Ulozit upravy davky' : 'Ulozit davku'}
+          </button>
+
+          <button type="button" style={styles.primaryButton} disabled={loading || stats.ready === 0} onClick={runImport}>
+            {loading ? 'Pracujem...' : `Importovat ${stats.ready}`}
           </button>
         </div>
+
+        {batchId && (
+          <div style={styles.batchInfo}>
+            Davka ulozena: <b>{batchId}</b>
+          </div>
+        )}
 
         {message && (
           <div
@@ -483,35 +710,114 @@ export default function ImportClient({
       <section style={styles.statsGrid}>
         <div style={styles.statCard}><b>{stats.total}</b><span>Riadkov</span></div>
         <div style={styles.statCard}><b>{stats.ready}</b><span>Na import</span></div>
-        <div style={styles.statCard}><b>{stats.ok}</b><span>Hotovo</span></div>
+        <div style={styles.statCard}><b>{stats.ok}</b><span>Importovane</span></div>
         <div style={styles.statCard}><b>{stats.error}</b><span>Chyby</span></div>
-        <div style={styles.statCard}><b>{stats.skip}</b><span>Preskočené</span></div>
+        <div style={styles.statCard}><b>{stats.skip}</b><span>Preskocene</span></div>
+        <div style={styles.statCard}><b>{stats.selected}</b><span>Oznacene</span></div>
       </section>
+
+      {rows.length > 0 && (
+        <section style={styles.panel}>
+          <div style={styles.sectionTitle}>Hromadna uprava oznacenych</div>
+          <div style={styles.settingsGrid}>
+            <label style={styles.field}>
+              <span>Registracna skupina</span>
+              <select value={bulkEdit.registrationGroupId} onChange={event => setBulkEdit(prev => ({ ...prev, registrationGroupId: event.target.value }))} style={styles.input}>
+                <option value="">Bez zmeny</option>
+                {registrationGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+              </select>
+            </label>
+            <label style={styles.field}><span>Od</span><input type="date" value={bulkEdit.validFrom} onChange={event => setBulkEdit(prev => ({ ...prev, validFrom: event.target.value }))} style={styles.input} /></label>
+            <label style={styles.field}><span>Do</span><input type="date" value={bulkEdit.validTo} onChange={event => setBulkEdit(prev => ({ ...prev, validTo: event.target.value }))} style={styles.input} /></label>
+            <label style={styles.field}><span>Obed</span><select value={bulkEdit.obed} onChange={event => setBulkEdit(prev => ({ ...prev, obed: event.target.value as BulkEdit['obed'] }))} style={styles.input}><option value="">Bez zmeny</option><option value="true">Ano</option><option value="false">Nie</option></select></label>
+            <label style={styles.field}><span>Vecera</span><select value={bulkEdit.vecera} onChange={event => setBulkEdit(prev => ({ ...prev, vecera: event.target.value as BulkEdit['vecera'] }))} style={styles.input}><option value="">Bez zmeny</option><option value="true">Ano</option><option value="false">Nie</option></select></label>
+            <label style={styles.field}><span>QR</span><select value={bulkEdit.assignQr} onChange={event => setBulkEdit(prev => ({ ...prev, assignQr: event.target.value as BulkEdit['assignQr'] }))} style={styles.input}><option value="">Bez zmeny</option><option value="true">Ano</option><option value="false">Nie</option></select></label>
+            <label style={styles.field}><span>Kod</span><select value={bulkEdit.generateAccessCode} onChange={event => setBulkEdit(prev => ({ ...prev, generateAccessCode: event.target.value as BulkEdit['generateAccessCode'] }))} style={styles.input}><option value="">Bez zmeny</option><option value="true">Ano</option><option value="false">Nie</option></select></label>
+          </div>
+          <button type="button" style={styles.primaryButton} onClick={applyBulkEdit} disabled={selectedRows.length === 0 || loading}>
+            Pouzit na oznacene
+          </button>
+        </section>
+      )}
+
+      {batchId && stats.ok > 0 && (
+        <section style={styles.panel}>
+          <div style={styles.sectionTitle}>Uvitacie e-maily</div>
+          <div style={styles.fileRow}>
+            <select value={emailRegistrationGroupId} onChange={event => setEmailRegistrationGroupId(event.target.value)} style={styles.input}>
+              <option value="">Vsetky registracne skupiny</option>
+              {registrationGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+            </select>
+            <button type="button" style={styles.primaryButton} disabled={loading} onClick={() => void sendWelcomeEmails(false)}>
+              Odoslat neodoslane
+            </button>
+            <button type="button" style={styles.lightButton} disabled={loading || selectedRows.length === 0} onClick={() => void sendWelcomeEmails(true)}>
+              Odoslat oznacenym
+            </button>
+          </div>
+          <div style={styles.batchInfo}>
+            Importovani s e-mailom: {stats.withEmail}. Odoslane lokalne oznacene: {stats.sent}.
+          </div>
+        </section>
+      )}
 
       <section style={styles.tableCard}>
         {rows.length === 0 ? (
           <div style={styles.emptyState}>
-            Vyber CSV subor. Stĺpec skupina sa páruje na registračnú skupinu v aplikácii.
+            Vyber CSV subor. Stlpec skupina sa paruje na registracnu skupinu v aplikacii.
           </div>
         ) : (
           <>
             <div style={styles.tableHeader}>
-              <span>Riadok</span>
+              <span><input type="checkbox" checked={selectedRows.length > 0 && selectedRows.length === rows.filter(row => row.status !== 'OK').length} onChange={toggleAll} /></span>
               <span>Osoba</span>
-              <span>Registračná skupina</span>
-              <span>Nárok</span>
+              <span>Kontakt</span>
+              <span>Strava</span>
+              <span>Registracna skupina</span>
+              <span>Obdobie / narok</span>
+              <span>QR / Kod</span>
               <span>Stav</span>
             </div>
 
-            {rows.slice(0, 250).map(row => (
+            {rows.slice(0, 500).map(row => (
               <div key={row.rowNumber} style={styles.tableRow}>
-                <span>{row.rowNumber}</span>
+                <span>
+                  <input
+                    type="checkbox"
+                    checked={selectedSet.has(row.rowNumber)}
+                    onChange={() => toggleSelected(row.rowNumber)}
+                    disabled={row.status === 'OK'}
+                  />
+                  <small>#{row.rowNumber}</small>
+                </span>
                 <div style={styles.personCell}>
-                  <b>{row.meno} {row.priezvisko}</b>
-                  <span>{row.email || '-'}</span>
+                  <input value={row.meno} onChange={event => updateRow(row.rowNumber, { meno: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} />
+                  <input value={row.priezvisko} onChange={event => updateRow(row.rowNumber, { priezvisko: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} />
                 </div>
-                <span>{row.registrationGroupName || 'Bez registračnej skupiny'}</span>
-                <span>{row.validFrom} - {row.validTo} / {row.obed ? 'O' : '-'} {row.vecera ? 'V' : '-'}</span>
+                <div style={styles.personCell}>
+                  <input value={row.email} onChange={event => updateRow(row.rowNumber, { email: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} placeholder="email nepovinny" />
+                  <input value={row.telefon} onChange={event => updateRow(row.rowNumber, { telefon: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} placeholder="telefon" />
+                </div>
+                <select value={row.typStravy} onChange={event => updateRow(row.rowNumber, { typStravy: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'}>
+                  <option value="MASO">MASO</option>
+                  <option value="VEGE">VEGE</option>
+                  <option value="DIETA">DIETA</option>
+                </select>
+                <select value={row.registrationGroupId} onChange={event => updateRow(row.rowNumber, { registrationGroupId: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'}>
+                  <option value="">Bez registracnej skupiny</option>
+                  {registrationGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+                </select>
+                <div style={styles.personCell}>
+                  <input type="date" value={row.validFrom} onChange={event => updateRow(row.rowNumber, { validFrom: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} />
+                  <input type="date" value={row.validTo} onChange={event => updateRow(row.rowNumber, { validTo: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} />
+                  <label style={styles.miniCheck}><input type="checkbox" checked={row.obed} onChange={event => updateRow(row.rowNumber, { obed: event.target.checked })} disabled={row.status === 'OK'} /> Obed</label>
+                  <label style={styles.miniCheck}><input type="checkbox" checked={row.vecera} onChange={event => updateRow(row.rowNumber, { vecera: event.target.checked })} disabled={row.status === 'OK'} /> Vecera</label>
+                </div>
+                <div style={styles.personCell}>
+                  <label style={styles.miniCheck}><input type="checkbox" checked={row.assignQr} onChange={event => updateRow(row.rowNumber, { assignQr: event.target.checked })} disabled={row.status === 'OK'} /> QR</label>
+                  <label style={styles.miniCheck}><input type="checkbox" checked={row.generateAccessCode} onChange={event => updateRow(row.rowNumber, { generateAccessCode: event.target.checked })} disabled={row.status === 'OK'} /> Kod</label>
+                  {row.accessCode && <b style={styles.codeBadge}>{row.accessCode}</b>}
+                </div>
                 <span
                   style={{
                     ...styles.statusBadge,
@@ -528,6 +834,7 @@ export default function ImportClient({
                   }}
                 >
                   {row.status}{row.message ? ` - ${row.message}` : ''}
+                  {row.welcomeEmailStatus === 'SENT' ? ' / email odoslany' : ''}
                 </span>
               </div>
             ))}
@@ -584,6 +891,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'grid',
     gap: 12
   },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: 950
+  },
   settingsGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))',
@@ -603,8 +914,20 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #d1d5db',
     borderRadius: 12,
     padding: '11px 10px',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 850,
+    background: '#fff',
+    color: '#111827'
+  },
+  smallInput: {
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
+    border: '1px solid #d1d5db',
+    borderRadius: 9,
+    padding: '7px 8px',
+    fontSize: 12,
+    fontWeight: 800,
     background: '#fff',
     color: '#111827'
   },
@@ -622,6 +945,13 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     fontSize: 13,
     fontWeight: 900
+  },
+  miniCheck: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    fontSize: 11,
+    fontWeight: 850
   },
   fileRow: {
     display: 'flex',
@@ -665,6 +995,15 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     fontWeight: 850
   },
+  batchInfo: {
+    border: '1px dashed #d1d5db',
+    borderRadius: 12,
+    padding: 10,
+    fontSize: 12,
+    fontWeight: 850,
+    color: '#374151',
+    overflowWrap: 'anywhere'
+  },
   statsGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
@@ -692,9 +1031,9 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center'
   },
   tableHeader: {
-    minWidth: 820,
+    minWidth: 1240,
     display: 'grid',
-    gridTemplateColumns: '70px minmax(180px, 1.2fr) 100px minmax(190px, 1fr) minmax(220px, 1fr)',
+    gridTemplateColumns: '70px minmax(190px, 1fr) minmax(190px, 1fr) 90px minmax(180px, 1fr) minmax(190px, 1fr) 110px minmax(240px, 1.1fr)',
     gap: 8,
     padding: '10px 12px',
     background: '#f9fafb',
@@ -705,19 +1044,19 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase'
   },
   tableRow: {
-    minWidth: 820,
+    minWidth: 1240,
     display: 'grid',
-    gridTemplateColumns: '70px minmax(180px, 1.2fr) 100px minmax(190px, 1fr) minmax(220px, 1fr)',
+    gridTemplateColumns: '70px minmax(190px, 1fr) minmax(190px, 1fr) 90px minmax(180px, 1fr) minmax(190px, 1fr) 110px minmax(240px, 1.1fr)',
     gap: 8,
     padding: '10px 12px',
     borderBottom: '1px solid #f3f4f6',
-    alignItems: 'center',
+    alignItems: 'start',
     fontSize: 12,
     fontWeight: 850
   },
   personCell: {
     display: 'grid',
-    gap: 2,
+    gap: 5,
     overflowWrap: 'anywhere'
   },
   statusBadge: {
@@ -726,5 +1065,14 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontWeight: 900,
     overflowWrap: 'anywhere'
+  },
+  codeBadge: {
+    display: 'inline-block',
+    border: '1px solid #111827',
+    borderRadius: 9,
+    padding: '5px 7px',
+    fontSize: 12,
+    letterSpacing: 1,
+    background: '#fef3c7'
   }
 }

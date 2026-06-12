@@ -14,8 +14,12 @@ export default function LoginPage({
 }) {
   const [email, setEmail] = useState(initialEmail)
   const [code, setCode] = useState('')
+  const [accessMeno, setAccessMeno] = useState('')
+  const [accessPriezvisko, setAccessPriezvisko] = useState('')
+  const [accessCode, setAccessCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [codeLoading, setCodeLoading] = useState(false)
+  const [accessLoading, setAccessLoading] = useState(false)
   const [sent, setSent] = useState(initialSent)
   const [error, setError] = useState(initialError)
 
@@ -99,6 +103,48 @@ export default function LoginPage({
     setError('')
   }
 
+  const handleAccessCodeLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!accessMeno.trim() || !accessPriezvisko.trim()) {
+      setError('Zadaj meno aj priezvisko.')
+      return
+    }
+
+    if (accessCode.length !== 8) {
+      setError('Zadaj 8-miestny prístupový kód.')
+      return
+    }
+
+    setAccessLoading(true)
+    setError('')
+
+    try {
+      const res = await fetch('/api/auth/login/access-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meno: accessMeno,
+          priezvisko: accessPriezvisko,
+          code: accessCode
+        })
+      })
+
+      const json = await res.json()
+
+      if (!res.ok || json.error) {
+        setError(json.error || 'Prihlásenie prístupovým kódom zlyhalo.')
+        return
+      }
+
+      window.location.href = '/dashboard'
+    } catch (err: any) {
+      setError('Chyba: ' + err.message)
+    } finally {
+      setAccessLoading(false)
+    }
+  }
+
   return (
     <main style={styles.page}>
       <div style={styles.topBar}>
@@ -114,6 +160,7 @@ export default function LoginPage({
         <h1 style={styles.title}>Vitaj späť</h1>
 
         {!sent ? (
+          <>
           <form action="/api/auth/login/request" method="post" onSubmit={handleLogin}>
             <p style={styles.subtitle}>
               Zadaj svoj registračný e-mail. Pošleme ti prihlasovací link aj 6-miestny kód.
@@ -152,6 +199,56 @@ export default function LoginPage({
               Ešte nemám registráciu
             </Link>
           </form>
+
+          <div style={styles.divider}>alebo</div>
+
+          <form onSubmit={handleAccessCodeLogin} style={styles.accessBox}>
+            <h2 style={styles.accessTitle}>Prihlásenie menom a kódom</h2>
+            <p style={styles.accessText}>
+              Použi túto možnosť, ak máš pridelený prístupový kód od organizátora.
+            </p>
+
+            <div style={styles.accessGrid}>
+              <input
+                style={styles.input}
+                placeholder="Meno"
+                value={accessMeno}
+                onChange={e => setAccessMeno(e.target.value)}
+                autoComplete="given-name"
+              />
+              <input
+                style={styles.input}
+                placeholder="Priezvisko"
+                value={accessPriezvisko}
+                onChange={e => setAccessPriezvisko(e.target.value)}
+                autoComplete="family-name"
+              />
+            </div>
+
+            <input
+              style={styles.codeInput}
+              placeholder="00000000"
+              value={accessCode}
+              onChange={e => setAccessCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="one-time-code"
+              maxLength={8}
+            />
+
+            <button
+              type="submit"
+              style={{
+                ...styles.button,
+                opacity: accessLoading ? 0.65 : 1,
+                cursor: accessLoading ? 'not-allowed' : 'pointer'
+              }}
+              disabled={accessLoading}
+            >
+              {accessLoading ? 'Prihlasujem...' : 'Prihlásiť kódom'}
+            </button>
+          </form>
+          </>
         ) : (
           <div style={styles.success}>
             <h2 style={styles.messageTitle}>E-mail bol odoslaný</h2>
@@ -334,6 +431,40 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#000',
     fontWeight: 900,
     textDecoration: 'underline'
+  },
+  divider: {
+    margin: '24px 0',
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: 950,
+    opacity: 0.62,
+    textTransform: 'uppercase'
+  },
+  accessBox: {
+    marginTop: 0,
+    padding: 18,
+    borderRadius: 20,
+    background: '#fff',
+    color: '#000',
+    border: '3px solid #000',
+    display: 'grid',
+    gap: 12
+  },
+  accessTitle: {
+    margin: 0,
+    fontSize: 22,
+    fontWeight: 950
+  },
+  accessText: {
+    margin: 0,
+    fontSize: 14,
+    lineHeight: 1.35,
+    fontWeight: 750
+  },
+  accessGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))',
+    gap: 10
   },
   success: {
     marginTop: 24,
