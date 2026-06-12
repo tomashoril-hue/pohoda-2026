@@ -34,14 +34,7 @@ export async function POST(req: NextRequest) {
         id,
         user_id,
         code_hash,
-        failed_attempts,
-        users (
-          id,
-          meno,
-          priezvisko,
-          aktivny,
-          review_status
-        )
+        failed_attempts
       `)
       .eq('meno_key', menoKey)
       .eq('priezvisko_key', priezviskoKey)
@@ -77,9 +70,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Prilis vela pokusov. Kontaktuj organizatora.' }, { status: 429 })
     }
 
-    const user = Array.isArray(matchingCode.users)
-      ? matchingCode.users[0]
-      : matchingCode.users
+    const { data: user, error: userError } = await supabaseServer
+      .from('users')
+      .select('id, meno, priezvisko, aktivny, review_status')
+      .eq('id', matchingCode.user_id)
+      .maybeSingle()
+
+    if (userError) {
+      return NextResponse.json({ error: userError.message }, { status: 500 })
+    }
 
     if (!user || String(user.aktivny || '').toUpperCase() !== 'ANO') {
       return NextResponse.json({ error: 'Tento ucet je zablokovany.' }, { status: 403 })
