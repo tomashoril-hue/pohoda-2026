@@ -127,8 +127,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: codeError.message }, { status: 500 })
     }
 
+    const { data: qrRows, error: qrError } = activeUserIds.length > 0
+      ? await supabaseServer
+        .from('user_qr_codes')
+        .select('user_id')
+        .in('user_id', activeUserIds)
+        .eq('active', true)
+      : { data: [], error: null }
+
+    if (qrError) {
+      return NextResponse.json({ error: qrError.message }, { status: 500 })
+    }
+
     const sentUserIds = new Set((sentRows || []).map((row: any) => row.user_id).filter(Boolean))
     const codeUserIds = new Set((codeRows || []).map((row: any) => row.user_id).filter(Boolean))
+    const qrUserIds = new Set((qrRows || []).map((row: any) => row.user_id).filter(Boolean))
     const withEmail = activeUsers.filter((user: any) => text(user.email)).length
 
     return NextResponse.json({
@@ -138,7 +151,8 @@ export async function GET(req: NextRequest) {
       withEmail,
       welcomeSent: sentUserIds.size,
       welcomePending: Math.max(0, withEmail - sentUserIds.size),
-      withAccessCode: codeUserIds.size
+      withAccessCode: codeUserIds.size,
+      withQr: qrUserIds.size
     })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Neznama chyba servera.' }, { status: 500 })

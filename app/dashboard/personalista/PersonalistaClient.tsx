@@ -111,6 +111,7 @@ type CommunicationSummary = {
   welcomeSent: number
   welcomePending: number
   withAccessCode: number
+  withQr: number
   group?: {
     id: string
     name: string
@@ -424,6 +425,8 @@ export default function PersonalistaClient({
   const [communicationMessageType, setCommunicationMessageType] = useState<'ok' | 'error' | ''>('')
   const [accessCodesGroupId, setAccessCodesGroupId] = useState('')
   const [accessCodesEmail, setAccessCodesEmail] = useState('')
+  const [accessCodesIncludeCsv, setAccessCodesIncludeCsv] = useState(true)
+  const [accessCodesIncludeQr, setAccessCodesIncludeQr] = useState(true)
   const [accessCodesNote, setAccessCodesNote] = useState(
     'Ahoj, posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.'
   )
@@ -588,6 +591,7 @@ export default function PersonalistaClient({
         welcomeSent: Number(json.welcomeSent || 0),
         welcomePending: Number(json.welcomePending || 0),
         withAccessCode: Number(json.withAccessCode || 0),
+        withQr: Number(json.withQr || 0),
         group: json.group
       }
 
@@ -659,6 +663,12 @@ export default function PersonalistaClient({
       return
     }
 
+    if (!accessCodesIncludeCsv && !accessCodesIncludeQr) {
+      setAccessCodesMessage('Vyber aspon jednu prilohu.')
+      setAccessCodesMessageType('error')
+      return
+    }
+
     setAccessCodesLoading(true)
     setAccessCodesMessage('')
     setAccessCodesMessageType('')
@@ -670,6 +680,8 @@ export default function PersonalistaClient({
         body: JSON.stringify({
           registrationGroupId: accessCodesGroupId,
           email: accessCodesEmail,
+          includeAccessCodes: accessCodesIncludeCsv,
+          includeQrCodes: accessCodesIncludeQr,
           note: accessCodesNote
         })
       })
@@ -681,7 +693,7 @@ export default function PersonalistaClient({
         return
       }
 
-      setAccessCodesMessage(`CSV odoslane na ${accessCodesEmail}. Pocet pristupov: ${json.count}.`)
+      setAccessCodesMessage(`E-mail odoslany na ${accessCodesEmail}. Pristupy: ${json.count || 0}, QR: ${json.qrCount || 0}.`)
       setAccessCodesMessageType('ok')
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -2883,7 +2895,7 @@ export default function PersonalistaClient({
             setAccessCodesMessageType('')
           }}
         >
-          Pristupove kody
+          Pristupy a QR
         </button>
 
         <a
@@ -3075,8 +3087,8 @@ export default function PersonalistaClient({
         <section style={styles.createPanel}>
           <div style={styles.createHeader}>
             <div>
-              <b>Pristupove kody</b>
-              <span>Odoslanie CSV tabulky s kodmi pre zodpovednu osobu skupiny.</span>
+              <b>Pristupy a QR</b>
+              <span>Odoslanie pristupovych kodov a QR tlacovej prilohy pre zodpovednu osobu skupiny.</span>
             </div>
 
             <button
@@ -3135,6 +3147,30 @@ export default function PersonalistaClient({
           </label>
 
           <div style={styles.toolActionRow}>
+            <label style={styles.checkRow}>
+              <input
+                type="checkbox"
+                checked={accessCodesIncludeCsv}
+                onChange={event => setAccessCodesIncludeCsv(event.target.checked)}
+                disabled={accessCodesLoading}
+                style={styles.checkbox}
+              />
+              <span>CSV pristupove kody</span>
+            </label>
+
+            <label style={styles.checkRow}>
+              <input
+                type="checkbox"
+                checked={accessCodesIncludeQr}
+                onChange={event => setAccessCodesIncludeQr(event.target.checked)}
+                disabled={accessCodesLoading}
+                style={styles.checkbox}
+              />
+              <span>QR tlacova priloha</span>
+            </label>
+          </div>
+
+          <div style={styles.toolActionRow}>
             <button
               type="button"
               style={styles.lightButton}
@@ -3147,23 +3183,37 @@ export default function PersonalistaClient({
             <button
               type="button"
               style={styles.confirmButton}
-              disabled={accessCodesLoading || !accessCodesGroupId || !accessCodesEmail.trim()}
+              disabled={accessCodesLoading || !accessCodesGroupId || !accessCodesEmail.trim() || (!accessCodesIncludeCsv && !accessCodesIncludeQr)}
               onClick={() => void sendAccessCodesForGroup()}
             >
-              Odoslat CSV s kodmi
+              Odoslat vybrane prilohy
             </button>
+
+            <a
+              href={accessCodesGroupId ? `/dashboard/personalista/print-qr?registrationGroupId=${encodeURIComponent(accessCodesGroupId)}` : '#'}
+              style={{
+                ...styles.lightButton,
+                pointerEvents: accessCodesGroupId ? 'auto' : 'none',
+                opacity: accessCodesGroupId ? 1 : 0.55,
+                textDecoration: 'none'
+              }}
+            >
+              Otvorit tlac QR
+            </a>
           </div>
 
           {accessCodesSummary && (
             <div style={styles.toolStatsGrid}>
               <div style={styles.toolStat}><b>{accessCodesSummary.total}</b><span>Aktivni ludia</span></div>
               <div style={styles.toolStat}><b>{accessCodesSummary.withAccessCode}</b><span>S pristupovym kodom</span></div>
+              <div style={styles.toolStat}><b>{accessCodesSummary.withQr}</b><span>S QR kodom</span></div>
               <div style={styles.toolStatWarning}><b>{Math.max(0, accessCodesSummary.total - accessCodesSummary.withAccessCode)}</b><span>Bez kodu</span></div>
+              <div style={styles.toolStatWarning}><b>{Math.max(0, accessCodesSummary.total - accessCodesSummary.withQr)}</b><span>Bez QR</span></div>
             </div>
           )}
 
           <div style={styles.optionHint}>
-            CSV obsahuje iba ludi, ktori maju aktivny pristupovy kod. Kody bez e-mailu su v poriadku, prihlasuju sa menom a kodom.
+            CSV obsahuje iba ludi s aktivnym pristupovym kodom. QR priloha je tlacovy HTML subor s rovnakym rozlozenim ako tlac QR skupiny.
           </div>
 
           {accessCodesMessage && (
