@@ -88,12 +88,6 @@ create table if not exists public.personnel_import_rows (
 create index if not exists personnel_import_rows_batch_idx
   on public.personnel_import_rows(batch_id, row_number);
 
-create index if not exists personnel_import_rows_user_idx
-  on public.personnel_import_rows(created_user_id);
-
-create index if not exists personnel_import_rows_registration_group_idx
-  on public.personnel_import_rows(batch_id, registration_group_id);
-
 alter table public.personnel_import_rows
   add column if not exists normalized_data jsonb not null default '{}'::jsonb,
   add column if not exists error_message text,
@@ -154,6 +148,12 @@ alter table public.personnel_import_rows
   check (typ_stravy in ('MASO', 'VEGE', 'DIETA')),
   add constraint personnel_import_rows_dates_check
   check (valid_to >= valid_from);
+
+create index if not exists personnel_import_rows_user_idx
+  on public.personnel_import_rows(created_user_id);
+
+create index if not exists personnel_import_rows_registration_group_idx
+  on public.personnel_import_rows(batch_id, registration_group_id);
 
 create table if not exists public.user_access_codes (
   id uuid primary key default gen_random_uuid(),
