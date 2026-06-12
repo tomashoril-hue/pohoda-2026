@@ -394,6 +394,7 @@ export async function POST(req: NextRequest) {
         .insert({
           user_id: newUser.id,
           code_hash: hashAccessCode(meno, priezvisko, accessCodePlain),
+          access_code_plain: accessCodePlain,
           meno_key: normalizeAccessName(meno),
           priezvisko_key: normalizeAccessName(priezvisko),
           label: 'Importny pristupovy kod',

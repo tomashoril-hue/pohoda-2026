@@ -7,6 +7,11 @@ type SendAppEmailInput = {
   subject: string
   html: string
   text?: string
+  attachments?: Array<{
+    filename: string
+    content: string
+    contentType?: string
+  }>
 }
 
 type SendAppEmailResult = {
@@ -99,7 +104,12 @@ async function sendWithResend(input: SendAppEmailInput): Promise<SendAppEmailRes
     to: input.to,
     subject: input.subject,
     html: input.html,
-    text: input.text
+    text: input.text,
+    attachments: input.attachments?.map(attachment => ({
+      filename: attachment.filename,
+      content: attachment.content,
+      contentType: attachment.contentType
+    }))
   })
 
   if (error) {
@@ -113,6 +123,14 @@ async function sendWithResend(input: SendAppEmailInput): Promise<SendAppEmailRes
 }
 
 export async function sendAppEmail(input: SendAppEmailInput): Promise<SendAppEmailResult> {
+  if (input.attachments?.length) {
+    if (!process.env.RESEND_API_KEY) {
+      throw new Error('RESEND_API_KEY nie je nastaveny. Prilohy teraz posielame cez Resend.')
+    }
+
+    return sendWithResend(input)
+  }
+
   if (hasSesConfig()) {
     try {
       return await sendWithSes(input)

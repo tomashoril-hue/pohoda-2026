@@ -159,6 +159,7 @@ create table if not exists public.user_access_codes (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.users(id) on delete cascade,
   code_hash text not null,
+  access_code_plain text,
   meno_key text not null,
   priezvisko_key text not null,
   active boolean not null default true,
@@ -179,6 +180,9 @@ create index if not exists user_access_codes_lookup_idx
 create index if not exists user_access_codes_user_idx
   on public.user_access_codes(user_id, active);
 
+alter table public.user_access_codes
+  add column if not exists access_code_plain text;
+
 create table if not exists public.personnel_email_log (
   id uuid primary key default gen_random_uuid(),
   import_batch_id uuid references public.personnel_import_batches(id) on delete set null,
@@ -193,10 +197,17 @@ create table if not exists public.personnel_email_log (
   sent_by uuid references public.users(id) on delete set null,
   created_at timestamp with time zone not null default now(),
   constraint personnel_email_log_type_check
-    check (type in ('WELCOME_IMPORTED_USER')),
+    check (type in ('WELCOME_IMPORTED_USER', 'ACCESS_CODES_EXPORT')),
   constraint personnel_email_log_status_check
     check (status in ('SENT', 'FAILED'))
 );
+
+alter table public.personnel_email_log
+  drop constraint if exists personnel_email_log_type_check;
+
+alter table public.personnel_email_log
+  add constraint personnel_email_log_type_check
+  check (type in ('WELCOME_IMPORTED_USER', 'ACCESS_CODES_EXPORT'));
 
 create index if not exists personnel_email_log_import_batch_idx
   on public.personnel_email_log(import_batch_id, created_at desc);

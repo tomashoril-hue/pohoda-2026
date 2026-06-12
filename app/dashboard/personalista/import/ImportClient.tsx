@@ -201,6 +201,11 @@ export default function ImportClient({
   const [selectedRows, setSelectedRows] = useState<number[]>([])
   const [bulkEdit, setBulkEdit] = useState<BulkEdit>(emptyBulkEdit())
   const [emailRegistrationGroupId, setEmailRegistrationGroupId] = useState('')
+  const [accessCodesEmail, setAccessCodesEmail] = useState('')
+  const [accessCodesRegistrationGroupId, setAccessCodesRegistrationGroupId] = useState('')
+  const [accessCodesNote, setAccessCodesNote] = useState(
+    'Ahoj, posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.'
+  )
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
@@ -589,6 +594,53 @@ export default function ImportClient({
     }
   }
 
+  const sendAccessCodes = async (selectedOnly = false) => {
+    if (!batchId) {
+      setMessage('Najprv uloz a importuj davku.')
+      setMessageType('error')
+      return
+    }
+
+    if (!accessCodesEmail.trim()) {
+      setMessage('Zadaj e-mail, kam sa ma poslat CSV s kodmi.')
+      setMessageType('error')
+      return
+    }
+
+    setLoading(true)
+    setMessage('')
+    setMessageType('')
+
+    try {
+      const rowIds = selectedOnly
+        ? rows.filter(row => selectedSet.has(row.rowNumber) && row.id).map(row => row.id)
+        : []
+
+      const res = await fetch(`/api/personalista/import-batches/${batchId}/send-access-codes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: accessCodesEmail,
+          registrationGroupId: selectedOnly ? '' : accessCodesRegistrationGroupId,
+          rowIds,
+          note: accessCodesNote
+        })
+      })
+      const json = await res.json()
+
+      if (!res.ok || json.error) {
+        setMessage(json.error || 'Kody sa nepodarilo odoslat.')
+        setMessageType('error')
+        return
+      }
+
+      setMessage(`CSV s kodmi odoslane na ${accessCodesEmail}. Pocet pristupov: ${json.count}.`)
+      setMessageType('ok')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <main style={styles.page}>
       <header style={styles.header}>
@@ -761,6 +813,61 @@ export default function ImportClient({
         </section>
       )}
 
+      {batchId && stats.ok > 0 && (
+        <section style={styles.panel}>
+          <div>
+            <div style={styles.sectionTitle}>Odoslat tabulku pristupovych kodov</div>
+            <p style={styles.sectionText}>
+              Odosle CSV prilohu s menom, priezviskom, registracnou skupinou, login URL a pristupovym kodom.
+            </p>
+          </div>
+
+          <div style={styles.settingsGrid}>
+            <label style={styles.field}>
+              <span>E-mail prijemcu</span>
+              <input
+                value={accessCodesEmail}
+                onChange={event => setAccessCodesEmail(event.target.value)}
+                style={styles.input}
+                placeholder="veduci@firma.sk"
+                type="email"
+              />
+            </label>
+
+            <label style={styles.field}>
+              <span>Registracna skupina</span>
+              <select
+                value={accessCodesRegistrationGroupId}
+                onChange={event => setAccessCodesRegistrationGroupId(event.target.value)}
+                style={styles.input}
+              >
+                <option value="">Vsetky importovane s kodom</option>
+                {registrationGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <label style={styles.field}>
+            <span>Sprava do e-mailu</span>
+            <textarea
+              value={accessCodesNote}
+              onChange={event => setAccessCodesNote(event.target.value)}
+              style={styles.textarea}
+              rows={3}
+            />
+          </label>
+
+          <div style={styles.fileRow}>
+            <button type="button" style={styles.primaryButton} disabled={loading || !accessCodesEmail.trim()} onClick={() => void sendAccessCodes(false)}>
+              Odoslat CSV podla filtra
+            </button>
+            <button type="button" style={styles.lightButton} disabled={loading || !accessCodesEmail.trim() || selectedRows.length === 0} onClick={() => void sendAccessCodes(true)}>
+              Odoslat CSV oznacenym
+            </button>
+          </div>
+        </section>
+      )}
+
       <section style={styles.tableCard}>
         {rows.length === 0 ? (
           <div style={styles.emptyState}>
@@ -895,6 +1002,12 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 15,
     fontWeight: 950
   },
+  sectionText: {
+    margin: '4px 0 0 0',
+    fontSize: 12,
+    fontWeight: 750,
+    color: '#6b7280'
+  },
   settingsGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))',
@@ -918,6 +1031,20 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 850,
     background: '#fff',
     color: '#111827'
+  },
+  textarea: {
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
+    border: '1px solid #d1d5db',
+    borderRadius: 12,
+    padding: '11px 10px',
+    fontSize: 14,
+    lineHeight: 1.35,
+    fontWeight: 750,
+    background: '#fff',
+    color: '#111827',
+    resize: 'vertical'
   },
   smallInput: {
     width: '100%',
