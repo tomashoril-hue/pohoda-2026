@@ -400,14 +400,13 @@ export default function ImportClient({
 
     const nextRows = [...activeRows]
 
-    for (const row of readyRows) {
-      const index = nextRows.findIndex(item => item.rowNumber === row.rowNumber)
-
-      try {
-        const res = await fetch('/api/personalista/people/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+    try {
+      const res = await fetch('/api/personalista/people/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rows: readyRows.map(row => ({
+            rowNumber: row.rowNumber,
             meno: row.meno,
             priezvisko: row.priezvisko,
             email: row.email,
@@ -420,48 +419,55 @@ export default function ImportClient({
             vecera: row.vecera,
             assignQr: row.assignQr,
             generateAccessCode: row.generateAccessCode
-          })
+          }))
         })
+      })
+      const json = await res.json().catch(() => ({ error: 'Server vratil neplatnu odpoved.' }))
 
-        const text = await res.text()
-        let json: any = {}
-
-        try {
-          json = text ? JSON.parse(text) : {}
-        } catch {
-          json = { error: 'Server vratil neplatnu odpoved.' }
-        }
-
-        if (!res.ok || json.error) {
-          nextRows[index] = {
-            ...nextRows[index],
-            status: 'ERROR',
-            message: json.error || 'Import zlyhal.'
-          }
-        } else {
-          nextRows[index] = {
-            ...nextRows[index],
-            status: 'OK',
-            accessCode: json.accessCode || nextRows[index].accessCode,
-            message: json.message || 'Importovane.'
-          }
-        }
-      } catch (err) {
-        nextRows[index] = {
-          ...nextRows[index],
-          status: 'ERROR',
-          message: err instanceof Error ? err.message : String(err)
-        }
+      if (!res.ok || json.error) {
+        setRows(current => current.map(row => (
+          row.status === 'READY'
+            ? { ...row, status: 'ERROR', message: json.error || 'Import zlyhal.' }
+            : row
+        )))
+        setMessage(json.error || 'Import zlyhal.')
+        setMessageType('error')
+        return
       }
 
-      setRows([...nextRows])
-    }
+      const resultByRowNumber = new Map((json.results || []).map((result: any) => [Number(result.rowNumber), result]))
 
-    setLoading(false)
-    setActiveAction('')
-    setMessage('Import dokonceny.')
-    setMessageType('ok')
-    router.refresh()
+      readyRows.forEach(row => {
+        const index = nextRows.findIndex(item => item.rowNumber === row.rowNumber)
+        const result: any = resultByRowNumber.get(row.rowNumber)
+
+        if (index < 0 || !result) return
+
+        nextRows[index] = {
+          ...nextRows[index],
+          status: result.ok ? 'OK' : 'ERROR',
+          accessCode: result.accessCode || nextRows[index].accessCode,
+          message: result.message || (result.ok ? 'Importovane.' : 'Import zlyhal.')
+        }
+      })
+
+      setRows(nextRows)
+      setMessage(`Import dokonceny. Importovane: ${json.imported}, chyby: ${json.failed}.`)
+      setMessageType(json.failed ? 'error' : 'ok')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setRows(current => current.map(row => (
+        row.status === 'READY'
+          ? { ...row, status: 'ERROR', message }
+          : row
+      )))
+      setMessage('Chyba spojenia so serverom: ' + message)
+      setMessageType('error')
+    } finally {
+      setLoading(false)
+      setActiveAction('')
+      router.refresh()
+    }
   }
 
   const toggleSelected = (rowNumber: number) => {
