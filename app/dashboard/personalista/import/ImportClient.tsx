@@ -1089,14 +1089,24 @@ export default function ImportClient({
         ) : (
           <>
             <div style={styles.tableHeader}>
-              <span><input type="checkbox" checked={selectedRows.length > 0 && selectedRows.length === rows.filter(row => row.status !== 'OK').length} onChange={toggleAll} /></span>
-              <span>Osoba</span>
-              <span>Kontakt</span>
+              <span style={styles.headerCheck}>
+                <input type="checkbox" checked={selectedRows.length > 0 && selectedRows.length === rows.filter(row => row.status !== 'OK').length} onChange={toggleAll} />
+              </span>
+              <span>Meno</span>
+              <span>Priezvisko</span>
+              <span>E-mail</span>
+              <span>Telefon</span>
               <span>Strava</span>
-              <span>Registracna skupina</span>
-              <span>Obdobie / narok</span>
-              <span>QR / Kod</span>
+              <span>Reg skupina</span>
+              <span>Od</span>
+              <span>Do</span>
+              <span>Obed</span>
+              <span>Vecera</span>
+              <span>QR</span>
+              <span>Kod</span>
+              <span>Pristupovy kod</span>
               <span>Stav</span>
+              <span>Poznamka</span>
             </div>
 
             {rows.slice(0, 500).map(row => (
@@ -1110,14 +1120,10 @@ export default function ImportClient({
                   />
                   <small>#{row.rowNumber}</small>
                 </span>
-                <div style={styles.twoColumnCell}>
-                  <input value={row.meno} onChange={event => updateRow(row.rowNumber, { meno: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} />
-                  <input value={row.priezvisko} onChange={event => updateRow(row.rowNumber, { priezvisko: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} />
-                </div>
-                <div style={styles.contactCell}>
-                  <input value={row.email} onChange={event => updateRow(row.rowNumber, { email: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} placeholder="email nepovinny" />
-                  <input value={row.telefon} onChange={event => updateRow(row.rowNumber, { telefon: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} placeholder="telefon" />
-                </div>
+                <input value={row.meno} onChange={event => updateRow(row.rowNumber, { meno: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} />
+                <input value={row.priezvisko} onChange={event => updateRow(row.rowNumber, { priezvisko: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} />
+                <input value={row.email} onChange={event => updateRow(row.rowNumber, { email: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} placeholder="email nepovinny" />
+                <input value={row.telefon} onChange={event => updateRow(row.rowNumber, { telefon: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} placeholder="telefon" />
                 <select value={row.typStravy} onChange={event => updateRow(row.rowNumber, { typStravy: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'}>
                   <option value="MASO">MASO</option>
                   <option value="VEGE">VEGE</option>
@@ -1127,17 +1133,13 @@ export default function ImportClient({
                   <option value="">Bez registracnej skupiny</option>
                   {registrationGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
                 </select>
-                <div style={styles.periodCell}>
-                  {compactDateInput(row.validFrom, value => updateRow(row.rowNumber, { validFrom: value }), row.status === 'OK')}
-                  {compactDateInput(row.validTo, value => updateRow(row.rowNumber, { validTo: value }), row.status === 'OK')}
-                  <label style={styles.miniCheck}><input type="checkbox" checked={row.obed} onChange={event => updateRow(row.rowNumber, { obed: event.target.checked })} disabled={row.status === 'OK'} /> Obed</label>
-                  <label style={styles.miniCheck}><input type="checkbox" checked={row.vecera} onChange={event => updateRow(row.rowNumber, { vecera: event.target.checked })} disabled={row.status === 'OK'} /> Vecera</label>
-                </div>
-                <div style={styles.personCell}>
-                  <label style={styles.miniCheck}><input type="checkbox" checked={row.assignQr} onChange={event => updateRow(row.rowNumber, { assignQr: event.target.checked })} disabled={row.status === 'OK'} /> QR</label>
-                  <label style={styles.miniCheck}><input type="checkbox" checked={row.generateAccessCode} onChange={event => updateRow(row.rowNumber, { generateAccessCode: event.target.checked })} disabled={row.status === 'OK'} /> Kod</label>
-                  {row.accessCode && <b style={styles.codeBadge}>{row.accessCode}</b>}
-                </div>
+                {compactDateInput(row.validFrom, value => updateRow(row.rowNumber, { validFrom: value }), row.status === 'OK')}
+                {compactDateInput(row.validTo, value => updateRow(row.rowNumber, { validTo: value }), row.status === 'OK')}
+                <span style={styles.centerCell}><input type="checkbox" checked={row.obed} onChange={event => updateRow(row.rowNumber, { obed: event.target.checked })} disabled={row.status === 'OK'} /></span>
+                <span style={styles.centerCell}><input type="checkbox" checked={row.vecera} onChange={event => updateRow(row.rowNumber, { vecera: event.target.checked })} disabled={row.status === 'OK'} /></span>
+                <span style={styles.centerCell}><input type="checkbox" checked={row.assignQr} onChange={event => updateRow(row.rowNumber, { assignQr: event.target.checked })} disabled={row.status === 'OK'} /></span>
+                <span style={styles.centerCell}><input type="checkbox" checked={row.generateAccessCode} onChange={event => updateRow(row.rowNumber, { generateAccessCode: event.target.checked })} disabled={row.status === 'OK'} /></span>
+                <span style={styles.codeCell}>{row.accessCode || '-'}</span>
                 <span
                   style={{
                     ...styles.statusBadge,
@@ -1153,8 +1155,10 @@ export default function ImportClient({
                       '#1d4ed8'
                   }}
                 >
-                  {row.status}{row.message ? ` - ${row.message}` : ''}
-                  {row.welcomeEmailStatus === 'SENT' ? ' / email odoslany' : ''}
+                  {row.status}
+                </span>
+                <span style={styles.noteCell}>
+                  {row.message || ''}{row.welcomeEmailStatus === 'SENT' ? ' / email odoslany' : ''}
                 </span>
               </div>
             ))}
@@ -1493,9 +1497,9 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center'
   },
   tableHeader: {
-    minWidth: 1080,
+    minWidth: 1360,
     display: 'grid',
-    gridTemplateColumns: '48px 230px 270px 76px 168px 210px 78px minmax(170px, 1fr)',
+    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 92px 92px 48px 52px 42px 46px 86px 72px minmax(140px, 1fr)',
     gap: 4,
     padding: '7px 8px',
     background: '#eef2f7',
@@ -1506,9 +1510,9 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase'
   },
   tableRow: {
-    minWidth: 1080,
+    minWidth: 1360,
     display: 'grid',
-    gridTemplateColumns: '48px 230px 270px 76px 168px 210px 78px minmax(170px, 1fr)',
+    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 92px 92px 48px 52px 42px 46px 86px 72px minmax(140px, 1fr)',
     gap: 4,
     padding: '6px 8px',
     borderBottom: '1px solid #f3f4f6',
@@ -1516,43 +1520,50 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontWeight: 850
   },
-  personCell: {
-    display: 'grid',
-    gap: 3,
-    overflowWrap: 'anywhere'
+  headerCheck: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  twoColumnCell: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 3,
-    minWidth: 0
-  },
-  contactCell: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) 92px',
-    gap: 3,
-    minWidth: 0
-  },
-  periodCell: {
-    display: 'grid',
-    gridTemplateColumns: '92px 92px',
-    gap: 3,
-    alignItems: 'center'
+  centerCell: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 26
   },
   statusBadge: {
-    borderRadius: 10,
-    padding: '7px 8px',
-    fontSize: 11,
+    borderRadius: 6,
+    padding: '5px 6px',
+    fontSize: 10,
     fontWeight: 900,
+    textAlign: 'center',
     overflowWrap: 'anywhere'
   },
-  codeBadge: {
-    display: 'inline-block',
-    border: '1px solid #111827',
-    borderRadius: 9,
-    padding: '5px 7px',
-    fontSize: 12,
-    letterSpacing: 1,
-    background: '#fef3c7'
+  codeCell: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 4,
+    padding: '5px 6px',
+    minHeight: 26,
+    boxSizing: 'border-box',
+    fontSize: 11,
+    fontWeight: 950,
+    letterSpacing: 0.5,
+    background: '#fef3c7',
+    color: '#111827',
+    textAlign: 'center',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
+  },
+  noteCell: {
+    minHeight: 26,
+    padding: '5px 6px',
+    boxSizing: 'border-box',
+    fontSize: 10,
+    fontWeight: 800,
+    color: '#6b7280',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
   }
 }
