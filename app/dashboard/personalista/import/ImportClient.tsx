@@ -195,13 +195,6 @@ function emptyBulkEdit(): BulkEdit {
   }
 }
 
-function compactDateLabel(value: string) {
-  if (!value) return '--.--.----'
-  const [year, month, day] = value.split('-')
-  if (!year || !month || !day) return value
-  return `${day}.${month}.${year}`
-}
-
 export default function ImportClient({
   registrationGroups,
   fromDate,
@@ -232,6 +225,9 @@ export default function ImportClient({
     'Ahoj, posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.'
   )
   const [importBatches, setImportBatches] = useState<ImportBatchSummary[]>([])
+  const [showImportBatches, setShowImportBatches] = useState(false)
+  const [activeTool, setActiveTool] = useState<'bulk' | 'welcome' | 'codes' | ''>('')
+  const [tableRegistrationGroupFilterId, setTableRegistrationGroupFilterId] = useState('')
   const [loadingBatches, setLoadingBatches] = useState(false)
   const [loading, setLoading] = useState(false)
   const [activeAction, setActiveAction] = useState('')
@@ -272,16 +268,13 @@ export default function ImportClient({
     onChange: (value: string) => void,
     disabled = false
   ) => (
-    <span style={styles.compactDateControl}>
-      <span style={styles.compactDateValue}>{compactDateLabel(value)}</span>
-      <input
-        type="date"
-        value={value}
-        onChange={event => onChange(event.target.value)}
-        style={styles.compactDateNativeInput}
-        disabled={disabled}
-      />
-    </span>
+    <input
+      type="date"
+      value={value}
+      onChange={event => onChange(event.target.value)}
+      style={styles.compactDateInput}
+      disabled={disabled}
+    />
   )
 
   const stats = useMemo(() => {
@@ -296,6 +289,20 @@ export default function ImportClient({
       sent: rows.filter(row => row.welcomeEmailStatus === 'SENT').length
     }
   }, [rows, selectedRows.length])
+
+  const importedGroupOptions = useMemo(() => {
+    const groupIds = new Set(rows.map(row => row.registrationGroupId).filter(Boolean))
+    return registrationGroups.filter(group => groupIds.has(group.id))
+  }, [registrationGroups, rows])
+
+  const visibleRows = useMemo(() => {
+    if (!tableRegistrationGroupFilterId) return rows
+    return rows.filter(row => row.registrationGroupId === tableRegistrationGroupFilterId)
+  }, [rows, tableRegistrationGroupFilterId])
+
+  const visibleEditableRows = useMemo(() => {
+    return visibleRows.filter(row => row.status !== 'OK').map(row => row.rowNumber)
+  }, [visibleRows])
 
   const loadImportBatches = async () => {
     setLoadingBatches(true)
@@ -370,6 +377,7 @@ export default function ImportClient({
       setSourceFileName(json.batch.sourceFileName || '')
       setRows(loadedRows)
       setSelectedRows([])
+      setTableRegistrationGroupFilterId('')
       setMessage(`Davka "${json.batch.name || 'Import'}" je nacitana.`)
       setMessageType('ok')
     } finally {
@@ -415,6 +423,8 @@ export default function ImportClient({
     setSelectedRows([])
     setSourceFileName(file.name)
     setBatchName(file.name.replace(/\.[^.]+$/, '') || `Import ${new Date().toLocaleString('sk-SK')}`)
+    setTableRegistrationGroupFilterId('')
+    setActiveTool('')
 
     const text = await file.text()
     const table = parseDelimited(text)
@@ -662,8 +672,15 @@ export default function ImportClient({
   }
 
   const toggleAll = () => {
-    const editableRows = rows.filter(row => row.status !== 'OK').map(row => row.rowNumber)
-    setSelectedRows(current => current.length === editableRows.length ? [] : editableRows)
+    setSelectedRows(current => {
+      const selectedVisible = visibleEditableRows.filter(rowNumber => current.includes(rowNumber))
+
+      if (visibleEditableRows.length > 0 && selectedVisible.length === visibleEditableRows.length) {
+        return current.filter(rowNumber => !visibleEditableRows.includes(rowNumber))
+      }
+
+      return Array.from(new Set([...current, ...visibleEditableRows]))
+    })
   }
 
   const applyBulkEdit = () => {
@@ -820,54 +837,68 @@ export default function ImportClient({
           <div>
             <div style={styles.sectionTitle}>Importne davky</div>
             <p style={styles.sectionText}>
-              Tu sa vies vratit k uz vytvorenym importom, nacitat riadky a znova poslat pristupove kody.
+              Historia importov je schovana, aby hlavna obrazovka ostala hlavne na kontrolu aktualnej davky.
             </p>
           </div>
-          <button type="button" style={buttonStyle(styles.lightButton, 'load-batches', loadingBatches)} onClick={() => void loadImportBatches()} disabled={loadingBatches}>
-            {loadingBatches ? 'Nacitavam...' : 'Obnovit davky'}
-          </button>
+          <div style={styles.fileRow}>
+            <button
+              type="button"
+              style={buttonStyle(styles.lightButton, 'toggle-batches', loadingBatches)}
+              onClick={() => setShowImportBatches(value => !value)}
+              disabled={loadingBatches}
+            >
+              {showImportBatches ? 'Skryt davky' : 'Zobrazit davky'}
+            </button>
+            {showImportBatches && (
+              <button type="button" style={buttonStyle(styles.lightButton, 'load-batches', loadingBatches)} onClick={() => void loadImportBatches()} disabled={loadingBatches}>
+                {loadingBatches ? 'Nacitavam...' : 'Obnovit davky'}
+              </button>
+            )}
+          </div>
         </div>
 
-        {importBatches.length === 0 ? (
-          <div style={styles.emptyLine}>Zatial tu nie je ziadna importna davka.</div>
-        ) : (
-          <div style={styles.batchTable}>
-            <div style={styles.batchHeader}>
-              <span>Nazov</span>
-              <span>Stav</span>
-              <span>Riadky</span>
-              <span>Kody</span>
-              <span>Vytvorene</span>
-              <span></span>
-            </div>
-
-            {importBatches.map(batch => (
-              <div
-                key={batch.id}
-                style={{
-                  ...styles.batchRow,
-                  background: batch.id === batchId ? '#eef2ff' : '#fff'
-                }}
-              >
-                <div style={styles.batchNameCell}>
-                  <b>{batch.name}</b>
-                  {batch.sourceFileName && <small>{batch.sourceFileName}</small>}
-                </div>
-                <span style={styles.plainBadge}>{batch.status}</span>
-                <span>{batch.stats.imported}/{batch.stats.total}</span>
-                <span>{batch.stats.codes}</span>
-                <span>{formatDateTime(batch.createdAt)}</span>
-                <button
-                  type="button"
-                  style={buttonStyle(styles.tinyButton, `load-batch-${batch.id}`, loading)}
-                  onClick={() => void loadBatchRows(batch.id)}
-                  disabled={loading}
-                >
-                  Nacitat
-                </button>
+        {showImportBatches && (
+          importBatches.length === 0 ? (
+            <div style={styles.emptyLine}>Zatial tu nie je ziadna importna davka.</div>
+          ) : (
+            <div style={styles.batchTable}>
+              <div style={styles.batchHeader}>
+                <span>Nazov</span>
+                <span>Stav</span>
+                <span>Riadky</span>
+                <span>Kody</span>
+                <span>Vytvorene</span>
+                <span></span>
               </div>
-            ))}
-          </div>
+
+              {importBatches.map(batch => (
+                <div
+                  key={batch.id}
+                  style={{
+                    ...styles.batchRow,
+                    background: batch.id === batchId ? '#eef2ff' : '#fff'
+                  }}
+                >
+                  <div style={styles.batchNameCell}>
+                    <b>{batch.name}</b>
+                    {batch.sourceFileName && <small>{batch.sourceFileName}</small>}
+                  </div>
+                  <span style={styles.plainBadge}>{batch.status}</span>
+                  <span>{batch.stats.imported}/{batch.stats.total}</span>
+                  <span>{batch.stats.codes}</span>
+                  <span>{formatDateTime(batch.createdAt)}</span>
+                  <button
+                    type="button"
+                    style={buttonStyle(styles.tinyButton, `load-batch-${batch.id}`, loading)}
+                    onClick={() => void loadBatchRows(batch.id)}
+                    disabled={loading}
+                  >
+                    Nacitat
+                  </button>
+                </div>
+              ))}
+            </div>
+          )
         )}
       </section>
 
@@ -983,6 +1014,65 @@ export default function ImportClient({
 
       {rows.length > 0 && (
         <section style={styles.panel}>
+          <div style={styles.panelTop}>
+            <label style={{ ...styles.field, ...styles.groupFilterField }}>
+              <span>Zobrazit registracnu skupinu</span>
+              <select
+                value={tableRegistrationGroupFilterId}
+                onChange={event => {
+                  const nextGroupId = event.target.value
+                  setTableRegistrationGroupFilterId(nextGroupId)
+                  setEmailRegistrationGroupId(nextGroupId)
+                  setAccessCodesRegistrationGroupId(nextGroupId)
+                  setSelectedRows([])
+                }}
+                style={styles.input}
+              >
+                <option value="">Vsetky skupiny v davke</option>
+                {importedGroupOptions.map(group => (
+                  <option key={group.id} value={group.id}>{group.name}</option>
+                ))}
+              </select>
+            </label>
+
+            <div style={styles.filterSummary}>
+              Zobrazenych {visibleRows.length} z {rows.length} riadkov.
+              {tableRegistrationGroupFilterId && ` Vybrana skupina: ${registrationGroupById.get(tableRegistrationGroupFilterId)?.name || '-'}.`}
+            </div>
+          </div>
+
+          <div style={styles.toolBar}>
+            <button
+              type="button"
+              style={buttonStyle(activeTool === 'bulk' ? styles.primaryButton : styles.lightButton, 'tool-bulk')}
+              onClick={() => setActiveTool(value => value === 'bulk' ? '' : 'bulk')}
+            >
+              Hromadna uprava oznacenych
+            </button>
+            {batchId && stats.ok > 0 && (
+              <button
+                type="button"
+                style={buttonStyle(activeTool === 'welcome' ? styles.primaryButton : styles.lightButton, 'tool-welcome')}
+                onClick={() => setActiveTool(value => value === 'welcome' ? '' : 'welcome')}
+              >
+                Uvitacie e-maily
+              </button>
+            )}
+            {batchId && stats.ok > 0 && (
+              <button
+                type="button"
+                style={buttonStyle(activeTool === 'codes' ? styles.primaryButton : styles.lightButton, 'tool-codes')}
+                onClick={() => setActiveTool(value => value === 'codes' ? '' : 'codes')}
+              >
+                Odoslat tabulku pristupovych kodov
+              </button>
+            )}
+          </div>
+        </section>
+      )}
+
+      {rows.length > 0 && activeTool === 'bulk' && (
+        <section style={styles.panel}>
           <div style={styles.sectionTitle}>Hromadna uprava oznacenych</div>
           <div style={styles.settingsGrid}>
             <label style={styles.field}>
@@ -1005,7 +1095,7 @@ export default function ImportClient({
         </section>
       )}
 
-      {batchId && stats.ok > 0 && (
+      {batchId && stats.ok > 0 && activeTool === 'welcome' && (
         <section style={styles.panel}>
           <div style={styles.sectionTitle}>Uvitacie e-maily</div>
           <div style={styles.fileRow}>
@@ -1026,7 +1116,7 @@ export default function ImportClient({
         </section>
       )}
 
-      {batchId && stats.ok > 0 && (
+      {batchId && stats.ok > 0 && activeTool === 'codes' && (
         <section style={styles.panel}>
           <div>
             <div style={styles.sectionTitle}>Odoslat tabulku pristupovych kodov</div>
@@ -1090,7 +1180,11 @@ export default function ImportClient({
           <>
             <div style={styles.tableHeader}>
               <span style={styles.headerCheck}>
-                <input type="checkbox" checked={selectedRows.length > 0 && selectedRows.length === rows.filter(row => row.status !== 'OK').length} onChange={toggleAll} />
+                <input
+                  type="checkbox"
+                  checked={visibleEditableRows.length > 0 && visibleEditableRows.every(rowNumber => selectedSet.has(rowNumber))}
+                  onChange={toggleAll}
+                />
               </span>
               <span>Meno</span>
               <span>Priezvisko</span>
@@ -1105,11 +1199,12 @@ export default function ImportClient({
               <span>QR</span>
               <span>Kod</span>
               <span>Pristupovy kod</span>
+              <span>Uv. e-mail</span>
               <span>Stav</span>
               <span>Poznamka</span>
             </div>
 
-            {rows.slice(0, 500).map(row => (
+            {visibleRows.slice(0, 500).map(row => (
               <div key={row.rowNumber} style={styles.tableRow}>
                 <span>
                   <input
@@ -1142,6 +1237,15 @@ export default function ImportClient({
                 <span style={styles.codeCell}>{row.accessCode || '-'}</span>
                 <span
                   style={{
+                    ...styles.emailStatusCell,
+                    background: row.welcomeEmailStatus === 'SENT' ? '#dcfce7' : row.email ? '#fef3c7' : '#f3f4f6',
+                    color: row.welcomeEmailStatus === 'SENT' ? '#166534' : row.email ? '#92400e' : '#6b7280'
+                  }}
+                >
+                  {row.welcomeEmailStatus === 'SENT' ? 'odoslany' : row.email ? 'neodoslany' : '-'}
+                </span>
+                <span
+                  style={{
                     ...styles.statusBadge,
                     background:
                       row.status === 'OK' ? '#dcfce7' :
@@ -1158,10 +1262,15 @@ export default function ImportClient({
                   {row.status}
                 </span>
                 <span style={styles.noteCell}>
-                  {row.message || ''}{row.welcomeEmailStatus === 'SENT' ? ' / email odoslany' : ''}
+                  {row.message || ''}
                 </span>
               </div>
             ))}
+            {visibleRows.length > 500 && (
+              <div style={styles.tableLimitNotice}>
+                Zobrazenych prvych 500 riadkov z filtra. Zuz vyber registracnou skupinou, ak potrebujes pracovat s mensim zoznamom.
+              </div>
+            )}
           </>
         )}
       </section>
@@ -1244,6 +1353,25 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 950,
     color: '#6b7280'
   },
+  groupFilterField: {
+    minWidth: 260,
+    flex: '1 1 300px'
+  },
+  filterSummary: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 7,
+    padding: '8px 10px',
+    background: '#f9fafb',
+    fontSize: 12,
+    fontWeight: 850,
+    color: '#374151'
+  },
+  toolBar: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    alignItems: 'center'
+  },
   input: {
     width: '100%',
     minWidth: 0,
@@ -1286,45 +1414,21 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#111827',
     outline: 'none'
   },
-  compactDateControl: {
-    position: 'relative',
-    width: 92,
+  compactDateInput: {
+    width: '100%',
+    maxWidth: '100%',
     minWidth: 0,
     height: 26,
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
     borderRadius: 4,
-    background: '#fff',
-    overflow: 'hidden'
-  },
-  compactDateValue: {
-    position: 'absolute',
-    inset: 0,
-    display: 'flex',
-    alignItems: 'center',
-    padding: '0 6px',
-    boxSizing: 'border-box',
-    color: '#111827',
+    padding: '3px 4px',
     fontSize: 10,
     fontWeight: 900,
-    lineHeight: 1,
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    pointerEvents: 'none'
-  },
-  compactDateNativeInput: {
-    position: 'absolute',
-    inset: 0,
-    width: '100%',
-    height: '100%',
-    maxWidth: '100%',
-    minWidth: 0,
-    opacity: 0,
-    border: 0,
-    padding: 0,
-    margin: 0,
-    cursor: 'pointer'
+    background: '#fff',
+    color: '#111827',
+    colorScheme: 'light',
+    outline: 'none'
   },
   checkGrid: {
     display: 'flex',
@@ -1497,9 +1601,9 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center'
   },
   tableHeader: {
-    minWidth: 1360,
+    minWidth: 1440,
     display: 'grid',
-    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 92px 92px 48px 52px 42px 46px 86px 72px minmax(140px, 1fr)',
+    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 92px 92px 48px 52px 42px 46px 86px 82px 72px minmax(140px, 1fr)',
     gap: 4,
     padding: '7px 8px',
     background: '#eef2f7',
@@ -1510,9 +1614,9 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase'
   },
   tableRow: {
-    minWidth: 1360,
+    minWidth: 1440,
     display: 'grid',
-    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 92px 92px 48px 52px 42px 46px 86px 72px minmax(140px, 1fr)',
+    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 92px 92px 48px 52px 42px 46px 86px 82px 72px minmax(140px, 1fr)',
     gap: 4,
     padding: '6px 8px',
     borderBottom: '1px solid #f3f4f6',
@@ -1555,6 +1659,18 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     textOverflow: 'ellipsis'
   },
+  emailStatusCell: {
+    borderRadius: 6,
+    padding: '5px 6px',
+    minHeight: 26,
+    boxSizing: 'border-box',
+    fontSize: 10,
+    fontWeight: 900,
+    textAlign: 'center',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
+  },
   noteCell: {
     minHeight: 26,
     padding: '5px 6px',
@@ -1565,5 +1681,14 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap'
+  },
+  tableLimitNotice: {
+    minWidth: 1440,
+    padding: '8px 10px',
+    borderTop: '1px solid #e5e7eb',
+    background: '#fffbeb',
+    color: '#92400e',
+    fontSize: 12,
+    fontWeight: 850
   }
 }
