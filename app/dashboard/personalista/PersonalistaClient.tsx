@@ -103,6 +103,19 @@ type PersonItem = {
 type DetailMode = 'profile' | 'registrationPeriods' | 'entitlements' | 'groups' | 'roles' | 'qr' | 'nfc' | ''
 type DetailMessageType = 'ok' | 'error' | ''
 type PeopleScope = 'mine' | 'all'
+type PersonnelTool = 'communication' | 'accessCodes' | ''
+
+type CommunicationSummary = {
+  total: number
+  withEmail: number
+  welcomeSent: number
+  welcomePending: number
+  withAccessCode: number
+  group?: {
+    id: string
+    name: string
+  }
+}
 
 function foodLabel(value: string) {
   const normalized = String(value || '').toUpperCase()
@@ -403,6 +416,21 @@ export default function PersonalistaClient({
   const [registrationGroupLoading, setRegistrationGroupLoading] = useState(false)
   const [registrationGroupMessage, setRegistrationGroupMessage] = useState('')
   const [registrationGroupMessageType, setRegistrationGroupMessageType] = useState<'ok' | 'error' | ''>('')
+  const [personnelTool, setPersonnelTool] = useState<PersonnelTool>('')
+  const [communicationGroupId, setCommunicationGroupId] = useState('')
+  const [communicationSummary, setCommunicationSummary] = useState<CommunicationSummary | null>(null)
+  const [communicationLoading, setCommunicationLoading] = useState(false)
+  const [communicationMessage, setCommunicationMessage] = useState('')
+  const [communicationMessageType, setCommunicationMessageType] = useState<'ok' | 'error' | ''>('')
+  const [accessCodesGroupId, setAccessCodesGroupId] = useState('')
+  const [accessCodesEmail, setAccessCodesEmail] = useState('')
+  const [accessCodesNote, setAccessCodesNote] = useState(
+    'Ahoj, posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.'
+  )
+  const [accessCodesSummary, setAccessCodesSummary] = useState<CommunicationSummary | null>(null)
+  const [accessCodesLoading, setAccessCodesLoading] = useState(false)
+  const [accessCodesMessage, setAccessCodesMessage] = useState('')
+  const [accessCodesMessageType, setAccessCodesMessageType] = useState<'ok' | 'error' | ''>('')
   const [printQrOpen, setPrintQrOpen] = useState(false)
   const [printQrForm, setPrintQrForm] = useState({
     type: 'REGISTRATION_GROUP',
@@ -513,6 +541,155 @@ export default function PersonalistaClient({
     setDetailMessage(message)
     setDetailMessageType(type)
     setDetailMessageMode(mode)
+  }
+
+  const closeTopPanels = () => {
+    setCreateOpen(false)
+    setRegistrationGroupsOpen(false)
+    setPrintQrOpen(false)
+    setQrRulesOpen(false)
+    setPersonnelTool('')
+  }
+
+  const loadCommunicationSummary = async (registrationGroupId: string, target: 'communication' | 'accessCodes') => {
+    if (!registrationGroupId) {
+      const setter = target === 'communication' ? setCommunicationMessage : setAccessCodesMessage
+      const typeSetter = target === 'communication' ? setCommunicationMessageType : setAccessCodesMessageType
+      setter('Vyber registracnu skupinu.')
+      typeSetter('error')
+      return null
+    }
+
+    const loadingSetter = target === 'communication' ? setCommunicationLoading : setAccessCodesLoading
+    const messageSetter = target === 'communication' ? setCommunicationMessage : setAccessCodesMessage
+    const typeSetter = target === 'communication' ? setCommunicationMessageType : setAccessCodesMessageType
+    const summarySetter = target === 'communication' ? setCommunicationSummary : setAccessCodesSummary
+
+    loadingSetter(true)
+    messageSetter('')
+    typeSetter('')
+
+    try {
+      const res = await fetch(`/api/personalista/communication/summary?registrationGroupId=${encodeURIComponent(registrationGroupId)}`, {
+        cache: 'no-store'
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        messageSetter(json.error || 'Prehlad sa nepodarilo nacitat.')
+        typeSetter('error')
+        summarySetter(null)
+        return null
+      }
+
+      const summary = {
+        total: Number(json.total || 0),
+        withEmail: Number(json.withEmail || 0),
+        welcomeSent: Number(json.welcomeSent || 0),
+        welcomePending: Number(json.welcomePending || 0),
+        withAccessCode: Number(json.withAccessCode || 0),
+        group: json.group
+      }
+
+      summarySetter(summary)
+      messageSetter(`Nacitane: ${summary.group?.name || 'registracna skupina'}.`)
+      typeSetter('ok')
+      return summary
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      messageSetter('Chyba spojenia so serverom: ' + message)
+      typeSetter('error')
+      summarySetter(null)
+      return null
+    } finally {
+      loadingSetter(false)
+    }
+  }
+
+  const sendWelcomeEmailsForGroup = async () => {
+    if (!communicationGroupId) {
+      setCommunicationMessage('Vyber registracnu skupinu.')
+      setCommunicationMessageType('error')
+      return
+    }
+
+    setCommunicationLoading(true)
+    setCommunicationMessage('')
+    setCommunicationMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/communication/send-welcome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          registrationGroupId: communicationGroupId,
+          resend: false
+        })
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setCommunicationMessage(json.error || 'E-maily sa nepodarilo odoslat.')
+        setCommunicationMessageType('error')
+        return
+      }
+
+      setCommunicationMessage(`Odoslane: ${json.sent}, chyby: ${json.failed}.`)
+      setCommunicationMessageType(json.failed ? 'error' : 'ok')
+      await loadCommunicationSummary(communicationGroupId, 'communication')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setCommunicationMessage('Chyba spojenia so serverom: ' + message)
+      setCommunicationMessageType('error')
+    } finally {
+      setCommunicationLoading(false)
+    }
+  }
+
+  const sendAccessCodesForGroup = async () => {
+    if (!accessCodesGroupId) {
+      setAccessCodesMessage('Vyber registracnu skupinu.')
+      setAccessCodesMessageType('error')
+      return
+    }
+
+    if (!accessCodesEmail.trim()) {
+      setAccessCodesMessage('Zadaj e-mail prijemcu.')
+      setAccessCodesMessageType('error')
+      return
+    }
+
+    setAccessCodesLoading(true)
+    setAccessCodesMessage('')
+    setAccessCodesMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/access-codes/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          registrationGroupId: accessCodesGroupId,
+          email: accessCodesEmail,
+          note: accessCodesNote
+        })
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setAccessCodesMessage(json.error || 'Pristupove kody sa nepodarilo odoslat.')
+        setAccessCodesMessageType('error')
+        return
+      }
+
+      setAccessCodesMessage(`CSV odoslane na ${accessCodesEmail}. Pocet pristupov: ${json.count}.`)
+      setAccessCodesMessageType('ok')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setAccessCodesMessage('Chyba spojenia so serverom: ' + message)
+      setAccessCodesMessageType('error')
+    } finally {
+      setAccessCodesLoading(false)
+    }
   }
 
   const clearDetailFeedback = () => {
@@ -2651,6 +2828,7 @@ export default function PersonalistaClient({
             setRegistrationGroupsOpen(false)
             setPrintQrOpen(false)
             setQrRulesOpen(false)
+            setPersonnelTool('')
             setCreateMessage('')
             setCreateMessageType('')
           }}
@@ -2678,6 +2856,36 @@ export default function PersonalistaClient({
           Import Excel/CSV
         </a>
 
+        <button
+          type="button"
+          style={styles.lightButton}
+          disabled={!canManage}
+          onClick={() => {
+            const next = personnelTool === 'communication' ? '' : 'communication'
+            closeTopPanels()
+            setPersonnelTool(next)
+            setCommunicationMessage('')
+            setCommunicationMessageType('')
+          }}
+        >
+          Komunikacia
+        </button>
+
+        <button
+          type="button"
+          style={styles.lightButton}
+          disabled={!canManage}
+          onClick={() => {
+            const next = personnelTool === 'accessCodes' ? '' : 'accessCodes'
+            closeTopPanels()
+            setPersonnelTool(next)
+            setAccessCodesMessage('')
+            setAccessCodesMessageType('')
+          }}
+        >
+          Pristupove kody
+        </button>
+
         <a
           href="/dashboard/personalista/google-sheets"
           style={{
@@ -2697,6 +2905,7 @@ export default function PersonalistaClient({
             setCreateOpen(false)
             setPrintQrOpen(false)
             setQrRulesOpen(false)
+            setPersonnelTool('')
             setRegistrationGroupMessage('')
             setRegistrationGroupMessageType('')
           }}
@@ -2720,6 +2929,7 @@ export default function PersonalistaClient({
             setCreateOpen(false)
             setRegistrationGroupsOpen(false)
             setQrRulesOpen(false)
+            setPersonnelTool('')
           }}
         >
           Tlac QR skupiny
@@ -2734,6 +2944,7 @@ export default function PersonalistaClient({
               setCreateOpen(false)
               setRegistrationGroupsOpen(false)
               setPrintQrOpen(false)
+              setPersonnelTool('')
               setQrRulesMessage('')
               setQrRulesMessageType('')
             }}
@@ -2770,6 +2981,204 @@ export default function PersonalistaClient({
           QR/NFC párovanie
         </button>
       </section>
+      )}
+
+      {!showMobilePersonDetail && personnelTool === 'communication' && (
+        <section style={styles.createPanel}>
+          <div style={styles.createHeader}>
+            <div>
+              <b>Komunikacia</b>
+              <span>Uvitanie posielaj az po kontrole importovanych ludi v Personalistike.</span>
+            </div>
+
+            <button
+              type="button"
+              style={styles.closeButton}
+              disabled={communicationLoading}
+              onClick={() => setPersonnelTool('')}
+            >
+              x
+            </button>
+          </div>
+
+          <div style={styles.createGrid}>
+            <label style={styles.field}>
+              <span>Registracna skupina</span>
+              <select
+                value={communicationGroupId}
+                onChange={event => {
+                  setCommunicationGroupId(event.target.value)
+                  setCommunicationSummary(null)
+                  setCommunicationMessage('')
+                  setCommunicationMessageType('')
+                }}
+                style={styles.input}
+                disabled={communicationLoading}
+              >
+                <option value="">Vyber registracnu skupinu</option>
+                {registrationGroups.map(group => (
+                  <option key={group.id} value={group.id}>{group.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div style={styles.toolActionRow}>
+            <button
+              type="button"
+              style={styles.lightButton}
+              disabled={communicationLoading || !communicationGroupId}
+              onClick={() => void loadCommunicationSummary(communicationGroupId, 'communication')}
+            >
+              Nacitat prehlad
+            </button>
+
+            <button
+              type="button"
+              style={styles.confirmButton}
+              disabled={communicationLoading || !communicationGroupId || !communicationSummary?.welcomePending}
+              onClick={() => void sendWelcomeEmailsForGroup()}
+            >
+              Poslat neposlane uvitacie e-maily
+            </button>
+          </div>
+
+          {communicationSummary && (
+            <div style={styles.toolStatsGrid}>
+              <div style={styles.toolStat}><b>{communicationSummary.total}</b><span>Aktivni ludia</span></div>
+              <div style={styles.toolStat}><b>{communicationSummary.withEmail}</b><span>S e-mailom</span></div>
+              <div style={styles.toolStat}><b>{communicationSummary.welcomeSent}</b><span>Uvitaci odoslany</span></div>
+              <div style={styles.toolStatWarning}><b>{communicationSummary.welcomePending}</b><span>Caka na odoslanie</span></div>
+            </div>
+          )}
+
+          <div style={styles.optionHint}>
+            Posiela sa najviac 200 e-mailov naraz. Ak ostanu dalsi neodoslani, klikni znova.
+          </div>
+
+          {communicationMessage && (
+            <div
+              style={{
+                ...styles.message,
+                background: communicationMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                color: communicationMessageType === 'ok' ? '#166534' : '#991b1b',
+                borderColor: communicationMessageType === 'ok' ? '#86efac' : '#fecaca'
+              }}
+            >
+              {communicationMessage}
+            </div>
+          )}
+        </section>
+      )}
+
+      {!showMobilePersonDetail && personnelTool === 'accessCodes' && (
+        <section style={styles.createPanel}>
+          <div style={styles.createHeader}>
+            <div>
+              <b>Pristupove kody</b>
+              <span>Odoslanie CSV tabulky s kodmi pre zodpovednu osobu skupiny.</span>
+            </div>
+
+            <button
+              type="button"
+              style={styles.closeButton}
+              disabled={accessCodesLoading}
+              onClick={() => setPersonnelTool('')}
+            >
+              x
+            </button>
+          </div>
+
+          <div style={styles.createGrid}>
+            <label style={styles.field}>
+              <span>Registracna skupina</span>
+              <select
+                value={accessCodesGroupId}
+                onChange={event => {
+                  setAccessCodesGroupId(event.target.value)
+                  setAccessCodesSummary(null)
+                  setAccessCodesMessage('')
+                  setAccessCodesMessageType('')
+                }}
+                style={styles.input}
+                disabled={accessCodesLoading}
+              >
+                <option value="">Vyber registracnu skupinu</option>
+                {registrationGroups.map(group => (
+                  <option key={group.id} value={group.id}>{group.name}</option>
+                ))}
+              </select>
+            </label>
+
+            <label style={styles.field}>
+              <span>E-mail prijemcu</span>
+              <input
+                value={accessCodesEmail}
+                onChange={event => setAccessCodesEmail(event.target.value)}
+                style={styles.input}
+                disabled={accessCodesLoading}
+                type="email"
+                placeholder="veduci@firma.sk"
+              />
+            </label>
+          </div>
+
+          <label style={styles.field}>
+            <span>Sprava do e-mailu</span>
+            <textarea
+              value={accessCodesNote}
+              onChange={event => setAccessCodesNote(event.target.value)}
+              style={styles.textarea}
+              disabled={accessCodesLoading}
+              rows={3}
+            />
+          </label>
+
+          <div style={styles.toolActionRow}>
+            <button
+              type="button"
+              style={styles.lightButton}
+              disabled={accessCodesLoading || !accessCodesGroupId}
+              onClick={() => void loadCommunicationSummary(accessCodesGroupId, 'accessCodes')}
+            >
+              Nacitat prehlad
+            </button>
+
+            <button
+              type="button"
+              style={styles.confirmButton}
+              disabled={accessCodesLoading || !accessCodesGroupId || !accessCodesEmail.trim()}
+              onClick={() => void sendAccessCodesForGroup()}
+            >
+              Odoslat CSV s kodmi
+            </button>
+          </div>
+
+          {accessCodesSummary && (
+            <div style={styles.toolStatsGrid}>
+              <div style={styles.toolStat}><b>{accessCodesSummary.total}</b><span>Aktivni ludia</span></div>
+              <div style={styles.toolStat}><b>{accessCodesSummary.withAccessCode}</b><span>S pristupovym kodom</span></div>
+              <div style={styles.toolStatWarning}><b>{Math.max(0, accessCodesSummary.total - accessCodesSummary.withAccessCode)}</b><span>Bez kodu</span></div>
+            </div>
+          )}
+
+          <div style={styles.optionHint}>
+            CSV obsahuje iba ludi, ktori maju aktivny pristupovy kod. Kody bez e-mailu su v poriadku, prihlasuju sa menom a kodom.
+          </div>
+
+          {accessCodesMessage && (
+            <div
+              style={{
+                ...styles.message,
+                background: accessCodesMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                color: accessCodesMessageType === 'ok' ? '#166534' : '#991b1b',
+                borderColor: accessCodesMessageType === 'ok' ? '#86efac' : '#fecaca'
+              }}
+            >
+              {accessCodesMessage}
+            </div>
+          )}
+        </section>
       )}
 
       {!showMobilePersonDetail && printQrOpen && (
@@ -6215,6 +6624,37 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',
     gap: 6
+  },
+  toolActionRow: {
+    display: 'flex',
+    gap: 6,
+    flexWrap: 'wrap',
+    alignItems: 'center'
+  },
+  toolStatsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+    gap: 5
+  },
+  toolStat: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    background: '#f9fafb',
+    padding: '6px 8px',
+    display: 'grid',
+    gap: 2,
+    minHeight: 44,
+    color: '#111827'
+  },
+  toolStatWarning: {
+    border: '1px solid #fed7aa',
+    borderRadius: 6,
+    background: '#fff7ed',
+    padding: '6px 8px',
+    display: 'grid',
+    gap: 2,
+    minHeight: 44,
+    color: '#9a3412'
   },
   createOptionsGrid: {
     display: 'grid',

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 type GroupItem = {
@@ -26,7 +26,6 @@ type ParsedRow = {
   assignQr: boolean
   generateAccessCode: boolean
   accessCode?: string
-  welcomeEmailStatus?: string
   status: 'READY' | 'SKIP' | 'OK' | 'ERROR'
   message: string
 }
@@ -39,24 +38,6 @@ type BulkEdit = {
   vecera: '' | 'true' | 'false'
   assignQr: '' | 'true' | 'false'
   generateAccessCode: '' | 'true' | 'false'
-}
-
-type ImportBatchSummary = {
-  id: string
-  name: string
-  sourceFileName: string
-  status: string
-  createdAt: string
-  importedAt?: string
-  stats: {
-    total: number
-    imported: number
-    ready: number
-    error: number
-    skipped: number
-    codes: number
-    emailsSent: number
-  }
 }
 
 function normalizeKey(value: string) {
@@ -205,23 +186,12 @@ export default function ImportClient({
   toDate: string
 }) {
   const router = useRouter()
-  const [batchId, setBatchId] = useState('')
-  const [batchName, setBatchName] = useState('')
   const [sourceFileName, setSourceFileName] = useState('')
   const [rows, setRows] = useState<ParsedRow[]>([])
   const [selectedRows, setSelectedRows] = useState<number[]>([])
   const [bulkEdit, setBulkEdit] = useState<BulkEdit>(emptyBulkEdit())
-  const [emailRegistrationGroupId, setEmailRegistrationGroupId] = useState('')
-  const [accessCodesEmail, setAccessCodesEmail] = useState('')
-  const [accessCodesRegistrationGroupId, setAccessCodesRegistrationGroupId] = useState('')
-  const [accessCodesNote, setAccessCodesNote] = useState(
-    'Ahoj, posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.'
-  )
-  const [importBatches, setImportBatches] = useState<ImportBatchSummary[]>([])
-  const [showImportBatches, setShowImportBatches] = useState(false)
-  const [activeTool, setActiveTool] = useState<'bulk' | 'welcome' | 'codes' | ''>('')
+  const [activeTool, setActiveTool] = useState<'bulk' | ''>('')
   const [tableRegistrationGroupFilterId, setTableRegistrationGroupFilterId] = useState('')
-  const [loadingBatches, setLoadingBatches] = useState(false)
   const [loading, setLoading] = useState(false)
   const [activeAction, setActiveAction] = useState('')
   const [message, setMessage] = useState('')
@@ -243,18 +213,6 @@ export default function ImportClient({
   }, [registrationGroups])
 
   const selectedSet = useMemo(() => new Set(selectedRows), [selectedRows])
-
-  const formatDateTime = (value: string) => {
-    if (!value) return '-'
-
-    return new Date(value).toLocaleString('sk-SK', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
 
   const buttonStyle = (base: React.CSSProperties, action: string, disabled = false) => ({
     ...base,
@@ -284,9 +242,7 @@ export default function ImportClient({
       ok: rows.filter(row => row.status === 'OK').length,
       error: rows.filter(row => row.status === 'ERROR').length,
       skip: rows.filter(row => row.status === 'SKIP').length,
-      selected: selectedRows.length,
-      withEmail: rows.filter(row => row.email && row.status === 'OK').length,
-      sent: rows.filter(row => row.welcomeEmailStatus === 'SENT').length
+      selected: selectedRows.length
     }
   }, [rows, selectedRows.length])
 
@@ -303,88 +259,6 @@ export default function ImportClient({
   const visibleEditableRows = useMemo(() => {
     return visibleRows.filter(row => row.status !== 'OK').map(row => row.rowNumber)
   }, [visibleRows])
-
-  const loadImportBatches = async () => {
-    setLoadingBatches(true)
-    setActiveAction('load-batches')
-
-    try {
-      const res = await fetch('/api/personalista/import-batches')
-      const json = await res.json()
-
-      if (!res.ok || json.error) {
-        setMessage(json.error || 'Davky sa nepodarilo nacitat.')
-        setMessageType('error')
-        return
-      }
-
-      setImportBatches(json.batches || [])
-    } finally {
-      setLoadingBatches(false)
-      setActiveAction('')
-    }
-  }
-
-  useEffect(() => {
-    void loadImportBatches()
-  }, [])
-
-  const loadBatchRows = async (id: string) => {
-    setLoading(true)
-    setActiveAction(`load-batch-${id}`)
-    setMessage('')
-    setMessageType('')
-
-    try {
-      const res = await fetch(`/api/personalista/import-batches/${id}/rows`)
-      const json = await res.json()
-
-      if (!res.ok || json.error) {
-        setMessage(json.error || 'Davku sa nepodarilo nacitat.')
-        setMessageType('error')
-        return
-      }
-
-      const loadedRows = (json.rows || []).map((row: any) => {
-        const registrationGroupId = row.registrationGroupId || ''
-
-        return {
-          id: row.id,
-          rowNumber: Number(row.rowNumber || 0),
-          raw: row.raw || {},
-          meno: row.meno || '',
-          priezvisko: row.priezvisko || '',
-          email: row.email || '',
-          telefon: row.telefon || '',
-          typStravy: row.typStravy || 'MASO',
-          registrationGroupId,
-          registrationGroupName: registrationGroupById.get(registrationGroupId)?.name || '',
-          validFrom: row.validFrom || '',
-          validTo: row.validTo || '',
-          obed: row.obed === true,
-          vecera: row.vecera === true,
-          assignQr: row.assignQr !== false,
-          generateAccessCode: row.generateAccessCode === true,
-          accessCode: row.accessCode || '',
-          welcomeEmailStatus: row.welcomeEmailStatus || '',
-          status: row.status === 'IMPORTED' ? 'OK' : row.status,
-          message: row.message || ''
-        } satisfies ParsedRow
-      })
-
-      setBatchId(json.batch.id)
-      setBatchName(json.batch.name || 'Import')
-      setSourceFileName(json.batch.sourceFileName || '')
-      setRows(loadedRows)
-      setSelectedRows([])
-      setTableRegistrationGroupFilterId('')
-      setMessage(`Davka "${json.batch.name || 'Import'}" je nacitana.`)
-      setMessageType('ok')
-    } finally {
-      setLoading(false)
-      setActiveAction('')
-    }
-  }
 
   const updateRow = (rowNumber: number, patch: Partial<ParsedRow>) => {
     setRows(current => current.map(row => {
@@ -419,10 +293,8 @@ export default function ImportClient({
   const parseFile = async (file: File) => {
     setMessage('')
     setMessageType('')
-    setBatchId('')
     setSelectedRows([])
     setSourceFileName(file.name)
-    setBatchName(file.name.replace(/\.[^.]+$/, '') || `Import ${new Date().toLocaleString('sk-SK')}`)
     setTableRegistrationGroupFilterId('')
     setActiveTool('')
 
@@ -507,81 +379,12 @@ export default function ImportClient({
     })
 
     setRows(parsed)
-    setMessage(`Nacitane riadky: ${parsed.length}. Skontroluj ich a potom uloz davku alebo spusti import.`)
+    setMessage(`Nacitane riadky: ${parsed.length}. Skontroluj ich a potom spusti import.`)
     setMessageType('ok')
   }
 
-  const createOrUpdateBatch = async () => {
-    if (rows.length === 0) {
-      setMessage('Nie je co ulozit.')
-      setMessageType('error')
-      return null
-    }
-
-    setLoading(true)
-    setActiveAction(batchId ? 'save-batch' : 'create-batch')
-    setMessage('')
-    setMessageType('')
-
-    try {
-      const method = batchId ? 'PATCH' : 'POST'
-      const url = batchId
-        ? `/api/personalista/import-batches/${batchId}/rows`
-        : '/api/personalista/import-batches'
-      const body = batchId
-        ? { rows }
-        : { name: batchName || 'Import', sourceFileName, rows }
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
-      const json = await res.json()
-
-      if (!res.ok || json.error) {
-        setMessage(json.error || 'Davku sa nepodarilo ulozit.')
-        setMessageType('error')
-        return null
-      }
-
-      const nextBatchId = json.batch?.id || batchId
-
-      if (nextBatchId) {
-        setBatchId(nextBatchId)
-      }
-
-      const rowStatusByNumber = new Map((json.rows || []).map((row: any) => [Number(row.row_number), row]))
-      const mergedRows = rows.map(row => {
-        const saved: any = rowStatusByNumber.get(row.rowNumber)
-        if (!saved) return row
-
-        return {
-          ...row,
-          id: saved.id || row.id,
-          status: saved.status === 'IMPORTED' ? 'OK' : saved.status,
-          message: saved.message || ''
-        }
-      })
-
-      setRows(mergedRows)
-      setMessage('Importna davka je ulozena.')
-      setMessageType('ok')
-      void loadImportBatches()
-      return { batchId: nextBatchId, rows: mergedRows }
-    } finally {
-      setLoading(false)
-      setActiveAction('')
-    }
-  }
-
   const runImport = async () => {
-    const savedBatch = await createOrUpdateBatch()
-
-    if (!savedBatch?.batchId) return
-
-    const activeBatchId = savedBatch.batchId
-    const activeRows = savedBatch.rows.length > 0 ? savedBatch.rows : rows
+    const activeRows = rows
     const readyRows = activeRows.filter(row => row.status === 'READY')
 
     if (readyRows.length === 0) {
@@ -605,8 +408,6 @@ export default function ImportClient({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            importBatchId: activeBatchId,
-            importRowId: row.id,
             meno: row.meno,
             priezvisko: row.priezvisko,
             email: row.email,
@@ -660,7 +461,6 @@ export default function ImportClient({
     setActiveAction('')
     setMessage('Import dokonceny.')
     setMessageType('ok')
-    void loadImportBatches()
     router.refresh()
   }
 
@@ -717,104 +517,6 @@ export default function ImportClient({
     setMessageType('ok')
   }
 
-  const sendWelcomeEmails = async (selectedOnly = false) => {
-    if (!batchId) {
-      setMessage('Najprv uloz a importuj davku.')
-      setMessageType('error')
-      return
-    }
-
-    setLoading(true)
-    setActiveAction(selectedOnly ? 'send-welcome-selected' : 'send-welcome')
-    setMessage('')
-    setMessageType('')
-
-    try {
-      const rowIds = selectedOnly
-        ? rows.filter(row => selectedSet.has(row.rowNumber) && row.id).map(row => row.id)
-        : []
-
-      const res = await fetch(`/api/personalista/import-batches/${batchId}/send-welcome-emails`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          registrationGroupId: emailRegistrationGroupId,
-          rowIds,
-          resend: false
-        })
-      })
-      const json = await res.json()
-
-      if (!res.ok || json.error) {
-        setMessage(json.error || 'E-maily sa nepodarilo odoslat.')
-        setMessageType('error')
-        return
-      }
-
-      setRows(current => current.map(row => {
-        const matchesSelection = !selectedOnly || selectedSet.has(row.rowNumber)
-        const matchesGroup = !emailRegistrationGroupId || row.registrationGroupId === emailRegistrationGroupId
-        if (row.status !== 'OK' || !row.email || !matchesSelection || !matchesGroup) return row
-        return { ...row, welcomeEmailStatus: 'SENT' }
-      }))
-
-      setMessage(`E-maily odoslane: ${json.sent}, chyby: ${json.failed}.`)
-      setMessageType(json.failed ? 'error' : 'ok')
-    } finally {
-      setLoading(false)
-      setActiveAction('')
-    }
-  }
-
-  const sendAccessCodes = async (selectedOnly = false) => {
-    if (!batchId) {
-      setMessage('Najprv uloz a importuj davku.')
-      setMessageType('error')
-      return
-    }
-
-    if (!accessCodesEmail.trim()) {
-      setMessage('Zadaj e-mail, kam sa ma poslat CSV s kodmi.')
-      setMessageType('error')
-      return
-    }
-
-    setLoading(true)
-    setActiveAction(selectedOnly ? 'send-codes-selected' : 'send-codes')
-    setMessage('')
-    setMessageType('')
-
-    try {
-      const rowIds = selectedOnly
-        ? rows.filter(row => selectedSet.has(row.rowNumber) && row.id).map(row => row.id)
-        : []
-
-      const res = await fetch(`/api/personalista/import-batches/${batchId}/send-access-codes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: accessCodesEmail,
-          registrationGroupId: selectedOnly ? '' : accessCodesRegistrationGroupId,
-          rowIds,
-          note: accessCodesNote
-        })
-      })
-      const json = await res.json()
-
-      if (!res.ok || json.error) {
-        setMessage(json.error || 'Kody sa nepodarilo odoslat.')
-        setMessageType('error')
-        return
-      }
-
-      setMessage(`CSV s kodmi odoslane na ${accessCodesEmail}. Pocet pristupov: ${json.count}.`)
-      setMessageType('ok')
-    } finally {
-      setLoading(false)
-      setActiveAction('')
-    }
-  }
-
   return (
     <main style={styles.page}>
       <header style={styles.header}>
@@ -831,76 +533,6 @@ export default function ImportClient({
           Spat
         </a>
       </header>
-
-      <section style={styles.panel}>
-        <div style={styles.panelTop}>
-          <div>
-            <div style={styles.sectionTitle}>Importne davky</div>
-            <p style={styles.sectionText}>
-              Historia importov je schovana, aby hlavna obrazovka ostala hlavne na kontrolu aktualnej davky.
-            </p>
-          </div>
-          <div style={styles.fileRow}>
-            <button
-              type="button"
-              style={buttonStyle(styles.lightButton, 'toggle-batches', loadingBatches)}
-              onClick={() => setShowImportBatches(value => !value)}
-              disabled={loadingBatches}
-            >
-              {showImportBatches ? 'Skryt davky' : 'Zobrazit davky'}
-            </button>
-            {showImportBatches && (
-              <button type="button" style={buttonStyle(styles.lightButton, 'load-batches', loadingBatches)} onClick={() => void loadImportBatches()} disabled={loadingBatches}>
-                {loadingBatches ? 'Nacitavam...' : 'Obnovit davky'}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {showImportBatches && (
-          importBatches.length === 0 ? (
-            <div style={styles.emptyLine}>Zatial tu nie je ziadna importna davka.</div>
-          ) : (
-            <div style={styles.batchTable}>
-              <div style={styles.batchHeader}>
-                <span>Nazov</span>
-                <span>Stav</span>
-                <span>Riadky</span>
-                <span>Kody</span>
-                <span>Vytvorene</span>
-                <span></span>
-              </div>
-
-              {importBatches.map(batch => (
-                <div
-                  key={batch.id}
-                  style={{
-                    ...styles.batchRow,
-                    background: batch.id === batchId ? '#eef2ff' : '#fff'
-                  }}
-                >
-                  <div style={styles.batchNameCell}>
-                    <b>{batch.name}</b>
-                    {batch.sourceFileName && <small>{batch.sourceFileName}</small>}
-                  </div>
-                  <span style={styles.plainBadge}>{batch.status}</span>
-                  <span>{batch.stats.imported}/{batch.stats.total}</span>
-                  <span>{batch.stats.codes}</span>
-                  <span>{formatDateTime(batch.createdAt)}</span>
-                  <button
-                    type="button"
-                    style={buttonStyle(styles.tinyButton, `load-batch-${batch.id}`, loading)}
-                    onClick={() => void loadBatchRows(batch.id)}
-                    disabled={loading}
-                  >
-                    Nacitat
-                  </button>
-                </div>
-              ))}
-            </div>
-          )
-        )}
-      </section>
 
       <section style={styles.uploadPanel}>
         <div style={styles.uploadIntro}>
@@ -934,20 +566,10 @@ export default function ImportClient({
             </div>
           )}
 
-          <button type="button" style={buttonStyle(styles.lightButton, batchId ? 'save-batch' : 'create-batch', loading || rows.length === 0)} disabled={loading || rows.length === 0} onClick={() => void createOrUpdateBatch()}>
-            {batchId ? 'Ulozit upravy davky' : 'Ulozit davku'}
-          </button>
-
           <button type="button" style={buttonStyle(styles.primaryButton, 'run-import', loading || stats.ready === 0)} disabled={loading || stats.ready === 0} onClick={runImport}>
             {loading ? 'Pracujem...' : `Importovat ${stats.ready}`}
           </button>
         </div>
-
-        {batchId && (
-          <div style={styles.batchInfo}>
-            Davka ulozena: <b>{batchId}</b>
-          </div>
-        )}
 
         {message && (
           <div
@@ -982,8 +604,6 @@ export default function ImportClient({
                 onChange={event => {
                   const nextGroupId = event.target.value
                   setTableRegistrationGroupFilterId(nextGroupId)
-                  setEmailRegistrationGroupId(nextGroupId)
-                  setAccessCodesRegistrationGroupId(nextGroupId)
                   setSelectedRows([])
                 }}
                 style={styles.input}
@@ -1009,24 +629,6 @@ export default function ImportClient({
             >
               Hromadna uprava oznacenych
             </button>
-            {batchId && stats.ok > 0 && (
-              <button
-                type="button"
-                style={buttonStyle(activeTool === 'welcome' ? styles.primaryButton : styles.lightButton, 'tool-welcome')}
-                onClick={() => setActiveTool(value => value === 'welcome' ? '' : 'welcome')}
-              >
-                Uvitacie e-maily
-              </button>
-            )}
-            {batchId && stats.ok > 0 && (
-              <button
-                type="button"
-                style={buttonStyle(activeTool === 'codes' ? styles.primaryButton : styles.lightButton, 'tool-codes')}
-                onClick={() => setActiveTool(value => value === 'codes' ? '' : 'codes')}
-              >
-                Odoslat tabulku pristupovych kodov
-              </button>
-            )}
           </div>
         </section>
       )}
@@ -1052,82 +654,6 @@ export default function ImportClient({
           <button type="button" style={buttonStyle(styles.primaryButton, 'bulk-edit', selectedRows.length === 0 || loading)} onClick={applyBulkEdit} disabled={selectedRows.length === 0 || loading}>
             Pouzit na oznacene
           </button>
-        </section>
-      )}
-
-      {batchId && stats.ok > 0 && activeTool === 'welcome' && (
-        <section style={styles.panel}>
-          <div style={styles.sectionTitle}>Uvitacie e-maily</div>
-          <div style={styles.fileRow}>
-            <select value={emailRegistrationGroupId} onChange={event => setEmailRegistrationGroupId(event.target.value)} style={styles.input}>
-              <option value="">Vsetky registracne skupiny</option>
-              {registrationGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
-            </select>
-            <button type="button" style={buttonStyle(styles.primaryButton, 'send-welcome', loading)} disabled={loading} onClick={() => void sendWelcomeEmails(false)}>
-              Odoslat neodoslane
-            </button>
-            <button type="button" style={buttonStyle(styles.lightButton, 'send-welcome-selected', loading || selectedRows.length === 0)} disabled={loading || selectedRows.length === 0} onClick={() => void sendWelcomeEmails(true)}>
-              Odoslat oznacenym
-            </button>
-          </div>
-          <div style={styles.batchInfo}>
-            Importovani s e-mailom: {stats.withEmail}. Odoslane lokalne oznacene: {stats.sent}.
-          </div>
-        </section>
-      )}
-
-      {batchId && stats.ok > 0 && activeTool === 'codes' && (
-        <section style={styles.panel}>
-          <div>
-            <div style={styles.sectionTitle}>Odoslat tabulku pristupovych kodov</div>
-            <p style={styles.sectionText}>
-              Odosle CSV prilohu s menom, priezviskom, registracnou skupinou, login URL a pristupovym kodom.
-            </p>
-          </div>
-
-          <div style={styles.settingsGrid}>
-            <label style={styles.field}>
-              <span>E-mail prijemcu</span>
-              <input
-                value={accessCodesEmail}
-                onChange={event => setAccessCodesEmail(event.target.value)}
-                style={styles.input}
-                placeholder="veduci@firma.sk"
-                type="email"
-              />
-            </label>
-
-            <label style={styles.field}>
-              <span>Registracna skupina</span>
-              <select
-                value={accessCodesRegistrationGroupId}
-                onChange={event => setAccessCodesRegistrationGroupId(event.target.value)}
-                style={styles.input}
-              >
-                <option value="">Vsetky importovane s kodom</option>
-                {registrationGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
-              </select>
-            </label>
-          </div>
-
-          <label style={styles.field}>
-            <span>Sprava do e-mailu</span>
-            <textarea
-              value={accessCodesNote}
-              onChange={event => setAccessCodesNote(event.target.value)}
-              style={styles.textarea}
-              rows={3}
-            />
-          </label>
-
-          <div style={styles.fileRow}>
-            <button type="button" style={buttonStyle(styles.primaryButton, 'send-codes', loading || !accessCodesEmail.trim())} disabled={loading || !accessCodesEmail.trim()} onClick={() => void sendAccessCodes(false)}>
-              Odoslat CSV podla filtra
-            </button>
-            <button type="button" style={buttonStyle(styles.lightButton, 'send-codes-selected', loading || !accessCodesEmail.trim() || selectedRows.length === 0)} disabled={loading || !accessCodesEmail.trim() || selectedRows.length === 0} onClick={() => void sendAccessCodes(true)}>
-              Odoslat CSV oznacenym
-            </button>
-          </div>
         </section>
       )}
 
@@ -1159,7 +685,6 @@ export default function ImportClient({
               <span>QR</span>
               <span>Kod</span>
               <span>Pristupovy kod</span>
-              <span>Uv. e-mail</span>
               <span>Stav</span>
               <span>Poznamka</span>
             </div>
@@ -1195,15 +720,6 @@ export default function ImportClient({
                 <span style={styles.centerCell}><input type="checkbox" checked={row.assignQr} onChange={event => updateRow(row.rowNumber, { assignQr: event.target.checked })} disabled={row.status === 'OK'} /></span>
                 <span style={styles.centerCell}><input type="checkbox" checked={row.generateAccessCode} onChange={event => updateRow(row.rowNumber, { generateAccessCode: event.target.checked })} disabled={row.status === 'OK'} /></span>
                 <span style={styles.codeCell}>{row.accessCode || '-'}</span>
-                <span
-                  style={{
-                    ...styles.emailStatusCell,
-                    background: row.welcomeEmailStatus === 'SENT' ? '#dcfce7' : row.email ? '#fef3c7' : '#f3f4f6',
-                    color: row.welcomeEmailStatus === 'SENT' ? '#166534' : row.email ? '#92400e' : '#6b7280'
-                  }}
-                >
-                  {row.welcomeEmailStatus === 'SENT' ? 'odoslany' : row.email ? 'neodoslany' : '-'}
-                </span>
                 <span
                   style={{
                     ...styles.statusBadge,
@@ -1604,9 +1120,9 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center'
   },
   tableHeader: {
-    minWidth: 1440,
+    minWidth: 1360,
     display: 'grid',
-    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 92px 92px 48px 52px 42px 46px 86px 82px 72px minmax(140px, 1fr)',
+    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 92px 92px 48px 52px 42px 46px 86px 72px minmax(140px, 1fr)',
     gap: 4,
     padding: '7px 8px',
     background: '#eef2f7',
@@ -1617,9 +1133,9 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase'
   },
   tableRow: {
-    minWidth: 1440,
+    minWidth: 1360,
     display: 'grid',
-    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 92px 92px 48px 52px 42px 46px 86px 82px 72px minmax(140px, 1fr)',
+    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 92px 92px 48px 52px 42px 46px 86px 72px minmax(140px, 1fr)',
     gap: 4,
     padding: '6px 8px',
     borderBottom: '1px solid #f3f4f6',
@@ -1662,18 +1178,6 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     textOverflow: 'ellipsis'
   },
-  emailStatusCell: {
-    borderRadius: 6,
-    padding: '5px 6px',
-    minHeight: 26,
-    boxSizing: 'border-box',
-    fontSize: 10,
-    fontWeight: 900,
-    textAlign: 'center',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis'
-  },
   noteCell: {
     minHeight: 26,
     padding: '5px 6px',
@@ -1686,7 +1190,7 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: 'nowrap'
   },
   tableLimitNotice: {
-    minWidth: 1440,
+    minWidth: 1360,
     padding: '8px 10px',
     borderTop: '1px solid #e5e7eb',
     background: '#fffbeb',
