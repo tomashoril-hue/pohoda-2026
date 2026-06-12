@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 type GroupItem = {
@@ -39,6 +39,24 @@ type BulkEdit = {
   vecera: '' | 'true' | 'false'
   assignQr: '' | 'true' | 'false'
   generateAccessCode: '' | 'true' | 'false'
+}
+
+type ImportBatchSummary = {
+  id: string
+  name: string
+  sourceFileName: string
+  status: string
+  createdAt: string
+  importedAt?: string
+  stats: {
+    total: number
+    imported: number
+    ready: number
+    error: number
+    skipped: number
+    codes: number
+    emailsSent: number
+  }
 }
 
 function normalizeKey(value: string) {
@@ -206,6 +224,8 @@ export default function ImportClient({
   const [accessCodesNote, setAccessCodesNote] = useState(
     'Ahoj, posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.'
   )
+  const [importBatches, setImportBatches] = useState<ImportBatchSummary[]>([])
+  const [loadingBatches, setLoadingBatches] = useState(false)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
@@ -220,6 +240,18 @@ export default function ImportClient({
 
   const selectedSet = useMemo(() => new Set(selectedRows), [selectedRows])
 
+  const formatDateTime = (value: string) => {
+    if (!value) return '-'
+
+    return new Date(value).toLocaleString('sk-SK', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
   const stats = useMemo(() => {
     return {
       total: rows.length,
@@ -232,6 +264,83 @@ export default function ImportClient({
       sent: rows.filter(row => row.welcomeEmailStatus === 'SENT').length
     }
   }, [rows, selectedRows.length])
+
+  const loadImportBatches = async () => {
+    setLoadingBatches(true)
+
+    try {
+      const res = await fetch('/api/personalista/import-batches')
+      const json = await res.json()
+
+      if (!res.ok || json.error) {
+        setMessage(json.error || 'Davky sa nepodarilo nacitat.')
+        setMessageType('error')
+        return
+      }
+
+      setImportBatches(json.batches || [])
+    } finally {
+      setLoadingBatches(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadImportBatches()
+  }, [])
+
+  const loadBatchRows = async (id: string) => {
+    setLoading(true)
+    setMessage('')
+    setMessageType('')
+
+    try {
+      const res = await fetch(`/api/personalista/import-batches/${id}/rows`)
+      const json = await res.json()
+
+      if (!res.ok || json.error) {
+        setMessage(json.error || 'Davku sa nepodarilo nacitat.')
+        setMessageType('error')
+        return
+      }
+
+      const loadedRows = (json.rows || []).map((row: any) => {
+        const registrationGroupId = row.registrationGroupId || ''
+
+        return {
+          id: row.id,
+          rowNumber: Number(row.rowNumber || 0),
+          raw: row.raw || {},
+          meno: row.meno || '',
+          priezvisko: row.priezvisko || '',
+          email: row.email || '',
+          telefon: row.telefon || '',
+          typStravy: row.typStravy || 'MASO',
+          registrationGroupId,
+          registrationGroupName: registrationGroupById.get(registrationGroupId)?.name || '',
+          validFrom: row.validFrom || '',
+          validTo: row.validTo || '',
+          obed: row.obed === true,
+          vecera: row.vecera === true,
+          assignQr: row.assignQr !== false,
+          generateAccessCode: row.generateAccessCode === true,
+          accessCode: row.accessCode || '',
+          welcomeEmailStatus: row.welcomeEmailStatus || '',
+          status: row.status === 'IMPORTED' ? 'OK' : row.status,
+          message: row.message || ''
+        } satisfies ParsedRow
+      })
+
+      setBatchId(json.batch.id)
+      setBatchName(json.batch.name || 'Import')
+      setSourceFileName(json.batch.sourceFileName || '')
+      setRows(loadedRows)
+      setSelectedRows([])
+      setMessage(`Davka "${json.batch.name || 'Import'}" je nacitana.`)
+      setMessageType('ok')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const updateRow = (rowNumber: number, patch: Partial<ParsedRow>) => {
     setRows(current => current.map(row => {
@@ -411,6 +520,7 @@ export default function ImportClient({
       setRows(mergedRows)
       setMessage('Importna davka je ulozena.')
       setMessageType('ok')
+      void loadImportBatches()
       return { batchId: nextBatchId, rows: mergedRows }
     } finally {
       setLoading(false)
@@ -500,6 +610,7 @@ export default function ImportClient({
     setLoading(false)
     setMessage('Import dokonceny.')
     setMessageType('ok')
+    void loadImportBatches()
     router.refresh()
   }
 
@@ -657,6 +768,62 @@ export default function ImportClient({
           Spat
         </a>
       </header>
+
+      <section style={styles.panel}>
+        <div style={styles.panelTop}>
+          <div>
+            <div style={styles.sectionTitle}>Importne davky</div>
+            <p style={styles.sectionText}>
+              Tu sa vies vratit k uz vytvorenym importom, nacitat riadky a znova poslat pristupove kody.
+            </p>
+          </div>
+          <button type="button" style={styles.lightButton} onClick={() => void loadImportBatches()} disabled={loadingBatches}>
+            {loadingBatches ? 'Nacitavam...' : 'Obnovit davky'}
+          </button>
+        </div>
+
+        {importBatches.length === 0 ? (
+          <div style={styles.emptyLine}>Zatial tu nie je ziadna importna davka.</div>
+        ) : (
+          <div style={styles.batchTable}>
+            <div style={styles.batchHeader}>
+              <span>Nazov</span>
+              <span>Stav</span>
+              <span>Riadky</span>
+              <span>Kody</span>
+              <span>Vytvorene</span>
+              <span></span>
+            </div>
+
+            {importBatches.map(batch => (
+              <div
+                key={batch.id}
+                style={{
+                  ...styles.batchRow,
+                  background: batch.id === batchId ? '#eef2ff' : '#fff'
+                }}
+              >
+                <div style={styles.batchNameCell}>
+                  <b>{batch.name}</b>
+                  {batch.sourceFileName && <small>{batch.sourceFileName}</small>}
+                </div>
+                <span style={styles.plainBadge}>{batch.status}</span>
+                <span>{batch.stats.imported}/{batch.stats.total}</span>
+                <span>{batch.stats.codes}</span>
+                <span>{formatDateTime(batch.createdAt)}</span>
+                <button
+                  type="button"
+                  style={styles.tinyButton}
+                  onClick={() => void loadBatchRows(batch.id)}
+                  disabled={loading}
+                >
+                  Nacitat
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section style={styles.panel}>
         <div style={styles.settingsGrid}>
@@ -914,9 +1081,9 @@ export default function ImportClient({
                   <option value="">Bez registracnej skupiny</option>
                   {registrationGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
                 </select>
-                <div style={styles.personCell}>
-                  <input type="date" value={row.validFrom} onChange={event => updateRow(row.rowNumber, { validFrom: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} />
-                  <input type="date" value={row.validTo} onChange={event => updateRow(row.rowNumber, { validTo: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} />
+                <div style={styles.periodCell}>
+                  <input type="date" value={row.validFrom} onChange={event => updateRow(row.rowNumber, { validFrom: event.target.value })} style={{ ...styles.smallInput, ...styles.dateInput }} disabled={row.status === 'OK'} />
+                  <input type="date" value={row.validTo} onChange={event => updateRow(row.rowNumber, { validTo: event.target.value })} style={{ ...styles.smallInput, ...styles.dateInput }} disabled={row.status === 'OK'} />
                   <label style={styles.miniCheck}><input type="checkbox" checked={row.obed} onChange={event => updateRow(row.rowNumber, { obed: event.target.checked })} disabled={row.status === 'OK'} /> Obed</label>
                   <label style={styles.miniCheck}><input type="checkbox" checked={row.vecera} onChange={event => updateRow(row.rowNumber, { vecera: event.target.checked })} disabled={row.status === 'OK'} /> Vecera</label>
                 </div>
@@ -993,13 +1160,20 @@ const styles: Record<string, React.CSSProperties> = {
   panel: {
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 10,
+    padding: 10,
     display: 'grid',
-    gap: 12
+    gap: 10
+  },
+  panelTop: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    flexWrap: 'wrap'
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 950
   },
   sectionText: {
@@ -1010,8 +1184,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   settingsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))',
-    gap: 10
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))',
+    gap: 8
   },
   field: {
     display: 'grid',
@@ -1025,9 +1199,9 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 0,
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
-    borderRadius: 12,
-    padding: '11px 10px',
-    fontSize: 14,
+    borderRadius: 7,
+    padding: '7px 8px',
+    fontSize: 12,
     fontWeight: 850,
     background: '#fff',
     color: '#111827'
@@ -1037,9 +1211,9 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 0,
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
-    borderRadius: 12,
-    padding: '11px 10px',
-    fontSize: 14,
+    borderRadius: 7,
+    padding: '8px',
+    fontSize: 12,
     lineHeight: 1.35,
     fontWeight: 750,
     background: '#fff',
@@ -1051,9 +1225,9 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 0,
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
-    borderRadius: 9,
-    padding: '7px 8px',
-    fontSize: 12,
+    borderRadius: 4,
+    padding: '5px 6px',
+    fontSize: 11,
     fontWeight: 800,
     background: '#fff',
     color: '#111827'
@@ -1061,16 +1235,16 @@ const styles: Record<string, React.CSSProperties> = {
   checkGrid: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 8
+    gap: 6
   },
   checkRow: {
     border: '1px solid #e5e7eb',
-    borderRadius: 12,
-    padding: '9px 10px',
+    borderRadius: 7,
+    padding: '6px 8px',
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 900
   },
   miniCheck: {
@@ -1088,19 +1262,19 @@ const styles: Record<string, React.CSSProperties> = {
   },
   fileInput: {
     border: '1px solid #d1d5db',
-    borderRadius: 12,
-    padding: 9,
+    borderRadius: 7,
+    padding: 7,
     background: '#fff',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 850
   },
   primaryButton: {
     border: '1px solid #16a34a',
     background: '#22c55e',
     color: '#052e16',
-    borderRadius: 12,
-    padding: '11px 12px',
-    fontSize: 13,
+    borderRadius: 7,
+    padding: '8px 10px',
+    fontSize: 12,
     fontWeight: 950,
     cursor: 'pointer'
   },
@@ -1108,9 +1282,9 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #d1d5db',
     background: '#fff',
     color: '#111827',
-    borderRadius: 12,
-    padding: '10px 12px',
-    fontSize: 13,
+    borderRadius: 7,
+    padding: '7px 10px',
+    fontSize: 12,
     fontWeight: 950,
     textDecoration: 'none',
     cursor: 'pointer'
@@ -1124,12 +1298,76 @@ const styles: Record<string, React.CSSProperties> = {
   },
   batchInfo: {
     border: '1px dashed #d1d5db',
-    borderRadius: 12,
-    padding: 10,
+    borderRadius: 7,
+    padding: 8,
     fontSize: 12,
     fontWeight: 850,
     color: '#374151',
     overflowWrap: 'anywhere'
+  },
+  batchTable: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    overflowX: 'auto'
+  },
+  batchHeader: {
+    minWidth: 760,
+    display: 'grid',
+    gridTemplateColumns: 'minmax(190px, 1.4fr) 90px 78px 62px 150px 86px',
+    gap: 4,
+    padding: '7px 8px',
+    background: '#eef2f7',
+    borderBottom: '1px solid #e5e7eb',
+    fontSize: 10,
+    fontWeight: 950,
+    color: '#6b7280',
+    textTransform: 'uppercase'
+  },
+  batchRow: {
+    minWidth: 760,
+    display: 'grid',
+    gridTemplateColumns: 'minmax(190px, 1.4fr) 90px 78px 62px 150px 86px',
+    gap: 4,
+    padding: '6px 8px',
+    borderBottom: '1px solid #f3f4f6',
+    alignItems: 'center',
+    fontSize: 11,
+    fontWeight: 850
+  },
+  batchNameCell: {
+    display: 'grid',
+    gap: 2,
+    minWidth: 0,
+    overflowWrap: 'anywhere'
+  },
+  plainBadge: {
+    display: 'inline-flex',
+    justifyContent: 'center',
+    border: '1px solid #d1d5db',
+    borderRadius: 999,
+    padding: '3px 7px',
+    background: '#fff',
+    fontSize: 10,
+    fontWeight: 950
+  },
+  tinyButton: {
+    border: '1px solid #111827',
+    background: '#111827',
+    color: '#fff',
+    borderRadius: 6,
+    padding: '5px 7px',
+    fontSize: 11,
+    fontWeight: 950,
+    cursor: 'pointer'
+  },
+  emptyLine: {
+    border: '1px dashed #d1d5db',
+    borderRadius: 7,
+    padding: 10,
+    fontSize: 12,
+    fontWeight: 850,
+    color: '#6b7280',
+    background: '#f9fafb'
   },
   statsGrid: {
     display: 'grid',
@@ -1147,7 +1385,7 @@ const styles: Record<string, React.CSSProperties> = {
   tableCard: {
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 16,
+    borderRadius: 10,
     overflowX: 'auto'
   },
   emptyState: {
@@ -1158,33 +1396,43 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center'
   },
   tableHeader: {
-    minWidth: 1240,
+    minWidth: 1160,
     display: 'grid',
-    gridTemplateColumns: '70px minmax(190px, 1fr) minmax(190px, 1fr) 90px minmax(180px, 1fr) minmax(190px, 1fr) 110px minmax(240px, 1.1fr)',
-    gap: 8,
-    padding: '10px 12px',
-    background: '#f9fafb',
+    gridTemplateColumns: '58px minmax(160px, 1fr) minmax(170px, 1fr) 78px minmax(170px, 1fr) 250px 92px minmax(210px, 1.1fr)',
+    gap: 4,
+    padding: '7px 8px',
+    background: '#eef2f7',
     borderBottom: '1px solid #e5e7eb',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 950,
     color: '#6b7280',
     textTransform: 'uppercase'
   },
   tableRow: {
-    minWidth: 1240,
+    minWidth: 1160,
     display: 'grid',
-    gridTemplateColumns: '70px minmax(190px, 1fr) minmax(190px, 1fr) 90px minmax(180px, 1fr) minmax(190px, 1fr) 110px minmax(240px, 1.1fr)',
-    gap: 8,
-    padding: '10px 12px',
+    gridTemplateColumns: '58px minmax(160px, 1fr) minmax(170px, 1fr) 78px minmax(170px, 1fr) 250px 92px minmax(210px, 1.1fr)',
+    gap: 4,
+    padding: '6px 8px',
     borderBottom: '1px solid #f3f4f6',
     alignItems: 'start',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 850
   },
   personCell: {
     display: 'grid',
-    gap: 5,
+    gap: 3,
     overflowWrap: 'anywhere'
+  },
+  periodCell: {
+    display: 'grid',
+    gridTemplateColumns: '118px 118px',
+    gap: 3,
+    alignItems: 'center'
+  },
+  dateInput: {
+    width: 118,
+    maxWidth: 118
   },
   statusBadge: {
     borderRadius: 10,

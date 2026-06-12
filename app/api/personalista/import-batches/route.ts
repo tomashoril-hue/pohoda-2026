@@ -29,6 +29,100 @@ function isoDate(value: any) {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : ''
 }
 
+export async function GET() {
+  try {
+    const currentUser = await getCurrentUser()
+
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Nie si prihlaseny.' }, { status: 401 })
+    }
+
+    const access = await getGlobalAccess(currentUser.id)
+
+    if (!access.canUsePersonalista) {
+      return NextResponse.json({ error: 'Nemate opravnenie.' }, { status: 403 })
+    }
+
+    const { data: batches, error: batchesError } = await supabaseServer
+      .from('personnel_import_batches')
+      .select('id, name, source_file_name, filename, status, created_at, imported_at, created_by')
+      .order('created_at', { ascending: false })
+      .limit(30)
+
+    if (batchesError) {
+      return NextResponse.json({ error: batchesError.message }, { status: 500 })
+    }
+
+    const batchIds = (batches || []).map((batch: any) => batch.id).filter(Boolean)
+    const { data: rows, error: rowsError } = batchIds.length > 0
+      ? await supabaseServer
+        .from('personnel_import_rows')
+        .select('batch_id, status, welcome_email_status, access_code_plain, created_user_id')
+        .in('batch_id', batchIds)
+      : { data: [], error: null }
+
+    if (rowsError) {
+      return NextResponse.json({ error: rowsError.message }, { status: 500 })
+    }
+
+    const statsByBatch = new Map<string, {
+      total: number
+      imported: number
+      ready: number
+      error: number
+      skipped: number
+      codes: number
+      emailsSent: number
+    }>()
+
+    for (const row of rows || []) {
+      const stats = statsByBatch.get(row.batch_id) || {
+        total: 0,
+        imported: 0,
+        ready: 0,
+        error: 0,
+        skipped: 0,
+        codes: 0,
+        emailsSent: 0
+      }
+      const status = String(row.status || '').toUpperCase()
+
+      stats.total += 1
+      if (status === 'IMPORTED') stats.imported += 1
+      if (status === 'READY' || status === 'PENDING' || status === 'VALID') stats.ready += 1
+      if (status === 'ERROR') stats.error += 1
+      if (status === 'SKIP' || status === 'SKIPPED') stats.skipped += 1
+      if (row.access_code_plain) stats.codes += 1
+      if (row.welcome_email_status === 'SENT') stats.emailsSent += 1
+
+      statsByBatch.set(row.batch_id, stats)
+    }
+
+    return NextResponse.json({
+      ok: true,
+      batches: (batches || []).map((batch: any) => ({
+        id: batch.id,
+        name: batch.name || batch.filename || batch.source_file_name || 'Import',
+        sourceFileName: batch.source_file_name || batch.filename || '',
+        status: batch.status,
+        createdAt: batch.created_at,
+        importedAt: batch.imported_at,
+        stats: statsByBatch.get(batch.id) || {
+          total: 0,
+          imported: 0,
+          ready: 0,
+          error: 0,
+          skipped: 0,
+          codes: 0,
+          emailsSent: 0
+        }
+      }))
+    })
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || 'Neznama chyba servera.' }, { status: 500 })
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser()

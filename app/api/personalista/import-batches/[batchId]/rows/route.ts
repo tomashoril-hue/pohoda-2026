@@ -25,6 +25,127 @@ function isoDate(value: any) {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : ''
 }
 
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ batchId: string }> }
+) {
+  try {
+    const currentUser = await getCurrentUser()
+
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Nie si prihlaseny.' }, { status: 401 })
+    }
+
+    const access = await getGlobalAccess(currentUser.id)
+
+    if (!access.canUsePersonalista) {
+      return NextResponse.json({ error: 'Nemate opravnenie.' }, { status: 403 })
+    }
+
+    const { batchId } = await params
+
+    const { data: batch, error: batchError } = await supabaseServer
+      .from('personnel_import_batches')
+      .select('id, name, source_file_name, filename, status, created_at, imported_at')
+      .eq('id', batchId)
+      .maybeSingle()
+
+    if (batchError) {
+      return NextResponse.json({ error: batchError.message }, { status: 500 })
+    }
+
+    if (!batch) {
+      return NextResponse.json({ error: 'Importna davka neexistuje.' }, { status: 404 })
+    }
+
+    const { data: rows, error: rowsError } = await supabaseServer
+      .from('personnel_import_rows')
+      .select(`
+        id,
+        row_number,
+        raw_data,
+        meno,
+        priezvisko,
+        email,
+        telefon,
+        typ_stravy,
+        registration_group_id,
+        valid_from,
+        valid_to,
+        obed,
+        vecera,
+        assign_qr,
+        generate_access_code,
+        access_code_plain,
+        status,
+        message,
+        created_user_id,
+        welcome_email_status
+      `)
+      .eq('batch_id', batchId)
+      .order('row_number', { ascending: true })
+      .limit(1000)
+
+    if (rowsError) {
+      return NextResponse.json({ error: rowsError.message }, { status: 500 })
+    }
+
+    const userIds = (rows || []).map((row: any) => row.created_user_id).filter(Boolean)
+    const { data: codeRows, error: codeError } = userIds.length > 0
+      ? await supabaseServer
+        .from('user_access_codes')
+        .select('user_id, access_code_plain')
+        .in('user_id', userIds)
+        .eq('active', true)
+      : { data: [], error: null }
+
+    if (codeError) {
+      return NextResponse.json({ error: codeError.message }, { status: 500 })
+    }
+
+    const codeByUser = new Map(
+      (codeRows || [])
+        .filter((row: any) => row.access_code_plain)
+        .map((row: any) => [row.user_id, row.access_code_plain])
+    )
+
+    return NextResponse.json({
+      ok: true,
+      batch: {
+        id: batch.id,
+        name: batch.name || batch.filename || batch.source_file_name || 'Import',
+        sourceFileName: batch.source_file_name || batch.filename || '',
+        status: batch.status,
+        createdAt: batch.created_at,
+        importedAt: batch.imported_at
+      },
+      rows: (rows || []).map((row: any) => ({
+        id: row.id,
+        rowNumber: row.row_number,
+        raw: row.raw_data || {},
+        meno: row.meno || '',
+        priezvisko: row.priezvisko || '',
+        email: row.email || '',
+        telefon: row.telefon || '',
+        typStravy: row.typ_stravy || 'MASO',
+        registrationGroupId: row.registration_group_id || '',
+        validFrom: row.valid_from || '',
+        validTo: row.valid_to || '',
+        obed: row.obed === true,
+        vecera: row.vecera === true,
+        assignQr: row.assign_qr !== false,
+        generateAccessCode: row.generate_access_code === true,
+        accessCode: row.access_code_plain || codeByUser.get(row.created_user_id) || '',
+        status: row.status === 'IMPORTED' ? 'OK' : row.status,
+        message: row.message || '',
+        welcomeEmailStatus: row.welcome_email_status || ''
+      }))
+    })
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || 'Neznama chyba servera.' }, { status: 500 })
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ batchId: string }> }
