@@ -195,6 +195,13 @@ function emptyBulkEdit(): BulkEdit {
   }
 }
 
+function compactDateLabel(value: string) {
+  if (!value) return '--.--.----'
+  const [year, month, day] = value.split('-')
+  if (!year || !month || !day) return value
+  return `${day}.${month}.${year}`
+}
+
 export default function ImportClient({
   registrationGroups,
   fromDate,
@@ -227,6 +234,7 @@ export default function ImportClient({
   const [importBatches, setImportBatches] = useState<ImportBatchSummary[]>([])
   const [loadingBatches, setLoadingBatches] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [activeAction, setActiveAction] = useState('')
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
 
@@ -252,6 +260,30 @@ export default function ImportClient({
     })
   }
 
+  const buttonStyle = (base: React.CSSProperties, action: string, disabled = false) => ({
+    ...base,
+    ...(activeAction === action ? styles.buttonBusy : {}),
+    opacity: disabled ? 0.55 : 1,
+    cursor: disabled ? 'not-allowed' : 'pointer'
+  })
+
+  const compactDateInput = (
+    value: string,
+    onChange: (value: string) => void,
+    disabled = false
+  ) => (
+    <span style={styles.compactDateControl}>
+      <span style={styles.compactDateValue}>{compactDateLabel(value)}</span>
+      <input
+        type="date"
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        style={styles.compactDateNativeInput}
+        disabled={disabled}
+      />
+    </span>
+  )
+
   const stats = useMemo(() => {
     return {
       total: rows.length,
@@ -267,6 +299,7 @@ export default function ImportClient({
 
   const loadImportBatches = async () => {
     setLoadingBatches(true)
+    setActiveAction('load-batches')
 
     try {
       const res = await fetch('/api/personalista/import-batches')
@@ -281,6 +314,7 @@ export default function ImportClient({
       setImportBatches(json.batches || [])
     } finally {
       setLoadingBatches(false)
+      setActiveAction('')
     }
   }
 
@@ -290,6 +324,7 @@ export default function ImportClient({
 
   const loadBatchRows = async (id: string) => {
     setLoading(true)
+    setActiveAction(`load-batch-${id}`)
     setMessage('')
     setMessageType('')
 
@@ -339,6 +374,7 @@ export default function ImportClient({
       setMessageType('ok')
     } finally {
       setLoading(false)
+      setActiveAction('')
     }
   }
 
@@ -473,6 +509,7 @@ export default function ImportClient({
     }
 
     setLoading(true)
+    setActiveAction(batchId ? 'save-batch' : 'create-batch')
     setMessage('')
     setMessageType('')
 
@@ -524,6 +561,7 @@ export default function ImportClient({
       return { batchId: nextBatchId, rows: mergedRows }
     } finally {
       setLoading(false)
+      setActiveAction('')
     }
   }
 
@@ -543,6 +581,7 @@ export default function ImportClient({
     }
 
     setLoading(true)
+    setActiveAction('run-import')
     setMessage('')
     setMessageType('')
 
@@ -608,6 +647,7 @@ export default function ImportClient({
     }
 
     setLoading(false)
+    setActiveAction('')
     setMessage('Import dokonceny.')
     setMessageType('ok')
     void loadImportBatches()
@@ -654,6 +694,8 @@ export default function ImportClient({
     }))
 
     setBulkEdit(emptyBulkEdit())
+    setActiveAction('bulk-edit')
+    window.setTimeout(() => setActiveAction(''), 350)
     setMessage(`Hromadna uprava pouzita na ${selectedRows.length} riadkov.`)
     setMessageType('ok')
   }
@@ -666,6 +708,7 @@ export default function ImportClient({
     }
 
     setLoading(true)
+    setActiveAction(selectedOnly ? 'send-welcome-selected' : 'send-welcome')
     setMessage('')
     setMessageType('')
 
@@ -702,6 +745,7 @@ export default function ImportClient({
       setMessageType(json.failed ? 'error' : 'ok')
     } finally {
       setLoading(false)
+      setActiveAction('')
     }
   }
 
@@ -719,6 +763,7 @@ export default function ImportClient({
     }
 
     setLoading(true)
+    setActiveAction(selectedOnly ? 'send-codes-selected' : 'send-codes')
     setMessage('')
     setMessageType('')
 
@@ -749,6 +794,7 @@ export default function ImportClient({
       setMessageType('ok')
     } finally {
       setLoading(false)
+      setActiveAction('')
     }
   }
 
@@ -777,7 +823,7 @@ export default function ImportClient({
               Tu sa vies vratit k uz vytvorenym importom, nacitat riadky a znova poslat pristupove kody.
             </p>
           </div>
-          <button type="button" style={styles.lightButton} onClick={() => void loadImportBatches()} disabled={loadingBatches}>
+          <button type="button" style={buttonStyle(styles.lightButton, 'load-batches', loadingBatches)} onClick={() => void loadImportBatches()} disabled={loadingBatches}>
             {loadingBatches ? 'Nacitavam...' : 'Obnovit davky'}
           </button>
         </div>
@@ -813,7 +859,7 @@ export default function ImportClient({
                 <span>{formatDateTime(batch.createdAt)}</span>
                 <button
                   type="button"
-                  style={styles.tinyButton}
+                  style={buttonStyle(styles.tinyButton, `load-batch-${batch.id}`, loading)}
                   onClick={() => void loadBatchRows(batch.id)}
                   disabled={loading}
                 >
@@ -857,12 +903,12 @@ export default function ImportClient({
 
           <label style={styles.field}>
             <span>Od</span>
-            <input type="date" value={defaultFrom} onChange={event => setDefaultFrom(event.target.value)} style={styles.input} disabled={loading} />
+            {compactDateInput(defaultFrom, setDefaultFrom, loading)}
           </label>
 
           <label style={styles.field}>
             <span>Do</span>
-            <input type="date" value={defaultTo} onChange={event => setDefaultTo(event.target.value)} style={styles.input} disabled={loading} />
+            {compactDateInput(defaultTo, setDefaultTo, loading)}
           </label>
         </div>
 
@@ -897,11 +943,11 @@ export default function ImportClient({
             disabled={loading}
           />
 
-          <button type="button" style={styles.lightButton} disabled={loading || rows.length === 0} onClick={() => void createOrUpdateBatch()}>
+          <button type="button" style={buttonStyle(styles.lightButton, batchId ? 'save-batch' : 'create-batch', loading || rows.length === 0)} disabled={loading || rows.length === 0} onClick={() => void createOrUpdateBatch()}>
             {batchId ? 'Ulozit upravy davky' : 'Ulozit davku'}
           </button>
 
-          <button type="button" style={styles.primaryButton} disabled={loading || stats.ready === 0} onClick={runImport}>
+          <button type="button" style={buttonStyle(styles.primaryButton, 'run-import', loading || stats.ready === 0)} disabled={loading || stats.ready === 0} onClick={runImport}>
             {loading ? 'Pracujem...' : `Importovat ${stats.ready}`}
           </button>
         </div>
@@ -946,14 +992,14 @@ export default function ImportClient({
                 {registrationGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
               </select>
             </label>
-            <label style={styles.field}><span>Od</span><input type="date" value={bulkEdit.validFrom} onChange={event => setBulkEdit(prev => ({ ...prev, validFrom: event.target.value }))} style={styles.input} /></label>
-            <label style={styles.field}><span>Do</span><input type="date" value={bulkEdit.validTo} onChange={event => setBulkEdit(prev => ({ ...prev, validTo: event.target.value }))} style={styles.input} /></label>
+            <label style={styles.field}><span>Od</span>{compactDateInput(bulkEdit.validFrom, value => setBulkEdit(prev => ({ ...prev, validFrom: value })))}</label>
+            <label style={styles.field}><span>Do</span>{compactDateInput(bulkEdit.validTo, value => setBulkEdit(prev => ({ ...prev, validTo: value })))}</label>
             <label style={styles.field}><span>Obed</span><select value={bulkEdit.obed} onChange={event => setBulkEdit(prev => ({ ...prev, obed: event.target.value as BulkEdit['obed'] }))} style={styles.input}><option value="">Bez zmeny</option><option value="true">Ano</option><option value="false">Nie</option></select></label>
             <label style={styles.field}><span>Vecera</span><select value={bulkEdit.vecera} onChange={event => setBulkEdit(prev => ({ ...prev, vecera: event.target.value as BulkEdit['vecera'] }))} style={styles.input}><option value="">Bez zmeny</option><option value="true">Ano</option><option value="false">Nie</option></select></label>
             <label style={styles.field}><span>QR</span><select value={bulkEdit.assignQr} onChange={event => setBulkEdit(prev => ({ ...prev, assignQr: event.target.value as BulkEdit['assignQr'] }))} style={styles.input}><option value="">Bez zmeny</option><option value="true">Ano</option><option value="false">Nie</option></select></label>
             <label style={styles.field}><span>Kod</span><select value={bulkEdit.generateAccessCode} onChange={event => setBulkEdit(prev => ({ ...prev, generateAccessCode: event.target.value as BulkEdit['generateAccessCode'] }))} style={styles.input}><option value="">Bez zmeny</option><option value="true">Ano</option><option value="false">Nie</option></select></label>
           </div>
-          <button type="button" style={styles.primaryButton} onClick={applyBulkEdit} disabled={selectedRows.length === 0 || loading}>
+          <button type="button" style={buttonStyle(styles.primaryButton, 'bulk-edit', selectedRows.length === 0 || loading)} onClick={applyBulkEdit} disabled={selectedRows.length === 0 || loading}>
             Pouzit na oznacene
           </button>
         </section>
@@ -967,10 +1013,10 @@ export default function ImportClient({
               <option value="">Vsetky registracne skupiny</option>
               {registrationGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
             </select>
-            <button type="button" style={styles.primaryButton} disabled={loading} onClick={() => void sendWelcomeEmails(false)}>
+            <button type="button" style={buttonStyle(styles.primaryButton, 'send-welcome', loading)} disabled={loading} onClick={() => void sendWelcomeEmails(false)}>
               Odoslat neodoslane
             </button>
-            <button type="button" style={styles.lightButton} disabled={loading || selectedRows.length === 0} onClick={() => void sendWelcomeEmails(true)}>
+            <button type="button" style={buttonStyle(styles.lightButton, 'send-welcome-selected', loading || selectedRows.length === 0)} disabled={loading || selectedRows.length === 0} onClick={() => void sendWelcomeEmails(true)}>
               Odoslat oznacenym
             </button>
           </div>
@@ -1025,10 +1071,10 @@ export default function ImportClient({
           </label>
 
           <div style={styles.fileRow}>
-            <button type="button" style={styles.primaryButton} disabled={loading || !accessCodesEmail.trim()} onClick={() => void sendAccessCodes(false)}>
+            <button type="button" style={buttonStyle(styles.primaryButton, 'send-codes', loading || !accessCodesEmail.trim())} disabled={loading || !accessCodesEmail.trim()} onClick={() => void sendAccessCodes(false)}>
               Odoslat CSV podla filtra
             </button>
-            <button type="button" style={styles.lightButton} disabled={loading || !accessCodesEmail.trim() || selectedRows.length === 0} onClick={() => void sendAccessCodes(true)}>
+            <button type="button" style={buttonStyle(styles.lightButton, 'send-codes-selected', loading || !accessCodesEmail.trim() || selectedRows.length === 0)} disabled={loading || !accessCodesEmail.trim() || selectedRows.length === 0} onClick={() => void sendAccessCodes(true)}>
               Odoslat CSV oznacenym
             </button>
           </div>
@@ -1064,11 +1110,11 @@ export default function ImportClient({
                   />
                   <small>#{row.rowNumber}</small>
                 </span>
-                <div style={styles.personCell}>
+                <div style={styles.twoColumnCell}>
                   <input value={row.meno} onChange={event => updateRow(row.rowNumber, { meno: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} />
                   <input value={row.priezvisko} onChange={event => updateRow(row.rowNumber, { priezvisko: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} />
                 </div>
-                <div style={styles.personCell}>
+                <div style={styles.contactCell}>
                   <input value={row.email} onChange={event => updateRow(row.rowNumber, { email: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} placeholder="email nepovinny" />
                   <input value={row.telefon} onChange={event => updateRow(row.rowNumber, { telefon: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} placeholder="telefon" />
                 </div>
@@ -1082,8 +1128,8 @@ export default function ImportClient({
                   {registrationGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
                 </select>
                 <div style={styles.periodCell}>
-                  <input type="date" value={row.validFrom} onChange={event => updateRow(row.rowNumber, { validFrom: event.target.value })} style={{ ...styles.smallInput, ...styles.dateInput }} disabled={row.status === 'OK'} />
-                  <input type="date" value={row.validTo} onChange={event => updateRow(row.rowNumber, { validTo: event.target.value })} style={{ ...styles.smallInput, ...styles.dateInput }} disabled={row.status === 'OK'} />
+                  {compactDateInput(row.validFrom, value => updateRow(row.rowNumber, { validFrom: value }), row.status === 'OK')}
+                  {compactDateInput(row.validTo, value => updateRow(row.rowNumber, { validTo: value }), row.status === 'OK')}
                   <label style={styles.miniCheck}><input type="checkbox" checked={row.obed} onChange={event => updateRow(row.rowNumber, { obed: event.target.checked })} disabled={row.status === 'OK'} /> Obed</label>
                   <label style={styles.miniCheck}><input type="checkbox" checked={row.vecera} onChange={event => updateRow(row.rowNumber, { vecera: event.target.checked })} disabled={row.status === 'OK'} /> Vecera</label>
                 </div>
@@ -1222,15 +1268,59 @@ const styles: Record<string, React.CSSProperties> = {
   },
   smallInput: {
     width: '100%',
+    maxWidth: '100%',
     minWidth: 0,
+    minInlineSize: 0,
     boxSizing: 'border-box',
+    overflow: 'hidden',
     border: '1px solid #d1d5db',
     borderRadius: 4,
     padding: '5px 6px',
     fontSize: 11,
     fontWeight: 800,
     background: '#fff',
-    color: '#111827'
+    color: '#111827',
+    outline: 'none'
+  },
+  compactDateControl: {
+    position: 'relative',
+    width: 92,
+    minWidth: 0,
+    height: 26,
+    boxSizing: 'border-box',
+    border: '1px solid #d1d5db',
+    borderRadius: 4,
+    background: '#fff',
+    overflow: 'hidden'
+  },
+  compactDateValue: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    padding: '0 6px',
+    boxSizing: 'border-box',
+    color: '#111827',
+    fontSize: 10,
+    fontWeight: 900,
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    pointerEvents: 'none'
+  },
+  compactDateNativeInput: {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    opacity: 0,
+    border: 0,
+    padding: 0,
+    margin: 0,
+    cursor: 'pointer'
   },
   checkGrid: {
     display: 'flex',
@@ -1276,7 +1366,8 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '8px 10px',
     fontSize: 12,
     fontWeight: 950,
-    cursor: 'pointer'
+    cursor: 'pointer',
+    transition: 'transform 120ms ease, box-shadow 120ms ease, filter 120ms ease'
   },
   lightButton: {
     border: '1px solid #d1d5db',
@@ -1287,7 +1378,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     fontWeight: 950,
     textDecoration: 'none',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    transition: 'transform 120ms ease, box-shadow 120ms ease, filter 120ms ease'
+  },
+  buttonBusy: {
+    transform: 'translateY(1px)',
+    boxShadow: 'inset 0 0 0 2px rgba(17,24,39,0.18)',
+    filter: 'saturate(1.18) brightness(0.97)'
   },
   message: {
     border: '1px solid',
@@ -1396,9 +1493,9 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center'
   },
   tableHeader: {
-    minWidth: 1160,
+    minWidth: 1080,
     display: 'grid',
-    gridTemplateColumns: '58px minmax(160px, 1fr) minmax(170px, 1fr) 78px minmax(170px, 1fr) 250px 92px minmax(210px, 1.1fr)',
+    gridTemplateColumns: '48px 230px 270px 76px 168px 210px 78px minmax(170px, 1fr)',
     gap: 4,
     padding: '7px 8px',
     background: '#eef2f7',
@@ -1409,9 +1506,9 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase'
   },
   tableRow: {
-    minWidth: 1160,
+    minWidth: 1080,
     display: 'grid',
-    gridTemplateColumns: '58px minmax(160px, 1fr) minmax(170px, 1fr) 78px minmax(170px, 1fr) 250px 92px minmax(210px, 1.1fr)',
+    gridTemplateColumns: '48px 230px 270px 76px 168px 210px 78px minmax(170px, 1fr)',
     gap: 4,
     padding: '6px 8px',
     borderBottom: '1px solid #f3f4f6',
@@ -1424,15 +1521,23 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 3,
     overflowWrap: 'anywhere'
   },
+  twoColumnCell: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 3,
+    minWidth: 0
+  },
+  contactCell: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) 92px',
+    gap: 3,
+    minWidth: 0
+  },
   periodCell: {
     display: 'grid',
-    gridTemplateColumns: '118px 118px',
+    gridTemplateColumns: '92px 92px',
     gap: 3,
     alignItems: 'center'
-  },
-  dateInput: {
-    width: 118,
-    maxWidth: 118
   },
   statusBadge: {
     borderRadius: 10,
