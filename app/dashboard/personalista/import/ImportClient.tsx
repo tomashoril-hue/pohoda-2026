@@ -208,13 +208,6 @@ export default function ImportClient({
   const [batchId, setBatchId] = useState('')
   const [batchName, setBatchName] = useState('')
   const [sourceFileName, setSourceFileName] = useState('')
-  const [defaultRegistrationGroupId, setDefaultRegistrationGroupId] = useState('')
-  const [defaultFrom, setDefaultFrom] = useState(fromDate)
-  const [defaultTo, setDefaultTo] = useState(toDate)
-  const [defaultObed, setDefaultObed] = useState(true)
-  const [defaultVecera, setDefaultVecera] = useState(false)
-  const [defaultAssignQr, setDefaultAssignQr] = useState(true)
-  const [defaultGenerateAccessCode, setDefaultGenerateAccessCode] = useState(false)
   const [rows, setRows] = useState<ParsedRow[]>([])
   const [selectedRows, setSelectedRows] = useState<number[]>([])
   const [bulkEdit, setBulkEdit] = useState<BulkEdit>(emptyBulkEdit())
@@ -233,6 +226,13 @@ export default function ImportClient({
   const [activeAction, setActiveAction] = useState('')
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
+  const defaultRegistrationGroupId = ''
+  const defaultFrom = fromDate
+  const defaultTo = toDate
+  const defaultObed = true
+  const defaultVecera = false
+  const defaultAssignQr = true
+  const defaultGenerateAccessCode = false
 
   const registrationGroupByName = useMemo(() => {
     return new Map(registrationGroups.map(group => [normalizeKey(group.name), group]))
@@ -902,77 +902,37 @@ export default function ImportClient({
         )}
       </section>
 
-      <section style={styles.panel}>
-        <div style={styles.settingsGrid}>
-          <label style={styles.field}>
-            <span>Nazov davky</span>
+      <section style={styles.uploadPanel}>
+        <div style={styles.uploadIntro}>
+          <div>
+            <div style={styles.sectionTitle}>Novy import</div>
+            <p style={styles.sectionText}>
+              Nacitaj CSV/TXT subor. Po nacitani upravis ludi priamo v tabulke nizsie.
+            </p>
+          </div>
+
+          <label style={buttonStyle(styles.uploadButton, 'parse-file', loading)}>
             <input
-              value={batchName}
-              onChange={event => setBatchName(event.target.value)}
-              style={styles.input}
-              disabled={loading || !!batchId}
-              placeholder="Import dodavatelov"
-            />
-          </label>
-
-          <label style={styles.field}>
-            <span>Predvolena registracna skupina</span>
-            <select
-              value={defaultRegistrationGroupId}
-              onChange={event => setDefaultRegistrationGroupId(event.target.value)}
-              style={styles.input}
+              type="file"
+              accept=".csv,.txt,.tsv"
+              onChange={event => {
+                const file = event.target.files?.[0]
+                if (file) void parseFile(file)
+                event.target.value = ''
+              }}
+              style={styles.hiddenFileInput}
               disabled={loading}
-            >
-              <option value="">Ziadna registracna skupina</option>
-              {registrationGroups.map(group => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label style={styles.field}>
-            <span>Od</span>
-            {compactDateInput(defaultFrom, setDefaultFrom, loading)}
-          </label>
-
-          <label style={styles.field}>
-            <span>Do</span>
-            {compactDateInput(defaultTo, setDefaultTo, loading)}
-          </label>
-        </div>
-
-        <div style={styles.checkGrid}>
-          <label style={styles.checkRow}>
-            <input type="checkbox" checked={defaultObed} onChange={event => setDefaultObed(event.target.checked)} disabled={loading} />
-            <span>Predvolene obed</span>
-          </label>
-          <label style={styles.checkRow}>
-            <input type="checkbox" checked={defaultVecera} onChange={event => setDefaultVecera(event.target.checked)} disabled={loading} />
-            <span>Predvolene vecera</span>
-          </label>
-          <label style={styles.checkRow}>
-            <input type="checkbox" checked={defaultAssignQr} onChange={event => setDefaultAssignQr(event.target.checked)} disabled={loading} />
-            <span>Priradit volny QR</span>
-          </label>
-          <label style={styles.checkRow}>
-            <input type="checkbox" checked={defaultGenerateAccessCode} onChange={event => setDefaultGenerateAccessCode(event.target.checked)} disabled={loading} />
-            <span>Generovat pristupovy kod</span>
+            />
+            Nacitat subor
           </label>
         </div>
 
         <div style={styles.fileRow}>
-          <input
-            type="file"
-            accept=".csv,.txt,.tsv"
-            onChange={event => {
-              const file = event.target.files?.[0]
-              if (file) void parseFile(file)
-            }}
-            style={styles.fileInput}
-            disabled={loading}
-          />
+          {sourceFileName && (
+            <div style={styles.loadedFileInfo}>
+              Subor: <b>{sourceFileName}</b>
+            </div>
+          )}
 
           <button type="button" style={buttonStyle(styles.lightButton, batchId ? 'save-batch' : 'create-batch', loading || rows.length === 0)} disabled={loading || rows.length === 0} onClick={() => void createOrUpdateBatch()}>
             {batchId ? 'Ulozit upravy davky' : 'Ulozit davku'}
@@ -1324,6 +1284,21 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'grid',
     gap: 10
   },
+  uploadPanel: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 10,
+    padding: 10,
+    display: 'grid',
+    gap: 10
+  },
+  uploadIntro: {
+    display: 'flex',
+    gap: 10,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap'
+  },
   panelTop: {
     display: 'flex',
     alignItems: 'center',
@@ -1465,6 +1440,34 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#fff',
     fontSize: 12,
     fontWeight: 850
+  },
+  hiddenFileInput: {
+    display: 'none'
+  },
+  uploadButton: {
+    border: '1px solid #111827',
+    background: '#111827',
+    color: '#fff',
+    borderRadius: 8,
+    padding: '10px 14px',
+    fontSize: 13,
+    fontWeight: 950,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 38,
+    transition: 'transform 120ms ease, box-shadow 120ms ease, filter 120ms ease'
+  },
+  loadedFileInfo: {
+    border: '1px solid #d1d5db',
+    borderRadius: 7,
+    padding: '8px 10px',
+    background: '#f9fafb',
+    color: '#374151',
+    fontSize: 12,
+    fontWeight: 850,
+    overflowWrap: 'anywhere'
   },
   primaryButton: {
     border: '1px solid #16a34a',
