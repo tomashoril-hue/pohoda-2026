@@ -57,16 +57,25 @@ function accessCodeMessage({
     : `Ahoj, tvoj pristupovy kod do PohodaPass je ${code}. Prihlasenie: ${loginUrl}`
 }
 
-function smsUrl(phone: string, message: string) {
+function contactActionUrl({
+  baseUrl,
+  channel,
+  phone,
+  message
+}: {
+  baseUrl: string
+  channel: 'sms' | 'whatsapp'
+  phone: string
+  message: string
+}) {
   if (!phone) return ''
 
-  return `sms:${phone}?body=${encodeURIComponent(message)}`
-}
+  const url = new URL('/contact-link', baseUrl)
+  url.searchParams.set('channel', channel)
+  url.searchParams.set('phone', phone)
+  url.searchParams.set('message', message)
 
-function whatsappUrl(phone: string, message: string) {
-  if (!phone) return ''
-
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+  return url.toString()
 }
 
 function xmlEscape(value: any) {
@@ -850,7 +859,8 @@ export async function POST(req: NextRequest) {
     }
 
     const qrByUser = new Map((qrRows || []).map((row: any) => [row.user_id, row.qr_code]))
-    const loginBaseUrl = `${process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin}/login`
+    const siteBaseUrl = process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin
+    const loginBaseUrl = `${siteBaseUrl}/login`
     const exportRows = activeUsers
       .map((user: any) => {
         const accessCode = text(codeByUser.get(user.id))
@@ -870,8 +880,18 @@ export async function POST(req: NextRequest) {
           telefon: phone.display,
           accessCode,
           loginUrl,
-          smsUrl: smsUrl(phone.sms, message),
-          whatsappUrl: whatsappUrl(phone.whatsapp, message)
+          smsUrl: contactActionUrl({
+            baseUrl: siteBaseUrl,
+            channel: 'sms',
+            phone: phone.sms,
+            message
+          }),
+          whatsappUrl: contactActionUrl({
+            baseUrl: siteBaseUrl,
+            channel: 'whatsapp',
+            phone: phone.whatsapp,
+            message
+          })
         }
       })
       .filter(row => row.accessCode)
