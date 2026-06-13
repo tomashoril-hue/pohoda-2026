@@ -192,7 +192,7 @@ export default function LoginPage({
                 setError('')
               }}
             >
-              Pristupovy kod
+              Prístupový kód
             </button>
           </div>
 
