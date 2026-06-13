@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from 'react'
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 
 type SharePerson = {
   id: string
@@ -34,10 +35,14 @@ function openWhatsapp(phone: string, message: string) {
 export default function AccessCodesShareClient({
   groupName,
   language,
+  currentUserName,
+  currentUserEmail,
   people
 }: {
   groupName: string
   language: 'SK' | 'EN'
+  currentUserName: string
+  currentUserEmail: string
   people: SharePerson[]
 }) {
   const [search, setSearch] = useState('')
@@ -61,7 +66,9 @@ export default function AccessCodesShareClient({
         whatsapp: 'WhatsApp',
         noPhone: 'No phone number',
         noCode: 'No access code',
-        empty: 'No matching people found.'
+        empty: 'No matching people found.',
+        home: 'Home',
+        signedIn: 'Signed in'
       }
     : {
         badge: 'Prihlasovacie udaje',
@@ -72,12 +79,30 @@ export default function AccessCodesShareClient({
         whatsapp: 'WhatsApp',
         noPhone: 'Bez telefonu',
         noCode: 'Bez pristupoveho kodu',
-        empty: 'Nenasli sa ziadne osoby.'
+        empty: 'Nenasli sa ziadne osoby.',
+        home: 'Domov',
+        signedIn: 'Prihlaseny'
       }
 
   return (
     <main style={styles.page}>
       <section style={styles.shell}>
+        <div style={styles.topBar}>
+          <div style={styles.userBox}>
+            <span>{copy.signedIn}</span>
+            <b>{currentUserName || currentUserEmail || '-'}</b>
+          </div>
+          <Link href="/dashboard" style={styles.homeButton}>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style={styles.homeIcon}>
+              <path
+                d="M3 10.5 12 3l9 7.5v9a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H4.5A1.5 1.5 0 0 1 3 19.5v-9Z"
+                fill="currentColor"
+              />
+            </svg>
+            {copy.home}
+          </Link>
+        </div>
+
         <header style={styles.header}>
           <div>
             <div style={styles.badge}>{copy.badge}</div>
@@ -162,6 +187,41 @@ const styles: Record<string, CSSProperties> = {
     margin: '0 auto',
     display: 'grid',
     gap: 14
+  },
+  topBar: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap'
+  },
+  userBox: {
+    minWidth: 0,
+    background: '#fff',
+    border: '2px solid #000',
+    borderRadius: 999,
+    padding: '8px 13px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    boxShadow: '3px 3px 0 #000',
+    fontSize: 13
+  },
+  homeButton: {
+    background: '#56db3f',
+    color: '#000',
+    border: '2px solid #000',
+    borderRadius: 999,
+    padding: '9px 14px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 7,
+    boxShadow: '3px 3px 0 #000',
+    fontWeight: 950,
+    textDecoration: 'none'
+  },
+  homeIcon: {
+    display: 'block'
   },
   header: {
     background: '#fff',

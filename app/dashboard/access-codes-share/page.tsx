@@ -186,6 +186,8 @@ export default async function AccessCodesSharePage({
     <AccessCodesShareClient
       groupName={groupResult.data.name || 'Registracna skupina'}
       language={language}
+      currentUserName={fullName(user)}
+      currentUserEmail={text(user.email)}
       people={people}
     />
   )
