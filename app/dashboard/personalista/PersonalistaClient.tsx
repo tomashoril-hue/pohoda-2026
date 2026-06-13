@@ -3155,7 +3155,7 @@ export default function PersonalistaClient({
                 disabled={accessCodesLoading}
                 style={styles.checkbox}
               />
-              <span>CSV pristupove kody</span>
+              <span>Excel pristupove kody</span>
             </label>
 
             <label style={styles.checkRow}>
@@ -3213,7 +3213,7 @@ export default function PersonalistaClient({
           )}
 
           <div style={styles.optionHint}>
-            CSV obsahuje iba ludi s aktivnym pristupovym kodom. QR priloha je tlacovy HTML subor s rovnakym rozlozenim ako tlac QR skupiny.
+            Excel obsahuje iba ludi s aktivnym pristupovym kodom. QR priloha je tlacovy PDF subor pripraveny na otvorenie a tlac.
           </div>
 
           {accessCodesMessage && (

@@ -15,8 +15,13 @@ function emailValue(value: any) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : ''
 }
 
-function csvCell(value: any) {
-  return `"${text(value).replace(/"/g, '""')}"`
+function xmlEscape(value: any) {
+  return text(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
 }
 
 function htmlEscape(value: any) {
@@ -78,6 +83,260 @@ function chunkItems<T>(items: T[], size: number) {
   }
 
   return chunks
+}
+
+function columnToLetter(columnNumber: number) {
+  let letter = ''
+  let current = columnNumber
+
+  while (current > 0) {
+    const modulo = (current - 1) % 26
+    letter = String.fromCharCode(65 + modulo) + letter
+    current = Math.floor((current - modulo) / 26)
+  }
+
+  return letter
+}
+
+const crcTable = Array.from({ length: 256 }, (_, tableIndex) => {
+  let value = tableIndex
+
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1
+  }
+
+  return value >>> 0
+})
+
+function crc32(buffer: Buffer) {
+  let crc = 0xffffffff
+
+  for (const byte of buffer) {
+    crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8)
+  }
+
+  return (crc ^ 0xffffffff) >>> 0
+}
+
+function dosDateTime(date = new Date()) {
+  const year = Math.max(1980, date.getFullYear())
+  const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2)
+  const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()
+
+  return { dosTime, dosDate }
+}
+
+function createZip(files: Array<{ name: string; content: string | Buffer }>) {
+  const localParts: Buffer[] = []
+  const centralParts: Buffer[] = []
+  let offset = 0
+  const { dosTime, dosDate } = dosDateTime()
+
+  files.forEach(file => {
+    const nameBuffer = Buffer.from(file.name, 'utf8')
+    const contentBuffer = Buffer.isBuffer(file.content) ? file.content : Buffer.from(file.content, 'utf8')
+    const checksum = crc32(contentBuffer)
+    const localHeader = Buffer.alloc(30)
+
+    localHeader.writeUInt32LE(0x04034b50, 0)
+    localHeader.writeUInt16LE(20, 4)
+    localHeader.writeUInt16LE(0x0800, 6)
+    localHeader.writeUInt16LE(0, 8)
+    localHeader.writeUInt16LE(dosTime, 10)
+    localHeader.writeUInt16LE(dosDate, 12)
+    localHeader.writeUInt32LE(checksum, 14)
+    localHeader.writeUInt32LE(contentBuffer.length, 18)
+    localHeader.writeUInt32LE(contentBuffer.length, 22)
+    localHeader.writeUInt16LE(nameBuffer.length, 26)
+    localHeader.writeUInt16LE(0, 28)
+
+    localParts.push(localHeader, nameBuffer, contentBuffer)
+
+    const centralHeader = Buffer.alloc(46)
+    centralHeader.writeUInt32LE(0x02014b50, 0)
+    centralHeader.writeUInt16LE(20, 4)
+    centralHeader.writeUInt16LE(20, 6)
+    centralHeader.writeUInt16LE(0x0800, 8)
+    centralHeader.writeUInt16LE(0, 10)
+    centralHeader.writeUInt16LE(dosTime, 12)
+    centralHeader.writeUInt16LE(dosDate, 14)
+    centralHeader.writeUInt32LE(checksum, 16)
+    centralHeader.writeUInt32LE(contentBuffer.length, 20)
+    centralHeader.writeUInt32LE(contentBuffer.length, 24)
+    centralHeader.writeUInt16LE(nameBuffer.length, 28)
+    centralHeader.writeUInt16LE(0, 30)
+    centralHeader.writeUInt16LE(0, 32)
+    centralHeader.writeUInt16LE(0, 34)
+    centralHeader.writeUInt16LE(0, 36)
+    centralHeader.writeUInt32LE(0, 38)
+    centralHeader.writeUInt32LE(offset, 42)
+
+    centralParts.push(centralHeader, nameBuffer)
+    offset += localHeader.length + nameBuffer.length + contentBuffer.length
+  })
+
+  const centralDirectory = Buffer.concat(centralParts)
+  const localFiles = Buffer.concat(localParts)
+  const endRecord = Buffer.alloc(22)
+
+  endRecord.writeUInt32LE(0x06054b50, 0)
+  endRecord.writeUInt16LE(0, 4)
+  endRecord.writeUInt16LE(0, 6)
+  endRecord.writeUInt16LE(files.length, 8)
+  endRecord.writeUInt16LE(files.length, 10)
+  endRecord.writeUInt32LE(centralDirectory.length, 12)
+  endRecord.writeUInt32LE(localFiles.length, 16)
+  endRecord.writeUInt16LE(0, 20)
+
+  return Buffer.concat([localFiles, centralDirectory, endRecord])
+}
+
+type AccessExportRow = {
+  registrationGroup: string
+  meno: string
+  priezvisko: string
+  email: string
+  accessCode: string
+  loginUrl: string
+}
+
+function xlsxInlineCell(value: any, ref: string, style = 0) {
+  const styleAttr = style ? ` s="${style}"` : ''
+
+  return `<c r="${ref}" t="inlineStr"${styleAttr}><is><t>${xmlEscape(value)}</t></is></c>`
+}
+
+function buildAccessCodesXlsx(rows: AccessExportRow[]) {
+  const headers = ['Registracna skupina', 'Meno', 'Priezvisko', 'Email', 'Prihlasovaci kod', 'Login URL']
+  const allRows = [headers, ...rows.map(row => [
+    row.registrationGroup,
+    row.meno,
+    row.priezvisko,
+    row.email,
+    row.accessCode,
+    row.loginUrl
+  ])]
+  const sheetRows = allRows.map((row, rowIndex) => {
+    const rowNumber = rowIndex + 1
+    const cells = row.map((value, columnIndex) => {
+      const ref = `${columnToLetter(columnIndex + 1)}${rowNumber}`
+
+      return xlsxInlineCell(value, ref, rowIndex === 0 ? 1 : 0)
+    }).join('')
+
+    return `<row r="${rowNumber}">${cells}</row>`
+  }).join('')
+  const hyperlinkRows = rows.map((row, index) => {
+    const rowNumber = index + 2
+
+    return `<hyperlink ref="F${rowNumber}" r:id="rId${index + 1}" display="${xmlEscape(row.loginUrl)}"/>`
+  }).join('')
+  const hyperlinkRels = rows.map((row, index) => (
+    `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${xmlEscape(row.loginUrl)}" TargetMode="External"/>`
+  )).join('')
+  const lastRow = Math.max(1, allRows.length)
+
+  return createZip([
+    {
+      name: '[Content_Types].xml',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>`
+    },
+    {
+      name: '_rels/.rels',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>`
+    },
+    {
+      name: 'docProps/core.xml',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>Pristupove kody PohodaPass</dc:title>
+  <dc:creator>PohodaPass</dc:creator>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>
+</cp:coreProperties>`
+    },
+    {
+      name: 'docProps/app.xml',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>PohodaPass</Application>
+</Properties>`
+    },
+    {
+      name: 'xl/workbook.xml',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Pristupove kody" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`
+    },
+    {
+      name: 'xl/_rels/workbook.xml.rels',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`
+    },
+    {
+      name: 'xl/styles.xml',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="2">
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="3">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF111827"/><bgColor indexed="64"/></patternFill></fill>
+  </fills>
+  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="2">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+  </cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`
+    },
+    {
+      name: 'xl/worksheets/sheet1.xml',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <dimension ref="A1:F${lastRow}"/>
+  <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+  <cols>
+    <col min="1" max="1" width="26" customWidth="1"/>
+    <col min="2" max="2" width="18" customWidth="1"/>
+    <col min="3" max="3" width="22" customWidth="1"/>
+    <col min="4" max="4" width="34" customWidth="1"/>
+    <col min="5" max="5" width="18" customWidth="1"/>
+    <col min="6" max="6" width="64" customWidth="1"/>
+  </cols>
+  <sheetData>${sheetRows}</sheetData>
+  <autoFilter ref="A1:F${lastRow}"/>
+  <hyperlinks>${hyperlinkRows}</hyperlinks>
+</worksheet>`
+    },
+    {
+      name: 'xl/worksheets/_rels/sheet1.xml.rels',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${hyperlinkRels}</Relationships>`
+    }
+  ])
 }
 
 type QrPrintItem = {
@@ -510,7 +769,7 @@ export async function POST(req: NextRequest) {
     }
 
     const qrByUser = new Map((qrRows || []).map((row: any) => [row.user_id, row.qr_code]))
-    const loginUrl = `${process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin}/login`
+    const loginBaseUrl = `${process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin}/login`
     const exportRows = activeUsers
       .map((user: any) => ({
         registrationGroup: group?.name || '',
@@ -518,7 +777,7 @@ export async function POST(req: NextRequest) {
         priezvisko: text(user.priezvisko),
         email: text(user.email),
         accessCode: text(codeByUser.get(user.id)),
-        loginUrl
+        loginUrl: `${loginBaseUrl}?method=code&code=${encodeURIComponent(text(codeByUser.get(user.id)))}`
       }))
       .filter(row => row.accessCode)
       .sort((a, b) => `${a.priezvisko} ${a.meno}`.localeCompare(`${b.priezvisko} ${b.meno}`, 'sk'))
@@ -549,24 +808,12 @@ export async function POST(req: NextRequest) {
     const fileBase = `${fileSafe(group?.name || 'registracna-skupina')}-${new Date().toISOString().slice(0, 10)}`
 
     if (includeAccessCodes) {
-      const csv = [
-        ['Registracna skupina', 'Meno', 'Priezvisko', 'Email', 'Prihlasovaci kod', 'Login URL']
-          .map(csvCell)
-          .join(';'),
-        ...exportRows.map(row => [
-          row.registrationGroup,
-          row.meno,
-          row.priezvisko,
-          row.email,
-          row.accessCode,
-          row.loginUrl
-        ].map(csvCell).join(';'))
-      ].join('\r\n')
+      const xlsx = buildAccessCodesXlsx(exportRows)
 
       attachments.push({
-        filename: `${fileBase}-pristupove-kody.csv`,
-        content: Buffer.from(`\uFEFF${csv}`, 'utf8').toString('base64'),
-        contentType: 'text/csv; charset=utf-8'
+        filename: `${fileBase}-pristupove-kody.xlsx`,
+        content: xlsx.toString('base64'),
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       })
     }
 
@@ -585,7 +832,7 @@ export async function POST(req: NextRequest) {
     }
 
     const attachmentText = [
-      includeAccessCodes ? `CSV pristupove kody: ${exportRows.length}` : '',
+      includeAccessCodes ? `Excel pristupove kody: ${exportRows.length}` : '',
       includeQrCodes ? `QR tlacova priloha: ${qrItems.length}` : ''
     ].filter(Boolean).join(' | ')
     const result = await sendAppEmail({
@@ -598,13 +845,13 @@ export async function POST(req: NextRequest) {
             <div style="display:inline-block;background:#56db3f;border:3px solid #000;border-radius:999px;padding:8px 14px;font-weight:900;">PohodaPass</div>
             <h1 style="font-size:26px;margin:20px 0 10px;">Prihlasovacie udaje${includeQrCodes ? ' a QR kody' : ''}</h1>
             <p>${htmlEscape(note)}</p>
-            <p>V prilohe najdes pripravene subory. Prihlasenie je dostupne na:</p>
-            <p><a href="${loginUrl}">${loginUrl}</a></p>
+            <p>V prilohe najdes pripravene subory. V Excel tabulke je pre kazdu osobu aj prihlasovaci odkaz s predvyplnenym kodom.</p>
+            <p>Prihlasenie je dostupne aj tu: <a href="${loginBaseUrl}">${loginBaseUrl}</a></p>
             <p style="font-size:13px;color:#555;">${htmlEscape(attachmentText)}</p>
           </div>
         </div>
       `,
-      text: `${note}\n\nPrihlasenie: ${loginUrl}\n${attachmentText}`,
+      text: `${note}\n\nPrihlasenie: ${loginBaseUrl}\n${attachmentText}`,
       attachments
     })
 

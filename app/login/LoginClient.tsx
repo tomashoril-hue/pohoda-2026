@@ -6,17 +6,22 @@ import Link from 'next/link'
 export default function LoginPage({
   initialEmail = '',
   initialSent = false,
-  initialError = ''
+  initialError = '',
+  initialMethod = 'email',
+  initialAccessCode = ''
 }: {
   initialEmail?: string
   initialSent?: boolean
   initialError?: string
+  initialMethod?: 'email' | 'code'
+  initialAccessCode?: string
 }) {
   const [email, setEmail] = useState(initialEmail)
   const [code, setCode] = useState('')
   const [accessMeno, setAccessMeno] = useState('')
   const [accessPriezvisko, setAccessPriezvisko] = useState('')
-  const [accessCode, setAccessCode] = useState('')
+  const [accessCode, setAccessCode] = useState(initialAccessCode.replace(/\D/g, '').slice(0, 8))
+  const [loginMethod, setLoginMethod] = useState<'email' | 'code'>(initialMethod === 'code' ? 'code' : 'email')
   const [loading, setLoading] = useState(false)
   const [codeLoading, setCodeLoading] = useState(false)
   const [accessLoading, setAccessLoading] = useState(false)
@@ -161,6 +166,37 @@ export default function LoginPage({
 
         {!sent ? (
           <>
+          <div style={styles.methodSwitch}>
+            <button
+              type="button"
+              style={{
+                ...styles.methodButton,
+                ...(loginMethod === 'email' ? styles.methodButtonActive : {})
+              }}
+              onClick={() => {
+                setLoginMethod('email')
+                setError('')
+              }}
+            >
+              E-mail
+            </button>
+
+            <button
+              type="button"
+              style={{
+                ...styles.methodButton,
+                ...(loginMethod === 'code' ? styles.methodButtonActive : {})
+              }}
+              onClick={() => {
+                setLoginMethod('code')
+                setError('')
+              }}
+            >
+              Meno a kod
+            </button>
+          </div>
+
+          {loginMethod === 'email' ? (
           <form action="/api/auth/login/request" method="post" onSubmit={handleLogin}>
             <p style={styles.subtitle}>
               Zadaj svoj registračný e-mail. Pošleme ti prihlasovací link aj 6-miestny kód.
@@ -189,19 +225,11 @@ export default function LoginPage({
               {loading ? 'Odosielam...' : 'Poslať prihlasenie'}
             </button>
 
-            {error && (
-              <div style={styles.error}>
-                {error}
-              </div>
-            )}
-
             <Link href="/register" style={styles.registerLink}>
               Ešte nemám registráciu
             </Link>
           </form>
-
-          <div style={styles.divider}>alebo</div>
-
+          ) : (
           <form onSubmit={handleAccessCodeLogin} style={styles.accessBox}>
             <h2 style={styles.accessTitle}>Prihlásenie menom a kódom</h2>
             <p style={styles.accessText}>
@@ -248,6 +276,13 @@ export default function LoginPage({
               {accessLoading ? 'Prihlasujem...' : 'Prihlásiť kódom'}
             </button>
           </form>
+          )}
+
+          {error && (
+            <div style={styles.error}>
+              {error}
+            </div>
+          )}
           </>
         ) : (
           <div style={styles.success}>
@@ -366,6 +401,30 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 19,
     lineHeight: 1.45,
     fontWeight: 700
+  },
+  methodSwitch: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 8,
+    margin: '22px 0 18px',
+    padding: 6,
+    border: '3px solid #000',
+    borderRadius: 999,
+    background: '#f6f2ff'
+  },
+  methodButton: {
+    border: 0,
+    borderRadius: 999,
+    padding: '12px 14px',
+    background: 'transparent',
+    color: '#000',
+    fontSize: 15,
+    fontWeight: 950,
+    cursor: 'pointer'
+  },
+  methodButtonActive: {
+    background: '#56db3f',
+    boxShadow: 'inset 0 0 0 2px #000'
   },
   input: {
     width: '100%',

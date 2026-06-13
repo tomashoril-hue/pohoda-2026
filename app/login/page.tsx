@@ -7,7 +7,7 @@ import LoginClient from './LoginClient'
 export default async function LoginPage({
   searchParams
 }: {
-  searchParams: Promise<{ sent?: string; error?: string }>
+  searchParams: Promise<{ sent?: string; error?: string; method?: string; code?: string }>
 }) {
   const user = await getSessionUser()
 
@@ -24,6 +24,8 @@ export default async function LoginPage({
       initialEmail={cookieStore.get(loginEmailCookieName)?.value || ''}
       initialSent={params.sent === '1'}
       initialError={params.error || ''}
+      initialMethod={params.method === 'code' ? 'code' : 'email'}
+      initialAccessCode={params.code || ''}
     />
   )
 }
