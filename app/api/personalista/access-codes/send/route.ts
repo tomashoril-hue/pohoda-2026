@@ -22,7 +22,7 @@ function languageValue(value: any) {
 function normalizePhone(value: any) {
   const raw = text(value)
 
-  if (!raw) return { display: '', sms: '', whatsapp: '' }
+  if (!raw) return ''
 
   let cleaned = raw.replace(/[^\d+]/g, '')
 
@@ -34,48 +34,7 @@ function normalizePhone(value: any) {
     cleaned = `+421${cleaned}`
   }
 
-  const whatsapp = cleaned.replace(/[^\d]/g, '')
-
-  return {
-    display: cleaned || raw,
-    sms: cleaned || raw,
-    whatsapp
-  }
-}
-
-function accessCodeMessage({
-  code,
-  loginUrl,
-  language
-}: {
-  code: string
-  loginUrl: string
-  language: 'SK' | 'EN'
-}) {
-  return language === 'EN'
-    ? `Hello, your PohodaPass access code is ${code}. Login: ${loginUrl}`
-    : `Ahoj, tvoj pristupovy kod do PohodaPass je ${code}. Prihlasenie: ${loginUrl}`
-}
-
-function contactActionUrl({
-  baseUrl,
-  channel,
-  phone,
-  message
-}: {
-  baseUrl: string
-  channel: 'sms' | 'whatsapp'
-  phone: string
-  message: string
-}) {
-  if (!phone) return ''
-
-  const url = new URL('/contact-link', baseUrl)
-  url.searchParams.set('channel', channel)
-  url.searchParams.set('phone', phone)
-  url.searchParams.set('message', message)
-
-  return url.toString()
+  return cleaned || raw
 }
 
 function xmlEscape(value: any) {
@@ -262,8 +221,6 @@ type AccessExportRow = {
   telefon: string
   accessCode: string
   loginUrl: string
-  smsUrl: string
-  whatsappUrl: string
 }
 
 function xlsxInlineCell(value: any, ref: string, style = 0) {
@@ -274,8 +231,8 @@ function xlsxInlineCell(value: any, ref: string, style = 0) {
 
 function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
   const headers = language === 'EN'
-    ? ['Registration group', 'First name', 'Last name', 'Email', 'Phone', 'Access code', 'Login URL', 'SMS', 'WhatsApp']
-    : ['Registracna skupina', 'Meno', 'Priezvisko', 'Email', 'Telefon', 'Prihlasovaci kod', 'Login URL', 'SMS', 'WhatsApp']
+    ? ['Registration group', 'First name', 'Last name', 'Email', 'Phone', 'Access code', 'Login URL']
+    : ['Registracna skupina', 'Meno', 'Priezvisko', 'Email', 'Telefon', 'Prihlasovaci kod', 'Login URL']
   const sheetName = language === 'EN' ? 'Login details' : 'Pristupove kody'
   const documentTitle = language === 'EN' ? 'PohodaPass login details' : 'Pristupove kody PohodaPass'
   const allRows = [headers, ...rows.map(row => [
@@ -285,18 +242,14 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
     row.email,
     row.telefon,
     row.accessCode,
-    row.loginUrl,
-    row.smsUrl ? (language === 'EN' ? 'Send SMS' : 'Poslat SMS') : '',
-    row.whatsappUrl ? 'WhatsApp' : ''
+    row.loginUrl
   ])]
   const sheetRows = allRows.map((row, rowIndex) => {
     const rowNumber = rowIndex + 1
     const cells = row.map((value, columnIndex) => {
       const ref = `${columnToLetter(columnIndex + 1)}${rowNumber}`
 
-      const isActionCell = rowIndex > 0 && (columnIndex === 7 || columnIndex === 8) && Boolean(value)
-
-      return xlsxInlineCell(value, ref, rowIndex === 0 ? 1 : isActionCell ? 2 : 0)
+      return xlsxInlineCell(value, ref, rowIndex === 0 ? 1 : 0)
     }).join('')
 
     return `<row r="${rowNumber}">${cells}</row>`
@@ -305,15 +258,11 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
     const rowNumber = index + 2
 
     return [
-      `<hyperlink ref="G${rowNumber}" r:id="rId${index * 3 + 1}" display="${xmlEscape(row.loginUrl)}"/>`,
-      row.smsUrl ? `<hyperlink ref="H${rowNumber}" r:id="rId${index * 3 + 2}" display="${language === 'EN' ? 'Send SMS' : 'Poslat SMS'}"/>` : '',
-      row.whatsappUrl ? `<hyperlink ref="I${rowNumber}" r:id="rId${index * 3 + 3}" display="WhatsApp"/>` : ''
+      `<hyperlink ref="G${rowNumber}" r:id="rId${index + 1}" display="${xmlEscape(row.loginUrl)}"/>`
     ].filter(Boolean)
   }).join('')
   const hyperlinkRels = rows.flatMap((row, index) => ([
-    `<Relationship Id="rId${index * 3 + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${xmlEscape(row.loginUrl)}" TargetMode="External"/>`,
-    row.smsUrl ? `<Relationship Id="rId${index * 3 + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${xmlEscape(row.smsUrl)}" TargetMode="External"/>` : '',
-    row.whatsappUrl ? `<Relationship Id="rId${index * 3 + 3}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${xmlEscape(row.whatsappUrl)}" TargetMode="External"/>` : ''
+    `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${xmlEscape(row.loginUrl)}" TargetMode="External"/>`
   ].filter(Boolean))).join('')
   const lastRow = Math.max(1, allRows.length)
 
@@ -400,7 +349,7 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
       name: 'xl/worksheets/sheet1.xml',
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <dimension ref="A1:I${lastRow}"/>
+  <dimension ref="A1:G${lastRow}"/>
   <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
   <cols>
     <col min="1" max="1" width="26" customWidth="1"/>
@@ -410,10 +359,9 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
     <col min="5" max="5" width="18" customWidth="1"/>
     <col min="6" max="6" width="18" customWidth="1"/>
     <col min="7" max="7" width="64" customWidth="1"/>
-    <col min="8" max="9" width="16" customWidth="1"/>
   </cols>
   <sheetData>${sheetRows}</sheetData>
-  <autoFilter ref="A1:I${lastRow}"/>
+  <autoFilter ref="A1:G${lastRow}"/>
   <hyperlinks>${hyperlinkRows}</hyperlinks>
 </worksheet>`
     },
@@ -859,39 +807,21 @@ export async function POST(req: NextRequest) {
     }
 
     const qrByUser = new Map((qrRows || []).map((row: any) => [row.user_id, row.qr_code]))
-    const siteBaseUrl = process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin
-    const loginBaseUrl = `${siteBaseUrl}/login`
+    const loginBaseUrl = `${process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin}/login`
     const exportRows = activeUsers
       .map((user: any) => {
         const accessCode = text(codeByUser.get(user.id))
         const loginUrl = `${loginBaseUrl}?method=code&code=${encodeURIComponent(accessCode)}`
         const phone = normalizePhone(user.telefon)
-        const message = accessCodeMessage({
-          code: accessCode,
-          loginUrl,
-          language
-        })
 
         return {
           registrationGroup: group?.name || '',
           meno: text(user.meno),
           priezvisko: text(user.priezvisko),
           email: text(user.email),
-          telefon: phone.display,
+          telefon: phone,
           accessCode,
-          loginUrl,
-          smsUrl: contactActionUrl({
-            baseUrl: siteBaseUrl,
-            channel: 'sms',
-            phone: phone.sms,
-            message
-          }),
-          whatsappUrl: contactActionUrl({
-            baseUrl: siteBaseUrl,
-            channel: 'whatsapp',
-            phone: phone.whatsapp,
-            message
-          })
+          loginUrl
         }
       })
       .filter(row => row.accessCode)
