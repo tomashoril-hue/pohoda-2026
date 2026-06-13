@@ -27,6 +27,26 @@ function htmlEscape(value: any) {
     .replace(/"/g, '&quot;')
 }
 
+function pdfText(value: any) {
+  return text(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function pdfEscape(value: any) {
+  return pdfText(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
+}
+
+function pdfNumber(value: number) {
+  return Number(value.toFixed(2)).toString()
+}
+
 function fileSafe(value: any) {
   return text(value)
     .normalize('NFD')
@@ -60,93 +80,224 @@ function chunkItems<T>(items: T[], size: number) {
   return chunks
 }
 
-async function buildQrPrintHtml({
+type QrPrintItem = {
+  userId: string
+  fullName: string
+  food: string
+  qrCode: string
+}
+
+function fitPdfText(value: any, maxLength: number) {
+  const safe = pdfText(value)
+
+  if (safe.length <= maxLength) return safe
+
+  return `${safe.slice(0, Math.max(0, maxLength - 3)).trim()}...`
+}
+
+function drawPdfText({
+  commands,
+  value,
+  x,
+  y,
+  size,
+  maxLength = 40,
+  center = false,
+  bold = false,
+  color = '0 0 0'
+}: {
+  commands: string[]
+  value: any
+  x: number
+  y: number
+  size: number
+  maxLength?: number
+  center?: boolean
+  bold?: boolean
+  color?: string
+}) {
+  const safe = fitPdfText(value, maxLength)
+  const estimatedWidth = safe.length * size * 0.52
+  const textX = center ? x - estimatedWidth / 2 : x
+
+  commands.push(`BT /${bold ? 'F2' : 'F1'} ${pdfNumber(size)} Tf ${color} rg ${pdfNumber(textX)} ${pdfNumber(y)} Td (${pdfEscape(safe)}) Tj ET`)
+}
+
+function drawQrPdf({
+  commands,
+  value,
+  x,
+  y,
+  size
+}: {
+  commands: string[]
+  value: string
+  x: number
+  y: number
+  size: number
+}) {
+  const qr = QRCode.create(value, {
+    errorCorrectionLevel: 'M'
+  })
+  const qrSize = qr.modules.size
+  const quietModules = 4
+  const moduleSize = size / (qrSize + quietModules * 2)
+  const data = qr.modules.data
+
+  commands.push('q 0 0 0 rg')
+
+  for (let row = 0; row < qrSize; row += 1) {
+    let col = 0
+
+    while (col < qrSize) {
+      while (col < qrSize && !data[row * qrSize + col]) col += 1
+
+      const start = col
+
+      while (col < qrSize && data[row * qrSize + col]) col += 1
+
+      if (col > start) {
+        const rectX = x + (quietModules + start) * moduleSize
+        const rectY = y + (quietModules + qrSize - row - 1) * moduleSize
+        const rectWidth = (col - start) * moduleSize
+
+        commands.push(`${pdfNumber(rectX)} ${pdfNumber(rectY)} ${pdfNumber(rectWidth)} ${pdfNumber(moduleSize)} re f`)
+      }
+    }
+  }
+
+  commands.push('Q')
+}
+
+function buildQrPrintPdf({
   title,
   groupName,
   items
 }: {
   title: string
   groupName: string
-  items: Array<{
-    userId: string
-    fullName: string
-    food: string
-    qrCode: string
-  }>
+  items: QrPrintItem[]
 }) {
-  const qrImages = new Map<string, string>()
+  const pages = chunkItems(items, 20)
+  const pageWidth = 595.28
+  const pageHeight = 841.89
+  const margin = 28.35
+  const gap = 7.09
+  const headerHeight = 34
+  const cardWidth = (pageWidth - margin * 2 - gap * 3) / 4
+  const cardHeight = (pageHeight - margin * 2 - headerHeight - gap * 4) / 5
+  const qrSize = 75
+  const contentStreams = pages.map((pageItems, pageIndex) => {
+    const commands: string[] = []
 
-  await Promise.all(items.map(async item => {
-    const image = await QRCode.toDataURL(item.qrCode, {
-      margin: 1,
-      width: 240,
-      errorCorrectionLevel: 'M'
+    drawPdfText({
+      commands,
+      value: title,
+      x: margin,
+      y: pageHeight - margin - 10,
+      size: 12,
+      maxLength: 54,
+      bold: true
+    })
+    drawPdfText({
+      commands,
+      value: `Strana ${pageIndex + 1} / ${pages.length}`,
+      x: pageWidth - margin - 72,
+      y: pageHeight - margin - 10,
+      size: 9,
+      maxLength: 18,
+      color: '0.35 0.38 0.43'
+    })
+    const headerLineY = pageHeight - margin - headerHeight + 8
+    commands.push(`q 0.9 0.9 0.92 RG 0.5 w ${pdfNumber(margin)} ${pdfNumber(headerLineY)} m ${pdfNumber(pageWidth - margin)} ${pdfNumber(headerLineY)} l S Q`)
+
+    pageItems.forEach((item, index) => {
+      const row = Math.floor(index / 4)
+      const col = index % 4
+      const cardX = margin + col * (cardWidth + gap)
+      const cardTop = pageHeight - margin - headerHeight - row * (cardHeight + gap)
+      const cardY = cardTop - cardHeight
+      const qrX = cardX + (cardWidth - qrSize) / 2
+      const qrY = cardTop - 10 - qrSize
+      const centerX = cardX + cardWidth / 2
+
+      commands.push(`q 0.82 0.84 0.87 RG 0.75 w ${pdfNumber(cardX)} ${pdfNumber(cardY)} ${pdfNumber(cardWidth)} ${pdfNumber(cardHeight)} re S Q`)
+      drawQrPdf({
+        commands,
+        value: item.qrCode,
+        x: qrX,
+        y: qrY,
+        size: qrSize
+      })
+      drawPdfText({
+        commands,
+        value: item.fullName,
+        x: centerX,
+        y: qrY - 14,
+        size: 8.5,
+        maxLength: 24,
+        center: true,
+        bold: true
+      })
+      drawPdfText({
+        commands,
+        value: groupName,
+        x: centerX,
+        y: qrY - 26,
+        size: 7,
+        maxLength: 28,
+        center: true,
+        color: '0.42 0.45 0.5'
+      })
+      commands.push(`q 0.93 0.95 1 rg ${pdfNumber(centerX - 21)} ${pdfNumber(cardY + 8)} 42 12 re f Q`)
+      drawPdfText({
+        commands,
+        value: foodLabel(item.food),
+        x: centerX,
+        y: cardY + 11,
+        size: 7,
+        maxLength: 8,
+        center: true,
+        bold: true,
+        color: '0.22 0.19 0.64'
+      })
     })
 
-    qrImages.set(item.userId, image)
-  }))
+    return commands.join('\n')
+  })
+  const objects: string[] = []
+  const pageRefs = contentStreams.map((_, index) => `${5 + index * 2} 0 R`)
 
-  const pages = chunkItems(items, 20)
-  const pageHtml = pages.map((pageItems, pageIndex) => `
-    <section class="print-sheet">
-      <header class="sheet-header">
-        <b>${htmlEscape(title)}</b>
-        <span>Strana ${pageIndex + 1} / ${pages.length}</span>
-      </header>
-      <div class="print-grid">
-        ${pageItems.map(item => `
-          <article class="card">
-            <div class="qr-box">
-              <img src="${qrImages.get(item.userId)}" alt="QR kod">
-            </div>
-            <div class="person-name">${htmlEscape(item.fullName)}</div>
-            <div class="meta">${htmlEscape(groupName)}</div>
-            <div class="food">${htmlEscape(foodLabel(item.food))}</div>
-          </article>
-        `).join('')}
-      </div>
-    </section>
-  `).join('')
+  objects[0] = '<< /Type /Catalog /Pages 2 0 R >>'
+  objects[1] = `<< /Type /Pages /Kids [${pageRefs.join(' ')}] /Count ${contentStreams.length} >>`
+  objects[2] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'
+  objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>'
 
-  return `<!doctype html>
-<html lang="sk">
-<head>
-  <meta charset="utf-8">
-  <title>${htmlEscape(title)}</title>
-  <style>
-    @page { size: A4; margin: 10mm; }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: #e5e7eb; color: #111827; font-family: Arial, Helvetica, sans-serif; }
-    .toolbar { max-width: 980px; margin: 12px auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 12px; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
-    .toolbar b { display: block; font-size: 16px; }
-    .toolbar span { display: block; margin-top: 3px; font-size: 12px; font-weight: 800; color: #6b7280; }
-    .print-sheet { width: 190mm; min-height: 277mm; margin: 0 auto 12px auto; background: #fff; padding: 5mm; break-after: page; page-break-after: always; }
-    .print-sheet:last-child { break-after: auto; page-break-after: auto; }
-    .sheet-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 3mm; margin-bottom: 3mm; font-size: 12px; }
-    .print-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 47mm; gap: 2.5mm; }
-    .card { border: 1px solid #d1d5db; border-radius: 5px; padding: 2mm; display: grid; grid-template-rows: 25mm auto auto auto; align-items: center; text-align: center; overflow: hidden; }
-    .qr-box img { width: 24mm; height: 24mm; display: block; margin: 0 auto; }
-    .person-name { font-size: 10px; line-height: 1.12; font-weight: 900; overflow: hidden; }
-    .meta { font-size: 8px; line-height: 1.12; font-weight: 800; color: #6b7280; overflow: hidden; }
-    .food { justify-self: center; margin-top: 1mm; border-radius: 999px; padding: 1mm 2mm; background: #eef2ff; color: #3730a3; font-size: 8px; font-weight: 950; }
-    @media print {
-      body { background: #fff; }
-      .toolbar { display: none; }
-      .print-sheet { margin: 0 auto; min-height: auto; }
-      .print-grid { grid-auto-rows: 47mm; gap: 2.5mm; }
-    }
-  </style>
-</head>
-<body>
-  <section class="toolbar">
-    <div>
-      <b>${htmlEscape(title)}</b>
-      <span>${items.length} QR pripravenych na tlac. Subor otvor a vytlac cez prehliadac.</span>
-    </div>
-  </section>
-  ${pageHtml}
-</body>
-</html>`
+  contentStreams.forEach((stream, index) => {
+    const pageObjectIndex = 4 + index * 2
+    const contentObjectId = 6 + index * 2
+
+    objects[pageObjectIndex] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pdfNumber(pageWidth)} ${pdfNumber(pageHeight)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentObjectId} 0 R >>`
+    objects[pageObjectIndex + 1] = `<< /Length ${Buffer.byteLength(stream, 'utf8')} >>\nstream\n${stream}\nendstream`
+  })
+
+  let pdf = '%PDF-1.4\n%\xFF\xFF\xFF\xFF\n'
+  const offsets = [0]
+
+  objects.forEach((object, index) => {
+    offsets[index + 1] = Buffer.byteLength(pdf, 'binary')
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`
+  })
+
+  const xrefOffset = Buffer.byteLength(pdf, 'binary')
+  pdf += `xref\n0 ${objects.length + 1}\n`
+  pdf += '0000000000 65535 f \n'
+  offsets.slice(1).forEach(offset => {
+    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  })
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
+
+  return Buffer.from(pdf, 'binary')
 }
 
 async function getCurrentRegistrationGroupUserIds(registrationGroupId: string) {
@@ -337,16 +488,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (includeQrCodes) {
-      const qrHtml = await buildQrPrintHtml({
+      const qrPdf = buildQrPrintPdf({
         title: `QR kody - ${group?.name || 'Registracna skupina'}`,
         groupName: group?.name || '',
         items: qrItems
       })
 
       attachments.push({
-        filename: `${fileBase}-qr-kody.html`,
-        content: Buffer.from(qrHtml, 'utf8').toString('base64'),
-        contentType: 'text/html; charset=utf-8'
+        filename: `${fileBase}-qr-kody.pdf`,
+        content: qrPdf.toString('base64'),
+        contentType: 'application/pdf'
       })
     }
 
