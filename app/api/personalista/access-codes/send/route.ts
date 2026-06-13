@@ -807,7 +807,11 @@ export async function POST(req: NextRequest) {
     }
 
     const qrByUser = new Map((qrRows || []).map((row: any) => [row.user_id, row.qr_code]))
-    const loginBaseUrl = `${process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin}/login`
+    const siteBaseUrl = process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin
+    const loginBaseUrl = `${siteBaseUrl}/login`
+    const shareUrl = new URL('/dashboard/access-codes-share', siteBaseUrl)
+    shareUrl.searchParams.set('registrationGroupId', registrationGroupId)
+    shareUrl.searchParams.set('language', language)
     const exportRows = activeUsers
       .map((user: any) => {
         const accessCode = text(codeByUser.get(user.id))
@@ -855,6 +859,8 @@ export async function POST(req: NextRequest) {
           heading: `Login details${includeQrCodes ? ' and QR codes' : ''}`,
           attachmentIntro: 'Prepared files are attached. The Excel file contains a login link with a pre-filled access code for each person.',
           loginInfo: 'The application is also available here:',
+          shareIntro: 'After signing in, you can send individual login details by SMS or WhatsApp here:',
+          shareButton: 'Send by SMS / WhatsApp',
           accessAttachment: `Excel login details: ${exportRows.length}`,
           qrAttachment: `QR print attachment: ${qrItems.length}`,
           qrTitle: `QR codes - ${group?.name || 'Registration group'}`
@@ -864,6 +870,8 @@ export async function POST(req: NextRequest) {
           heading: `Prihlasovacie udaje${includeQrCodes ? ' a QR kody' : ''}`,
           attachmentIntro: 'V prilohe najdes pripravene subory. V Excel tabulke je pre kazdu osobu aj prihlasovaci odkaz s predvyplnenym kodom.',
           loginInfo: 'Prihlasenie je dostupne aj tu:',
+          shareIntro: 'Po prihlaseni vies jednotlive pristupove udaje odoslat cez SMS alebo WhatsApp tu:',
+          shareButton: 'Odoslat cez SMS / WhatsApp',
           accessAttachment: `Excel pristupove kody: ${exportRows.length}`,
           qrAttachment: `QR tlacova priloha: ${qrItems.length}`,
           qrTitle: `QR kody - ${group?.name || 'Registracna skupina'}`
@@ -911,11 +919,19 @@ export async function POST(req: NextRequest) {
             <p>${htmlEscape(note)}</p>
             <p>${htmlEscape(emailCopy.attachmentIntro)}</p>
             <p>${htmlEscape(emailCopy.loginInfo)} <a href="${loginBaseUrl}">${loginBaseUrl}</a></p>
+            ${includeAccessCodes ? `
+              <p>${htmlEscape(emailCopy.shareIntro)}</p>
+              <p>
+                <a href="${shareUrl.toString()}" style="display:inline-block;background:#7417e8;color:#fff;border:3px solid #000;border-radius:999px;padding:12px 18px;font-weight:900;text-decoration:none;">
+                  ${htmlEscape(emailCopy.shareButton)}
+                </a>
+              </p>
+            ` : ''}
             <p style="font-size:13px;color:#555;">${htmlEscape(attachmentText)}</p>
           </div>
         </div>
       `,
-      text: `${note}\n\n${emailCopy.loginInfo} ${loginBaseUrl}\n${attachmentText}`,
+      text: `${note}\n\n${emailCopy.loginInfo} ${loginBaseUrl}${includeAccessCodes ? `\n${emailCopy.shareIntro} ${shareUrl.toString()}` : ''}\n${attachmentText}`,
       attachments
     })
 

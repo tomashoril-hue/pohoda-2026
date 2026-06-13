@@ -1,0 +1,290 @@
+'use client'
+
+import type { CSSProperties } from 'react'
+import { useMemo, useState } from 'react'
+
+type SharePerson = {
+  id: string
+  fullName: string
+  meno: string
+  priezvisko: string
+  email: string
+  telefon: string
+  accessCode: string
+  loginUrl: string
+  message: string
+}
+
+function cleanPhone(value: string, whatsapp = false) {
+  return String(value || '').replace(whatsapp ? /[^\d]/g : /[^\d+]/g, '')
+}
+
+function openSms(phone: string, message: string) {
+  const normalizedPhone = cleanPhone(phone)
+  const isApple = /iPad|iPhone|iPod/i.test(navigator.userAgent)
+  const separator = isApple ? '&' : '?'
+
+  window.location.href = `sms:${normalizedPhone}${separator}body=${encodeURIComponent(message)}`
+}
+
+function openWhatsapp(phone: string, message: string) {
+  window.location.href = `https://wa.me/${cleanPhone(phone, true)}?text=${encodeURIComponent(message)}`
+}
+
+export default function AccessCodesShareClient({
+  groupName,
+  language,
+  people
+}: {
+  groupName: string
+  language: 'SK' | 'EN'
+  people: SharePerson[]
+}) {
+  const [search, setSearch] = useState('')
+  const q = search.trim().toLowerCase()
+  const filteredPeople = useMemo(() => {
+    if (!q) return people
+
+    return people.filter(person => (
+      person.fullName.toLowerCase().includes(q) ||
+      person.email.toLowerCase().includes(q) ||
+      person.telefon.toLowerCase().includes(q)
+    ))
+  }, [people, q])
+  const copy = language === 'EN'
+    ? {
+        badge: 'Login details',
+        title: 'Send access codes',
+        subtitle: 'Choose a person and send their prepared login message by SMS or WhatsApp.',
+        search: 'Search name, phone or email',
+        sms: 'SMS',
+        whatsapp: 'WhatsApp',
+        noPhone: 'No phone number',
+        noCode: 'No access code',
+        empty: 'No matching people found.'
+      }
+    : {
+        badge: 'Prihlasovacie udaje',
+        title: 'Odoslat pristupove kody',
+        subtitle: 'Vyber osobu a odosli jej pripravenu prihlasovaciu spravu cez SMS alebo WhatsApp.',
+        search: 'Hladat meno, telefon alebo email',
+        sms: 'SMS',
+        whatsapp: 'WhatsApp',
+        noPhone: 'Bez telefonu',
+        noCode: 'Bez pristupoveho kodu',
+        empty: 'Nenasli sa ziadne osoby.'
+      }
+
+  return (
+    <main style={styles.page}>
+      <section style={styles.shell}>
+        <header style={styles.header}>
+          <div>
+            <div style={styles.badge}>{copy.badge}</div>
+            <h1 style={styles.title}>{copy.title}</h1>
+            <p style={styles.subtitle}>{copy.subtitle}</p>
+          </div>
+          <div style={styles.groupBox}>
+            <span>Skupina</span>
+            <b>{groupName}</b>
+          </div>
+        </header>
+
+        <input
+          value={search}
+          onChange={event => setSearch(event.target.value)}
+          placeholder={copy.search}
+          style={styles.search}
+        />
+
+        <div style={styles.list}>
+          {filteredPeople.length === 0 && (
+            <div style={styles.empty}>{copy.empty}</div>
+          )}
+
+          {filteredPeople.map(person => {
+            const disabled = !person.telefon || !person.accessCode
+
+            return (
+              <article key={person.id} style={styles.personRow}>
+                <div style={styles.personMain}>
+                  <b>{person.fullName}</b>
+                  <span>{person.telefon || copy.noPhone}</span>
+                  <small>{person.email || '-'}</small>
+                </div>
+
+                <div style={styles.codeBox}>
+                  <span>Kod</span>
+                  <b>{person.accessCode || '-'}</b>
+                </div>
+
+                <div style={styles.actions}>
+                  {disabled ? (
+                    <span style={styles.disabledNote}>{!person.telefon ? copy.noPhone : copy.noCode}</span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openSms(person.telefon, person.message)}
+                        style={styles.smsButton}
+                      >
+                        {copy.sms}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openWhatsapp(person.telefon, person.message)}
+                        style={styles.whatsappButton}
+                      >
+                        {copy.whatsapp}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      </section>
+    </main>
+  )
+}
+
+const styles: Record<string, CSSProperties> = {
+  page: {
+    minHeight: '100vh',
+    background: '#f6f2ff',
+    color: '#000',
+    fontFamily: 'Arial, Helvetica, sans-serif',
+    padding: 16
+  },
+  shell: {
+    maxWidth: 980,
+    margin: '0 auto',
+    display: 'grid',
+    gap: 14
+  },
+  header: {
+    background: '#fff',
+    border: '3px solid #000',
+    borderRadius: 20,
+    boxShadow: '8px 8px 0 #000',
+    padding: 18,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: 14,
+    alignItems: 'center'
+  },
+  badge: {
+    display: 'inline-block',
+    background: '#56db3f',
+    border: '3px solid #000',
+    borderRadius: 999,
+    padding: '6px 12px',
+    fontWeight: 950,
+    marginBottom: 10
+  },
+  title: {
+    margin: 0,
+    fontSize: 34,
+    lineHeight: 1.05,
+    fontWeight: 950
+  },
+  subtitle: {
+    margin: '8px 0 0',
+    fontSize: 15,
+    lineHeight: 1.35,
+    fontWeight: 750
+  },
+  groupBox: {
+    minWidth: 170,
+    background: '#000',
+    color: '#fff',
+    borderRadius: 16,
+    padding: 12,
+    display: 'grid',
+    gap: 3
+  },
+  search: {
+    width: '100%',
+    boxSizing: 'border-box',
+    border: '3px solid #000',
+    borderRadius: 16,
+    padding: '13px 15px',
+    fontSize: 16,
+    fontWeight: 800,
+    outline: 'none'
+  },
+  list: {
+    display: 'grid',
+    gap: 10
+  },
+  personRow: {
+    background: '#fff',
+    border: '2px solid #000',
+    borderRadius: 16,
+    padding: 12,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+    gap: 10,
+    alignItems: 'center'
+  },
+  personMain: {
+    minWidth: 0,
+    display: 'grid',
+    gap: 3
+  },
+  codeBox: {
+    background: '#f6f2ff',
+    border: '2px solid #000',
+    borderRadius: 12,
+    padding: 8,
+    textAlign: 'center',
+    display: 'grid',
+    gap: 2
+  },
+  actions: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 8
+  },
+  smsButton: {
+    background: '#7417e8',
+    color: '#fff',
+    border: '2px solid #000',
+    borderRadius: 999,
+    padding: '11px 12px',
+    fontWeight: 950,
+    textAlign: 'center',
+    cursor: 'pointer',
+    fontSize: 14
+  },
+  whatsappButton: {
+    background: '#16a34a',
+    color: '#fff',
+    border: '2px solid #000',
+    borderRadius: 999,
+    padding: '11px 12px',
+    fontWeight: 950,
+    textAlign: 'center',
+    cursor: 'pointer',
+    fontSize: 14
+  },
+  disabledNote: {
+    gridColumn: '1 / -1',
+    background: '#fee2e2',
+    color: '#991b1b',
+    border: '2px solid #fecaca',
+    borderRadius: 12,
+    padding: 10,
+    fontWeight: 900,
+    textAlign: 'center'
+  },
+  empty: {
+    background: '#fff',
+    border: '2px solid #000',
+    borderRadius: 16,
+    padding: 18,
+    fontWeight: 900,
+    textAlign: 'center'
+  }
+}

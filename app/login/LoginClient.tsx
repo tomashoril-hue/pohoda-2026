@@ -8,13 +8,15 @@ export default function LoginPage({
   initialSent = false,
   initialError = '',
   initialMethod = 'email',
-  initialAccessCode = ''
+  initialAccessCode = '',
+  initialNext = ''
 }: {
   initialEmail?: string
   initialSent?: boolean
   initialError?: string
   initialMethod?: 'email' | 'code'
   initialAccessCode?: string
+  initialNext?: string
 }) {
   const [email, setEmail] = useState(initialEmail)
   const [code, setCode] = useState('')
@@ -29,6 +31,7 @@ export default function LoginPage({
   const [error, setError] = useState(initialError)
 
   const cleanEmail = email.trim().toLowerCase()
+  const redirectAfterLogin = initialNext || '/dashboard'
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -94,7 +97,7 @@ export default function LoginPage({
         return
       }
 
-      window.location.href = '/dashboard'
+      window.location.href = redirectAfterLogin
     } catch (err: any) {
       setError('Chyba: ' + err.message)
     } finally {
@@ -142,7 +145,7 @@ export default function LoginPage({
         return
       }
 
-      window.location.href = '/dashboard'
+      window.location.href = redirectAfterLogin
     } catch (err: any) {
       setError('Chyba: ' + err.message)
     } finally {
