@@ -31,7 +31,12 @@ function openSms(phone: string, message: string) {
 }
 
 function openWhatsapp(phone: string, message: string) {
-  window.location.href = `https://wa.me/${cleanPhone(phone, true)}?text=${encodeURIComponent(message)}`
+  const url = `https://wa.me/${cleanPhone(phone, true)}?text=${encodeURIComponent(message)}`
+  const openedWindow = window.open(url, '_blank', 'noopener,noreferrer')
+
+  if (!openedWindow) {
+    window.location.href = url
+  }
 }
 
 function openedStorageKey() {
