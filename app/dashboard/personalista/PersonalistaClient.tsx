@@ -104,6 +104,7 @@ type DetailMode = 'profile' | 'registrationPeriods' | 'entitlements' | 'groups' 
 type DetailMessageType = 'ok' | 'error' | ''
 type PeopleScope = 'mine' | 'all'
 type PersonnelTool = 'communication' | 'accessCodes' | ''
+type CommunicationLanguage = 'SK' | 'EN'
 
 type CommunicationSummary = {
   total: number
@@ -116,6 +117,11 @@ type CommunicationSummary = {
     id: string
     name: string
   }
+}
+
+const ACCESS_CODES_NOTES: Record<CommunicationLanguage, string> = {
+  SK: 'Ahoj, posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.',
+  EN: 'Hello, I am sending login details for individual users in the attachment. Please keep them safe and share them with your colleagues.'
 }
 
 function foodLabel(value: string) {
@@ -419,17 +425,17 @@ export default function PersonalistaClient({
   const [registrationGroupMessageType, setRegistrationGroupMessageType] = useState<'ok' | 'error' | ''>('')
   const [personnelTool, setPersonnelTool] = useState<PersonnelTool>('')
   const [communicationGroupId, setCommunicationGroupId] = useState('')
+  const [communicationLanguage, setCommunicationLanguage] = useState<CommunicationLanguage>('SK')
   const [communicationSummary, setCommunicationSummary] = useState<CommunicationSummary | null>(null)
   const [communicationLoading, setCommunicationLoading] = useState(false)
   const [communicationMessage, setCommunicationMessage] = useState('')
   const [communicationMessageType, setCommunicationMessageType] = useState<'ok' | 'error' | ''>('')
   const [accessCodesGroupId, setAccessCodesGroupId] = useState('')
   const [accessCodesEmail, setAccessCodesEmail] = useState('')
+  const [accessCodesLanguage, setAccessCodesLanguage] = useState<CommunicationLanguage>('SK')
   const [accessCodesIncludeCsv, setAccessCodesIncludeCsv] = useState(true)
   const [accessCodesIncludeQr, setAccessCodesIncludeQr] = useState(true)
-  const [accessCodesNote, setAccessCodesNote] = useState(
-    'Ahoj, posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.'
-  )
+  const [accessCodesNote, setAccessCodesNote] = useState(ACCESS_CODES_NOTES.SK)
   const [accessCodesSummary, setAccessCodesSummary] = useState<CommunicationSummary | null>(null)
   const [accessCodesLoading, setAccessCodesLoading] = useState(false)
   const [accessCodesMessage, setAccessCodesMessage] = useState('')
@@ -627,7 +633,8 @@ export default function PersonalistaClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           registrationGroupId: communicationGroupId,
-          resend: false
+          resend: false,
+          language: communicationLanguage
         })
       })
       const json = await res.json().catch(() => ({}))
@@ -682,6 +689,7 @@ export default function PersonalistaClient({
           email: accessCodesEmail,
           includeAccessCodes: accessCodesIncludeCsv,
           includeQrCodes: accessCodesIncludeQr,
+          language: accessCodesLanguage,
           note: accessCodesNote
         })
       })
@@ -3033,6 +3041,19 @@ export default function PersonalistaClient({
                 ))}
               </select>
             </label>
+
+            <label style={styles.field}>
+              <span>Jazyk e-mailu</span>
+              <select
+                value={communicationLanguage}
+                onChange={event => setCommunicationLanguage(event.target.value === 'EN' ? 'EN' : 'SK')}
+                style={styles.input}
+                disabled={communicationLoading}
+              >
+                <option value="SK">Slovencina</option>
+                <option value="EN">English</option>
+              </select>
+            </label>
           </div>
 
           <div style={styles.toolActionRow}>
@@ -3132,6 +3153,27 @@ export default function PersonalistaClient({
                 type="email"
                 placeholder="veduci@firma.sk"
               />
+            </label>
+
+            <label style={styles.field}>
+              <span>Jazyk e-mailu</span>
+              <select
+                value={accessCodesLanguage}
+                onChange={event => {
+                  const nextLanguage = event.target.value === 'EN' ? 'EN' : 'SK'
+                  const previousDefaultNote = ACCESS_CODES_NOTES[accessCodesLanguage]
+
+                  setAccessCodesLanguage(nextLanguage)
+                  if (!accessCodesNote.trim() || accessCodesNote === previousDefaultNote) {
+                    setAccessCodesNote(ACCESS_CODES_NOTES[nextLanguage])
+                  }
+                }}
+                style={styles.input}
+                disabled={accessCodesLoading}
+              >
+                <option value="SK">Slovencina</option>
+                <option value="EN">English</option>
+              </select>
             </label>
           </div>
 

@@ -15,6 +15,10 @@ function emailValue(value: any) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : ''
 }
 
+function languageValue(value: any) {
+  return text(value).toUpperCase() === 'EN' ? 'EN' : 'SK'
+}
+
 function xmlEscape(value: any) {
   return text(value)
     .replace(/&/g, '&amp;')
@@ -206,8 +210,12 @@ function xlsxInlineCell(value: any, ref: string, style = 0) {
   return `<c r="${ref}" t="inlineStr"${styleAttr}><is><t>${xmlEscape(value)}</t></is></c>`
 }
 
-function buildAccessCodesXlsx(rows: AccessExportRow[]) {
-  const headers = ['Registracna skupina', 'Meno', 'Priezvisko', 'Email', 'Prihlasovaci kod', 'Login URL']
+function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
+  const headers = language === 'EN'
+    ? ['Registration group', 'First name', 'Last name', 'Email', 'Access code', 'Login URL']
+    : ['Registracna skupina', 'Meno', 'Priezvisko', 'Email', 'Prihlasovaci kod', 'Login URL']
+  const sheetName = language === 'EN' ? 'Login details' : 'Pristupove kody'
+  const documentTitle = language === 'EN' ? 'PohodaPass login details' : 'Pristupove kody PohodaPass'
   const allRows = [headers, ...rows.map(row => [
     row.registrationGroup,
     row.meno,
@@ -263,7 +271,7 @@ function buildAccessCodesXlsx(rows: AccessExportRow[]) {
       name: 'docProps/core.xml',
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <dc:title>Pristupove kody PohodaPass</dc:title>
+  <dc:title>${xmlEscape(documentTitle)}</dc:title>
   <dc:creator>PohodaPass</dc:creator>
   <dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>
 </cp:coreProperties>`
@@ -279,7 +287,7 @@ function buildAccessCodesXlsx(rows: AccessExportRow[]) {
       name: 'xl/workbook.xml',
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets><sheet name="Pristupove kody" sheetId="1" r:id="rId1"/></sheets>
+  <sheets><sheet name="${xmlEscape(sheetName)}" sheetId="1" r:id="rId1"/></sheets>
 </workbook>`
     },
     {
@@ -701,7 +709,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}))
     const recipientEmail = emailValue(body.email)
     const registrationGroupId = text(body.registrationGroupId)
-    const note = text(body.note) || 'Ahoj, v prilohe posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.'
+    const language = languageValue(body.language)
+    const defaultNote = language === 'EN'
+      ? 'Hello, I am sending login details for individual users in the attachment. Please keep them safe and share them with your colleagues.'
+      : 'Ahoj, v prilohe posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.'
+    const note = text(body.note) || defaultNote
     const includeAccessCodes = body.includeAccessCodes !== false
     const includeQrCodes = body.includeQrCodes === true
 
@@ -804,14 +816,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'QR prilohu posielaj po mensich skupinach, maximum je 300 QR v jednom e-maile.' }, { status: 400 })
     }
 
+    const emailCopy = language === 'EN'
+      ? {
+          subject: includeQrCodes ? 'PohodaPass - login details and QR codes' : 'PohodaPass - login details',
+          heading: `Login details${includeQrCodes ? ' and QR codes' : ''}`,
+          attachmentIntro: 'Prepared files are attached. The Excel file contains a login link with a pre-filled access code for each person.',
+          loginInfo: 'The application is also available here:',
+          accessAttachment: `Excel login details: ${exportRows.length}`,
+          qrAttachment: `QR print attachment: ${qrItems.length}`,
+          qrTitle: `QR codes - ${group?.name || 'Registration group'}`
+        }
+      : {
+          subject: includeQrCodes ? 'PohodaPass - prihlasovacie udaje a QR kody' : 'PohodaPass - prihlasovacie udaje',
+          heading: `Prihlasovacie udaje${includeQrCodes ? ' a QR kody' : ''}`,
+          attachmentIntro: 'V prilohe najdes pripravene subory. V Excel tabulke je pre kazdu osobu aj prihlasovaci odkaz s predvyplnenym kodom.',
+          loginInfo: 'Prihlasenie je dostupne aj tu:',
+          accessAttachment: `Excel pristupove kody: ${exportRows.length}`,
+          qrAttachment: `QR tlacova priloha: ${qrItems.length}`,
+          qrTitle: `QR kody - ${group?.name || 'Registracna skupina'}`
+        }
     const attachments = []
     const fileBase = `${fileSafe(group?.name || 'registracna-skupina')}-${new Date().toISOString().slice(0, 10)}`
 
     if (includeAccessCodes) {
-      const xlsx = buildAccessCodesXlsx(exportRows)
+      const xlsx = buildAccessCodesXlsx(exportRows, language)
 
       attachments.push({
-        filename: `${fileBase}-pristupove-kody.xlsx`,
+        filename: `${fileBase}-${language === 'EN' ? 'login-details' : 'pristupove-kody'}.xlsx`,
         content: xlsx.toString('base64'),
         contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       })
@@ -819,39 +850,39 @@ export async function POST(req: NextRequest) {
 
     if (includeQrCodes) {
       const qrPdf = buildQrPrintPdf({
-        title: `QR kody - ${group?.name || 'Registracna skupina'}`,
+        title: emailCopy.qrTitle,
         groupName: group?.name || '',
         items: qrItems
       })
 
       attachments.push({
-        filename: `${fileBase}-qr-kody.pdf`,
+        filename: `${fileBase}-${language === 'EN' ? 'qr-codes' : 'qr-kody'}.pdf`,
         content: qrPdf.toString('base64'),
         contentType: 'application/pdf'
       })
     }
 
     const attachmentText = [
-      includeAccessCodes ? `Excel pristupove kody: ${exportRows.length}` : '',
-      includeQrCodes ? `QR tlacova priloha: ${qrItems.length}` : ''
+      includeAccessCodes ? emailCopy.accessAttachment : '',
+      includeQrCodes ? emailCopy.qrAttachment : ''
     ].filter(Boolean).join(' | ')
     const result = await sendAppEmail({
       from: 'POHODA 2026 <registracia@pohodapass.sk>',
       to: recipientEmail,
-      subject: includeQrCodes ? 'PohodaPass - prihlasovacie udaje a QR kody' : 'PohodaPass - prihlasovacie udaje',
+      subject: emailCopy.subject,
       html: `
         <div style="font-family:Arial,Helvetica,sans-serif;background:#f6f2ff;padding:24px;color:#111;">
           <div style="max-width:620px;margin:0 auto;background:#fff;border:3px solid #000;border-radius:22px;padding:24px;">
             <div style="display:inline-block;background:#56db3f;border:3px solid #000;border-radius:999px;padding:8px 14px;font-weight:900;">PohodaPass</div>
-            <h1 style="font-size:26px;margin:20px 0 10px;">Prihlasovacie udaje${includeQrCodes ? ' a QR kody' : ''}</h1>
+            <h1 style="font-size:26px;margin:20px 0 10px;">${htmlEscape(emailCopy.heading)}</h1>
             <p>${htmlEscape(note)}</p>
-            <p>V prilohe najdes pripravene subory. V Excel tabulke je pre kazdu osobu aj prihlasovaci odkaz s predvyplnenym kodom.</p>
-            <p>Prihlasenie je dostupne aj tu: <a href="${loginBaseUrl}">${loginBaseUrl}</a></p>
+            <p>${htmlEscape(emailCopy.attachmentIntro)}</p>
+            <p>${htmlEscape(emailCopy.loginInfo)} <a href="${loginBaseUrl}">${loginBaseUrl}</a></p>
             <p style="font-size:13px;color:#555;">${htmlEscape(attachmentText)}</p>
           </div>
         </div>
       `,
-      text: `${note}\n\nPrihlasenie: ${loginBaseUrl}\n${attachmentText}`,
+      text: `${note}\n\n${emailCopy.loginInfo} ${loginBaseUrl}\n${attachmentText}`,
       attachments
     })
 

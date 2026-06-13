@@ -9,23 +9,39 @@ function text(value: any) {
   return String(value || '').trim()
 }
 
-function welcomeEmailHtml(meno: string, loginUrl: string) {
+function languageValue(value: any) {
+  return text(value).toUpperCase() === 'EN' ? 'EN' : 'SK'
+}
+
+function welcomeEmailHtml(meno: string, loginUrl: string, language: 'SK' | 'EN') {
+  const isEnglish = language === 'EN'
+  const title = isEnglish ? 'You have been added to the meal system' : 'Boli ste pridany do stravovacieho systemu'
+  const greeting = isEnglish ? `Hello${meno ? `, ${meno}` : ''},` : `Dobry den${meno ? `, ${meno}` : ''},`
+  const intro = isEnglish
+    ? 'we have registered you in the PohodaPass meal system.'
+    : 'prave sme vas registrovali do stravovacieho systemu aplikacie PohodaPass.'
+  const loginInfo = isEnglish
+    ? 'You can sign in to the application using your e-mail address.'
+    : 'Do aplikacie sa mozete prihlasit cez svoju e-mailovu adresu.'
+  const button = isEnglish ? 'Open PohodaPass' : 'Otvorit PohodaPass'
+  const appAddress = isEnglish ? 'Application address' : 'Adresa aplikacie'
+
   return `
     <div style="font-family:Arial,Helvetica,sans-serif;background:#f6f2ff;padding:24px;color:#111;">
       <div style="max-width:620px;margin:0 auto;background:#fff;border:3px solid #000;border-radius:22px;padding:24px;">
         <div style="display:inline-block;background:#56db3f;border:3px solid #000;border-radius:999px;padding:8px 14px;font-weight:900;">
           PohodaPass
         </div>
-        <h1 style="font-size:28px;margin:20px 0 10px;">Boli ste pridany do stravovacieho systemu</h1>
-        <p>Dobry den${meno ? `, ${meno}` : ''},</p>
-        <p>prave sme vas registrovali do stravovacieho systemu aplikacie PohodaPass.</p>
-        <p>Do aplikacie sa mozete prihlasit cez svoju e-mailovu adresu.</p>
+        <h1 style="font-size:28px;margin:20px 0 10px;">${title}</h1>
+        <p>${greeting}</p>
+        <p>${intro}</p>
+        <p>${loginInfo}</p>
         <p style="margin:26px 0;">
           <a href="${loginUrl}" style="display:inline-block;background:#000;color:#fff;text-decoration:none;border-radius:999px;padding:14px 22px;font-weight:900;">
-            Otvorit PohodaPass
+            ${button}
           </a>
         </p>
-        <p style="font-size:13px;color:#555;">Adresa aplikacie: <a href="${loginUrl}">${loginUrl}</a></p>
+        <p style="font-size:13px;color:#555;">${appAddress}: <a href="${loginUrl}">${loginUrl}</a></p>
       </div>
     </div>
   `
@@ -90,6 +106,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}))
     const registrationGroupId = text(body.registrationGroupId)
     const resend = body.resend === true
+    const language = languageValue(body.language)
 
     if (!registrationGroupId) {
       return NextResponse.json({ error: 'Vyber registracnu skupinu.' }, { status: 400 })
@@ -146,9 +163,13 @@ export async function POST(req: NextRequest) {
         const result = await sendAppEmail({
           from: 'POHODA 2026 <registracia@pohodapass.sk>',
           to: email,
-          subject: 'Boli ste pridany do stravovacieho systemu PohodaPass',
-          html: welcomeEmailHtml(user.meno || '', loginUrl),
-          text: `Dobry den ${user.meno || ''}, boli ste pridany do stravovacieho systemu PohodaPass. Aplikaciu otvorite na ${loginUrl}`
+          subject: language === 'EN'
+            ? 'You have been added to the PohodaPass meal system'
+            : 'Boli ste pridany do stravovacieho systemu PohodaPass',
+          html: welcomeEmailHtml(user.meno || '', loginUrl, language),
+          text: language === 'EN'
+            ? `Hello ${user.meno || ''}, you have been added to the PohodaPass meal system. Open the application at ${loginUrl}`
+            : `Dobry den ${user.meno || ''}, boli ste pridany do stravovacieho systemu PohodaPass. Aplikaciu otvorite na ${loginUrl}`
         })
 
         await supabaseServer.from('personnel_email_log').insert({
