@@ -46,6 +46,7 @@ export default function AccessCodesShareClient({
   people: SharePerson[]
 }) {
   const [search, setSearch] = useState('')
+  const [openedPersonIds, setOpenedPersonIds] = useState<Set<string>>(() => new Set())
   const q = search.trim().toLowerCase()
   const filteredPeople = useMemo(() => {
     if (!q) return people
@@ -129,9 +130,23 @@ export default function AccessCodesShareClient({
 
           {filteredPeople.map(person => {
             const disabled = !person.telefon || !person.accessCode
+            const opened = openedPersonIds.has(person.id)
+            const markOpened = () => {
+              setOpenedPersonIds(previous => {
+                const next = new Set(previous)
+                next.add(person.id)
+                return next
+              })
+            }
 
             return (
-              <article key={person.id} style={styles.personRow}>
+              <article
+                key={person.id}
+                style={{
+                  ...styles.personRow,
+                  ...(opened ? styles.personRowOpened : {})
+                }}
+              >
                 <div style={styles.personMain}>
                   <b>{person.fullName}</b>
                   <span>{person.telefon || copy.noPhone}</span>
@@ -150,14 +165,20 @@ export default function AccessCodesShareClient({
                     <>
                       <button
                         type="button"
-                        onClick={() => openSms(person.telefon, person.message)}
+                        onClick={() => {
+                          markOpened()
+                          openSms(person.telefon, person.message)
+                        }}
                         style={styles.smsButton}
                       >
                         {copy.sms}
                       </button>
                       <button
                         type="button"
-                        onClick={() => openWhatsapp(person.telefon, person.message)}
+                        onClick={() => {
+                          markOpened()
+                          openWhatsapp(person.telefon, person.message)
+                        }}
                         style={styles.whatsappButton}
                       >
                         {copy.whatsapp}
@@ -287,6 +308,9 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
     gap: 10,
     alignItems: 'center'
+  },
+  personRowOpened: {
+    background: '#fbf7ff'
   },
   personMain: {
     minWidth: 0,
