@@ -95,6 +95,53 @@ function fitPdfText(value: any, maxLength: number) {
   return `${safe.slice(0, Math.max(0, maxLength - 3)).trim()}...`
 }
 
+function estimatePdfTextWidth(value: string, size: number) {
+  return value.split('').reduce((width, char) => {
+    if (char === ' ') return width + size * 0.28
+    if ('ilI.,:;!|'.includes(char)) return width + size * 0.25
+    if ('mwMW@#%'.includes(char)) return width + size * 0.78
+    if ('0123456789'.includes(char)) return width + size * 0.56
+
+    return width + size * 0.52
+  }, 0)
+}
+
+function wrapPdfText(value: any, maxWidth: number, size: number, maxLines: number) {
+  const words = pdfText(value).split(' ').filter(Boolean)
+  const lines: string[] = []
+
+  words.forEach(word => {
+    const lastLine = lines[lines.length - 1] || ''
+    const candidate = lastLine ? `${lastLine} ${word}` : word
+
+    if (!lastLine || estimatePdfTextWidth(candidate, size) <= maxWidth) {
+      if (lastLine) {
+        lines[lines.length - 1] = candidate
+      } else {
+        lines.push(candidate)
+      }
+
+      return
+    }
+
+    lines.push(word)
+  })
+
+  const limited = lines.slice(0, maxLines)
+
+  if (lines.length > maxLines && limited.length > 0) {
+    let last = limited[limited.length - 1]
+
+    while (last.length > 3 && estimatePdfTextWidth(`${last}...`, size) > maxWidth) {
+      last = last.slice(0, -1).trim()
+    }
+
+    limited[limited.length - 1] = `${last}...`
+  }
+
+  return limited
+}
+
 function drawPdfText({
   commands,
   value,
@@ -117,10 +164,39 @@ function drawPdfText({
   color?: string
 }) {
   const safe = fitPdfText(value, maxLength)
-  const estimatedWidth = safe.length * size * 0.52
+  const estimatedWidth = estimatePdfTextWidth(safe, size)
   const textX = center ? x - estimatedWidth / 2 : x
 
   commands.push(`BT /${bold ? 'F2' : 'F1'} ${pdfNumber(size)} Tf ${color} rg ${pdfNumber(textX)} ${pdfNumber(y)} Td (${pdfEscape(safe)}) Tj ET`)
+}
+
+function drawPdfTextLines({
+  commands,
+  lines,
+  x,
+  y,
+  size,
+  lineHeight,
+  center = false,
+  bold = false,
+  color = '0 0 0'
+}: {
+  commands: string[]
+  lines: string[]
+  x: number
+  y: number
+  size: number
+  lineHeight: number
+  center?: boolean
+  bold?: boolean
+  color?: string
+}) {
+  lines.forEach((line, index) => {
+    const estimatedWidth = estimatePdfTextWidth(line, size)
+    const textX = center ? x - estimatedWidth / 2 : x
+
+    commands.push(`BT /${bold ? 'F2' : 'F1'} ${pdfNumber(size)} Tf ${color} rg ${pdfNumber(textX)} ${pdfNumber(y - index * lineHeight)} Td (${pdfEscape(line)}) Tj ET`)
+  })
 }
 
 function drawQrPdf({
@@ -220,6 +296,13 @@ function buildQrPrintPdf({
       const qrX = cardX + (cardWidth - qrSize) / 2
       const qrY = cardTop - 10 - qrSize
       const centerX = cardX + cardWidth / 2
+      const nameLines = wrapPdfText(item.fullName, cardWidth - 10, 8.5, 2)
+      const groupY = qrY - 14 - nameLines.length * 10
+      const foodBoxWidth = 42
+      const foodBoxHeight = 12
+      const foodBoxX = centerX - foodBoxWidth / 2
+      const foodBoxY = cardY + 8
+      const foodText = foodLabel(item.food)
 
       commands.push(`q 0.82 0.84 0.87 RG 0.75 w ${pdfNumber(cardX)} ${pdfNumber(cardY)} ${pdfNumber(cardWidth)} ${pdfNumber(cardHeight)} re S Q`)
       drawQrPdf({
@@ -229,13 +312,13 @@ function buildQrPrintPdf({
         y: qrY,
         size: qrSize
       })
-      drawPdfText({
+      drawPdfTextLines({
         commands,
-        value: item.fullName,
+        lines: nameLines,
         x: centerX,
         y: qrY - 14,
         size: 8.5,
-        maxLength: 24,
+        lineHeight: 10,
         center: true,
         bold: true
       })
@@ -243,18 +326,18 @@ function buildQrPrintPdf({
         commands,
         value: groupName,
         x: centerX,
-        y: qrY - 26,
+        y: groupY,
         size: 7,
         maxLength: 28,
         center: true,
         color: '0.42 0.45 0.5'
       })
-      commands.push(`q 0.93 0.95 1 rg ${pdfNumber(centerX - 21)} ${pdfNumber(cardY + 8)} 42 12 re f Q`)
+      commands.push(`q 0.93 0.95 1 rg ${pdfNumber(foodBoxX)} ${pdfNumber(foodBoxY)} ${pdfNumber(foodBoxWidth)} ${pdfNumber(foodBoxHeight)} re f Q`)
       drawPdfText({
         commands,
-        value: foodLabel(item.food),
-        x: centerX,
-        y: cardY + 11,
+        value: foodText,
+        x: foodBoxX + foodBoxWidth / 2,
+        y: foodBoxY + 4,
         size: 7,
         maxLength: 8,
         center: true,
