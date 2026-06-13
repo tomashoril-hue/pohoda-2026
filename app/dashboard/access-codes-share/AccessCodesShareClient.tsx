@@ -11,6 +11,8 @@ type SharePerson = {
   priezvisko: string
   email: string
   telefon: string
+  loginType: 'EMAIL' | 'CODE' | 'NONE'
+  loginLabel: string
   accessCode: string
   loginUrl: string
   message: string
@@ -77,7 +79,8 @@ export default function AccessCodesShareClient({
         sms: 'SMS',
         whatsapp: 'WhatsApp',
         noPhone: 'No phone number',
-        noCode: 'No access code',
+        noCode: 'No login details',
+        login: 'Login',
         empty: 'No matching people found.',
         home: 'Home',
         signedIn: 'Signed in'
@@ -90,7 +93,8 @@ export default function AccessCodesShareClient({
         sms: 'SMS',
         whatsapp: 'WhatsApp',
         noPhone: 'Bez telefonu',
-        noCode: 'Bez pristupoveho kodu',
+        noCode: 'Bez prihlasenia',
+        login: 'Prihlasenie',
         empty: 'Nenasli sa ziadne osoby.',
         home: 'Domov',
         signedIn: 'Prihlaseny'
@@ -160,7 +164,7 @@ export default function AccessCodesShareClient({
           )}
 
           {filteredPeople.map(person => {
-            const disabled = !person.telefon || !person.accessCode
+            const disabled = !person.telefon || !person.loginUrl
             const opened = openedPersonIds.has(person.id)
             const markOpened = (action: 'sms' | 'whatsapp') => {
               const actionKey = `${person.id}:${action}`
@@ -196,8 +200,9 @@ export default function AccessCodesShareClient({
                 </div>
 
                 <div style={styles.codeBox}>
-                  <span>Kod</span>
-                  <b>{person.accessCode || '-'}</b>
+                  <span>{copy.login}</span>
+                  <b>{person.loginLabel}</b>
+                  {person.loginType === 'CODE' && <small>{person.accessCode}</small>}
                 </div>
 
                 <div style={styles.actions}>

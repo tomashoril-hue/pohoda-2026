@@ -8,12 +8,20 @@ import AccessCodesShareClient from './AccessCodesShareClient'
 
 export const dynamic = 'force-dynamic'
 
+type LoginType = 'EMAIL' | 'CODE' | 'NONE'
+
 function text(value: any) {
   return String(value || '').trim()
 }
 
 function languageValue(value: any): 'SK' | 'EN' {
   return text(value).toUpperCase() === 'EN' ? 'EN' : 'SK'
+}
+
+function emailValue(value: any) {
+  const email = text(value).toLowerCase()
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : ''
 }
 
 function normalizePhone(value: any) {
@@ -89,12 +97,16 @@ async function getCurrentRegistrationGroupUserIds(registrationGroupId: string) {
   return Array.from(userIds)
 }
 
-function shareMessage(language: 'SK' | 'EN', accessCode: string, loginUrl: string) {
+function shareMessage(language: 'SK' | 'EN', loginType: LoginType, accessCode: string, loginUrl: string) {
   if (language === 'EN') {
-    return `Hello, your PohodaPass access code is ${accessCode}. Login: ${loginUrl}`
+    if (loginType === 'EMAIL') return `Hello, log in to PohodaPass using your e-mail here: ${loginUrl}`
+    if (loginType === 'CODE') return `Hello, your PohodaPass access code is ${accessCode}. Login: ${loginUrl}`
+    return ''
   }
 
-  return `Ahoj, tvoj pristupovy kod do PohodaPass je ${accessCode}. Prihlasenie: ${loginUrl}`
+  if (loginType === 'EMAIL') return `Ahoj, do PohodaPass sa prihlas cez svoj e-mail tu: ${loginUrl}`
+  if (loginType === 'CODE') return `Ahoj, tvoj pristupovy kod do PohodaPass je ${accessCode}. Prihlasenie: ${loginUrl}`
+  return ''
 }
 
 export default async function AccessCodesSharePage({
@@ -163,8 +175,19 @@ export default async function AccessCodesSharePage({
   const loginBaseUrl = `${siteBaseUrl}/login`
   const people = activeUsers
     .map((person: any) => {
+      const email = emailValue(person.email)
       const accessCode = text(codeByUser.get(person.id))
-      const loginUrl = `${loginBaseUrl}?method=code&code=${encodeURIComponent(accessCode)}`
+      const loginType: LoginType = email ? 'EMAIL' : accessCode ? 'CODE' : 'NONE'
+      const loginLabel = loginType === 'EMAIL'
+        ? (language === 'EN' ? 'E-mail' : 'E-mail')
+        : loginType === 'CODE'
+          ? (language === 'EN' ? 'Access code' : 'Pristupovy kod')
+          : (language === 'EN' ? 'Not available' : 'Bez prihlasenia')
+      const loginUrl = loginType === 'EMAIL'
+        ? `${loginBaseUrl}?method=email&email=${encodeURIComponent(email)}`
+        : loginType === 'CODE'
+          ? `${loginBaseUrl}?method=code&code=${encodeURIComponent(accessCode)}`
+          : ''
       const phone = normalizePhone(person.telefon)
 
       return {
@@ -172,14 +195,15 @@ export default async function AccessCodesSharePage({
         fullName: fullName(person),
         meno: text(person.meno),
         priezvisko: text(person.priezvisko),
-        email: text(person.email),
+        email,
         telefon: phone,
+        loginType,
+        loginLabel,
         accessCode,
         loginUrl,
-        message: shareMessage(language, accessCode, loginUrl)
+        message: shareMessage(language, loginType, accessCode, loginUrl)
       }
     })
-    .filter(person => person.accessCode)
     .sort((a, b) => `${a.priezvisko} ${a.meno}`.localeCompare(`${b.priezvisko} ${b.meno}`, 'sk'))
 
   return (

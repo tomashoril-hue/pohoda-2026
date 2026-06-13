@@ -219,6 +219,7 @@ type AccessExportRow = {
   priezvisko: string
   email: string
   telefon: string
+  loginType: string
   accessCode: string
   loginUrl: string
 }
@@ -231,8 +232,8 @@ function xlsxInlineCell(value: any, ref: string, style = 0) {
 
 function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
   const headers = language === 'EN'
-    ? ['Registration group', 'First name', 'Last name', 'Email', 'Phone', 'Access code', 'Login URL']
-    : ['Registracna skupina', 'Meno', 'Priezvisko', 'Email', 'Telefon', 'Prihlasovaci kod', 'Login URL']
+    ? ['Registration group', 'First name', 'Last name', 'Email', 'Phone', 'Login type', 'Access code', 'Login URL']
+    : ['Registracna skupina', 'Meno', 'Priezvisko', 'Email', 'Telefon', 'Typ prihlasenia', 'Prihlasovaci kod', 'Login URL']
   const sheetName = language === 'EN' ? 'Login details' : 'Pristupove kody'
   const documentTitle = language === 'EN' ? 'PohodaPass login details' : 'Pristupove kody PohodaPass'
   const allRows = [headers, ...rows.map(row => [
@@ -241,6 +242,7 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
     row.priezvisko,
     row.email,
     row.telefon,
+    row.loginType,
     row.accessCode,
     row.loginUrl
   ])]
@@ -258,11 +260,11 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
     const rowNumber = index + 2
 
     return [
-      `<hyperlink ref="G${rowNumber}" r:id="rId${index + 1}" display="${xmlEscape(row.loginUrl)}"/>`
+      row.loginUrl ? `<hyperlink ref="H${rowNumber}" r:id="rId${index + 1}" display="${xmlEscape(row.loginUrl)}"/>` : ''
     ].filter(Boolean)
   }).join('')
   const hyperlinkRels = rows.flatMap((row, index) => ([
-    `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${xmlEscape(row.loginUrl)}" TargetMode="External"/>`
+    row.loginUrl ? `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${xmlEscape(row.loginUrl)}" TargetMode="External"/>` : ''
   ].filter(Boolean))).join('')
   const lastRow = Math.max(1, allRows.length)
 
@@ -349,7 +351,7 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
       name: 'xl/worksheets/sheet1.xml',
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <dimension ref="A1:G${lastRow}"/>
+  <dimension ref="A1:H${lastRow}"/>
   <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
   <cols>
     <col min="1" max="1" width="26" customWidth="1"/>
@@ -358,10 +360,11 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
     <col min="4" max="4" width="34" customWidth="1"/>
     <col min="5" max="5" width="18" customWidth="1"/>
     <col min="6" max="6" width="18" customWidth="1"/>
-    <col min="7" max="7" width="64" customWidth="1"/>
+    <col min="7" max="7" width="18" customWidth="1"/>
+    <col min="8" max="8" width="64" customWidth="1"/>
   </cols>
   <sheetData>${sheetRows}</sheetData>
-  <autoFilter ref="A1:G${lastRow}"/>
+  <autoFilter ref="A1:H${lastRow}"/>
   <hyperlinks>${hyperlinkRows}</hyperlinks>
 </worksheet>`
     },
@@ -814,25 +817,35 @@ export async function POST(req: NextRequest) {
     shareUrl.searchParams.set('language', language)
     const exportRows = activeUsers
       .map((user: any) => {
+        const email = emailValue(user.email)
         const accessCode = text(codeByUser.get(user.id))
-        const loginUrl = `${loginBaseUrl}?method=code&code=${encodeURIComponent(accessCode)}`
+        const loginType = email
+          ? (language === 'EN' ? 'Email' : 'E-mail')
+          : accessCode
+            ? (language === 'EN' ? 'Access code' : 'Pristupovy kod')
+            : (language === 'EN' ? 'Not available' : 'Bez prihlasenia')
+        const loginUrl = email
+          ? `${loginBaseUrl}?method=email&email=${encodeURIComponent(email)}`
+          : accessCode
+            ? `${loginBaseUrl}?method=code&code=${encodeURIComponent(accessCode)}`
+            : ''
         const phone = normalizePhone(user.telefon)
 
         return {
           registrationGroup: group?.name || '',
           meno: text(user.meno),
           priezvisko: text(user.priezvisko),
-          email: text(user.email),
+          email,
           telefon: phone,
+          loginType,
           accessCode,
           loginUrl
         }
       })
-      .filter(row => row.accessCode)
       .sort((a, b) => `${a.priezvisko} ${a.meno}`.localeCompare(`${b.priezvisko} ${b.meno}`, 'sk'))
 
     if (includeAccessCodes && exportRows.length === 0) {
-      return NextResponse.json({ error: 'V tejto registracnej skupine nie je ziadny aktivny pristupovy kod.' }, { status: 404 })
+      return NextResponse.json({ error: 'V tejto registracnej skupine nie je ziadny aktivny clovek.' }, { status: 404 })
     }
 
     const qrItems = activeUsers
@@ -857,7 +870,7 @@ export async function POST(req: NextRequest) {
       ? {
           subject: includeQrCodes ? 'PohodaPass - login details and QR codes' : 'PohodaPass - login details',
           heading: `Login details${includeQrCodes ? ' and QR codes' : ''}`,
-          attachmentIntro: 'Prepared files are attached. The Excel file contains a login link with a pre-filled access code for each person.',
+          attachmentIntro: 'Prepared files are attached. The Excel file contains login links. People with e-mail use e-mail login; people without e-mail use their access code.',
           loginInfo: 'The application is also available here:',
           shareIntro: 'After signing in, you can send individual login details by SMS or WhatsApp here:',
           shareButton: 'Send by SMS / WhatsApp',
@@ -868,11 +881,11 @@ export async function POST(req: NextRequest) {
       : {
           subject: includeQrCodes ? 'PohodaPass - prihlasovacie udaje a QR kody' : 'PohodaPass - prihlasovacie udaje',
           heading: `Prihlasovacie udaje${includeQrCodes ? ' a QR kody' : ''}`,
-          attachmentIntro: 'V prilohe najdes pripravene subory. V Excel tabulke je pre kazdu osobu aj prihlasovaci odkaz s predvyplnenym kodom.',
+          attachmentIntro: 'V prilohe najdes pripravene subory. V Excel tabulke su prihlasovacie odkazy. Ludia s e-mailom idu cez e-mailove prihlasenie, ludia bez e-mailu cez pristupovy kod.',
           loginInfo: 'Prihlasenie je dostupne aj tu:',
           shareIntro: 'Po prihlaseni vies jednotlive pristupove udaje odoslat cez SMS alebo WhatsApp tu:',
           shareButton: 'Odoslat cez SMS / WhatsApp',
-          accessAttachment: `Excel pristupove kody: ${exportRows.length}`,
+          accessAttachment: `Excel prihlasovacie udaje: ${exportRows.length}`,
           qrAttachment: `QR tlacova priloha: ${qrItems.length}`,
           qrTitle: `QR kody - ${group?.name || 'Registracna skupina'}`
         }
