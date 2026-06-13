@@ -1,7 +1,7 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 
 type SharePerson = {
@@ -32,6 +32,16 @@ function openWhatsapp(phone: string, message: string) {
   window.location.href = `https://wa.me/${cleanPhone(phone, true)}?text=${encodeURIComponent(message)}`
 }
 
+function openedStorageKey() {
+  return `pohoda-access-codes-opened:${window.location.pathname}${window.location.search}`
+}
+
+function isReloadNavigation() {
+  const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+
+  return navigation?.type === 'reload'
+}
+
 export default function AccessCodesShareClient({
   groupName,
   language,
@@ -47,6 +57,7 @@ export default function AccessCodesShareClient({
 }) {
   const [search, setSearch] = useState('')
   const [openedPersonIds, setOpenedPersonIds] = useState<Set<string>>(() => new Set())
+  const [pressedAction, setPressedAction] = useState('')
   const q = search.trim().toLowerCase()
   const filteredPeople = useMemo(() => {
     if (!q) return people
@@ -84,6 +95,26 @@ export default function AccessCodesShareClient({
         home: 'Domov',
         signedIn: 'Prihlaseny'
       }
+
+  useEffect(() => {
+    const key = openedStorageKey()
+
+    if (isReloadNavigation()) {
+      sessionStorage.removeItem(key)
+      setOpenedPersonIds(new Set())
+      return
+    }
+
+    try {
+      const storedIds = JSON.parse(sessionStorage.getItem(key) || '[]')
+
+      if (Array.isArray(storedIds)) {
+        setOpenedPersonIds(new Set(storedIds.filter(id => typeof id === 'string')))
+      }
+    } catch {
+      sessionStorage.removeItem(key)
+    }
+  }, [])
 
   return (
     <main style={styles.page}>
@@ -131,12 +162,23 @@ export default function AccessCodesShareClient({
           {filteredPeople.map(person => {
             const disabled = !person.telefon || !person.accessCode
             const opened = openedPersonIds.has(person.id)
-            const markOpened = () => {
+            const markOpened = (action: 'sms' | 'whatsapp') => {
+              const actionKey = `${person.id}:${action}`
+
               setOpenedPersonIds(previous => {
                 const next = new Set(previous)
                 next.add(person.id)
+
+                try {
+                  sessionStorage.setItem(openedStorageKey(), JSON.stringify(Array.from(next)))
+                } catch {
+                  // Visual helper only. If storage is unavailable, in-memory state is enough.
+                }
+
                 return next
               })
+              setPressedAction(actionKey)
+              window.setTimeout(() => setPressedAction(current => current === actionKey ? '' : current), 900)
             }
 
             return (
@@ -166,20 +208,26 @@ export default function AccessCodesShareClient({
                       <button
                         type="button"
                         onClick={() => {
-                          markOpened()
-                          openSms(person.telefon, person.message)
+                          markOpened('sms')
+                          window.setTimeout(() => openSms(person.telefon, person.message), 140)
                         }}
-                        style={styles.smsButton}
+                        style={{
+                          ...styles.smsButton,
+                          ...(pressedAction === `${person.id}:sms` ? styles.actionButtonPressed : {})
+                        }}
                       >
                         {copy.sms}
                       </button>
                       <button
                         type="button"
                         onClick={() => {
-                          markOpened()
-                          openWhatsapp(person.telefon, person.message)
+                          markOpened('whatsapp')
+                          window.setTimeout(() => openWhatsapp(person.telefon, person.message), 140)
                         }}
-                        style={styles.whatsappButton}
+                        style={{
+                          ...styles.whatsappButton,
+                          ...(pressedAction === `${person.id}:whatsapp` ? styles.actionButtonPressed : {})
+                        }}
                       >
                         {copy.whatsapp}
                       </button>
@@ -307,10 +355,13 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
     gap: 10,
-    alignItems: 'center'
+    alignItems: 'center',
+    transition: 'background 140ms ease, border-color 140ms ease, box-shadow 140ms ease'
   },
   personRowOpened: {
-    background: '#fbf7ff'
+    background: '#f5efff',
+    borderColor: '#c8b5f6',
+    boxShadow: 'inset 5px 0 0 #d7c5ff'
   },
   personMain: {
     minWidth: 0,
@@ -352,6 +403,10 @@ const styles: Record<string, CSSProperties> = {
     textAlign: 'center',
     cursor: 'pointer',
     fontSize: 14
+  },
+  actionButtonPressed: {
+    transform: 'translate(2px, 2px)',
+    boxShadow: 'inset 0 0 0 999px rgba(255, 255, 255, 0.22)'
   },
   disabledNote: {
     gridColumn: '1 / -1',
