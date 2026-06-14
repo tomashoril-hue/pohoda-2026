@@ -581,11 +581,6 @@ export default async function DashboardPage({
           <p><b>E-mail:</b> {user.email || '-'}</p>
           <p><b>Registračná skupina:</b> {registrationGroupName}</p>
           <p><b>Typ stravy:</b> {menuVariantLabel(defaultFood) || '-'}</p>
-          <p>
-            <a href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer" style={styles.privacyLink}>
-              Ochrana osobných údajov
-            </a>
-          </p>
         </div>
 
         <section className="dashboard-today-box" style={styles.todayBox}>
@@ -814,6 +809,12 @@ export default async function DashboardPage({
             </>
           )}
         </div>
+
+        <footer style={styles.footer}>
+          <a href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer" style={styles.privacyLink}>
+            Ochrana osobných údajov
+          </a>
+        </footer>
       </section>
     </main>
   )
@@ -909,6 +910,13 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#000',
     fontWeight: 950,
     textDecoration: 'underline'
+  },
+  footer: {
+    marginTop: 22,
+    paddingTop: 14,
+    borderTop: '2px solid rgba(0, 0, 0, 0.18)',
+    textAlign: 'center',
+    fontSize: 13
   },
   todayBox: {
     marginTop: 24,
