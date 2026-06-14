@@ -258,6 +258,7 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
     return `<row r="${rowNumber}">${cells}</row>`
   }).join('')
   const lastRow = Math.max(1, allRows.length)
+  const lastColumn = columnToLetter(headers.length)
 
   return createZip([
     {
@@ -342,7 +343,7 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
       name: 'xl/worksheets/sheet1.xml',
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <dimension ref="A1:H${lastRow}"/>
+  <dimension ref="A1:${lastColumn}${lastRow}"/>
   <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
   <cols>
     <col min="1" max="1" width="26" customWidth="1"/>
@@ -355,7 +356,7 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
     <col min="8" max="8" width="18" customWidth="1"/>
   </cols>
   <sheetData>${sheetRows}</sheetData>
-  <autoFilter ref="A1:H${lastRow}"/>
+  <autoFilter ref="A1:${lastColumn}${lastRow}"/>
 </worksheet>`
     },
   ])
