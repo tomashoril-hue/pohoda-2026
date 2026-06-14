@@ -5,7 +5,7 @@ import { useState } from 'react'
 import {
   PRIVACY_CONSENT_TEXT,
   PRIVACY_POLICY_URL
-} from '@/lib/privacyConsent'
+} from '@/lib/privacyConsentConfig'
 
 export default function PrivacyConsentClient({
   userName
