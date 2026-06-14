@@ -863,7 +863,7 @@ export async function POST(req: NextRequest) {
           ? (language === 'EN' ? 'Email' : 'E-mail')
           : accessCode
             ? (language === 'EN' ? 'Access code' : 'Pristupovy kod')
-            : (language === 'EN' ? 'Not available' : 'Bez prihlasenia')
+            : (language === 'EN' ? 'No login identifier' : 'Bez prihlasovacieho identifikatora')
         const loginUrl = email
           ? `${loginBaseUrl}?method=email&email=${encodeURIComponent(email)}`
           : accessCode
