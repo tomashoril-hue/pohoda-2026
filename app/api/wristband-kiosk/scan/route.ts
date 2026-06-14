@@ -87,7 +87,7 @@ async function requireKioskAccess() {
   }
 }
 
-async function findPersonByActiveQr(qrCode: string) {
+async function findPersonByActiveQr(qrCode: string, requireDatabaseQr = false) {
   const { data: qrRow, error: qrError } = await supabaseServer
     .from('user_qr_codes')
     .select('user_id')
@@ -105,6 +105,27 @@ async function findPersonByActiveQr(qrCode: string) {
       status: 404,
       error: 'Aktuálny QR kód sa nenašiel alebo už nie je aktívny.',
       profile: null as any
+    }
+  }
+
+  if (requireDatabaseQr) {
+    const { data: poolQr, error: poolQrError } = await supabaseServer
+      .from('qr_codes')
+      .select('id')
+      .eq('code', qrCode)
+      .maybeSingle()
+
+    if (poolQrError) {
+      return { ok: false as const, status: 500, error: poolQrError.message, profile: null as any }
+    }
+
+    if (!poolQr) {
+      return {
+        ok: false as const,
+        status: 400,
+        error: 'Ako prvý načítaj databázový QR kód osoby. Aktívny náramok nie je možné použiť.',
+        profile: null as any
+      }
     }
   }
 
@@ -160,7 +181,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Najprv načítaj aktuálny QR kód osoby.' }, { status: 400 })
     }
 
-    const personLookup = await findPersonByActiveQr(currentQr)
+    const personLookup = await findPersonByActiveQr(currentQr, mode === 'LOOKUP')
 
     if (!personLookup.ok) {
       return NextResponse.json({ error: personLookup.error }, { status: personLookup.status })
