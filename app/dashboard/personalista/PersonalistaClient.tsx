@@ -602,6 +602,7 @@ export default function PersonalistaClient({
   const [accessCodeLoaded, setAccessCodeLoaded] = useState(false)
   const [accessCodeValue, setAccessCodeValue] = useState('')
   const [accessCodeCopied, setAccessCodeCopied] = useState(false)
+  const [accessCodeRevealed, setAccessCodeRevealed] = useState(false)
 
   const setDetailFeedback = (message: string, type: DetailMessageType, mode: DetailMode = detailMode) => {
     setDetailMessage(message)
@@ -978,6 +979,7 @@ export default function PersonalistaClient({
 
     setAccessCodeLoading(true)
     setAccessCodeCopied(false)
+    setAccessCodeRevealed(false)
 
     try {
       const res = await fetch(`/api/personalista/people/access-code?userId=${encodeURIComponent(selectedPerson.id)}`, {
@@ -993,7 +995,7 @@ export default function PersonalistaClient({
       setAccessCodeLoaded(true)
       setAccessCodeValue(json.accessCode || '')
       setDetailFeedback(
-        json.accessCode ? 'Pristupovy kod bol zobrazeny.' : 'Osoba nema pristupovy kod.',
+        json.accessCode ? 'Pristupovy kod je nacitany. Podrz Zobrazit pre odhalenie.' : 'Osoba nema pristupovy kod.',
         json.accessCode ? 'ok' : 'error',
         'accessCode'
       )
@@ -1015,6 +1017,7 @@ export default function PersonalistaClient({
 
     setAccessCodeLoading(true)
     setAccessCodeCopied(false)
+    setAccessCodeRevealed(false)
 
     try {
       const res = await fetch('/api/personalista/people/access-code', {
@@ -1031,6 +1034,7 @@ export default function PersonalistaClient({
 
       setAccessCodeLoaded(true)
       setAccessCodeValue(json.accessCode || '')
+      setAccessCodeRevealed(false)
       setDetailFeedback(json.message || 'Pristupovy kod bol vytvoreny.', 'ok', 'accessCode')
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -1046,6 +1050,7 @@ export default function PersonalistaClient({
     try {
       await navigator.clipboard.writeText(accessCodeValue)
       setAccessCodeCopied(true)
+      setAccessCodeRevealed(false)
       setDetailFeedback('Pristupovy kod bol skopirovany.', 'ok', 'accessCode')
 
       window.setTimeout(() => {
@@ -1173,7 +1178,22 @@ export default function PersonalistaClient({
     setAccessCodeLoaded(false)
     setAccessCodeValue('')
     setAccessCodeCopied(false)
+    setAccessCodeRevealed(false)
   }, [detailMode])
+
+  useEffect(() => {
+    if (detailMode !== 'accessCode') return
+    if (!selectedPerson || !canUseSelectedPersonAccessCode) return
+    if (accessCodeLoaded || accessCodeLoading) return
+
+    void loadAccessCode()
+  }, [
+    detailMode,
+    selectedPerson?.id,
+    canUseSelectedPersonAccessCode,
+    accessCodeLoaded,
+    accessCodeLoading
+  ])
 
   useEffect(() => {
     setPeople(initialPeople)
@@ -1270,6 +1290,7 @@ export default function PersonalistaClient({
     setAccessCodeLoaded(false)
     setAccessCodeValue('')
     setAccessCodeCopied(false)
+    setAccessCodeRevealed(false)
     setRoleForm({
       admin: selectedPerson.globalRoles.includes('ADMIN'),
       personalista: selectedPerson.globalRoles.includes('PERSONALISTA'),
@@ -6481,13 +6502,19 @@ export default function PersonalistaClient({
                 <div style={styles.detailEditBox}>
                   <div style={styles.detailEditTitle}>Pristupovy kod</div>
                   <div style={styles.optionHint}>
-                    Kod sa nacita az po kliknuti na zobrazit. Zobrazenie sa zapisuje do auditu.
+                    Kod sa nacita pri otvoreni tejto akcie. Podrz Zobrazit iba pocas kontroly kodu.
                   </div>
 
                   <div style={styles.accessCodeBox}>
                     <span style={styles.optionTitle}>Kod</span>
                     <b style={styles.accessCodeValue}>
-                      {accessCodeLoaded && accessCodeValue ? accessCodeValue : '********'}
+                      {accessCodeLoading
+                        ? 'Nacitavam...'
+                        : accessCodeLoaded && !accessCodeValue
+                          ? 'Bez kodu'
+                          : accessCodeRevealed && accessCodeValue
+                            ? accessCodeValue
+                            : '********'}
                     </b>
                   </div>
 
@@ -6495,11 +6522,15 @@ export default function PersonalistaClient({
                     <button
                       type="button"
                       style={styles.lightButton}
-                      disabled={accessCodeLoading}
-                      onClick={loadAccessCode}
-                      title="Zobrazit pristupovy kod"
+                      disabled={accessCodeLoading || !accessCodeValue}
+                      onPointerDown={() => setAccessCodeRevealed(true)}
+                      onPointerUp={() => setAccessCodeRevealed(false)}
+                      onPointerLeave={() => setAccessCodeRevealed(false)}
+                      onPointerCancel={() => setAccessCodeRevealed(false)}
+                      onBlur={() => setAccessCodeRevealed(false)}
+                      title="Podrz pre zobrazenie pristupoveho kodu"
                     >
-                      {accessCodeLoading ? 'Nacitavam...' : 'Zobrazit'}
+                      Zobrazit
                     </button>
 
                     <button
