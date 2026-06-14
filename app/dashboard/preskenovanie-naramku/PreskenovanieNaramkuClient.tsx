@@ -40,6 +40,8 @@ export default function PreskenovanieNaramkuClient({
 }) {
   const manualInputRef = useRef<HTMLInputElement | null>(null)
   const resetTimerRef = useRef<number | null>(null)
+  const stepRef = useRef<Step>('PERSON')
+  const currentQrRef = useRef('')
 
   const [step, setStep] = useState<Step>('PERSON')
   const [currentQr, setCurrentQr] = useState('')
@@ -56,7 +58,9 @@ export default function PreskenovanieNaramkuClient({
     }
 
     setStep('PERSON')
+    stepRef.current = 'PERSON'
     setCurrentQr('')
+    currentQrRef.current = ''
     setPerson(null)
     setManualValue('')
     setMessage('Pripravené na preskenovanie.')
@@ -86,7 +90,9 @@ export default function PreskenovanieNaramkuClient({
       return { tone: 'warning' as const, message: 'Spracovanie už prebieha.' }
     }
 
-    if (step === 'DONE') {
+    const activeStep = stepRef.current
+
+    if (activeStep === 'DONE') {
       resetFlow()
       return { tone: 'warning' as const, message: 'Začínam ďalšie preskenovanie.' }
     }
@@ -96,9 +102,10 @@ export default function PreskenovanieNaramkuClient({
     setTone('warning')
 
     try {
-      const body = step === 'PERSON'
+      const activeCurrentQr = currentQrRef.current || currentQr
+      const body = activeStep === 'PERSON'
         ? { mode: 'LOOKUP', currentQr: value }
-        : { mode: 'REPLACE', currentQr, wristbandQr: value }
+        : { mode: 'REPLACE', currentQr: activeCurrentQr, wristbandQr: value }
 
       const res = await fetch('/api/wristband-kiosk/scan', {
         method: 'POST',
@@ -114,12 +121,14 @@ export default function PreskenovanieNaramkuClient({
         return { tone: 'error' as const, message: errorMessage }
       }
 
-      if (step === 'PERSON') {
+      if (activeStep === 'PERSON') {
+        currentQrRef.current = value
         setCurrentQr(value)
         setPerson({
           userId: json.userId || '',
           personName: json.personName || 'Bez mena'
         })
+        stepRef.current = 'WRISTBAND'
         setStep('WRISTBAND')
         const okMessage = `Osoba načítaná: ${json.personName || 'Bez mena'}. Teraz načítaj náramok.`
         setMessage(okMessage)
@@ -132,6 +141,7 @@ export default function PreskenovanieNaramkuClient({
       const okMessage = json.message || 'Náramok bol úspešne priradený.'
       setMessage(okMessage)
       setTone('success')
+      stepRef.current = 'DONE'
       setStep('DONE')
       setManualValue('')
       resetTimerRef.current = window.setTimeout(() => {
