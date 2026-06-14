@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { PRIVACY_POLICY_URL } from '@/lib/privacyConsentConfig'
 import { canUseGroupIssue, getManagedRegistrationGroupIds } from '@/lib/registrationGroupManagers'
 import { supabaseServer } from '@/lib/supabaseServer'
 import DashboardInvites from './DashboardInvites'
@@ -580,6 +581,11 @@ export default async function DashboardPage({
           <p><b>E-mail:</b> {user.email || '-'}</p>
           <p><b>Registračná skupina:</b> {registrationGroupName}</p>
           <p><b>Typ stravy:</b> {menuVariantLabel(defaultFood) || '-'}</p>
+          <p>
+            <a href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer" style={styles.privacyLink}>
+              Ochrana osobných údajov
+            </a>
+          </p>
         </div>
 
         <section className="dashboard-today-box" style={styles.todayBox}>
@@ -898,6 +904,11 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 14,
     fontSize: 15,
     fontWeight: 700
+  },
+  privacyLink: {
+    color: '#000',
+    fontWeight: 950,
+    textDecoration: 'underline'
   },
   todayBox: {
     marginTop: 24,

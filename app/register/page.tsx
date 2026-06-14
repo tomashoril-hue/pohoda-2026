@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
+import { PRIVACY_CONSENT_TEXT, PRIVACY_POLICY_URL } from '@/lib/privacyConsentConfig'
 
 export default function RegisterPage() {
   const [registrationGroups, setRegistrationGroups] = useState<{ id: string; name: string }[]>([])
@@ -14,6 +15,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('')
   const [telefon, setTelefon] = useState('')
   const [typStravy, setTypStravy] = useState('MASO')
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [result, setResult] = useState<any>(null)
   const [loading, setLoading] = useState(false)
 
@@ -48,6 +50,7 @@ export default function RegisterPage() {
     setRegistrationGroupNote('')
     setRegistrationGroupSearch('')
     setRegistrationGroupOpen(false)
+    setPrivacyAccepted(false)
   }
 
   const sendConfirmationEmail = async (email: string, token: string) => {
@@ -78,6 +81,7 @@ export default function RegisterPage() {
     if (!email.trim()) return alert('Zadaj email')
     if (!registrationGroupId) return alert('Vyber registračnú skupinu alebo možnosť Iné')
     if (registrationGroupId === 'OTHER' && !registrationGroupNote.trim()) return alert('Doplň, pod koho patríš')
+    if (!privacyAccepted) return alert('Potvrď oboznámenie s pravidlami ochrany osobných údajov.')
 
     setLoading(true)
 
@@ -244,14 +248,34 @@ export default function RegisterPage() {
           )}
         </div>
 
+        <label style={styles.privacyBox}>
+          <input
+            type="checkbox"
+            checked={privacyAccepted}
+            onChange={event => setPrivacyAccepted(event.target.checked)}
+            style={styles.privacyCheckbox}
+          />
+          <span>
+            {PRIVACY_CONSENT_TEXT}{' '}
+            <a
+              href={PRIVACY_POLICY_URL}
+              target="_blank"
+              rel="noreferrer"
+              style={styles.privacyLink}
+            >
+              Pravidlá ochrany osobných údajov
+            </a>
+          </span>
+        </label>
+
         <button
           style={{
             ...styles.button,
-            opacity: loading ? 0.65 : 1,
-            cursor: loading ? 'not-allowed' : 'pointer'
+            opacity: loading || !privacyAccepted ? 0.65 : 1,
+            cursor: loading || !privacyAccepted ? 'not-allowed' : 'pointer'
           }}
           onClick={handleSubmit}
-          disabled={loading}
+          disabled={loading || !privacyAccepted}
         >
           {loading ? 'Spracovávam...' : 'Registrovať'}
         </button>
@@ -426,6 +450,30 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 900,
     lineHeight: 1,
     cursor: 'pointer'
+  },
+  privacyBox: {
+    marginTop: 16,
+    display: 'grid',
+    gridTemplateColumns: '24px 1fr',
+    gap: 10,
+    alignItems: 'start',
+    background: '#f6f2ff',
+    border: '3px solid #000',
+    borderRadius: 18,
+    padding: 14,
+    fontSize: 14,
+    lineHeight: 1.4,
+    fontWeight: 750
+  },
+  privacyCheckbox: {
+    width: 20,
+    height: 20,
+    margin: 0,
+    accentColor: '#7417e8'
+  },
+  privacyLink: {
+    color: '#7417e8',
+    fontWeight: 950
   },
   button: {
     width: '100%',
