@@ -873,7 +873,7 @@ export async function POST(req: NextRequest) {
       ? {
           subject: includeQrCodes ? 'PohodaPass - login details and QR codes' : 'PohodaPass - login details',
           heading: `Login details${includeQrCodes ? ' and QR codes' : ''}`,
-          attachmentIntro: 'Prepared files are attached. The Excel file contains login links. People with e-mail use e-mail login; people without e-mail use their access code.',
+          attachmentIntro: 'Prepared files are attached. People with e-mail use e-mail login; people without e-mail use their access code.',
           loginInfo: 'The application is also available here:',
           shareIntro: 'After signing in as Manager, you can send individual login details by SMS or WhatsApp here:',
           shareButton: 'Send by SMS / WhatsApp',
@@ -884,7 +884,7 @@ export async function POST(req: NextRequest) {
       : {
           subject: includeQrCodes ? 'PohodaPass - prihlasovacie udaje a QR kody' : 'PohodaPass - prihlasovacie udaje',
           heading: `Prihlasovacie udaje${includeQrCodes ? ' a QR kody' : ''}`,
-          attachmentIntro: 'V prilohe najdes pripravene subory. V Excel tabulke su prihlasovacie odkazy. Ludia s e-mailom idu cez e-mailove prihlasenie, ludia bez e-mailu cez pristupovy kod.',
+          attachmentIntro: 'V prilohe najdes pripravene subory. Ludia s e-mailom idu cez e-mailove prihlasenie, ludia bez e-mailu cez pristupovy kod.',
           loginInfo: 'Prihlasenie je dostupne aj tu:',
           shareIntro: 'Po prihlaseni ako Manager vies jednotlive pristupove udaje odoslat cez SMS alebo WhatsApp tu:',
           shareButton: 'Odoslat cez SMS / WhatsApp',
@@ -935,19 +935,17 @@ export async function POST(req: NextRequest) {
             <p>${htmlEscape(note)}</p>
             <p>${htmlEscape(emailCopy.attachmentIntro)}</p>
             <p>${htmlEscape(emailCopy.loginInfo)} <a href="${loginBaseUrl}">${loginBaseUrl}</a></p>
-            ${includeAccessCodes ? `
-              <p>${htmlEscape(emailCopy.shareIntro)}</p>
-              <p>
-                <a href="${shareUrl.toString()}" style="display:inline-block;background:#7417e8;color:#fff;border:3px solid #000;border-radius:999px;padding:12px 18px;font-weight:900;text-decoration:none;">
-                  ${htmlEscape(emailCopy.shareButton)}
-                </a>
-              </p>
-            ` : ''}
+            <p>${htmlEscape(emailCopy.shareIntro)}</p>
+            <p>
+              <a href="${shareUrl.toString()}" style="display:inline-block;background:#7417e8;color:#fff;border:3px solid #000;border-radius:999px;padding:12px 18px;font-weight:900;text-decoration:none;">
+                ${htmlEscape(emailCopy.shareButton)}
+              </a>
+            </p>
             <p style="font-size:13px;color:#555;">${htmlEscape(attachmentText)}</p>
           </div>
         </div>
       `,
-      text: `${note}\n\n${emailCopy.loginInfo} ${loginBaseUrl}${includeAccessCodes ? `\n${emailCopy.shareIntro} ${shareUrl.toString()}` : ''}\n${attachmentText}`,
+      text: `${note}\n\n${emailCopy.loginInfo} ${loginBaseUrl}\n${emailCopy.shareIntro} ${shareUrl.toString()}\n${attachmentText}`,
       attachments
     })
 
