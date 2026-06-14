@@ -1,7 +1,7 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 
 type GroupOption = {
@@ -28,7 +28,9 @@ export default function AccessCodesGroupPickerClient({
   currentUserName: string
   currentUserEmail: string
 }) {
+  const selectRef = useRef<HTMLSelectElement | null>(null)
   const [selectedGroupId, setSelectedGroupId] = useState('')
+  const [pressedOpen, setPressedOpen] = useState(false)
   const copy = language === 'EN'
     ? {
         title: 'Access details',
@@ -50,6 +52,30 @@ export default function AccessCodesGroupPickerClient({
         home: 'Domov',
         groups: 'Skupiny'
       }
+
+  useEffect(() => {
+    const syncSelectedGroup = () => {
+      setSelectedGroupId(selectRef.current?.value || '')
+      setPressedOpen(false)
+    }
+
+    syncSelectedGroup()
+    window.addEventListener('pageshow', syncSelectedGroup)
+
+    return () => window.removeEventListener('pageshow', syncSelectedGroup)
+  }, [])
+
+  const openSelectedGroup = () => {
+    const groupId = selectRef.current?.value || selectedGroupId
+
+    if (!groupId) return
+
+    setSelectedGroupId(groupId)
+    setPressedOpen(true)
+    window.setTimeout(() => {
+      window.location.href = groupHref(groupId, language)
+    }, 90)
+  }
 
   return (
     <main style={styles.page}>
@@ -80,9 +106,13 @@ export default function AccessCodesGroupPickerClient({
             {copy.select}
           </label>
           <select
+            ref={selectRef}
             id="registration-group-select"
             value={selectedGroupId}
-            onChange={event => setSelectedGroupId(event.target.value)}
+            onChange={event => {
+              setSelectedGroupId(event.target.value)
+              setPressedOpen(false)
+            }}
             style={styles.select}
           >
             <option value="">{copy.placeholder}</option>
@@ -95,14 +125,16 @@ export default function AccessCodesGroupPickerClient({
 
           <button
             type="button"
-            disabled={!selectedGroupId}
-            onClick={() => {
-              if (!selectedGroupId) return
-              window.location.href = groupHref(selectedGroupId, language)
+            onPointerDown={() => {
+              if (selectRef.current?.value || selectedGroupId) setPressedOpen(true)
             }}
+            onPointerUp={() => window.setTimeout(() => setPressedOpen(false), 180)}
+            onPointerLeave={() => setPressedOpen(false)}
+            onClick={openSelectedGroup}
             style={{
               ...styles.openButton,
-              ...(!selectedGroupId ? styles.openButtonDisabled : {})
+              ...(!selectedGroupId ? styles.openButtonDisabled : {}),
+              ...(pressedOpen ? styles.openButtonPressed : {})
             }}
           >
             {copy.open}
@@ -234,5 +266,10 @@ const styles: Record<string, CSSProperties> = {
     borderColor: '#9ca3af',
     boxShadow: 'none',
     cursor: 'not-allowed'
+  },
+  openButtonPressed: {
+    transform: 'translate(2px, 2px)',
+    boxShadow: '1px 1px 0 #000',
+    filter: 'brightness(0.92)'
   }
 }
