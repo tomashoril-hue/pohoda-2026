@@ -233,8 +233,8 @@ function xlsxInlineCell(value: any, ref: string, style = 0) {
 
 function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
   const headers = language === 'EN'
-    ? ['Registration group', 'First name', 'Last name', 'Email', 'Phone', 'Manager', 'Login type', 'Access code', 'Login URL']
-    : ['Registracna skupina', 'Meno', 'Priezvisko', 'Email', 'Telefon', 'Manager', 'Typ prihlasenia', 'Prihlasovaci kod', 'Login URL']
+    ? ['Registration group', 'First name', 'Last name', 'Email', 'Phone', 'Manager', 'Login type', 'Access code']
+    : ['Registracna skupina', 'Meno', 'Priezvisko', 'Email', 'Telefon', 'Manager', 'Typ prihlasenia', 'Prihlasovaci kod']
   const sheetName = language === 'EN' ? 'Login details' : 'Pristupove kody'
   const documentTitle = language === 'EN' ? 'PohodaPass login details' : 'Pristupove kody PohodaPass'
   const allRows = [headers, ...rows.map(row => [
@@ -245,8 +245,7 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
     row.telefon,
     row.manager,
     row.loginType,
-    row.accessCode,
-    row.loginUrl
+    row.accessCode
   ])]
   const sheetRows = allRows.map((row, rowIndex) => {
     const rowNumber = rowIndex + 1
@@ -258,16 +257,6 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
 
     return `<row r="${rowNumber}">${cells}</row>`
   }).join('')
-  const hyperlinkRows = rows.flatMap((row, index) => {
-    const rowNumber = index + 2
-
-    return [
-      row.loginUrl ? `<hyperlink ref="I${rowNumber}" r:id="rId${index + 1}" display="${xmlEscape(row.loginUrl)}"/>` : ''
-    ].filter(Boolean)
-  }).join('')
-  const hyperlinkRels = rows.flatMap((row, index) => ([
-    row.loginUrl ? `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${xmlEscape(row.loginUrl)}" TargetMode="External"/>` : ''
-  ].filter(Boolean))).join('')
   const lastRow = Math.max(1, allRows.length)
 
   return createZip([
@@ -353,7 +342,7 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
       name: 'xl/worksheets/sheet1.xml',
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <dimension ref="A1:I${lastRow}"/>
+  <dimension ref="A1:H${lastRow}"/>
   <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
   <cols>
     <col min="1" max="1" width="26" customWidth="1"/>
@@ -364,18 +353,11 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
     <col min="6" max="6" width="12" customWidth="1"/>
     <col min="7" max="7" width="18" customWidth="1"/>
     <col min="8" max="8" width="18" customWidth="1"/>
-    <col min="9" max="9" width="64" customWidth="1"/>
   </cols>
   <sheetData>${sheetRows}</sheetData>
-  <autoFilter ref="A1:I${lastRow}"/>
-  <hyperlinks>${hyperlinkRows}</hyperlinks>
+  <autoFilter ref="A1:H${lastRow}"/>
 </worksheet>`
     },
-    {
-      name: 'xl/worksheets/_rels/sheet1.xml.rels',
-      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${hyperlinkRels}</Relationships>`
-    }
   ])
 }
 
