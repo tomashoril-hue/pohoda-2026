@@ -1,7 +1,7 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 
 type GroupOption = {
@@ -28,19 +28,13 @@ export default function AccessCodesGroupPickerClient({
   currentUserName: string
   currentUserEmail: string
 }) {
-  const [search, setSearch] = useState('')
-  const q = search.trim().toLowerCase()
-  const filteredGroups = useMemo(() => {
-    if (!q) return groups
-
-    return groups.filter(group => group.name.toLowerCase().includes(q))
-  }, [groups, q])
+  const [selectedGroupId, setSelectedGroupId] = useState('')
   const copy = language === 'EN'
     ? {
         title: 'Access details',
         subtitle: 'Choose a registration group and send prepared login messages by SMS or WhatsApp.',
-        search: 'Search registration group',
-        empty: 'No matching registration group found.',
+        select: 'Registration group',
+        placeholder: 'Choose registration group',
         open: 'Open',
         signedIn: 'Signed in',
         home: 'Home',
@@ -49,8 +43,8 @@ export default function AccessCodesGroupPickerClient({
     : {
         title: 'Pristupove udaje',
         subtitle: 'Vyber registracnu skupinu a odosli pripravene prihlasovacie spravy cez SMS alebo WhatsApp.',
-        search: 'Hladat registracnu skupinu',
-        empty: 'Nenasla sa ziadna registracna skupina.',
+        select: 'Registracna skupina',
+        placeholder: 'Vyber registracnu skupinu',
         open: 'Otvorit',
         signedIn: 'Prihlaseny',
         home: 'Domov',
@@ -81,29 +75,39 @@ export default function AccessCodesGroupPickerClient({
           </div>
         </header>
 
-        <input
-          value={search}
-          onChange={event => setSearch(event.target.value)}
-          placeholder={copy.search}
-          style={styles.search}
-        />
+        <section style={styles.formBox}>
+          <label style={styles.fieldLabel} htmlFor="registration-group-select">
+            {copy.select}
+          </label>
+          <select
+            id="registration-group-select"
+            value={selectedGroupId}
+            onChange={event => setSelectedGroupId(event.target.value)}
+            style={styles.select}
+          >
+            <option value="">{copy.placeholder}</option>
+            {groups.map(group => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </select>
 
-        <div style={styles.list}>
-          {filteredGroups.length === 0 && (
-            <div style={styles.empty}>{copy.empty}</div>
-          )}
-
-          {filteredGroups.map(group => (
-            <Link
-              key={group.id}
-              href={groupHref(group.id, language)}
-              style={styles.groupRow}
-            >
-              <b>{group.name}</b>
-              <span>{copy.open}</span>
-            </Link>
-          ))}
-        </div>
+          <button
+            type="button"
+            disabled={!selectedGroupId}
+            onClick={() => {
+              if (!selectedGroupId) return
+              window.location.href = groupHref(selectedGroupId, language)
+            }}
+            style={{
+              ...styles.openButton,
+              ...(!selectedGroupId ? styles.openButtonDisabled : {})
+            }}
+          >
+            {copy.open}
+          </button>
+        </section>
       </section>
     </main>
   )
@@ -187,7 +191,22 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 13,
     textAlign: 'center'
   },
-  search: {
+  formBox: {
+    background: '#fff',
+    border: '2px solid #000',
+    borderRadius: 14,
+    boxShadow: '4px 4px 0 #000',
+    padding: 12,
+    display: 'grid',
+    gap: 8
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: 950,
+    textTransform: 'uppercase',
+    letterSpacing: 0
+  },
+  select: {
     width: '100%',
     boxSizing: 'border-box',
     border: '2px solid #000',
@@ -195,33 +214,25 @@ const styles: Record<string, CSSProperties> = {
     padding: '10px 12px',
     fontSize: 14,
     fontWeight: 800,
-    outline: 'none'
+    outline: 'none',
+    background: '#fff'
   },
-  list: {
-    display: 'grid',
-    gap: 7
-  },
-  groupRow: {
-    background: '#fff',
-    color: '#000',
+  openButton: {
+    justifySelf: 'start',
+    background: '#7417e8',
+    color: '#fff',
     border: '2px solid #000',
-    borderRadius: 12,
-    padding: '10px 12px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 10,
-    textDecoration: 'none',
+    borderRadius: 999,
+    padding: '10px 18px',
+    fontWeight: 950,
     boxShadow: '3px 3px 0 #000',
-    fontSize: 14,
-    fontWeight: 900
+    cursor: 'pointer'
   },
-  empty: {
-    background: '#fff',
-    border: '2px solid #000',
-    borderRadius: 16,
-    padding: 18,
-    fontWeight: 900,
-    textAlign: 'center'
+  openButtonDisabled: {
+    background: '#e5e7eb',
+    color: '#6b7280',
+    borderColor: '#9ca3af',
+    boxShadow: 'none',
+    cursor: 'not-allowed'
   }
 }
