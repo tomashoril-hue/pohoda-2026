@@ -733,6 +733,7 @@ export default function PersonalistaClient({
 
       setAccessCodesMessage(`E-mail odoslany na ${accessCodesEmail}. Pristupy: ${json.count || 0}, QR: ${json.qrCount || 0}.`)
       setAccessCodesMessageType('ok')
+      setAccessCodesNote(ACCESS_CODES_NOTES[accessCodesLanguage])
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setAccessCodesMessage('Chyba spojenia so serverom: ' + message)
@@ -3399,12 +3400,9 @@ export default function PersonalistaClient({
                 value={accessCodesLanguage}
                 onChange={event => {
                   const nextLanguage = event.target.value === 'EN' ? 'EN' : 'SK'
-                  const previousDefaultNote = ACCESS_CODES_NOTES[accessCodesLanguage]
 
                   setAccessCodesLanguage(nextLanguage)
-                  if (!accessCodesNote.trim() || accessCodesNote === previousDefaultNote) {
-                    setAccessCodesNote(ACCESS_CODES_NOTES[nextLanguage])
-                  }
+                  setAccessCodesNote(ACCESS_CODES_NOTES[nextLanguage])
                 }}
                 style={styles.input}
                 disabled={accessCodesLoading}
