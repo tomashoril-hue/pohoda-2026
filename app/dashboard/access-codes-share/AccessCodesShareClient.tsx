@@ -80,8 +80,6 @@ export default function AccessCodesShareClient({
         sms: 'SMS',
         whatsapp: 'WhatsApp',
         noPhone: 'No phone number',
-        noCode: 'No login details',
-        login: 'Login',
         empty: 'No matching people found.',
         home: 'Home',
         signedIn: 'Signed in'
@@ -93,8 +91,6 @@ export default function AccessCodesShareClient({
         sms: 'SMS',
         whatsapp: 'WhatsApp',
         noPhone: 'Bez telefonu',
-        noCode: 'Bez prihlasenia',
-        login: 'Prihlasenie',
         empty: 'Nenasli sa ziadne osoby.',
         home: 'Domov',
         signedIn: 'Prihlaseny'
@@ -199,14 +195,23 @@ export default function AccessCodesShareClient({
                 </div>
 
                 <div style={styles.codeBox}>
-                  <span>{copy.login}</span>
-                  <b>{person.loginLabel}</b>
-                  {person.loginType === 'CODE' && <small>{person.accessCode}</small>}
+                  <b>
+                    {person.loginType === 'CODE'
+                      ? `${person.loginLabel} ${person.accessCode}`
+                      : person.loginLabel}
+                  </b>
                 </div>
 
                 <div style={styles.actions}>
                   {disabled ? (
-                    <span style={styles.disabledNote}>{!person.telefon ? copy.noPhone : copy.noCode}</span>
+                    <>
+                      <button type="button" disabled style={styles.disabledActionButton}>
+                        {copy.sms}
+                      </button>
+                      <button type="button" disabled style={styles.disabledActionButton}>
+                        {copy.whatsapp}
+                      </button>
+                    </>
                   ) : (
                     <>
                       <button
@@ -407,15 +412,16 @@ const styles: Record<string, CSSProperties> = {
     transform: 'translate(2px, 2px)',
     boxShadow: 'inset 0 0 0 999px rgba(255, 255, 255, 0.22)'
   },
-  disabledNote: {
-    gridColumn: '1 / -1',
-    background: '#fee2e2',
-    color: '#991b1b',
-    border: '2px solid #fecaca',
-    borderRadius: 12,
-    padding: 10,
-    fontWeight: 900,
-    textAlign: 'center'
+  disabledActionButton: {
+    background: '#e5e7eb',
+    color: '#6b7280',
+    border: '2px solid #9ca3af',
+    borderRadius: 999,
+    padding: '8px 10px',
+    fontWeight: 950,
+    textAlign: 'center',
+    cursor: 'not-allowed',
+    fontSize: 13
   },
   empty: {
     background: '#fff',

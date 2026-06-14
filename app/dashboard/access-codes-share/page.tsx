@@ -182,7 +182,7 @@ export default async function AccessCodesSharePage({
         ? (language === 'EN' ? 'E-mail' : 'E-mail')
         : loginType === 'CODE'
           ? (language === 'EN' ? 'Access code' : 'Pristupovy kod')
-          : (language === 'EN' ? 'Not available' : 'Bez prihlasenia')
+          : (language === 'EN' ? 'No access code' : 'Bez pristupoveho kodu')
       const loginUrl = loginType === 'EMAIL'
         ? `${loginBaseUrl}?method=email&email=${encodeURIComponent(email)}`
         : loginType === 'CODE'
