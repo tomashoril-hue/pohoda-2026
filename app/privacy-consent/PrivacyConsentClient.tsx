@@ -14,6 +14,7 @@ export default function PrivacyConsentClient({
 }) {
   const [accepted, setAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [pressed, setPressed] = useState(false)
   const [error, setError] = useState('')
 
   const submit = async () => {
@@ -23,6 +24,7 @@ export default function PrivacyConsentClient({
     }
 
     setLoading(true)
+    setPressed(true)
     setError('')
 
     try {
@@ -84,9 +86,15 @@ export default function PrivacyConsentClient({
         <button
           type="button"
           disabled={loading || !accepted}
+          onPointerDown={() => {
+            if (accepted && !loading) setPressed(true)
+          }}
+          onPointerUp={() => window.setTimeout(() => setPressed(false), 180)}
+          onPointerLeave={() => setPressed(false)}
           onClick={submit}
           style={{
             ...styles.button,
+            ...(pressed ? styles.buttonPressed : {}),
             ...((loading || !accepted) ? styles.buttonDisabled : {})
           }}
         >
@@ -183,7 +191,13 @@ const styles: Record<string, CSSProperties> = {
     padding: '12px 18px',
     fontWeight: 950,
     boxShadow: '4px 4px 0 #000',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    transition: 'transform 120ms ease, box-shadow 120ms ease, filter 120ms ease'
+  },
+  buttonPressed: {
+    transform: 'translate(2px, 2px)',
+    boxShadow: '1px 1px 0 #000',
+    filter: 'brightness(0.92)'
   },
   buttonDisabled: {
     background: '#e5e7eb',
