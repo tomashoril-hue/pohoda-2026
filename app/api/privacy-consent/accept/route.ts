@@ -18,13 +18,13 @@ export async function POST(req: NextRequest) {
     const user = await getCurrentUser()
 
     if (!user) {
-      return NextResponse.json({ error: 'Nie si prihlaseny.' }, { status: 401 })
+      return NextResponse.json({ error: 'Nie si prihlásený.' }, { status: 401 })
     }
 
     const body = await req.json().catch(() => ({}))
 
     if (body?.accepted !== true) {
-      return NextResponse.json({ error: 'Potvrdenie je povinne.' }, { status: 400 })
+      return NextResponse.json({ error: 'Potvrdenie je povinné.' }, { status: 400 })
     }
 
     const { error } = await supabaseServer
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   } catch (err: any) {
     return NextResponse.json(
-      { error: err?.message || 'Neznama chyba servera.' },
+      { error: err?.message || 'Neznáma chyba servera.' },
       { status: 500 }
     )
   }
