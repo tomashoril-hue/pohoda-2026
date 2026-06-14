@@ -978,8 +978,8 @@ export async function POST(req: NextRequest) {
                 <td align="left" style="vertical-align:middle;">
                   <div style="display:inline-block;background:#56db3f;border:3px solid #000;border-radius:999px;padding:8px 14px;font-weight:900;">PohodaPass</div>
                 </td>
-                <td align="right" style="vertical-align:middle;">
-                  <img src="${faviconUrl}" alt="PohodaPass" width="32" height="32" style="display:block;width:32px;height:32px;">
+                <td align="right" style="vertical-align:middle;padding-right:10px;">
+                  <img src="${faviconUrl}" alt="PohodaPass" width="42" height="42" style="display:block;width:42px;height:42px;">
                 </td>
               </tr>
             </table>
