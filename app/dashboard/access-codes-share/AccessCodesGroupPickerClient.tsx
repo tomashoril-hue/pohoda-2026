@@ -31,6 +31,7 @@ export default function AccessCodesGroupPickerClient({
   const selectRef = useRef<HTMLSelectElement | null>(null)
   const [selectedGroupId, setSelectedGroupId] = useState('')
   const [pressedOpen, setPressedOpen] = useState(false)
+  const [pressedNav, setPressedNav] = useState('')
   const copy = language === 'EN'
     ? {
         title: 'Access details',
@@ -38,6 +39,7 @@ export default function AccessCodesGroupPickerClient({
         select: 'Registration group',
         placeholder: 'Choose registration group',
         open: 'Open',
+        back: 'Back',
         signedIn: 'Signed in',
         home: 'Home',
         groups: 'Groups'
@@ -48,6 +50,7 @@ export default function AccessCodesGroupPickerClient({
         select: 'Registracna skupina',
         placeholder: 'Vyber registracnu skupinu',
         open: 'Otvorit',
+        back: 'Spat',
         signedIn: 'Prihlaseny',
         home: 'Domov',
         groups: 'Skupiny'
@@ -77,6 +80,17 @@ export default function AccessCodesGroupPickerClient({
     }, 90)
   }
 
+  const goBack = () => {
+    setPressedNav('back')
+
+    if (window.history.length > 1) {
+      window.history.back()
+      return
+    }
+
+    window.location.href = '/dashboard'
+  }
+
   return (
     <main style={styles.page}>
       <section style={styles.shell}>
@@ -85,9 +99,44 @@ export default function AccessCodesGroupPickerClient({
             <span>{copy.signedIn}</span>
             <b>{currentUserName || currentUserEmail || '-'}</b>
           </div>
-          <Link href="/dashboard" style={styles.homeButton}>
-            {copy.home}
-          </Link>
+          <div style={styles.topActions}>
+            <button
+              type="button"
+              style={{
+                ...styles.backButton,
+                ...(pressedNav === 'back' ? styles.backButtonPressed : {})
+              }}
+              onPointerDown={() => setPressedNav('back')}
+              onPointerUp={() => window.setTimeout(() => setPressedNav(''), 180)}
+              onPointerLeave={() => setPressedNav('')}
+              onClick={goBack}
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style={styles.navIcon}>
+                <path
+                  d="M10.8 5.2a1 1 0 0 1 0 1.4L6.4 11H20a1 1 0 1 1 0 2H6.4l4.4 4.4a1 1 0 1 1-1.4 1.4l-6.1-6.1a1 1 0 0 1 0-1.4l6.1-6.1a1 1 0 0 1 1.4 0Z"
+                  fill="currentColor"
+                />
+              </svg>
+              {copy.back}
+            </button>
+            <Link
+              href="/dashboard"
+              style={{
+                ...styles.homeButton,
+                ...(pressedNav === 'home' ? styles.homeButtonPressed : {})
+              }}
+              onPointerDown={() => setPressedNav('home')}
+              onClick={() => setPressedNav('home')}
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style={styles.navIcon}>
+                <path
+                  d="M3 10.5 12 3l9 7.5v9a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H4.5A1.5 1.5 0 0 1 3 19.5v-9Z"
+                  fill="currentColor"
+                />
+              </svg>
+              {copy.home}
+            </Link>
+          </div>
         </div>
 
         <header style={styles.header}>
@@ -178,6 +227,31 @@ const styles: Record<string, CSSProperties> = {
     boxShadow: '3px 3px 0 #000',
     fontSize: 13
   },
+  topActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap'
+  },
+  backButton: {
+    background: '#fff',
+    color: '#000',
+    border: '2px solid #000',
+    borderRadius: 999,
+    padding: '9px 14px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 7,
+    boxShadow: '3px 3px 0 #000',
+    fontWeight: 950,
+    cursor: 'pointer',
+    transition: 'transform 120ms ease, box-shadow 120ms ease, background 120ms ease'
+  },
+  backButtonPressed: {
+    transform: 'translate(2px, 2px)',
+    boxShadow: '1px 1px 0 #000',
+    background: '#f6f2ff'
+  },
   homeButton: {
     background: '#56db3f',
     color: '#000',
@@ -186,9 +260,19 @@ const styles: Record<string, CSSProperties> = {
     padding: '9px 14px',
     display: 'inline-flex',
     alignItems: 'center',
+    gap: 7,
     boxShadow: '3px 3px 0 #000',
     fontWeight: 950,
-    textDecoration: 'none'
+    textDecoration: 'none',
+    transition: 'transform 120ms ease, box-shadow 120ms ease, background 120ms ease'
+  },
+  homeButtonPressed: {
+    transform: 'translate(2px, 2px)',
+    boxShadow: '1px 1px 0 #000',
+    background: '#45c832'
+  },
+  navIcon: {
+    display: 'block'
   },
   header: {
     background: '#fff',

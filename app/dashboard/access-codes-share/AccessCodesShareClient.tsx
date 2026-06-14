@@ -81,6 +81,7 @@ export default function AccessCodesShareClient({
         whatsapp: 'WhatsApp',
         noPhone: 'No phone number',
         empty: 'No matching people found.',
+        back: 'Back',
         home: 'Home',
         signedIn: 'Signed in',
         group: 'Registration group'
@@ -93,6 +94,7 @@ export default function AccessCodesShareClient({
         whatsapp: 'WhatsApp',
         noPhone: 'Bez telefonu',
         empty: 'Nenasli sa ziadne osoby.',
+        back: 'Spat',
         home: 'Domov',
         signedIn: 'Prihlaseny',
         group: 'Skupina'
@@ -118,6 +120,17 @@ export default function AccessCodesShareClient({
     }
   }, [])
 
+  const goBack = () => {
+    setPressedAction('back')
+
+    if (window.history.length > 1) {
+      window.history.back()
+      return
+    }
+
+    window.location.href = '/dashboard'
+  }
+
   return (
     <main style={styles.page}>
       <section style={styles.shell}>
@@ -126,23 +139,44 @@ export default function AccessCodesShareClient({
             <span>{copy.signedIn}</span>
             <b>{currentUserName || currentUserEmail || '-'}</b>
           </div>
-          <Link
-            href="/dashboard"
-            style={{
-              ...styles.homeButton,
-              ...(pressedAction === 'home' ? styles.homeButtonPressed : {})
-            }}
-            onPointerDown={() => setPressedAction('home')}
-            onClick={() => setPressedAction('home')}
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style={styles.homeIcon}>
-              <path
-                d="M3 10.5 12 3l9 7.5v9a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H4.5A1.5 1.5 0 0 1 3 19.5v-9Z"
-                fill="currentColor"
-              />
-            </svg>
-            {copy.home}
-          </Link>
+          <div style={styles.topActions}>
+            <button
+              type="button"
+              style={{
+                ...styles.backButton,
+                ...(pressedAction === 'back' ? styles.backButtonPressed : {})
+              }}
+              onPointerDown={() => setPressedAction('back')}
+              onPointerUp={() => window.setTimeout(() => setPressedAction(''), 180)}
+              onPointerLeave={() => setPressedAction('')}
+              onClick={goBack}
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style={styles.homeIcon}>
+                <path
+                  d="M10.8 5.2a1 1 0 0 1 0 1.4L6.4 11H20a1 1 0 1 1 0 2H6.4l4.4 4.4a1 1 0 1 1-1.4 1.4l-6.1-6.1a1 1 0 0 1 0-1.4l6.1-6.1a1 1 0 0 1 1.4 0Z"
+                  fill="currentColor"
+                />
+              </svg>
+              {copy.back}
+            </button>
+            <Link
+              href="/dashboard"
+              style={{
+                ...styles.homeButton,
+                ...(pressedAction === 'home' ? styles.homeButtonPressed : {})
+              }}
+              onPointerDown={() => setPressedAction('home')}
+              onClick={() => setPressedAction('home')}
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style={styles.homeIcon}>
+                <path
+                  d="M3 10.5 12 3l9 7.5v9a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H4.5A1.5 1.5 0 0 1 3 19.5v-9Z"
+                  fill="currentColor"
+                />
+              </svg>
+              {copy.home}
+            </Link>
+          </div>
         </div>
 
         <header style={styles.header}>
@@ -294,6 +328,31 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     boxShadow: '3px 3px 0 #000',
     fontSize: 13
+  },
+  topActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap'
+  },
+  backButton: {
+    background: '#fff',
+    color: '#000',
+    border: '2px solid #000',
+    borderRadius: 999,
+    padding: '9px 14px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 7,
+    boxShadow: '3px 3px 0 #000',
+    fontWeight: 950,
+    cursor: 'pointer',
+    transition: 'transform 120ms ease, box-shadow 120ms ease, background 120ms ease'
+  },
+  backButtonPressed: {
+    transform: 'translate(2px, 2px)',
+    boxShadow: '1px 1px 0 #000',
+    background: '#f6f2ff'
   },
   homeButton: {
     background: '#56db3f',
