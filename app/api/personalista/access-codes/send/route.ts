@@ -219,6 +219,7 @@ type AccessExportRow = {
   priezvisko: string
   email: string
   telefon: string
+  manager: string
   loginType: string
   accessCode: string
   loginUrl: string
@@ -232,8 +233,8 @@ function xlsxInlineCell(value: any, ref: string, style = 0) {
 
 function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
   const headers = language === 'EN'
-    ? ['Registration group', 'First name', 'Last name', 'Email', 'Phone', 'Login type', 'Access code', 'Login URL']
-    : ['Registracna skupina', 'Meno', 'Priezvisko', 'Email', 'Telefon', 'Typ prihlasenia', 'Prihlasovaci kod', 'Login URL']
+    ? ['Registration group', 'First name', 'Last name', 'Email', 'Phone', 'Manager', 'Login type', 'Access code', 'Login URL']
+    : ['Registracna skupina', 'Meno', 'Priezvisko', 'Email', 'Telefon', 'Manager', 'Typ prihlasenia', 'Prihlasovaci kod', 'Login URL']
   const sheetName = language === 'EN' ? 'Login details' : 'Pristupove kody'
   const documentTitle = language === 'EN' ? 'PohodaPass login details' : 'Pristupove kody PohodaPass'
   const allRows = [headers, ...rows.map(row => [
@@ -242,6 +243,7 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
     row.priezvisko,
     row.email,
     row.telefon,
+    row.manager,
     row.loginType,
     row.accessCode,
     row.loginUrl
@@ -260,7 +262,7 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
     const rowNumber = index + 2
 
     return [
-      row.loginUrl ? `<hyperlink ref="H${rowNumber}" r:id="rId${index + 1}" display="${xmlEscape(row.loginUrl)}"/>` : ''
+      row.loginUrl ? `<hyperlink ref="I${rowNumber}" r:id="rId${index + 1}" display="${xmlEscape(row.loginUrl)}"/>` : ''
     ].filter(Boolean)
   }).join('')
   const hyperlinkRels = rows.flatMap((row, index) => ([
@@ -351,7 +353,7 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
       name: 'xl/worksheets/sheet1.xml',
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <dimension ref="A1:H${lastRow}"/>
+  <dimension ref="A1:I${lastRow}"/>
   <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
   <cols>
     <col min="1" max="1" width="26" customWidth="1"/>
@@ -359,12 +361,13 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
     <col min="3" max="3" width="22" customWidth="1"/>
     <col min="4" max="4" width="34" customWidth="1"/>
     <col min="5" max="5" width="18" customWidth="1"/>
-    <col min="6" max="6" width="18" customWidth="1"/>
+    <col min="6" max="6" width="12" customWidth="1"/>
     <col min="7" max="7" width="18" customWidth="1"/>
-    <col min="8" max="8" width="64" customWidth="1"/>
+    <col min="8" max="8" width="18" customWidth="1"/>
+    <col min="9" max="9" width="64" customWidth="1"/>
   </cols>
   <sheetData>${sheetRows}</sheetData>
-  <autoFilter ref="A1:H${lastRow}"/>
+  <autoFilter ref="A1:I${lastRow}"/>
   <hyperlinks>${hyperlinkRows}</hyperlinks>
 </worksheet>`
     },
@@ -810,6 +813,20 @@ export async function POST(req: NextRequest) {
     }
 
     const qrByUser = new Map((qrRows || []).map((row: any) => [row.user_id, row.qr_code]))
+    const { data: managerRows, error: managerError } = activeUserIds.length > 0
+      ? await supabaseServer
+        .from('registration_group_managers')
+        .select('user_id')
+        .eq('registration_group_id', registrationGroupId)
+        .eq('active', true)
+        .in('user_id', activeUserIds)
+      : { data: [], error: null }
+
+    if (managerError) {
+      return NextResponse.json({ error: managerError.message }, { status: 500 })
+    }
+
+    const managerUserIds = new Set((managerRows || []).map((row: any) => row.user_id).filter(Boolean))
     const siteBaseUrl = process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin
     const loginBaseUrl = `${siteBaseUrl}/login`
     const shareUrl = new URL('/dashboard/access-codes-share', siteBaseUrl)
@@ -837,6 +854,9 @@ export async function POST(req: NextRequest) {
           priezvisko: text(user.priezvisko),
           email,
           telefon: phone,
+          manager: managerUserIds.has(user.id)
+            ? (language === 'EN' ? 'Yes' : 'Ano')
+            : (language === 'EN' ? 'No' : 'Nie'),
           loginType,
           accessCode,
           loginUrl
