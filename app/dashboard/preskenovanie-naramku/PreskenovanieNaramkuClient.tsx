@@ -42,6 +42,7 @@ export default function PreskenovanieNaramkuClient({
   const resetTimerRef = useRef<number | null>(null)
   const stepRef = useRef<Step>('PERSON')
   const currentQrRef = useRef('')
+  const personUserIdRef = useRef('')
 
   const [step, setStep] = useState<Step>('PERSON')
   const [currentQr, setCurrentQr] = useState('')
@@ -61,6 +62,7 @@ export default function PreskenovanieNaramkuClient({
     stepRef.current = 'PERSON'
     setCurrentQr('')
     currentQrRef.current = ''
+    personUserIdRef.current = ''
     setPerson(null)
     setManualValue('')
     setMessage('Pripravené na preskenovanie.')
@@ -103,9 +105,10 @@ export default function PreskenovanieNaramkuClient({
 
     try {
       const activeCurrentQr = currentQrRef.current || currentQr
+      const activeUserId = personUserIdRef.current || person?.userId || ''
       const body = activeStep === 'PERSON'
         ? { mode: 'LOOKUP', currentQr: value }
-        : { mode: 'REPLACE', currentQr: activeCurrentQr, wristbandQr: value }
+        : { mode: 'REPLACE', currentQr: activeCurrentQr, wristbandQr: value, userId: activeUserId }
 
       const res = await fetch('/api/wristband-kiosk/scan', {
         method: 'POST',
@@ -124,6 +127,7 @@ export default function PreskenovanieNaramkuClient({
       if (activeStep === 'PERSON') {
         currentQrRef.current = value
         setCurrentQr(value)
+        personUserIdRef.current = json.userId || ''
         setPerson({
           userId: json.userId || '',
           personName: json.personName || 'Bez mena'

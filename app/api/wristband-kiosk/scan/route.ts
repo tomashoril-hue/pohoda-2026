@@ -11,6 +11,10 @@ function fullName(profile: any) {
   return `${profile?.meno || ''} ${profile?.priezvisko || ''}`.trim()
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}
+
 async function validateWristbandQrRule(qrCode: string) {
   const { data: settings, error: settingsError } = await supabaseServer
     .from('personnel_qr_wristband_settings')
@@ -160,6 +164,67 @@ async function findPersonByActiveQr(qrCode: string, requireDatabaseQr = false) {
   return { ok: true as const, profile }
 }
 
+async function findPersonByPreviousQrOwner(qrCode: string, userId: string) {
+  if (!qrCode || !isUuid(userId)) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: 'AktuĂˇlny QR kĂłd sa nenaĹˇiel alebo uĹľ nie je aktĂ­vny.',
+      profile: null as any
+    }
+  }
+
+  const { data: qrRow, error: qrError } = await supabaseServer
+    .from('user_qr_codes')
+    .select('user_id')
+    .eq('qr_code', qrCode)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (qrError) {
+    return { ok: false as const, status: 500, error: qrError.message, profile: null as any }
+  }
+
+  if (!qrRow?.user_id) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: 'AktuĂˇlny QR kĂłd sa nenaĹˇiel alebo uĹľ nie je aktĂ­vny.',
+      profile: null as any
+    }
+  }
+
+  const { data: profile, error: profileError } = await supabaseServer
+    .from('users')
+    .select('id, meno, priezvisko, email, qr_code, aktivny')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (profileError) {
+    return { ok: false as const, status: 500, error: profileError.message, profile: null as any }
+  }
+
+  if (!profile) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: 'Osoba k QR kĂłdu sa nenaĹˇla.',
+      profile: null as any
+    }
+  }
+
+  if (String(profile.aktivny || '').toUpperCase() !== 'ANO') {
+    return {
+      ok: false as const,
+      status: 403,
+      error: 'Osoba je zablokovanĂˇ.',
+      profile: null as any
+    }
+  }
+
+  return { ok: true as const, profile }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const access = await requireKioskAccess()
@@ -172,6 +237,7 @@ export async function POST(req: NextRequest) {
     const mode = cleanText(body.mode).toUpperCase()
     const currentQr = cleanText(body.currentQr)
     const wristbandQr = cleanText(body.wristbandQr)
+    const userId = cleanText(body.userId)
 
     if (mode !== 'LOOKUP' && mode !== 'REPLACE') {
       return NextResponse.json({ error: 'Neplatný režim preskenovania.' }, { status: 400 })
@@ -181,7 +247,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Najprv načítaj aktuálny QR kód osoby.' }, { status: 400 })
     }
 
-    const personLookup = await findPersonByActiveQr(currentQr, mode === 'LOOKUP')
+    let personLookup = await findPersonByActiveQr(currentQr, mode === 'LOOKUP')
+
+    if (mode === 'REPLACE' && !personLookup.ok && userId) {
+      personLookup = await findPersonByPreviousQrOwner(currentQr, userId)
+    }
 
     if (!personLookup.ok) {
       return NextResponse.json({ error: personLookup.error }, { status: personLookup.status })
