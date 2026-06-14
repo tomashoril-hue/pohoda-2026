@@ -47,6 +47,21 @@ function accessCodesNoteValue(value: any, language: 'SK' | 'EN') {
   return note
 }
 
+function bratislavaDateTimeLabel(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('sk-SK', {
+    timeZone: 'Europe/Bratislava',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(date)
+  const value = (type: string) => parts.find(part => part.type === type)?.value || ''
+
+  return `${value('day')}.${value('month')}.${value('year')} ${value('hour')}:${value('minute')}`
+}
+
 function normalizePhone(value: any) {
   const raw = text(value)
 
@@ -948,10 +963,12 @@ export async function POST(req: NextRequest) {
       includeAccessCodes ? emailCopy.accessAttachment : '',
       includeQrCodes ? emailCopy.qrAttachment : ''
     ].filter(Boolean).join(' | ')
+    const subjectGroupName = text(group?.name) || (language === 'EN' ? 'Registration group' : 'Registracna skupina')
+    const emailSubject = `${emailCopy.subject} - ${subjectGroupName} - ${bratislavaDateTimeLabel()}`
     const result = await sendAppEmail({
       from: 'POHODA 2026 <registracia@pohodapass.sk>',
       to: recipientEmail,
-      subject: emailCopy.subject,
+      subject: emailSubject,
       html: `
         <div style="font-family:Arial,Helvetica,sans-serif;background:#f6f2ff;padding:24px;color:#111;">
           <div style="max-width:620px;margin:0 auto;background:#fff;border:3px solid #000;border-radius:22px;padding:24px;">
