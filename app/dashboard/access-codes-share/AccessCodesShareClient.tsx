@@ -74,7 +74,6 @@ export default function AccessCodesShareClient({
   }, [people, q])
   const copy = language === 'EN'
     ? {
-        badge: 'Login details',
         title: 'Send access codes',
         subtitle: 'Choose a person and send their prepared login message by SMS or WhatsApp.',
         search: 'Search name, phone or email',
@@ -88,7 +87,6 @@ export default function AccessCodesShareClient({
         signedIn: 'Signed in'
       }
     : {
-        badge: 'Prihlasovacie udaje',
         title: 'Odoslat pristupove kody',
         subtitle: 'Vyber osobu a odosli jej pripravenu prihlasovaciu spravu cez SMS alebo WhatsApp.',
         search: 'Hladat meno, telefon alebo email',
@@ -143,7 +141,6 @@ export default function AccessCodesShareClient({
 
         <header style={styles.header}>
           <div>
-            <div style={styles.badge}>{copy.badge}</div>
             <h1 style={styles.title}>{copy.title}</h1>
             <p style={styles.subtitle}>{copy.subtitle}</p>
           </div>
@@ -262,7 +259,7 @@ const styles: Record<string, CSSProperties> = {
     maxWidth: 980,
     margin: '0 auto',
     display: 'grid',
-    gap: 14
+    gap: 10
   },
   topBar: {
     display: 'flex',
@@ -301,67 +298,59 @@ const styles: Record<string, CSSProperties> = {
   },
   header: {
     background: '#fff',
-    border: '3px solid #000',
-    borderRadius: 20,
-    boxShadow: '8px 8px 0 #000',
-    padding: 18,
+    border: '2px solid #000',
+    borderRadius: 14,
+    boxShadow: '4px 4px 0 #000',
+    padding: 12,
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-    gap: 14,
+    gap: 10,
     alignItems: 'center'
-  },
-  badge: {
-    display: 'inline-block',
-    background: '#56db3f',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '6px 12px',
-    fontWeight: 950,
-    marginBottom: 10
   },
   title: {
     margin: 0,
-    fontSize: 34,
+    fontSize: 24,
     lineHeight: 1.05,
     fontWeight: 950
   },
   subtitle: {
-    margin: '8px 0 0',
-    fontSize: 15,
+    margin: '5px 0 0',
+    fontSize: 13,
     lineHeight: 1.35,
-    fontWeight: 750
+    fontWeight: 700
   },
   groupBox: {
-    minWidth: 170,
+    minWidth: 150,
     background: '#000',
     color: '#fff',
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 12,
+    padding: 10,
     display: 'grid',
-    gap: 3
+    gap: 2,
+    fontSize: 13
   },
   search: {
     width: '100%',
     boxSizing: 'border-box',
-    border: '3px solid #000',
-    borderRadius: 16,
-    padding: '13px 15px',
-    fontSize: 16,
+    border: '2px solid #000',
+    borderRadius: 12,
+    padding: '10px 12px',
+    fontSize: 14,
     fontWeight: 800,
     outline: 'none'
   },
   list: {
     display: 'grid',
-    gap: 10
+    gap: 7
   },
   personRow: {
     background: '#fff',
     border: '2px solid #000',
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 12,
+    padding: 8,
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-    gap: 10,
+    gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))',
+    gap: 8,
     alignItems: 'center',
     transition: 'background 140ms ease, border-color 140ms ease, box-shadow 140ms ease'
   },
@@ -373,43 +362,46 @@ const styles: Record<string, CSSProperties> = {
   personMain: {
     minWidth: 0,
     display: 'grid',
-    gap: 3
+    gap: 1,
+    fontSize: 13
   },
   codeBox: {
     background: '#f6f2ff',
-    border: '2px solid #000',
-    borderRadius: 12,
-    padding: 8,
+    border: '1px solid #c8b5f6',
+    borderRadius: 999,
+    padding: '6px 9px',
     textAlign: 'center',
     display: 'grid',
-    gap: 2
+    gap: 1,
+    fontSize: 12,
+    fontWeight: 850
   },
   actions: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
-    gap: 8
+    gap: 6
   },
   smsButton: {
     background: '#7417e8',
     color: '#fff',
     border: '2px solid #000',
     borderRadius: 999,
-    padding: '11px 12px',
+    padding: '8px 10px',
     fontWeight: 950,
     textAlign: 'center',
     cursor: 'pointer',
-    fontSize: 14
+    fontSize: 13
   },
   whatsappButton: {
     background: '#16a34a',
     color: '#fff',
     border: '2px solid #000',
     borderRadius: 999,
-    padding: '11px 12px',
+    padding: '8px 10px',
     fontWeight: 950,
     textAlign: 'center',
     cursor: 'pointer',
-    fontSize: 14
+    fontSize: 13
   },
   actionButtonPressed: {
     transform: 'translate(2px, 2px)',
