@@ -82,7 +82,8 @@ export default function AccessCodesShareClient({
         noPhone: 'No phone number',
         empty: 'No matching people found.',
         home: 'Home',
-        signedIn: 'Signed in'
+        signedIn: 'Signed in',
+        group: 'Registration group'
       }
     : {
         title: 'Odoslat pristupove kody',
@@ -93,7 +94,8 @@ export default function AccessCodesShareClient({
         noPhone: 'Bez telefonu',
         empty: 'Nenasli sa ziadne osoby.',
         home: 'Domov',
-        signedIn: 'Prihlaseny'
+        signedIn: 'Prihlaseny',
+        group: 'Skupina'
       }
 
   useEffect(() => {
@@ -141,7 +143,7 @@ export default function AccessCodesShareClient({
             <p style={styles.subtitle}>{copy.subtitle}</p>
           </div>
           <div style={styles.groupBox}>
-            <span>Skupina</span>
+            <span>{copy.group}</span>
             <b>{groupName}</b>
           </div>
         </header>
