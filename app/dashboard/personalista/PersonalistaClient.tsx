@@ -526,7 +526,8 @@ export default function PersonalistaClient({
     validTo: isoDateOffset(0),
     obed: true,
     vecera: false,
-    assignQr: true
+    assignQr: true,
+    generateAccessCode: false
   })
   const [profileForm, setProfileForm] = useState({
     meno: '',
@@ -1420,7 +1421,8 @@ export default function PersonalistaClient({
       validTo: isoDateOffset(0),
       obed: true,
       vecera: false,
-      assignQr: true
+      assignQr: true,
+      generateAccessCode: false
     })
     setCreateGroupSelectId('')
   }
@@ -1461,7 +1463,10 @@ export default function PersonalistaClient({
         return
       }
 
-      setCreateMessage(json.message || 'Osoba bola vytvorená.')
+      setCreateMessage(json.accessCode
+        ? `${json.message || 'Osoba bola vytvorená.'} Prístupový kód: ${json.accessCode}`
+        : json.message || 'Osoba bola vytvorená.'
+      )
       setCreateMessageType('ok')
       resetCreateForm()
 
@@ -4943,8 +4948,8 @@ export default function PersonalistaClient({
             </div>
 
             <div style={styles.optionBox}>
-              <div style={styles.optionTitle}>Priraďovanie QR</div>
-              <div style={styles.optionHint}>Použije sa voľný nepriradený QR z databázy.</div>
+              <div style={styles.optionTitle}>Priraďovanie prístupov</div>
+              <div style={styles.optionHint}>QR použije voľný kód z databázy. Prístupový kód umožní prihlásenie menom, priezviskom a kódom.</div>
 
               <div style={styles.checkList}>
                 <label style={styles.checkRow}>
@@ -4956,6 +4961,17 @@ export default function PersonalistaClient({
                     style={styles.checkbox}
                   />
                   <span>Priradiť voľný QR</span>
+                </label>
+
+                <label style={styles.checkRow}>
+                  <input
+                    type="checkbox"
+                    checked={createForm.generateAccessCode}
+                    onChange={event => updateCreateForm('generateAccessCode', event.target.checked)}
+                    disabled={createLoading}
+                    style={styles.checkbox}
+                  />
+                  <span>Priradiť prístupový kód</span>
                 </label>
               </div>
             </div>
