@@ -14,7 +14,7 @@ function fullName(user: any) {
 }
 
 const INITIAL_PEOPLE_LIMIT = 50
-const RECENT_USER_SELECT = 'id, meno, priezvisko, email, telefon, typ_stravy, aktivny, registration_group_id, registration_group_note, review_status, updated_at, created_at'
+const RECENT_USER_SELECT = 'id, meno, priezvisko, email, telefon, typ_stravy, aktivny, account_type, registration_group_id, registration_group_note, review_status, updated_at, created_at'
 
 type PersonalistaSearchParams = Promise<{
   scope?: string | string[]
@@ -49,6 +49,7 @@ async function fetchMembershipsForUsers(userIds: string[]) {
           telefon,
           typ_stravy,
           aktivny,
+          account_type,
           registration_group_id,
           registration_group_note,
           review_status,
@@ -597,6 +598,7 @@ export default async function PersonalistaPage({
       telefon: profile?.telefon || '',
       typStravy: profile?.typ_stravy || '',
       aktivny: profile?.aktivny || 'ANO',
+      accountType: profile?.account_type || 'PERSON',
       reviewStatus: profile?.review_status || 'APPROVED',
       registrationGroupId: registrationGroup.id,
       registrationGroupName: registrationGroup.name,
@@ -657,6 +659,7 @@ export default async function PersonalistaPage({
         telefon: profile.telefon || '',
         typStravy: profile.typ_stravy || '',
         aktivny: profile.aktivny || 'ANO',
+        accountType: profile.account_type || 'PERSON',
         reviewStatus: profile.review_status || 'APPROVED',
         registrationGroupId: registrationGroup.id,
         registrationGroupName: registrationGroup.name,

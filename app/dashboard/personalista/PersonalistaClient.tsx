@@ -79,6 +79,7 @@ type PersonItem = {
   telefon: string
   typStravy: string
   aktivny: string
+  accountType: string
   reviewStatus: string
   registrationGroupId: string
   registrationGroupName: string
@@ -100,7 +101,7 @@ type PersonItem = {
   groups: PersonGroup[]
 }
 
-type DetailMode = 'profile' | 'registrationPeriods' | 'entitlements' | 'groups' | 'roles' | 'qr' | 'nfc' | ''
+type DetailMode = 'profile' | 'registrationPeriods' | 'entitlements' | 'groups' | 'roles' | 'accessCode' | 'qr' | 'nfc' | ''
 type DetailMessageType = 'ok' | 'error' | ''
 type PeopleScope = 'mine' | 'all'
 type PersonnelTool = 'communication' | 'accessCodes' | 'registrationGroupManagers' | ''
@@ -597,6 +598,10 @@ export default function PersonalistaClient({
     groupCreator: false,
     wristbandKiosk: false
   })
+  const [accessCodeLoading, setAccessCodeLoading] = useState(false)
+  const [accessCodeLoaded, setAccessCodeLoaded] = useState(false)
+  const [accessCodeValue, setAccessCodeValue] = useState('')
+  const [accessCodeCopied, setAccessCodeCopied] = useState(false)
 
   const setDetailFeedback = (message: string, type: DetailMessageType, mode: DetailMode = detailMode) => {
     setDetailMessage(message)
@@ -965,6 +970,91 @@ export default function PersonalistaClient({
   const selectedPerson = selectedPersonId
     ? people.find(person => person.id === selectedPersonId) || null
     : null
+  const selectedPersonIsTechnical = String(selectedPerson?.accountType || '').toUpperCase() === 'TECHNICAL'
+  const canUseSelectedPersonAccessCode = !!selectedPerson && (!selectedPersonIsTechnical || canAssignSensitiveRoles)
+
+  const loadAccessCode = async () => {
+    if (!selectedPerson) return
+
+    setAccessCodeLoading(true)
+    setAccessCodeCopied(false)
+
+    try {
+      const res = await fetch(`/api/personalista/people/access-code?userId=${encodeURIComponent(selectedPerson.id)}`, {
+        cache: 'no-store'
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setDetailFeedback(json.error || 'Pristupovy kod sa nepodarilo nacitat.', 'error', 'accessCode')
+        return
+      }
+
+      setAccessCodeLoaded(true)
+      setAccessCodeValue(json.accessCode || '')
+      setDetailFeedback(
+        json.accessCode ? 'Pristupovy kod bol zobrazeny.' : 'Osoba nema pristupovy kod.',
+        json.accessCode ? 'ok' : 'error',
+        'accessCode'
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setDetailFeedback('Chyba nacitania pristupoveho kodu: ' + message, 'error', 'accessCode')
+    } finally {
+      setAccessCodeLoading(false)
+    }
+  }
+
+  const generateAccessCodeForSelectedPerson = async () => {
+    if (!selectedPerson) return
+
+    if (accessCodeValue) {
+      const ok = window.confirm('Vygenerovat novy pristupovy kod? Povodny aktivny kod sa zneplatni.')
+      if (!ok) return
+    }
+
+    setAccessCodeLoading(true)
+    setAccessCodeCopied(false)
+
+    try {
+      const res = await fetch('/api/personalista/people/access-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: selectedPerson.id })
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setDetailFeedback(json.error || 'Pristupovy kod sa nepodarilo vytvorit.', 'error', 'accessCode')
+        return
+      }
+
+      setAccessCodeLoaded(true)
+      setAccessCodeValue(json.accessCode || '')
+      setDetailFeedback(json.message || 'Pristupovy kod bol vytvoreny.', 'ok', 'accessCode')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setDetailFeedback('Chyba vytvorenia pristupoveho kodu: ' + message, 'error', 'accessCode')
+    } finally {
+      setAccessCodeLoading(false)
+    }
+  }
+
+  const copyAccessCode = async () => {
+    if (!accessCodeValue) return
+
+    try {
+      await navigator.clipboard.writeText(accessCodeValue)
+      setAccessCodeCopied(true)
+      setDetailFeedback('Pristupovy kod bol skopirovany.', 'ok', 'accessCode')
+
+      window.setTimeout(() => {
+        setAccessCodeCopied(false)
+      }, 1800)
+    } catch {
+      setDetailFeedback('Kopirovanie sa nepodarilo. Kod oznac a skopiruj rucne.', 'error', 'accessCode')
+    }
+  }
   const selectedRegistrationPeriodRows = useMemo(() => {
     const periods = sortRegistrationPeriods(selectedPerson?.registrationGroupPeriods || [])
     const rows: RegistrationPeriodSelectionRow[] = []
@@ -1078,6 +1168,14 @@ export default function PersonalistaClient({
   }, [isMobile, shouldShowDetailMessage, detailMessage])
 
   useEffect(() => {
+    if (detailMode === 'accessCode') return
+
+    setAccessCodeLoaded(false)
+    setAccessCodeValue('')
+    setAccessCodeCopied(false)
+  }, [detailMode])
+
+  useEffect(() => {
     setPeople(initialPeople)
   }, [initialPeople])
 
@@ -1168,6 +1266,10 @@ export default function PersonalistaClient({
     setQrForm({ qrCode: '' })
     setGroupForm({ groupId: '', role: 'MEMBER' })
     setNfcForm({ tokenUid: '' })
+    setAccessCodeLoading(false)
+    setAccessCodeLoaded(false)
+    setAccessCodeValue('')
+    setAccessCodeCopied(false)
     setRoleForm({
       admin: selectedPerson.globalRoles.includes('ADMIN'),
       personalista: selectedPerson.globalRoles.includes('PERSONALISTA'),
@@ -5558,6 +5660,21 @@ export default function PersonalistaClient({
                   </button>
                 )}
 
+                {canUseSelectedPersonAccessCode && (
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.actionButton,
+                      borderColor: detailMode === 'accessCode' ? '#93c5fd' : '#e5e7eb',
+                      background: detailMode === 'accessCode' ? '#eff6ff' : '#fff'
+                    }}
+                    disabled={detailLoading}
+                    onClick={() => setDetailMode(detailMode === 'accessCode' ? '' : 'accessCode')}
+                  >
+                    Pristupovy kod
+                  </button>
+                )}
+
                 <button
                   type="button"
                   style={{
@@ -6357,6 +6474,53 @@ export default function PersonalistaClient({
                   >
                     {detailLoading ? 'Ukladám...' : 'Uložiť globálne role'}
                   </button>
+                </div>
+              )}
+
+              {detailMode === 'accessCode' && canUseSelectedPersonAccessCode && (
+                <div style={styles.detailEditBox}>
+                  <div style={styles.detailEditTitle}>Pristupovy kod</div>
+                  <div style={styles.optionHint}>
+                    Kod sa nacita az po kliknuti na zobrazit. Zobrazenie sa zapisuje do auditu.
+                  </div>
+
+                  <div style={styles.accessCodeBox}>
+                    <span style={styles.optionTitle}>Kod</span>
+                    <b style={styles.accessCodeValue}>
+                      {accessCodeLoaded && accessCodeValue ? accessCodeValue : '********'}
+                    </b>
+                  </div>
+
+                  <div style={styles.accessCodeActions}>
+                    <button
+                      type="button"
+                      style={styles.lightButton}
+                      disabled={accessCodeLoading}
+                      onClick={loadAccessCode}
+                      title="Zobrazit pristupovy kod"
+                    >
+                      {accessCodeLoading ? 'Nacitavam...' : 'Zobrazit'}
+                    </button>
+
+                    <button
+                      type="button"
+                      style={styles.lightButton}
+                      disabled={accessCodeLoading || !accessCodeValue}
+                      onClick={copyAccessCode}
+                      title="Kopirovat pristupovy kod"
+                    >
+                      {accessCodeCopied ? 'Skopirovane' : 'Kopirovat'}
+                    </button>
+
+                    <button
+                      type="button"
+                      style={styles.confirmButton}
+                      disabled={accessCodeLoading}
+                      onClick={generateAccessCodeForSelectedPerson}
+                    >
+                      {accessCodeValue ? 'Vygenerovat novy' : 'Vygenerovat kod'}
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -7426,6 +7590,27 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gap: 5,
     background: '#f9fafb'
+  },
+  accessCodeBox: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    background: '#f9fafb',
+    padding: 8,
+    display: 'grid',
+    gap: 5
+  },
+  accessCodeValue: {
+    fontSize: 22,
+    letterSpacing: 0,
+    fontWeight: 950,
+    color: '#111827',
+    fontFamily: 'Arial, Helvetica, sans-serif'
+  },
+  accessCodeActions: {
+    display: 'flex',
+    gap: 6,
+    flexWrap: 'wrap',
+    alignItems: 'center'
   },
   registrationSection: {
     borderTop: '1px solid #e5e7eb',

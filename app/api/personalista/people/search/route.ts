@@ -228,7 +228,7 @@ export async function GET(req: NextRequest) {
 
     let usersQuery = supabaseServer
       .from('users')
-      .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, registration_group_id, registration_group_note, review_status, updated_at, created_at')
+      .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, account_type, registration_group_id, registration_group_note, review_status, updated_at, created_at')
       .limit(RESULT_LIMIT)
     let mode = 'RECENT'
 
@@ -387,6 +387,7 @@ export async function GET(req: NextRequest) {
         telefon: profile.telefon || '',
         typStravy: profile.typ_stravy || '',
         aktivny: profile.aktivny || 'ANO',
+        accountType: profile.account_type || 'PERSON',
         reviewStatus: profile.review_status || 'APPROVED',
         registrationGroupId: registrationGroup.id,
         registrationGroupName: registrationGroup.name,
