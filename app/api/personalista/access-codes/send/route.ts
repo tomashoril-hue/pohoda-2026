@@ -965,7 +965,7 @@ export async function POST(req: NextRequest) {
     ].filter(Boolean).join(' | ')
     const subjectGroupName = text(group?.name) || (language === 'EN' ? 'Registration group' : 'Registracna skupina')
     const emailSubject = `${emailCopy.subject} - ${subjectGroupName} - ${bratislavaDateTimeLabel()}`
-    const faviconUrl = `${siteBaseUrl}/icon.png`
+    const faviconUrl = `${siteBaseUrl}/favicon.ico`
     const result = await sendAppEmail({
       from: 'POHODA 2026 <registracia@pohodapass.sk>',
       to: recipientEmail,
@@ -973,10 +973,16 @@ export async function POST(req: NextRequest) {
       html: `
         <div style="font-family:Arial,Helvetica,sans-serif;background:#f6f2ff;padding:24px;color:#111;">
           <div style="max-width:620px;margin:0 auto;background:#fff;border:3px solid #000;border-radius:22px;padding:24px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;">
-              <div style="display:inline-block;background:#56db3f;border:3px solid #000;border-radius:999px;padding:8px 14px;font-weight:900;">PohodaPass</div>
-              <img src="${faviconUrl}" alt="PohodaPass" width="38" height="38" style="display:block;width:38px;height:38px;">
-            </div>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+              <tr>
+                <td align="left" style="vertical-align:middle;">
+                  <div style="display:inline-block;background:#56db3f;border:3px solid #000;border-radius:999px;padding:8px 14px;font-weight:900;">PohodaPass</div>
+                </td>
+                <td align="right" style="vertical-align:middle;">
+                  <img src="${faviconUrl}" alt="PohodaPass" width="32" height="32" style="display:block;width:32px;height:32px;">
+                </td>
+              </tr>
+            </table>
             <h1 style="font-size:26px;margin:20px 0 10px;">${htmlEscape(emailCopy.heading)}</h1>
             <p>${htmlEscape(note)}</p>
             <p>${htmlEscape(emailCopy.attachmentIntro)}</p>
