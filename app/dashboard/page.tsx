@@ -207,6 +207,15 @@ export default async function DashboardPage({
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const selectedDate = normalizeDateParam(resolvedSearchParams.datum, today)
   const isTodaySelected = selectedDate === today
+  const globalAccess = await getGlobalAccess(user.id)
+  const isOnlyWristbandKiosk =
+    globalAccess.isWristbandKiosk &&
+    globalAccess.roles.length > 0 &&
+    globalAccess.roles.every(role => role === 'WRISTBAND_KIOSK')
+
+  if (isOnlyWristbandKiosk) {
+    redirect('/dashboard/preskenovanie-naramku')
+  }
 
   const [
     membershipsResult,
@@ -218,8 +227,7 @@ export default async function DashboardPage({
     menuItemsResult,
     issuedMealsResult,
     bulkItemsResult,
-    registrationBulkItemsResult,
-    globalAccess
+    registrationBulkItemsResult
   ] = await Promise.all([
     supabaseServer
       .from('group_members')
@@ -329,8 +337,7 @@ export default async function DashboardPage({
         )
       `)
       .eq('user_id', user.id)
-      .in('status', ['PLANNED', 'REMOVED']),
-    getGlobalAccess(user.id)
+      .in('status', ['PLANNED', 'REMOVED'])
   ])
 
   const memberships = membershipsResult.data || []
@@ -414,6 +421,7 @@ export default async function DashboardPage({
   const canOpenPersonalista = globalAccess.canUsePersonalista
   const canOpenFoodIssue = globalAccess.canUseFoodIssue
   const canOpenMenuDeadline = globalAccess.isAdmin
+  const canOpenWristbandKiosk = globalAccess.isAdmin
   const canOpenAccessCodesShare = canOpenPersonalista || managedRegistrationGroupIds.length > 0
 
   const getSelection = (typJedla: string) => {
@@ -750,6 +758,12 @@ export default async function DashboardPage({
               <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Admin</span>
               <b className="dashboard-menu-title" style={styles.menuTileTitle}>Menu deadline</b>
             </a>
+          )}
+          {canOpenWristbandKiosk && (
+            <Link className="dashboard-menu-tile" href="/dashboard/preskenovanie-naramku" style={{ ...styles.menuTile, ...styles.menuTileWhite }}>
+              <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Servis</span>
+              <b className="dashboard-menu-title" style={styles.menuTileTitle}>Preskenovanie náramku</b>
+            </Link>
           )}
         </div>
 

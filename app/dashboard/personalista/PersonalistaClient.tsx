@@ -591,7 +591,8 @@ export default function PersonalistaClient({
     personalista: false,
     adminVydaj: false,
     vydaj: false,
-    groupCreator: false
+    groupCreator: false,
+    wristbandKiosk: false
   })
 
   const setDetailFeedback = (message: string, type: DetailMessageType, mode: DetailMode = detailMode) => {
@@ -1169,7 +1170,8 @@ export default function PersonalistaClient({
       personalista: selectedPerson.globalRoles.includes('PERSONALISTA'),
       adminVydaj: selectedPerson.globalRoles.includes('ADMIN_VYDAJ'),
       vydaj: selectedPerson.globalRoles.includes('VYDAJ'),
-      groupCreator: selectedPerson.globalRoles.includes('GROUP_CREATOR')
+      groupCreator: selectedPerson.globalRoles.includes('GROUP_CREATOR'),
+      wristbandKiosk: selectedPerson.globalRoles.includes('WRISTBAND_KIOSK')
     })
     const preservedMessage = preservedDetailMessageRef.current
 
@@ -2931,7 +2933,8 @@ export default function PersonalistaClient({
       ...(roleForm.personalista ? ['PERSONALISTA'] : []),
       ...(roleForm.adminVydaj ? ['ADMIN_VYDAJ'] : []),
       ...(roleForm.vydaj ? ['VYDAJ'] : []),
-      ...(roleForm.groupCreator ? ['GROUP_CREATOR'] : [])
+      ...(roleForm.groupCreator ? ['GROUP_CREATOR'] : []),
+      ...(roleForm.wristbandKiosk ? ['WRISTBAND_KIOSK'] : [])
     ]
 
     postDetailAction(
@@ -6232,6 +6235,20 @@ export default function PersonalistaClient({
                         style={styles.checkbox}
                       />
                       <span>Moze vytvarat skupiny</span>
+                    </label>
+
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={roleForm.wristbandKiosk}
+                        onChange={event => setRoleForm(prev => ({
+                          ...prev,
+                          wristbandKiosk: event.target.checked
+                        }))}
+                        disabled={detailLoading}
+                        style={styles.checkbox}
+                      />
+                      <span>Preskenovanie naramkov kiosk</span>
                     </label>
                   </div>
 
