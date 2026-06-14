@@ -914,9 +914,10 @@ export async function POST(req: NextRequest) {
           subject: includeQrCodes ? 'PohodaPass - login details and QR codes' : 'PohodaPass - login details',
           heading: `Login details${includeQrCodes ? ' and QR codes' : ''}`,
           attachmentIntro: 'Prepared files are attached. People with e-mail use e-mail login; people without e-mail use their access code.',
-          loginInfo: 'The application is also available here:',
-          shareIntro: 'After signing in as Manager, you can send individual login details by SMS or WhatsApp here:',
-          shareButton: 'Send by SMS / WhatsApp',
+          loginInfo: 'The application is available here:',
+          shareIntro: 'After signing in as Manager, you can send individual login details by SMS or WhatsApp in the app.',
+          shareButton: 'Open app',
+          fallbackLink: 'If the button does not work, open:',
           accessAttachment: `Excel login details: ${exportRows.length}`,
           qrAttachment: `QR print attachment: ${qrItems.length}`,
           qrTitle: `QR codes - ${group?.name || 'Registration group'}`
@@ -925,9 +926,10 @@ export async function POST(req: NextRequest) {
           subject: includeQrCodes ? 'PohodaPass - prihlasovacie udaje a QR kody' : 'PohodaPass - prihlasovacie udaje',
           heading: `Prihlasovacie udaje${includeQrCodes ? ' a QR kody' : ''}`,
           attachmentIntro: 'V prilohe najdes pripravene subory. Ludia s e-mailom idu cez e-mailove prihlasenie, ludia bez e-mailu cez pristupovy kod.',
-          loginInfo: 'Prihlasenie je dostupne aj tu:',
-          shareIntro: 'Po prihlaseni ako Manager vies jednotlive pristupove udaje odoslat cez SMS alebo WhatsApp tu:',
-          shareButton: 'Odoslat cez SMS / WhatsApp',
+          loginInfo: 'Aplikacia je dostupna tu:',
+          shareIntro: 'Po prihlaseni ako Manager vies jednotlive pristupove udaje odoslat cez SMS alebo WhatsApp v aplikacii.',
+          shareButton: 'Otvorit aplikaciu',
+          fallbackLink: 'Ak tlacidlo nefunguje, otvor:',
           accessAttachment: `Excel prihlasovacie udaje: ${exportRows.length}`,
           qrAttachment: `QR tlacova priloha: ${qrItems.length}`,
           qrTitle: `QR kody - ${group?.name || 'Registracna skupina'}`
@@ -986,7 +988,6 @@ export async function POST(req: NextRequest) {
             <h1 style="font-size:26px;margin:20px 0 10px;">${htmlEscape(emailCopy.heading)}</h1>
             <p>${htmlEscape(note)}</p>
             <p>${htmlEscape(emailCopy.attachmentIntro)}</p>
-            <p>${htmlEscape(emailCopy.loginInfo)} <a href="${loginBaseUrl}">${loginBaseUrl}</a></p>
             ${includeAccessCodes ? `
               <p>${htmlEscape(emailCopy.shareIntro)}</p>
               <p>
@@ -994,12 +995,15 @@ export async function POST(req: NextRequest) {
                   ${htmlEscape(emailCopy.shareButton)}
                 </a>
               </p>
-            ` : ''}
+              <p style="font-size:13px;color:#555;">${htmlEscape(emailCopy.fallbackLink)} <a href="${shareUrl.toString()}">${shareUrl.toString()}</a></p>
+            ` : `
+              <p>${htmlEscape(emailCopy.loginInfo)} <a href="${loginBaseUrl}">${loginBaseUrl}</a></p>
+            `}
             <p style="font-size:13px;color:#555;">${htmlEscape(attachmentText)}</p>
           </div>
         </div>
       `,
-      text: `${note}\n\n${emailCopy.loginInfo} ${loginBaseUrl}${includeAccessCodes ? `\n${emailCopy.shareIntro} ${shareUrl.toString()}` : ''}\n${attachmentText}`,
+      text: `${note}\n\n${includeAccessCodes ? `${emailCopy.shareIntro}\n${emailCopy.shareButton}: ${shareUrl.toString()}` : `${emailCopy.loginInfo} ${loginBaseUrl}`}\n${attachmentText}`,
       attachments
     })
 

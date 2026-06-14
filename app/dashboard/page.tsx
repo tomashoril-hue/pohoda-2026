@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
-import { canUseGroupIssue } from '@/lib/registrationGroupManagers'
+import { canUseGroupIssue, getManagedRegistrationGroupIds } from '@/lib/registrationGroupManagers'
 import { supabaseServer } from '@/lib/supabaseServer'
 import DashboardInvites from './DashboardInvites'
 import DashboardDatePicker from './DashboardDatePicker'
@@ -367,7 +367,8 @@ export default async function DashboardPage({
     issuedByUsersResult,
     issuedGroupsResult,
     issuedRegistrationIssuesResult,
-    canOpenGroupIssue
+    canOpenGroupIssue,
+    managedRegistrationGroupIds
   ] = await Promise.all([
     issuedByIds.length > 0
       ? supabaseServer
@@ -393,7 +394,8 @@ export default async function DashboardPage({
         `)
         .in('id', issuedRegistrationIssueIds)
       : Promise.resolve({ data: [] }),
-    canUseGroupIssue(user.id, globalAccess)
+    canUseGroupIssue(user.id, globalAccess),
+    globalAccess.canUsePersonalista ? Promise.resolve([]) : getManagedRegistrationGroupIds(user.id)
   ])
 
   const issuedByUsers = issuedByUsersResult.data || []
@@ -411,6 +413,7 @@ export default async function DashboardPage({
   const canOpenPersonalista = globalAccess.canUsePersonalista
   const canOpenFoodIssue = globalAccess.canUseFoodIssue
   const canOpenMenuDeadline = globalAccess.isAdmin
+  const canOpenAccessCodesShare = canOpenPersonalista || managedRegistrationGroupIds.length > 0
 
   const getSelection = (typJedla: string) => {
     return (selections || []).find((item: any) => item.typ_jedla === typJedla)
@@ -721,6 +724,12 @@ export default async function DashboardPage({
             <Link className="dashboard-menu-tile" href="/dashboard/skupinovy-vydaj" style={{ ...styles.menuTile, ...styles.menuTileWhite }}>
               <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Strava</span>
               <b className="dashboard-menu-title" style={styles.menuTileTitle}>Skupinový výdaj</b>
+            </Link>
+          )}
+          {canOpenAccessCodesShare && (
+            <Link className="dashboard-menu-tile" href="/dashboard/access-codes-share" style={{ ...styles.menuTile, ...styles.menuTileBlack }}>
+              <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Prístupy</span>
+              <b className="dashboard-menu-title" style={styles.menuTileTitle}>Prístupové údaje</b>
             </Link>
           )}
           {canOpenFoodIssue && (

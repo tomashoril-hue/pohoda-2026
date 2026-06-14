@@ -4,6 +4,7 @@ import { slovakiaDateIso } from '@/lib/date'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { canManageRegistrationGroup } from '@/lib/registrationGroupManagers'
 import { supabaseServer } from '@/lib/supabaseServer'
+import AccessCodesGroupPickerClient from './AccessCodesGroupPickerClient'
 import AccessCodesShareClient from './AccessCodesShareClient'
 
 export const dynamic = 'force-dynamic'
@@ -97,6 +98,57 @@ async function getCurrentRegistrationGroupUserIds(registrationGroupId: string) {
   return Array.from(userIds)
 }
 
+async function getAvailableRegistrationGroups(userId: string, canUsePersonalista: boolean) {
+  if (canUsePersonalista) {
+    const { data, error } = await supabaseServer
+      .from('registration_groups')
+      .select('id, name')
+      .eq('active', true)
+      .order('name', { ascending: true })
+
+    if (error) throw error
+
+    return (data || [])
+      .map((group: any) => ({
+        id: text(group.id),
+        name: text(group.name)
+      }))
+      .filter(group => group.id && group.name)
+  }
+
+  const { data: managerRows, error: managerError } = await supabaseServer
+    .from('registration_group_managers')
+    .select('registration_group_id')
+    .eq('user_id', userId)
+    .eq('active', true)
+
+  if (managerError) throw managerError
+
+  const registrationGroupIds = Array.from(new Set(
+    (managerRows || [])
+      .map((row: any) => text(row.registration_group_id))
+      .filter(Boolean)
+  ))
+
+  if (registrationGroupIds.length === 0) return []
+
+  const { data, error } = await supabaseServer
+    .from('registration_groups')
+    .select('id, name')
+    .eq('active', true)
+    .in('id', registrationGroupIds)
+    .order('name', { ascending: true })
+
+  if (error) throw error
+
+  return (data || [])
+    .map((group: any) => ({
+      id: text(group.id),
+      name: text(group.name)
+    }))
+    .filter(group => group.id && group.name)
+}
+
 function shareMessage(language: 'SK' | 'EN', loginType: LoginType, accessCode: string, loginUrl: string) {
   if (language === 'EN') {
     if (loginType === 'EMAIL') return `Hello, log in to PohodaPass using your e-mail here: ${loginUrl}`
@@ -123,18 +175,34 @@ export default async function AccessCodesSharePage({
     redirect(`/login?next=${encodeURIComponent(currentPath(registrationGroupId, language))}`)
   }
 
+  const access = await getGlobalAccess(user.id)
+
   if (!registrationGroupId) {
-    redirect('/dashboard')
+    const groups = await getAvailableRegistrationGroups(user.id, access.canUsePersonalista)
+
+    if (groups.length === 0) {
+      redirect('/dashboard')
+    }
+
+    if (!access.canUsePersonalista && groups.length === 1) {
+      redirect(currentPath(groups[0].id, language))
+    }
+
+    return (
+      <AccessCodesGroupPickerClient
+        groups={groups}
+        language={language}
+        currentUserName={fullName(user)}
+        currentUserEmail={text(user.email)}
+      />
+    )
   }
 
-  const [access, groupResult] = await Promise.all([
-    getGlobalAccess(user.id),
-    supabaseServer
-      .from('registration_groups')
-      .select('id, name')
-      .eq('id', registrationGroupId)
-      .maybeSingle()
-  ])
+  const groupResult = await supabaseServer
+    .from('registration_groups')
+    .select('id, name')
+    .eq('id', registrationGroupId)
+    .maybeSingle()
 
   if (groupResult.error || !groupResult.data) {
     redirect('/dashboard')
