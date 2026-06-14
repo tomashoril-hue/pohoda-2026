@@ -59,53 +59,27 @@ export async function POST(req: NextRequest) {
     const priezvisko = normalizeText(body.priezvisko)
     const email = normalizeEmail(body.email)
     const telefon = normalizeText(body.telefon) || null
-    const typStravy = normalizeFood(body.typStravy)
+    const accountType = normalizeText(body.accountType).toUpperCase() === 'TECHNICAL'
+      ? 'TECHNICAL'
+      : 'PERSON'
+    const isTechnicalAccount = accountType === 'TECHNICAL'
+    const typStravy = isTechnicalAccount ? 'MASO' : normalizeFood(body.typStravy)
     const validFrom = normalizeText(body.validFrom)
     const validTo = normalizeText(body.validTo)
-    const registrationGroupId = normalizeText(body.registrationGroupId) || null
+    const registrationGroupId = isTechnicalAccount ? null : normalizeText(body.registrationGroupId) || null
     const importBatchId = normalizeText(body.importBatchId) || null
     const importRowId = normalizeText(body.importRowId) || null
     const generateAccessCode = body.generateAccessCode === true
-    const obed = !!body.obed
-    const vecera = !!body.vecera
-    const assignQr = body.assignQr !== false
-    const groupIds = Array.isArray(body.groupIds)
+    const obed = isTechnicalAccount ? false : !!body.obed
+    const vecera = isTechnicalAccount ? false : !!body.vecera
+    const assignQr = isTechnicalAccount ? body.assignQr === true : body.assignQr !== false
+    const groupIds = !isTechnicalAccount && Array.isArray(body.groupIds)
       ? Array.from(new Set(body.groupIds.map((id: any) => normalizeText(id)).filter(Boolean)))
       : []
 
     if (!meno || !priezvisko) {
       return NextResponse.json(
         { error: 'Meno a priezvisko su povinne.' },
-        { status: 400 }
-      )
-    }
-
-    if (!typStravy) {
-      return NextResponse.json(
-        { error: 'Vyber typ stravy.' },
-        { status: 400 }
-      )
-    }
-
-    if (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom) {
-      return NextResponse.json(
-        { error: 'Zadaj platne obdobie prace.' },
-        { status: 400 }
-      )
-    }
-
-    if (!obed && !vecera) {
-      return NextResponse.json(
-        { error: 'Vyber aspon jeden narok na stravu.' },
-        { status: 400 }
-      )
-    }
-
-    const dates = dateRange(validFrom, validTo)
-
-    if (dates.length > 120) {
-      return NextResponse.json(
-        { error: 'Obdobie moze mat najviac 120 dni.' },
         { status: 400 }
       )
     }
@@ -117,6 +91,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: 'Personalistiku moze pouzivat iba ADMIN alebo PERSONALISTA.' },
         { status: 403 }
+      )
+    }
+
+    if (isTechnicalAccount && !globalAccess.isAdmin) {
+      return NextResponse.json(
+        { error: 'Technicky ucet moze vytvorit iba ADMIN.' },
+        { status: 403 }
+      )
+    }
+
+    if (!isTechnicalAccount) {
+      if (!typStravy) {
+        return NextResponse.json(
+          { error: 'Vyber typ stravy.' },
+          { status: 400 }
+        )
+      }
+
+      if (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom) {
+        return NextResponse.json(
+          { error: 'Zadaj platne obdobie prace.' },
+          { status: 400 }
+        )
+      }
+
+      if (!obed && !vecera) {
+        return NextResponse.json(
+          { error: 'Vyber aspon jeden narok na stravu.' },
+          { status: 400 }
+        )
+      }
+    }
+
+    const dates = isTechnicalAccount ? [] : dateRange(validFrom, validTo)
+
+    if (!isTechnicalAccount && dates.length > 120) {
+      return NextResponse.json(
+        { error: 'Obdobie moze mat najviac 120 dni.' },
+        { status: 400 }
       )
     }
 
@@ -228,21 +241,27 @@ export async function POST(req: NextRequest) {
     let assignedQrCode: string | null = null
     let accessCodePlain: string | null = null
 
+    const userInsert: Record<string, any> = {
+      meno,
+      priezvisko,
+      email,
+      telefon,
+      typ_stravy: typStravy,
+      qr_code: null,
+      zdroj: 'PERSONALISTA',
+      aktivny: 'ANO',
+      registration_group_id: registrationGroupId,
+      manual_created_by: currentUser.id,
+      updated_at: now
+    }
+
+    if (isTechnicalAccount) {
+      userInsert.account_type = 'TECHNICAL'
+    }
+
     const { data: newUser, error: userError } = await supabaseServer
       .from('users')
-      .insert({
-        meno,
-        priezvisko,
-        email,
-        telefon,
-        typ_stravy: typStravy,
-        qr_code: null,
-        zdroj: 'PERSONALISTA',
-        aktivny: 'ANO',
-        registration_group_id: registrationGroupId,
-        manual_created_by: currentUser.id,
-        updated_at: now
-      })
+      .insert(userInsert)
       .select('id, meno, priezvisko, email')
       .single()
 
@@ -311,46 +330,48 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { error: workPeriodError } = await supabaseServer
-      .from('personnel_work_periods')
-      .insert({
-        user_id: newUser.id,
-        valid_from: validFrom,
-        valid_to: validTo,
-        source: 'MANUAL',
-        created_by: currentUser.id,
-        updated_by: currentUser.id
-      })
+    if (!isTechnicalAccount) {
+      const { error: workPeriodError } = await supabaseServer
+        .from('personnel_work_periods')
+        .insert({
+          user_id: newUser.id,
+          valid_from: validFrom,
+          valid_to: validTo,
+          source: 'MANUAL',
+          created_by: currentUser.id,
+          updated_by: currentUser.id
+        })
 
-    if (workPeriodError) {
-      await rollbackUser()
+      if (workPeriodError) {
+        await rollbackUser()
 
-      return NextResponse.json(
-        { error: workPeriodError.message },
-        { status: 500 }
-      )
-    }
+        return NextResponse.json(
+          { error: workPeriodError.message },
+          { status: 500 }
+        )
+      }
 
-    const { error: entitlementError } = await supabaseServer
-      .from('user_food_entitlements')
-      .insert(dates.map(datum => ({
-        user_id: newUser.id,
-        datum,
-        obed,
-        vecera,
-        source: 'PERSONALISTA',
-        created_by: currentUser.id,
-        updated_by: currentUser.id,
-        updated_at: now
-      })))
+      const { error: entitlementError } = await supabaseServer
+        .from('user_food_entitlements')
+        .insert(dates.map(datum => ({
+          user_id: newUser.id,
+          datum,
+          obed,
+          vecera,
+          source: 'PERSONALISTA',
+          created_by: currentUser.id,
+          updated_by: currentUser.id,
+          updated_at: now
+        })))
 
-    if (entitlementError) {
-      await rollbackUser()
+      if (entitlementError) {
+        await rollbackUser()
 
-      return NextResponse.json(
-        { error: entitlementError.message },
-        { status: 500 }
-      )
+        return NextResponse.json(
+          { error: entitlementError.message },
+          { status: 500 }
+        )
+      }
     }
 
     if (assignQr) {
@@ -397,7 +418,7 @@ export async function POST(req: NextRequest) {
           access_code_plain: accessCodePlain,
           meno_key: normalizeAccessName(meno),
           priezvisko_key: normalizeAccessName(priezvisko),
-          label: 'Rucne vytvoreny pristupovy kod',
+          label: isTechnicalAccount ? 'Technicky ucet - pristupovy kod' : 'Rucne vytvoreny pristupovy kod',
           created_by: currentUser.id
         })
 
@@ -458,6 +479,7 @@ export async function POST(req: NextRequest) {
           priezvisko,
           email,
           telefon,
+          account_type: accountType,
           typ_stravy: typStravy,
           registration_group_id: registrationGroupId,
           group_ids: groupIds,
@@ -478,7 +500,7 @@ export async function POST(req: NextRequest) {
       qrAssigned: !!assignedQrCode,
       accessCode: accessCodePlain,
       entitlementDays: dates.length,
-      message: 'Osoba bola vytvorena.'
+      message: isTechnicalAccount ? 'Technicky ucet bol vytvoreny.' : 'Osoba bola vytvorena.'
     })
   } catch (err: any) {
     return NextResponse.json(

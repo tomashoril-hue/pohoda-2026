@@ -105,6 +105,7 @@ type DetailMessageType = 'ok' | 'error' | ''
 type PeopleScope = 'mine' | 'all'
 type PersonnelTool = 'communication' | 'accessCodes' | 'registrationGroupManagers' | ''
 type CommunicationLanguage = 'SK' | 'EN'
+type CreateAccountType = 'PERSON' | 'TECHNICAL'
 
 type CommunicationSummary = {
   total: number
@@ -515,6 +516,7 @@ export default function PersonalistaClient({
   const [detailMessageType, setDetailMessageType] = useState<DetailMessageType>('')
   const [detailMessageMode, setDetailMessageMode] = useState<DetailMode>('')
   const [createForm, setCreateForm] = useState({
+    accountType: 'PERSON' as CreateAccountType,
     meno: '',
     priezvisko: '',
     email: '',
@@ -1288,6 +1290,7 @@ export default function PersonalistaClient({
     availableCreateGroups.some(group => group.id === createGroupSelectId)
       ? createGroupSelectId
       : ''
+  const isTechnicalCreate = createForm.accountType === 'TECHNICAL'
 
   const availableDetailGroups = useMemo(() => {
     if (!selectedPerson) return []
@@ -1377,8 +1380,39 @@ export default function PersonalistaClient({
     }))
   }
 
+  const updateCreateAccountType = (accountType: CreateAccountType) => {
+    setCreateForm(prev => {
+      if (accountType === 'TECHNICAL') {
+        return {
+          ...prev,
+          accountType,
+          typStravy: 'MASO',
+          registrationGroupId: '',
+          groupIds: [],
+          validFrom: isoDateOffset(0),
+          validTo: isoDateOffset(0),
+          obed: false,
+          vecera: false,
+          assignQr: false,
+          generateAccessCode: true
+        }
+      }
+
+      return {
+        ...prev,
+        accountType,
+        typStravy: prev.typStravy || 'MASO',
+        validFrom: prev.validFrom || isoDateOffset(0),
+        validTo: prev.validTo || isoDateOffset(0),
+        obed: prev.obed || !prev.vecera ? true : prev.obed
+      }
+    })
+
+    setCreateGroupSelectId('')
+  }
+
   const addCreateGroup = () => {
-    if (!safeCreateGroupSelectId) return
+    if (isTechnicalCreate || !safeCreateGroupSelectId) return
 
     setCreateForm(prev => ({
       ...prev,
@@ -1410,6 +1444,7 @@ export default function PersonalistaClient({
 
   const resetCreateForm = () => {
     setCreateForm({
+      accountType: 'PERSON',
       meno: '',
       priezvisko: '',
       email: '',
@@ -4736,7 +4771,11 @@ export default function PersonalistaClient({
           <div style={styles.createHeader}>
             <div>
               <b>Ručné vytvorenie osoby</b>
-              <span>Email aj skupina sú voliteľné. Nárok sa vytvorí pre každý deň vo vybranom období.</span>
+              <span>
+                {isTechnicalCreate
+                  ? 'Technický účet slúži na servisný prístup bez stravovacích nárokov.'
+                  : 'Email aj skupina sú voliteľné. Nárok sa vytvorí pre každý deň vo vybranom období.'}
+              </span>
             </div>
 
             <button
@@ -4752,6 +4791,36 @@ export default function PersonalistaClient({
               ×
             </button>
           </div>
+
+          {canAssignSensitiveRoles && (
+            <div style={styles.accountTypeSwitch}>
+              <button
+                type="button"
+                style={{
+                  ...styles.accountTypeButton,
+                  ...(createForm.accountType === 'PERSON' ? styles.accountTypeButtonActive : {})
+                }}
+                disabled={createLoading}
+                onClick={() => updateCreateAccountType('PERSON')}
+              >
+                <b>Stravník</b>
+                <span>Bežná osoba s nárokmi na stravu.</span>
+              </button>
+
+              <button
+                type="button"
+                style={{
+                  ...styles.accountTypeButton,
+                  ...(createForm.accountType === 'TECHNICAL' ? styles.accountTypeButtonActive : {})
+                }}
+                disabled={createLoading}
+                onClick={() => updateCreateAccountType('TECHNICAL')}
+              >
+                <b>Technický účet</b>
+                <span>Kiosk alebo servisný účet bez stravy.</span>
+              </button>
+            </div>
+          )}
 
           <div style={styles.createGrid}>
             <label style={styles.field}>
@@ -4800,156 +4869,168 @@ export default function PersonalistaClient({
               />
             </label>
 
-            <label style={styles.field}>
-              <span>Typ stravy</span>
-              <select
-                value={createForm.typStravy}
-                onChange={event => updateCreateForm('typStravy', event.target.value)}
-                style={styles.input}
-                disabled={createLoading}
-              >
-                <option value="MASO">MASO</option>
-                <option value="VEGE">VEGE</option>
-                <option value="DIETA">DIÉTA</option>
-              </select>
-            </label>
+            {!isTechnicalCreate && (
+              <>
+                <label style={styles.field}>
+                  <span>Typ stravy</span>
+                  <select
+                    value={createForm.typStravy}
+                    onChange={event => updateCreateForm('typStravy', event.target.value)}
+                    style={styles.input}
+                    disabled={createLoading}
+                  >
+                    <option value="MASO">MASO</option>
+                    <option value="VEGE">VEGE</option>
+                    <option value="DIETA">DIÉTA</option>
+                  </select>
+                </label>
 
-            <label style={styles.field}>
-              <span>Registracna skupina</span>
-              <select
-                value={createForm.registrationGroupId}
-                onChange={event => updateCreateForm('registrationGroupId', event.target.value)}
-                style={styles.input}
-                disabled={createLoading}
-              >
-                <option value="">Bez registracnej skupiny</option>
-                {registrationGroups.map(group => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <label style={styles.field}>
+                  <span>Registracna skupina</span>
+                  <select
+                    value={createForm.registrationGroupId}
+                    onChange={event => updateCreateForm('registrationGroupId', event.target.value)}
+                    style={styles.input}
+                    disabled={createLoading}
+                  >
+                    <option value="">Bez registracnej skupiny</option>
+                    {registrationGroups.map(group => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-            <label style={styles.field}>
-              <span>Od</span>
-              <input
-                type="date"
-                value={createForm.validFrom}
-                onChange={event => updateCreateForm('validFrom', event.target.value)}
-                style={styles.input}
-                disabled={createLoading}
-              />
-            </label>
+                <label style={styles.field}>
+                  <span>Od</span>
+                  <input
+                    type="date"
+                    value={createForm.validFrom}
+                    onChange={event => updateCreateForm('validFrom', event.target.value)}
+                    style={styles.input}
+                    disabled={createLoading}
+                  />
+                </label>
 
-            <label style={styles.field}>
-              <span>Do</span>
-              <input
-                type="date"
-                value={createForm.validTo}
-                onChange={event => updateCreateForm('validTo', event.target.value)}
-                style={styles.input}
-                disabled={createLoading}
-              />
-            </label>
+                <label style={styles.field}>
+                  <span>Do</span>
+                  <input
+                    type="date"
+                    value={createForm.validTo}
+                    onChange={event => updateCreateForm('validTo', event.target.value)}
+                    style={styles.input}
+                    disabled={createLoading}
+                  />
+                </label>
+              </>
+            )}
           </div>
 
           <div style={styles.createOptionsGrid}>
-            <div style={styles.optionBox}>
-              <div style={styles.optionTitle}>Stravovacie skupiny</div>
-              <div style={styles.optionHint}>Ak neoznačíš skupinu, osoba vznikne bez skupiny.</div>
+            {!isTechnicalCreate && (
+              <>
+                <div style={styles.optionBox}>
+                  <div style={styles.optionTitle}>Stravovacie skupiny</div>
+                  <div style={styles.optionHint}>Ak neoznačíš skupinu, osoba vznikne bez skupiny.</div>
 
-              <div style={styles.groupSelectRow}>
-                <select
-                  value={safeCreateGroupSelectId}
-                  onChange={event => setCreateGroupSelectId(event.target.value)}
-                  style={styles.input}
-                  disabled={createLoading}
-                >
-                  <option value="">
-                    {availableCreateGroups.length === 0 ? 'Žiadna ďalšia skupina' : 'Žiadna skupina'}
-                  </option>
+                  <div style={styles.groupSelectRow}>
+                    <select
+                      value={safeCreateGroupSelectId}
+                      onChange={event => setCreateGroupSelectId(event.target.value)}
+                      style={styles.input}
+                      disabled={createLoading}
+                    >
+                      <option value="">
+                        {availableCreateGroups.length === 0 ? 'Žiadna ďalšia skupina' : 'Žiadna skupina'}
+                      </option>
 
-                  {availableCreateGroups.map(group => (
-                    <option key={group.id} value={group.id}>
-                      {group.name}
-                    </option>
-                  ))}
-                </select>
+                      {availableCreateGroups.map(group => (
+                        <option key={group.id} value={group.id}>
+                          {group.name}
+                        </option>
+                      ))}
+                    </select>
 
-                <button
-                  type="button"
-                  style={styles.lightButton}
-                  onClick={addCreateGroup}
-                  disabled={createLoading || !safeCreateGroupSelectId}
-                >
-                  Pridať
-                </button>
-              </div>
+                    <button
+                      type="button"
+                      style={styles.lightButton}
+                      onClick={addCreateGroup}
+                      disabled={createLoading || !safeCreateGroupSelectId}
+                    >
+                      Pridať
+                    </button>
+                  </div>
 
-              <div style={styles.selectedGroupList}>
-                {selectedCreateGroups.length === 0 ? (
-                  <span style={styles.emptyGroupSelection}>Bez skupiny</span>
-                ) : (
-                  selectedCreateGroups.map(group => (
-                    <span key={group.id} style={styles.selectedGroupPill}>
-                      {group.name}
-                      <button
-                        type="button"
-                        style={styles.removePillButton}
-                        onClick={() => removeCreateGroup(group.id)}
+                  <div style={styles.selectedGroupList}>
+                    {selectedCreateGroups.length === 0 ? (
+                      <span style={styles.emptyGroupSelection}>Bez skupiny</span>
+                    ) : (
+                      selectedCreateGroups.map(group => (
+                        <span key={group.id} style={styles.selectedGroupPill}>
+                          {group.name}
+                          <button
+                            type="button"
+                            style={styles.removePillButton}
+                            onClick={() => removeCreateGroup(group.id)}
+                            disabled={createLoading}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))
+                    )}
+                  </div>
+
+                  {selectedCreateGroups.length > 0 && (
+                    <button
+                      type="button"
+                      style={styles.tinyTextButton}
+                      onClick={clearCreateGroups}
+                      disabled={createLoading}
+                    >
+                      Vytvoriť bez skupiny
+                    </button>
+                  )}
+                </div>
+
+                <div style={styles.optionBox}>
+                  <div style={styles.optionTitle}>Nárok</div>
+
+                  <div style={styles.checkList}>
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={createForm.obed}
+                        onChange={event => updateCreateForm('obed', event.target.checked)}
                         disabled={createLoading}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))
-                )}
-              </div>
+                        style={styles.checkbox}
+                      />
+                      <span>Obed</span>
+                    </label>
 
-              {selectedCreateGroups.length > 0 && (
-                <button
-                  type="button"
-                  style={styles.tinyTextButton}
-                  onClick={clearCreateGroups}
-                  disabled={createLoading}
-                >
-                  Vytvoriť bez skupiny
-                </button>
-              )}
-            </div>
-
-            <div style={styles.optionBox}>
-              <div style={styles.optionTitle}>Nárok</div>
-
-              <div style={styles.checkList}>
-                <label style={styles.checkRow}>
-                  <input
-                    type="checkbox"
-                    checked={createForm.obed}
-                    onChange={event => updateCreateForm('obed', event.target.checked)}
-                    disabled={createLoading}
-                    style={styles.checkbox}
-                  />
-                  <span>Obed</span>
-                </label>
-
-                <label style={styles.checkRow}>
-                  <input
-                    type="checkbox"
-                    checked={createForm.vecera}
-                    onChange={event => updateCreateForm('vecera', event.target.checked)}
-                    disabled={createLoading}
-                    style={styles.checkbox}
-                  />
-                  <span>Večera</span>
-                </label>
-              </div>
-            </div>
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={createForm.vecera}
+                        onChange={event => updateCreateForm('vecera', event.target.checked)}
+                        disabled={createLoading}
+                        style={styles.checkbox}
+                      />
+                      <span>Večera</span>
+                    </label>
+                  </div>
+                </div>
+              </>
+            )}
 
             <div style={styles.optionBox}>
               <div style={styles.optionTitle}>Priraďovanie prístupov</div>
-              <div style={styles.optionHint}>QR použije voľný kód z databázy. Prístupový kód umožní prihlásenie menom, priezviskom a kódom.</div>
+              <div style={styles.optionHint}>
+                {isTechnicalCreate
+                  ? 'Technický účet môže mať QR aj prístupový kód. Prístupový kód použiješ na prihlásenie kiosku.'
+                  : 'QR použije voľný kód z databázy. Prístupový kód umožní prihlásenie menom, priezviskom a kódom.'}
+              </div>
 
               <div style={styles.checkList}>
                 <label style={styles.checkRow}>
@@ -7203,6 +7284,27 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: 10
+  },
+  accountTypeSwitch: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 190px), 1fr))',
+    gap: 6
+  },
+  accountTypeButton: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    background: '#fff',
+    color: '#111827',
+    padding: 8,
+    display: 'grid',
+    gap: 3,
+    textAlign: 'left',
+    cursor: 'pointer'
+  },
+  accountTypeButtonActive: {
+    borderColor: '#fb923c',
+    background: '#fff7ed',
+    boxShadow: '0 0 0 2px #fdba74 inset'
   },
   createGrid: {
     display: 'grid',
