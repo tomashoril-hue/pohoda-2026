@@ -126,7 +126,15 @@ export default function AccessCodesShareClient({
             <span>{copy.signedIn}</span>
             <b>{currentUserName || currentUserEmail || '-'}</b>
           </div>
-          <Link href="/dashboard" style={styles.homeButton}>
+          <Link
+            href="/dashboard"
+            style={{
+              ...styles.homeButton,
+              ...(pressedAction === 'home' ? styles.homeButtonPressed : {})
+            }}
+            onPointerDown={() => setPressedAction('home')}
+            onClick={() => setPressedAction('home')}
+          >
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style={styles.homeIcon}>
               <path
                 d="M3 10.5 12 3l9 7.5v9a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H4.5A1.5 1.5 0 0 1 3 19.5v-9Z"
@@ -298,7 +306,13 @@ const styles: Record<string, CSSProperties> = {
     gap: 7,
     boxShadow: '3px 3px 0 #000',
     fontWeight: 950,
-    textDecoration: 'none'
+    textDecoration: 'none',
+    transition: 'transform 120ms ease, box-shadow 120ms ease, background 120ms ease'
+  },
+  homeButtonPressed: {
+    transform: 'translate(2px, 2px)',
+    boxShadow: '1px 1px 0 #000',
+    background: '#45c832'
   },
   homeIcon: {
     display: 'block'
