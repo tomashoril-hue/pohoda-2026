@@ -139,7 +139,7 @@ type RegistrationGroupManagersOverviewGroup = {
 type ManagerOverviewMode = 'all' | 'withManagers' | 'withoutManagers'
 
 const ACCESS_CODES_NOTES: Record<CommunicationLanguage, string> = {
-  SK: 'Ahoj, posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.',
+  SK: 'Ahoj, v prilohe posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.',
   EN: 'Hello, I am sending login details for individual users in the attachment. Please keep them safe and share them with your colleagues.'
 }
 

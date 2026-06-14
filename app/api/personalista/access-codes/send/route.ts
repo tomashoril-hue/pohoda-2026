@@ -19,6 +19,34 @@ function languageValue(value: any) {
   return text(value).toUpperCase() === 'EN' ? 'EN' : 'SK'
 }
 
+const ACCESS_CODES_DEFAULT_NOTES = {
+  SK: [
+    'Ahoj, v prilohe posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.',
+    'Ahoj, posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.'
+  ],
+  EN: [
+    'Hello, I am sending login details for individual users in the attachment. Please keep them safe and share them with your colleagues.'
+  ]
+}
+
+function defaultAccessCodesNote(language: 'SK' | 'EN') {
+  return ACCESS_CODES_DEFAULT_NOTES[language][0]
+}
+
+function accessCodesNoteValue(value: any, language: 'SK' | 'EN') {
+  const note = text(value)
+  const knownDefaultNotes = [
+    ...ACCESS_CODES_DEFAULT_NOTES.SK,
+    ...ACCESS_CODES_DEFAULT_NOTES.EN
+  ]
+
+  if (!note || knownDefaultNotes.includes(note)) {
+    return defaultAccessCodesNote(language)
+  }
+
+  return note
+}
+
 function normalizePhone(value: any) {
   const raw = text(value)
 
@@ -725,10 +753,7 @@ export async function POST(req: NextRequest) {
     const recipientEmail = emailValue(body.email)
     const registrationGroupId = text(body.registrationGroupId)
     const language = languageValue(body.language)
-    const defaultNote = language === 'EN'
-      ? 'Hello, I am sending login details for individual users in the attachment. Please keep them safe and share them with your colleagues.'
-      : 'Ahoj, v prilohe posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.'
-    const note = text(body.note) || defaultNote
+    const note = accessCodesNoteValue(body.note, language)
     const includeAccessCodes = body.includeAccessCodes !== false
     const includeQrCodes = body.includeQrCodes === true
 
