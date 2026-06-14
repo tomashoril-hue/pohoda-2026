@@ -935,17 +935,19 @@ export async function POST(req: NextRequest) {
             <p>${htmlEscape(note)}</p>
             <p>${htmlEscape(emailCopy.attachmentIntro)}</p>
             <p>${htmlEscape(emailCopy.loginInfo)} <a href="${loginBaseUrl}">${loginBaseUrl}</a></p>
-            <p>${htmlEscape(emailCopy.shareIntro)}</p>
-            <p>
-              <a href="${shareUrl.toString()}" style="display:inline-block;background:#7417e8;color:#fff;border:3px solid #000;border-radius:999px;padding:12px 18px;font-weight:900;text-decoration:none;">
-                ${htmlEscape(emailCopy.shareButton)}
-              </a>
-            </p>
+            ${includeAccessCodes ? `
+              <p>${htmlEscape(emailCopy.shareIntro)}</p>
+              <p>
+                <a href="${shareUrl.toString()}" style="display:inline-block;background:#7417e8;color:#fff;border:3px solid #000;border-radius:999px;padding:12px 18px;font-weight:900;text-decoration:none;">
+                  ${htmlEscape(emailCopy.shareButton)}
+                </a>
+              </p>
+            ` : ''}
             <p style="font-size:13px;color:#555;">${htmlEscape(attachmentText)}</p>
           </div>
         </div>
       `,
-      text: `${note}\n\n${emailCopy.loginInfo} ${loginBaseUrl}\n${emailCopy.shareIntro} ${shareUrl.toString()}\n${attachmentText}`,
+      text: `${note}\n\n${emailCopy.loginInfo} ${loginBaseUrl}${includeAccessCodes ? `\n${emailCopy.shareIntro} ${shareUrl.toString()}` : ''}\n${attachmentText}`,
       attachments
     })
 
