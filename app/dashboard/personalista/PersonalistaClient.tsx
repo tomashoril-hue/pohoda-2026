@@ -103,7 +103,7 @@ type PersonItem = {
 type DetailMode = 'profile' | 'registrationPeriods' | 'entitlements' | 'groups' | 'roles' | 'qr' | 'nfc' | ''
 type DetailMessageType = 'ok' | 'error' | ''
 type PeopleScope = 'mine' | 'all'
-type PersonnelTool = 'communication' | 'accessCodes' | ''
+type PersonnelTool = 'communication' | 'accessCodes' | 'registrationGroupManagers' | ''
 type CommunicationLanguage = 'SK' | 'EN'
 
 type CommunicationSummary = {
@@ -118,6 +118,25 @@ type CommunicationSummary = {
     name: string
   }
 }
+
+type RegistrationGroupManagerPerson = {
+  id: string
+  userId: string
+  fullName: string
+  email: string
+  telefon: string
+  aktivny: string
+  createdAt: string
+}
+
+type RegistrationGroupManagersOverviewGroup = {
+  id: string
+  name: string
+  managers: RegistrationGroupManagerPerson[]
+  managerCount: number
+}
+
+type ManagerOverviewMode = 'all' | 'withManagers' | 'withoutManagers'
 
 const ACCESS_CODES_NOTES: Record<CommunicationLanguage, string> = {
   SK: 'Ahoj, posielam prihlasovacie udaje jednotlivych uzivatelov. Dobre si ich uchovaj a poskytni ich svojim kolegom.',
@@ -440,6 +459,17 @@ export default function PersonalistaClient({
   const [accessCodesLoading, setAccessCodesLoading] = useState(false)
   const [accessCodesMessage, setAccessCodesMessage] = useState('')
   const [accessCodesMessageType, setAccessCodesMessageType] = useState<'ok' | 'error' | ''>('')
+  const [managerOverviewGroups, setManagerOverviewGroups] = useState<RegistrationGroupManagersOverviewGroup[]>([])
+  const [managerOverviewLoading, setManagerOverviewLoading] = useState(false)
+  const [managerOverviewActionLoading, setManagerOverviewActionLoading] = useState(false)
+  const [managerOverviewMessage, setManagerOverviewMessage] = useState('')
+  const [managerOverviewMessageType, setManagerOverviewMessageType] = useState<'ok' | 'error' | ''>('')
+  const [managerOverviewFilter, setManagerOverviewFilter] = useState('')
+  const [managerOverviewMode, setManagerOverviewMode] = useState<ManagerOverviewMode>('all')
+  const [managerOverviewGroupId, setManagerOverviewGroupId] = useState('')
+  const [managerOverviewPersonQuery, setManagerOverviewPersonQuery] = useState('')
+  const [managerOverviewPersonResults, setManagerOverviewPersonResults] = useState<PersonItem[]>([])
+  const [managerOverviewSelectedPerson, setManagerOverviewSelectedPerson] = useState<PersonItem | null>(null)
   const [printQrOpen, setPrintQrOpen] = useState(false)
   const [printQrForm, setPrintQrForm] = useState({
     type: 'REGISTRATION_GROUP',
@@ -712,6 +742,170 @@ export default function PersonalistaClient({
     }
   }
 
+  const loadRegistrationGroupManagersOverview = async () => {
+    setManagerOverviewLoading(true)
+    setManagerOverviewMessage('')
+    setManagerOverviewMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/registration-group-managers', {
+        cache: 'no-store'
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setManagerOverviewMessage(json.error || 'Prehlad managerov sa nepodarilo nacitat.')
+        setManagerOverviewMessageType('error')
+        setManagerOverviewGroups([])
+        return
+      }
+
+      const groups = Array.isArray(json.groups) ? json.groups : []
+      setManagerOverviewGroups(groups)
+      setManagerOverviewMessage(`Nacitane: ${groups.length} registracnych skupin.`)
+      setManagerOverviewMessageType('ok')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setManagerOverviewMessage('Chyba spojenia so serverom: ' + message)
+      setManagerOverviewMessageType('error')
+      setManagerOverviewGroups([])
+    } finally {
+      setManagerOverviewLoading(false)
+    }
+  }
+
+  const searchManagerOverviewPeople = async () => {
+    const query = managerOverviewPersonQuery.trim()
+
+    if (query.length < 2) {
+      setManagerOverviewMessage('Zadaj aspon 2 znaky mena, priezviska alebo e-mailu.')
+      setManagerOverviewMessageType('error')
+      setManagerOverviewPersonResults([])
+      return
+    }
+
+    setManagerOverviewActionLoading(true)
+    setManagerOverviewMessage('')
+    setManagerOverviewMessageType('')
+    setManagerOverviewSelectedPerson(null)
+
+    try {
+      const res = await fetch(`/api/personalista/people/search?q=${encodeURIComponent(query)}`, {
+        cache: 'no-store'
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setManagerOverviewMessage(json.error || 'Vyhladavanie osoby zlyhalo.')
+        setManagerOverviewMessageType('error')
+        setManagerOverviewPersonResults([])
+        return
+      }
+
+      const results = Array.isArray(json.people) ? json.people : []
+      setManagerOverviewPersonResults(results.slice(0, 12))
+      setManagerOverviewMessage(results.length ? `Najdenych: ${Math.min(results.length, 12)}.` : 'Nenasla sa ziadna osoba.')
+      setManagerOverviewMessageType(results.length ? 'ok' : 'error')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setManagerOverviewMessage('Chyba spojenia so serverom: ' + message)
+      setManagerOverviewMessageType('error')
+      setManagerOverviewPersonResults([])
+    } finally {
+      setManagerOverviewActionLoading(false)
+    }
+  }
+
+  const addManagerFromOverview = async () => {
+    if (!managerOverviewGroupId) {
+      setManagerOverviewMessage('Vyber registracnu skupinu.')
+      setManagerOverviewMessageType('error')
+      return
+    }
+
+    if (!managerOverviewSelectedPerson) {
+      setManagerOverviewMessage('Vyber osobu zo zoznamu vysledkov.')
+      setManagerOverviewMessageType('error')
+      return
+    }
+
+    const selectedManagerPerson = managerOverviewSelectedPerson
+
+    setManagerOverviewActionLoading(true)
+    setManagerOverviewMessage('')
+    setManagerOverviewMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/people/registration-group-managers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: selectedManagerPerson.id,
+          registrationGroupId: managerOverviewGroupId
+        })
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setManagerOverviewMessage(json.error || 'Managera sa nepodarilo pridat.')
+        setManagerOverviewMessageType('error')
+        return
+      }
+
+      setManagerOverviewPersonQuery('')
+      setManagerOverviewPersonResults([])
+      setManagerOverviewSelectedPerson(null)
+      await loadRegistrationGroupManagersOverview()
+      await reloadPersonDetail(selectedManagerPerson.id).catch(() => undefined)
+      setManagerOverviewMessage(json.message || 'Manager registracnej skupiny bol pridany.')
+      setManagerOverviewMessageType('ok')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setManagerOverviewMessage('Chyba spojenia so serverom: ' + message)
+      setManagerOverviewMessageType('error')
+    } finally {
+      setManagerOverviewActionLoading(false)
+    }
+  }
+
+  const removeManagerFromOverview = async (manager: RegistrationGroupManagerPerson, groupName: string) => {
+    const ok = window.confirm(`Odobrat managera ${manager.fullName || manager.email || 'bez mena'} zo skupiny ${groupName}?`)
+    if (!ok) return
+
+    setManagerOverviewActionLoading(true)
+    setManagerOverviewMessage('')
+    setManagerOverviewMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/people/registration-group-managers', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: manager.userId,
+          managerId: manager.id
+        })
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setManagerOverviewMessage(json.error || 'Managera sa nepodarilo odobrat.')
+        setManagerOverviewMessageType('error')
+        return
+      }
+
+      await loadRegistrationGroupManagersOverview()
+      await reloadPersonDetail(manager.userId).catch(() => undefined)
+      setManagerOverviewMessage(json.message || 'Manager registracnej skupiny bol odobrany.')
+      setManagerOverviewMessageType('ok')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setManagerOverviewMessage('Chyba spojenia so serverom: ' + message)
+      setManagerOverviewMessageType('error')
+    } finally {
+      setManagerOverviewActionLoading(false)
+    }
+  }
+
   const clearDetailFeedback = () => {
     setDetailMessage('')
     setDetailMessageType('')
@@ -799,6 +993,28 @@ export default function PersonalistaClient({
       : peopleSearchMessage.toLowerCase().includes('chyba') || peopleSearchMessage.toLowerCase().includes('nepodarilo')
         ? styles.toolbarHintError
         : {}
+  const filteredManagerOverviewGroups = useMemo(() => {
+    const query = managerOverviewFilter.trim().toLowerCase()
+
+    return managerOverviewGroups.filter(group => {
+      if (managerOverviewMode === 'withManagers' && group.managers.length === 0) return false
+      if (managerOverviewMode === 'withoutManagers' && group.managers.length > 0) return false
+
+      if (!query) return true
+
+      const groupMatch = group.name.toLowerCase().includes(query)
+      const managerMatch = group.managers.some(manager => {
+        return [
+          manager.fullName,
+          manager.email,
+          manager.telefon
+        ].some(value => String(value || '').toLowerCase().includes(query))
+      })
+
+      return groupMatch || managerMatch
+    })
+  }, [managerOverviewFilter, managerOverviewGroups, managerOverviewMode])
+  const selectedManagerOverviewGroup = registrationGroups.find(group => group.id === managerOverviewGroupId) || null
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 760px)')
@@ -817,6 +1033,13 @@ export default function PersonalistaClient({
 
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [isMobile, selectedPersonId])
+
+  useEffect(() => {
+    if (personnelTool !== 'registrationGroupManagers') return
+    if (managerOverviewGroups.length > 0 || managerOverviewLoading) return
+
+    void loadRegistrationGroupManagersOverview()
+  }, [personnelTool, managerOverviewGroups.length, managerOverviewLoading])
 
   useEffect(() => {
     if (!isMobile || !shouldShowDetailMessage) return
@@ -2906,6 +3129,21 @@ export default function PersonalistaClient({
           Pristupy a QR
         </button>
 
+        <button
+          type="button"
+          style={styles.lightButton}
+          disabled={!canManage}
+          onClick={() => {
+            const next = personnelTool === 'registrationGroupManagers' ? '' : 'registrationGroupManagers'
+            closeTopPanels()
+            setPersonnelTool(next)
+            setManagerOverviewMessage('')
+            setManagerOverviewMessageType('')
+          }}
+        >
+          Manageri skupin
+        </button>
+
         <a
           href="/dashboard/personalista/google-sheets"
           style={{
@@ -3270,6 +3508,204 @@ export default function PersonalistaClient({
               {accessCodesMessage}
             </div>
           )}
+        </section>
+      )}
+
+      {!showMobilePersonDetail && personnelTool === 'registrationGroupManagers' && (
+        <section style={styles.createPanel}>
+          <div style={styles.createHeader}>
+            <div>
+              <b>Manageri registracnych skupin</b>
+              <span>Prehlad, pridanie a odobratie managerov pre skupinovy vydaj.</span>
+            </div>
+
+            <button
+              type="button"
+              style={styles.closeButton}
+              disabled={managerOverviewLoading || managerOverviewActionLoading}
+              onClick={() => setPersonnelTool('')}
+            >
+              x
+            </button>
+          </div>
+
+          <div style={styles.createGrid}>
+            <label style={styles.field}>
+              <span>Hladat</span>
+              <input
+                value={managerOverviewFilter}
+                onChange={event => setManagerOverviewFilter(event.target.value)}
+                style={styles.input}
+                placeholder="Skupina, meno, e-mail"
+                disabled={managerOverviewLoading}
+              />
+            </label>
+
+            <label style={styles.field}>
+              <span>Zobrazenie</span>
+              <select
+                value={managerOverviewMode}
+                onChange={event => setManagerOverviewMode(event.target.value as ManagerOverviewMode)}
+                style={styles.input}
+                disabled={managerOverviewLoading}
+              >
+                <option value="all">Vsetky skupiny</option>
+                <option value="withManagers">Len s managerom</option>
+                <option value="withoutManagers">Len bez managera</option>
+              </select>
+            </label>
+          </div>
+
+          <div style={styles.toolActionRow}>
+            <button
+              type="button"
+              style={styles.lightButton}
+              disabled={managerOverviewLoading || managerOverviewActionLoading}
+              onClick={() => void loadRegistrationGroupManagersOverview()}
+            >
+              {managerOverviewLoading ? 'Nacitavam...' : 'Obnovit prehlad'}
+            </button>
+
+            <span style={styles.optionHint}>
+              Zobrazenych {filteredManagerOverviewGroups.length} z {managerOverviewGroups.length} skupin.
+            </span>
+          </div>
+
+          <div style={styles.detailEditBoxSoft}>
+            <div style={styles.detailEditTitle}>Pridat managera</div>
+
+            <div style={styles.createGrid}>
+              <label style={styles.field}>
+                <span>Registracna skupina</span>
+                <select
+                  value={managerOverviewGroupId}
+                  onChange={event => setManagerOverviewGroupId(event.target.value)}
+                  style={styles.input}
+                  disabled={managerOverviewActionLoading}
+                >
+                  <option value="">Vyber registracnu skupinu</option>
+                  {registrationGroups.map(group => (
+                    <option key={group.id} value={group.id}>{group.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={styles.field}>
+                <span>Osoba</span>
+                <input
+                  value={managerOverviewPersonQuery}
+                  onChange={event => {
+                    setManagerOverviewPersonQuery(event.target.value)
+                    setManagerOverviewSelectedPerson(null)
+                  }}
+                  style={styles.input}
+                  placeholder="Meno, priezvisko alebo e-mail"
+                  disabled={managerOverviewActionLoading}
+                />
+              </label>
+            </div>
+
+            <div style={styles.toolActionRow}>
+              <button
+                type="button"
+                style={styles.lightButton}
+                disabled={managerOverviewActionLoading || managerOverviewPersonQuery.trim().length < 2}
+                onClick={() => void searchManagerOverviewPeople()}
+              >
+                {managerOverviewActionLoading ? 'Pracujem...' : 'Vyhladat osobu'}
+              </button>
+
+              <button
+                type="button"
+                style={styles.confirmButton}
+                disabled={managerOverviewActionLoading || !managerOverviewGroupId || !managerOverviewSelectedPerson}
+                onClick={() => void addManagerFromOverview()}
+              >
+                Pridat managera
+              </button>
+
+              {selectedManagerOverviewGroup && managerOverviewSelectedPerson && (
+                <span style={styles.optionHint}>
+                  {managerOverviewSelectedPerson.fullName} {'->'} {selectedManagerOverviewGroup.name}
+                </span>
+              )}
+            </div>
+
+            {managerOverviewPersonResults.length > 0 && (
+              <div style={styles.managerResultList}>
+                {managerOverviewPersonResults.map(person => {
+                  const isSelected = managerOverviewSelectedPerson?.id === person.id
+
+                  return (
+                    <button
+                      key={person.id}
+                      type="button"
+                      style={{
+                        ...styles.managerResultButton,
+                        ...(isSelected ? styles.managerResultButtonActive : {})
+                      }}
+                      disabled={managerOverviewActionLoading}
+                      onClick={() => setManagerOverviewSelectedPerson(person)}
+                    >
+                      <b>{person.fullName || 'Bez mena'}</b>
+                      <span>{person.email || person.telefon || 'Bez kontaktu'}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {managerOverviewMessage && (
+            <div
+              style={{
+                ...styles.message,
+                background: managerOverviewMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                color: managerOverviewMessageType === 'ok' ? '#166534' : '#991b1b',
+                borderColor: managerOverviewMessageType === 'ok' ? '#86efac' : '#fecaca'
+              }}
+            >
+              {managerOverviewMessage}
+            </div>
+          )}
+
+          <div style={styles.managerOverviewGrid}>
+            {filteredManagerOverviewGroups.map(group => (
+              <article key={group.id} style={styles.managerGroupCard}>
+                <header style={styles.managerGroupHeader}>
+                  <div>
+                    <b>{group.name}</b>
+                    <span>{group.managers.length ? `${group.managers.length} manager` : 'Bez managera'}</span>
+                  </div>
+                </header>
+
+                <div style={styles.managerList}>
+                  {group.managers.length === 0 ? (
+                    <div style={styles.managerEmpty}>Pre tuto registracnu skupinu nie je nastaveny manager.</div>
+                  ) : (
+                    group.managers.map(manager => (
+                      <div key={manager.id} style={styles.managerRow}>
+                        <div style={styles.managerPersonInfo}>
+                          <b>{manager.fullName || 'Bez mena'}</b>
+                          <span>{manager.email || manager.telefon || 'Bez kontaktu'}</span>
+                        </div>
+
+                        <button
+                          type="button"
+                          style={styles.smallRemoveButton}
+                          disabled={managerOverviewActionLoading}
+                          title="Odobrat managera"
+                          onClick={() => void removeManagerFromOverview(manager, group.name)}
+                        >
+                          x
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
         </section>
       )}
 
@@ -6747,6 +7183,78 @@ const styles: Record<string, CSSProperties> = {
     gap: 2,
     minHeight: 44,
     color: '#9a3412'
+  },
+  managerResultList: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 190px), 1fr))',
+    gap: 5
+  },
+  managerResultButton: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 5,
+    background: '#fff',
+    padding: '7px 8px',
+    display: 'grid',
+    gap: 2,
+    textAlign: 'left',
+    cursor: 'pointer',
+    color: '#111827'
+  },
+  managerResultButtonActive: {
+    borderColor: '#fb923c',
+    background: '#fff7ed',
+    boxShadow: '0 0 0 2px #fdba74 inset'
+  },
+  managerOverviewGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))',
+    gap: 6
+  },
+  managerGroupCard: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    background: '#fff',
+    display: 'grid',
+    gap: 6,
+    padding: 7,
+    minWidth: 0
+  },
+  managerGroupHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 8,
+    alignItems: 'flex-start',
+    borderBottom: '1px solid #f3f4f6',
+    paddingBottom: 5
+  },
+  managerList: {
+    display: 'grid',
+    gap: 4
+  },
+  managerRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 6,
+    alignItems: 'center',
+    border: '1px solid #f3f4f6',
+    borderRadius: 5,
+    padding: 6,
+    background: '#f9fafb'
+  },
+  managerPersonInfo: {
+    display: 'grid',
+    gap: 2,
+    minWidth: 0,
+    overflowWrap: 'anywhere'
+  },
+  managerEmpty: {
+    border: '1px dashed #d1d5db',
+    borderRadius: 5,
+    padding: 8,
+    fontSize: 11,
+    fontWeight: 850,
+    color: '#6b7280',
+    background: '#f9fafb'
   },
   createOptionsGrid: {
     display: 'grid',
