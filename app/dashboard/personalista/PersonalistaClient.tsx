@@ -255,6 +255,24 @@ function registrationPeriodsOverlap(
   })
 }
 
+function canAutoCloseOpenEndedRegistrationPeriod(
+  periods: PersonRegistrationGroupPeriod[],
+  validFrom: string,
+  validTo: string,
+  excludePeriodId = ''
+) {
+  if (excludePeriodId) return false
+
+  const end = validTo || '9999-12-31'
+  const overlaps = periods.filter(period => {
+    const periodEnd = period.validTo || '9999-12-31'
+
+    return validFrom <= periodEnd && period.validFrom <= end
+  })
+
+  return overlaps.length === 1 && !overlaps[0].validTo && overlaps[0].validFrom < validFrom
+}
+
 function dateRangeIso(from: string, to: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from) {
     return []
@@ -1896,7 +1914,14 @@ export default function PersonalistaClient({
       return
     }
 
-    if (registrationPeriodsOverlap(
+    const overlapsRegistrationPeriod = registrationPeriodsOverlap(
+      selectedPerson.registrationGroupPeriods,
+      registrationPeriodForm.validFrom,
+      registrationPeriodForm.validTo,
+      registrationPeriodForm.periodId
+    )
+
+    if (overlapsRegistrationPeriod && !canAutoCloseOpenEndedRegistrationPeriod(
       selectedPerson.registrationGroupPeriods,
       registrationPeriodForm.validFrom,
       registrationPeriodForm.validTo,

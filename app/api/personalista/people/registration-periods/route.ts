@@ -14,6 +14,26 @@ function cleanDate(value: any) {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : ''
 }
 
+function isoDateAdd(value: string, days: number) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return ''
+
+  const date = new Date(`${value}T00:00:00.000Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function periodOverlaps(row: any, validFrom: string, validTo: string | null) {
+  const end = validTo || '9999-12-31'
+  const rowEnd = row.valid_to || '9999-12-31'
+
+  return validFrom <= rowEnd && row.valid_from <= end
+}
+
 async function refreshCurrentRegistrationGroupSnapshot(userId: string) {
   const today = slovakiaDateIso()
   const { data: currentPeriod, error: currentPeriodError } = await supabaseServer
@@ -212,6 +232,61 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const { data: existingPeriods, error: existingPeriodsError } = await supabaseServer
+      .from('user_registration_group_periods')
+      .select('id, user_id, registration_group_id, valid_from, valid_to, note')
+      .eq('user_id', userId)
+
+    if (existingPeriodsError) {
+      return NextResponse.json({ error: existingPeriodsError.message }, { status: 500 })
+    }
+
+    const overlappingPeriods = (existingPeriods || [])
+      .filter((row: any) => periodOverlaps(row, validFrom, validTo))
+    const autoClosablePeriod = overlappingPeriods.length === 1
+      && overlappingPeriods[0].valid_to === null
+      && overlappingPeriods[0].valid_from < validFrom
+      ? overlappingPeriods[0]
+      : null
+
+    if (overlappingPeriods.length > 0 && !autoClosablePeriod) {
+      return NextResponse.json(
+        { error: 'Obdobie sa prekryva s existujucim zaradenim. V jeden den moze platit iba jedna registracna skupina.' },
+        { status: 409 }
+      )
+    }
+
+    let closedPreviousPeriod: any = null
+
+    if (autoClosablePeriod) {
+      const previousValidTo = isoDateAdd(validFrom, -1)
+
+      if (!previousValidTo || previousValidTo < autoClosablePeriod.valid_from) {
+        return NextResponse.json(
+          { error: 'Otvorene zaradenie sa nepodarilo automaticky ukoncit. Uprav datumy rucne.' },
+          { status: 409 }
+        )
+      }
+
+      const { data: updatedPreviousPeriod, error: closeError } = await supabaseServer
+        .from('user_registration_group_periods')
+        .update({
+          valid_to: previousValidTo,
+          note: autoClosablePeriod.note
+        })
+        .eq('id', autoClosablePeriod.id)
+        .eq('user_id', userId)
+        .is('valid_to', null)
+        .select('id, user_id, registration_group_id, valid_from, valid_to, note')
+        .single()
+
+      if (closeError) {
+        return overlapErrorResponse(closeError)
+      }
+
+      closedPreviousPeriod = updatedPreviousPeriod
+    }
+
     const { data: period, error: insertError } = await supabaseServer
       .from('user_registration_group_periods')
       .insert({
@@ -242,6 +317,7 @@ export async function POST(req: NextRequest) {
         after_data: {
           ...period,
           registration_group_name: registrationGroup.name,
+          auto_closed_previous_period: closedPreviousPeriod,
           current_registration_group_id: currentPeriod?.registration_group_id || null
         },
         note: 'Naroky na stravu neboli zmenene.'
@@ -250,7 +326,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       period,
-      message: 'Zaradenie bolo ulozene. Naroky na stravu ostali nezmenene.'
+      closedPreviousPeriod,
+      message: closedPreviousPeriod
+        ? 'Zaradenie bolo ulozene. Predchadzajuce otvorene zaradenie bolo automaticky ukoncene. Naroky na stravu ostali nezmenene.'
+        : 'Zaradenie bolo ulozene. Naroky na stravu ostali nezmenene.'
     })
   } catch (err: any) {
     return NextResponse.json(
