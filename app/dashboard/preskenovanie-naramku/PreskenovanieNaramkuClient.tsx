@@ -43,16 +43,10 @@ function normalizeQrInput(value: any) {
   return text.replace(/\s+/g, '').trim()
 }
 
-function stepLabel(step: Step) {
-  if (step === 'WRISTBAND') return '2 / 2'
-  if (step === 'DONE') return 'Hotovo'
-  return '1 / 2'
-}
-
 function stepTitle(step: Step) {
-  if (step === 'WRISTBAND') return 'Načítaj nový QR kód náramku'
+  if (step === 'WRISTBAND') return 'Načítaj QR náramku'
   if (step === 'DONE') return 'Náramok je priradený'
-  return 'Načítaj aktuálny QR kód osoby'
+  return 'Načítaj databázový QR osoby'
 }
 
 function statusBackground(tone: Tone) {
@@ -71,6 +65,7 @@ export default function PreskenovanieNaramkuClient({
 }) {
   const manualInputRef = useRef<HTMLInputElement | null>(null)
   const resetTimerRef = useRef<number | null>(null)
+  const stepTimeoutRef = useRef<number | null>(null)
   const stepRef = useRef<Step>('PERSON')
   const currentQrRef = useRef('')
   const personUserIdRef = useRef('')
@@ -88,6 +83,10 @@ export default function PreskenovanieNaramkuClient({
     if (resetTimerRef.current) {
       window.clearTimeout(resetTimerRef.current)
       resetTimerRef.current = null
+    }
+    if (stepTimeoutRef.current) {
+      window.clearTimeout(stepTimeoutRef.current)
+      stepTimeoutRef.current = null
     }
 
     setStep('PERSON')
@@ -110,6 +109,9 @@ export default function PreskenovanieNaramkuClient({
     return () => {
       if (resetTimerRef.current) {
         window.clearTimeout(resetTimerRef.current)
+      }
+      if (stepTimeoutRef.current) {
+        window.clearTimeout(stepTimeoutRef.current)
       }
     }
   }, [])
@@ -168,6 +170,9 @@ export default function PreskenovanieNaramkuClient({
         })
         stepRef.current = 'WRISTBAND'
         setStep('WRISTBAND')
+        stepTimeoutRef.current = window.setTimeout(() => {
+          resetFlow()
+        }, 20000)
         const okMessage = 'Osoba načítaná. Teraz načítaj náramok.'
         setMessage(okMessage)
         setTone('success')
@@ -177,6 +182,10 @@ export default function PreskenovanieNaramkuClient({
       }
 
       const okMessage = 'Náramok priradený.'
+      if (stepTimeoutRef.current) {
+        window.clearTimeout(stepTimeoutRef.current)
+        stepTimeoutRef.current = null
+      }
       setMessage(okMessage)
       setTone('success')
       stepRef.current = 'DONE'
@@ -238,7 +247,7 @@ export default function PreskenovanieNaramkuClient({
 
         @media (max-width: 720px) {
           .wristband-kiosk-page { padding: 12px !important; }
-          .wristband-kiosk-bg-logo { top: 18px !important; width: min(86vw, 360px) !important; opacity: 0.18 !important; }
+          .wristband-kiosk-bg-logo { top: 18px !important; width: min(86vw, 360px) !important; opacity: 0.36 !important; }
           .wristband-kiosk-shell { padding-top: 96px !important; }
           .wristband-kiosk-topbar { margin-bottom: 12px !important; }
           .wristband-kiosk-card { padding: 18px !important; border-radius: 22px !important; box-shadow: 7px 7px 0 #000 !important; }
@@ -250,23 +259,22 @@ export default function PreskenovanieNaramkuClient({
       <img className="wristband-kiosk-bg-logo" src="/pohoda-30.svg" alt="" aria-hidden="true" style={styles.backgroundLogo} />
 
       <div className="wristband-kiosk-shell" style={styles.shell}>
-        <div className="wristband-kiosk-topbar" style={styles.topBar}>
-          <span style={styles.actor}>Obsluha: {actorName}</span>
-
-          {isAdmin && (
-            <Link href="/dashboard" style={styles.homeButton}>
-              Domov
-            </Link>
-          )}
-        </div>
-
         <section className="wristband-kiosk-card" style={styles.card}>
+          <div className="wristband-kiosk-topbar" style={styles.topBar}>
+            <span style={styles.actor}>Obsluha: {actorName}</span>
+
+            {isAdmin && (
+              <Link href="/dashboard" style={styles.homeButton}>
+                Domov
+              </Link>
+            )}
+          </div>
+
           <div style={styles.titleRow}>
             <div>
               <span style={styles.kicker}>Preskenovanie náramku</span>
               <h1 className="wristband-kiosk-title" style={styles.title}>{stepTitle(step)}</h1>
             </div>
-            <span style={styles.stepBadge}>{stepLabel(step)}</span>
           </div>
 
           <div
@@ -288,6 +296,9 @@ export default function PreskenovanieNaramkuClient({
               <div style={styles.panelTitle}>Kamera</div>
               <QrCameraScanner
                 disabled={loading || step === 'DONE'}
+                autoStopMs={60000}
+                placeholderAlt="Pohoda Pass"
+                placeholderSrc="/icon.png"
                 onScan={processQr}
               />
             </section>
@@ -364,7 +375,8 @@ const styles: Record<string, CSSProperties> = {
     maxHeight: 180,
     objectFit: 'contain',
     transform: 'translateX(-50%)',
-    opacity: 0.16,
+    filter: 'brightness(0) invert(1)',
+    opacity: 0.42,
     pointerEvents: 'none',
     zIndex: 0
   },
@@ -428,16 +440,6 @@ const styles: Record<string, CSSProperties> = {
     margin: '4px 0 0 0',
     fontSize: 44,
     lineHeight: 1,
-    fontWeight: 950
-  },
-  stepBadge: {
-    minWidth: 84,
-    textAlign: 'center',
-    border: '3px solid #000',
-    borderRadius: 999,
-    background: '#f25be6',
-    padding: '9px 12px',
-    fontSize: 14,
     fontWeight: 950
   },
   statusBox: {

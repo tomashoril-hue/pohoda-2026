@@ -13,6 +13,9 @@ type ScanResult = {
 
 type Props = {
   disabled?: boolean
+  autoStopMs?: number
+  placeholderAlt?: string
+  placeholderSrc?: string
   onScan: (value: string) => Promise<ScanResult>
 }
 
@@ -69,7 +72,7 @@ function thresholdImage(imageData: ImageData) {
   return output
 }
 
-export default function QrCameraScanner({ disabled, onScan }: Props) {
+export default function QrCameraScanner({ disabled, autoStopMs, placeholderAlt = '', placeholderSrc, onScan }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -82,6 +85,7 @@ export default function QrCameraScanner({ disabled, onScan }: Props) {
   const scanAttemptRef = useRef(0)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const flashTimerRef = useRef<number | null>(null)
+  const autoStopTimerRef = useRef<number | null>(null)
 
   const [cameraOpen, setCameraOpen] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
@@ -154,6 +158,11 @@ export default function QrCameraScanner({ disabled, onScan }: Props) {
 
   const stopCamera = () => {
     cancelledRef.current = true
+
+    if (autoStopTimerRef.current) {
+      window.clearTimeout(autoStopTimerRef.current)
+      autoStopTimerRef.current = null
+    }
 
     if (scanLoopRef.current) {
       window.clearTimeout(scanLoopRef.current)
@@ -327,6 +336,11 @@ export default function QrCameraScanner({ disabled, onScan }: Props) {
       setCameraReady(true)
       updateTorchSupport()
       setCameraStatus('Kamera je zapnuta. Skenujte QR.')
+      if (autoStopMs && autoStopMs > 0) {
+        autoStopTimerRef.current = window.setTimeout(() => {
+          setCameraOpen(false)
+        }, autoStopMs)
+      }
       scheduleCameraScan()
     } catch (err: any) {
       setCameraReady(false)
@@ -350,6 +364,9 @@ export default function QrCameraScanner({ disabled, onScan }: Props) {
       if (flashTimerRef.current) {
         window.clearTimeout(flashTimerRef.current)
       }
+      if (autoStopTimerRef.current) {
+        window.clearTimeout(autoStopTimerRef.current)
+      }
       stopCamera()
     }
   }, [])
@@ -368,25 +385,31 @@ export default function QrCameraScanner({ disabled, onScan }: Props) {
         <span style={styles.status}>{cameraStatus}</span>
       </div>
 
-      {cameraOpen && (
+      {(cameraOpen || placeholderSrc) && (
         <div style={styles.cameraBox}>
-          <video
-            ref={videoRef}
-            muted
-            playsInline
-            autoPlay
-            style={styles.video}
-          />
+          {cameraOpen ? (
+            <video
+              ref={videoRef}
+              muted
+              playsInline
+              autoPlay
+              style={styles.video}
+            />
+          ) : (
+            <img src={placeholderSrc} alt={placeholderAlt} style={styles.placeholderImage} />
+          )}
           <canvas ref={canvasRef} style={styles.hiddenCanvas} />
-          <div
-            style={{
-              ...styles.frame,
-              borderColor: scanFlash ? scanFlashColor(scanFlash) : cameraReady ? '#22c55e' : '#f97316',
-              boxShadow: scanFlash
-                ? `0 0 0 999px ${scanFlashColor(scanFlash)}55, 0 0 26px ${scanFlashColor(scanFlash)}`
-                : styles.frame.boxShadow
-            }}
-          />
+          {cameraOpen && (
+            <div
+              style={{
+                ...styles.frame,
+                borderColor: scanFlash ? scanFlashColor(scanFlash) : cameraReady ? '#22c55e' : '#f97316',
+                boxShadow: scanFlash
+                  ? `0 0 0 999px ${scanFlashColor(scanFlash)}55, 0 0 26px ${scanFlashColor(scanFlash)}`
+                  : styles.frame.boxShadow
+              }}
+            />
+          )}
           {scanFlash && (
             <div
               style={{
@@ -397,12 +420,12 @@ export default function QrCameraScanner({ disabled, onScan }: Props) {
               {scanFlashLabel(scanFlash)}
             </div>
           )}
-          {!cameraReady && (
+          {cameraOpen && !cameraReady && (
             <div style={styles.overlay}>
               {cameraStatus}
             </div>
           )}
-          {torchAvailable && (
+          {cameraOpen && torchAvailable && (
             <button
               type="button"
               onClick={() => setCameraTorch(!torchOn)}
@@ -456,6 +479,12 @@ const styles: Record<string, CSSProperties> = {
     maxHeight: 420
   },
   video: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block'
+  },
+  placeholderImage: {
     width: '100%',
     height: '100%',
     objectFit: 'cover',
