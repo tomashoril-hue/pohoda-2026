@@ -12,13 +12,6 @@ type Person = {
   personName: string
 }
 
-type ScanDebug = {
-  source: string
-  raw: string
-  normalized: string
-  length: number
-}
-
 function normalizeQrInput(value: any) {
   let text = String(value || '').trim()
 
@@ -85,7 +78,6 @@ export default function PreskenovanieNaramkuClient({
   const [message, setMessage] = useState('Pripravené na preskenovanie.')
   const [tone, setTone] = useState<Tone>('')
   const [loading, setLoading] = useState(false)
-  const [scanDebug, setScanDebug] = useState<ScanDebug | null>(null)
 
   const resetFlow = () => {
     if (resetTimerRef.current) {
@@ -107,7 +99,6 @@ export default function PreskenovanieNaramkuClient({
     setTone('')
     setLoading(false)
     loadingRef.current = false
-    setScanDebug(null)
   }
 
   useEffect(() => {
@@ -140,7 +131,7 @@ export default function PreskenovanieNaramkuClient({
         scannerBufferRef.current = ''
         if (value) {
           event.preventDefault()
-          void processQr(value, 'Čítačka')
+          void processQr(value)
         }
         return
       }
@@ -154,14 +145,8 @@ export default function PreskenovanieNaramkuClient({
     return () => window.removeEventListener('keydown', handleScannerKey)
   }, [])
 
-  const processQr = async (rawValue: string, source = 'Kamera') => {
+  const processQr = async (rawValue: string) => {
     const value = normalizeQrInput(rawValue)
-    setScanDebug({
-      source,
-      raw: String(rawValue || ''),
-      normalized: value,
-      length: String(rawValue || '').length
-    })
 
     if (!value) {
       return { tone: 'warning' as const, message: 'QR kód je prázdny.' }
@@ -348,21 +333,6 @@ export default function PreskenovanieNaramkuClient({
                   <span style={styles.terminalLabel}>Osoba</span>
                   <b style={styles.terminalValue}>{person?.personName || '-'}</b>
                 </div>
-
-                <div style={styles.debugCard}>
-                  <span style={styles.terminalLabel}>Posledné načítanie</span>
-                  {scanDebug ? (
-                    <>
-                      <b style={styles.debugSource}>{scanDebug.source} · {scanDebug.length} znakov</b>
-                      <span style={styles.debugLabel}>Surový text</span>
-                      <code style={styles.debugCode}>{scanDebug.raw}</code>
-                      <span style={styles.debugLabel}>Po normalizácii</span>
-                      <code style={styles.debugCode}>{scanDebug.normalized}</code>
-                    </>
-                  ) : (
-                    <b style={styles.terminalValue}>-</b>
-                  )}
-                </div>
               </div>
 
               <div style={styles.actionRow}>
@@ -515,40 +485,6 @@ const styles: Record<string, CSSProperties> = {
     background: '#f3f4f6',
     display: 'grid',
     gap: 4
-  },
-  debugCard: {
-    border: '3px solid #000',
-    borderRadius: 16,
-    padding: 12,
-    background: '#fff3bf',
-    display: 'grid',
-    gap: 7
-  },
-  debugSource: {
-    fontSize: 15,
-    lineHeight: 1.2,
-    fontWeight: 950
-  },
-  debugLabel: {
-    fontSize: 10,
-    fontWeight: 950,
-    textTransform: 'uppercase',
-    opacity: 0.62
-  },
-  debugCode: {
-    display: 'block',
-    maxHeight: 78,
-    overflow: 'auto',
-    border: '2px solid #000',
-    borderRadius: 10,
-    background: '#fff',
-    padding: 9,
-    color: '#000',
-    fontSize: 12,
-    lineHeight: 1.25,
-    fontWeight: 850,
-    overflowWrap: 'anywhere',
-    whiteSpace: 'pre-wrap'
   },
   terminalLabel: {
     fontSize: 11,
