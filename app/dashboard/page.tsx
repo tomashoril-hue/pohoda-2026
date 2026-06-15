@@ -212,9 +212,17 @@ export default async function DashboardPage({
     globalAccess.isWristbandKiosk &&
     globalAccess.roles.length > 0 &&
     globalAccess.roles.every(role => role === 'WRISTBAND_KIOSK')
+  const isOnlyMenuKiosk =
+    globalAccess.isMenuKiosk &&
+    globalAccess.roles.length > 0 &&
+    globalAccess.roles.every(role => role === 'MENU_KIOSK')
 
   if (isOnlyWristbandKiosk) {
     redirect('/dashboard/preskenovanie-naramku')
+  }
+
+  if (isOnlyMenuKiosk) {
+    redirect('/dashboard/vyber-stravy-kiosk')
   }
 
   const [
@@ -422,6 +430,7 @@ export default async function DashboardPage({
   const canOpenFoodIssue = globalAccess.canUseFoodIssue
   const canOpenMenuDeadline = globalAccess.isAdmin
   const canOpenWristbandKiosk = globalAccess.isAdmin
+  const canOpenMenuKiosk = globalAccess.canUseMenuKiosk
   const canOpenAccessCodesShare = canOpenPersonalista || managedRegistrationGroupIds.length > 0
 
   const getSelection = (typJedla: string) => {
@@ -763,6 +772,12 @@ export default async function DashboardPage({
             <Link className="dashboard-menu-tile" href="/dashboard/preskenovanie-naramku" style={{ ...styles.menuTile, ...styles.menuTileWhite }}>
               <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Servis</span>
               <b className="dashboard-menu-title" style={styles.menuTileTitle}>Preskenovanie náramku</b>
+            </Link>
+          )}
+          {canOpenMenuKiosk && (
+            <Link className="dashboard-menu-tile" href="/dashboard/vyber-stravy-kiosk" style={{ ...styles.menuTile, ...styles.menuTileGreen }}>
+              <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Kiosk</span>
+              <b className="dashboard-menu-title" style={styles.menuTileTitle}>Výber stravy</b>
             </Link>
           )}
         </div>

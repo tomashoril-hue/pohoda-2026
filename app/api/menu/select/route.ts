@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function normalizeChoice(value: unknown) {
@@ -51,6 +52,16 @@ export async function POST(req: Request) {
 
   if (!user) {
     return NextResponse.json({ error: 'Nie si prihlásený.' }, { status: 401 })
+  }
+
+  const access = await getGlobalAccess(user.id)
+  const isOnlyMenuKiosk =
+    access.isMenuKiosk &&
+    access.roles.length > 0 &&
+    access.roles.every(role => role === 'MENU_KIOSK')
+
+  if (isOnlyMenuKiosk) {
+    return NextResponse.json({ error: 'Tento účet môže používať iba kiosk výberu stravy.' }, { status: 403 })
   }
 
   const body = await req.json()

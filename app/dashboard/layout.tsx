@@ -29,9 +29,17 @@ export default async function DashboardLayout({
     access.isWristbandKiosk &&
     access.roles.length > 0 &&
     access.roles.every(role => role === 'WRISTBAND_KIOSK')
+  const isOnlyMenuKiosk =
+    access.isMenuKiosk &&
+    access.roles.length > 0 &&
+    access.roles.every(role => role === 'MENU_KIOSK')
 
   if (isOnlyWristbandKiosk && pathname && pathname !== '/dashboard/preskenovanie-naramku') {
     redirect('/dashboard/preskenovanie-naramku')
+  }
+
+  if (isOnlyMenuKiosk && pathname && pathname !== '/dashboard/vyber-stravy-kiosk') {
+    redirect('/dashboard/vyber-stravy-kiosk')
   }
 
   return children

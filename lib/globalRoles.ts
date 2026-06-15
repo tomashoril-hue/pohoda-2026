@@ -1,6 +1,6 @@
 import { supabaseServer } from '@/lib/supabaseServer'
 
-export type GlobalRole = 'ADMIN' | 'PERSONALISTA' | 'VYDAJ' | 'ADMIN_VYDAJ' | 'GROUP_CREATOR' | 'WRISTBAND_KIOSK'
+export type GlobalRole = 'ADMIN' | 'PERSONALISTA' | 'VYDAJ' | 'ADMIN_VYDAJ' | 'GROUP_CREATOR' | 'WRISTBAND_KIOSK' | 'MENU_KIOSK'
 
 export type GlobalAccess = {
   roles: GlobalRole[]
@@ -10,10 +10,12 @@ export type GlobalAccess = {
   isAdminVydaj: boolean
   isGroupCreator: boolean
   isWristbandKiosk: boolean
+  isMenuKiosk: boolean
   canUsePersonalista: boolean
   canUseFoodIssue: boolean
   canAdminFoodIssue: boolean
   canUseWristbandKiosk: boolean
+  canUseMenuKiosk: boolean
 }
 
 export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
@@ -26,7 +28,7 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
   const roles = (data || [])
     .map(item => String(item.role || '').toUpperCase())
     .filter((role): role is GlobalRole => {
-      return role === 'ADMIN' || role === 'PERSONALISTA' || role === 'VYDAJ' || role === 'ADMIN_VYDAJ' || role === 'GROUP_CREATOR' || role === 'WRISTBAND_KIOSK'
+      return role === 'ADMIN' || role === 'PERSONALISTA' || role === 'VYDAJ' || role === 'ADMIN_VYDAJ' || role === 'GROUP_CREATOR' || role === 'WRISTBAND_KIOSK' || role === 'MENU_KIOSK'
     })
 
   const isAdmin = roles.includes('ADMIN')
@@ -35,6 +37,7 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
   const isAdminVydaj = roles.includes('ADMIN_VYDAJ')
   const isGroupCreator = roles.includes('GROUP_CREATOR')
   const isWristbandKiosk = roles.includes('WRISTBAND_KIOSK')
+  const isMenuKiosk = roles.includes('MENU_KIOSK')
 
   return {
     roles,
@@ -44,10 +47,12 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
     isAdminVydaj,
     isGroupCreator,
     isWristbandKiosk,
+    isMenuKiosk,
     canUsePersonalista: isAdmin || isPersonalista,
     canUseFoodIssue: isAdmin || isAdminVydaj || isVydaj,
     canAdminFoodIssue: isAdmin || isAdminVydaj,
-    canUseWristbandKiosk: isAdmin || isWristbandKiosk
+    canUseWristbandKiosk: isAdmin || isWristbandKiosk,
+    canUseMenuKiosk: isAdmin || isMenuKiosk
   }
 }
 

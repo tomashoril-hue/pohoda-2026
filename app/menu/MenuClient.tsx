@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 type MealType = 'OBED' | 'VECERA'
 type MenuVariant = 'MASO' | 'VEGE' | 'DIETA'
@@ -67,6 +67,16 @@ export default function MenuClient({
   menu,
   selections,
   deadlines,
+  submitUrl = '/api/menu/select',
+  submitExtraBody,
+  kioskMode = false,
+  heading = 'Výber stravy',
+  description = 'Vyber si jedlo na každý deň. Po uzávierke už výber nebude možné meniť.',
+  infoTitle,
+  infoBody,
+  selectedPersonName,
+  topSlot,
+  onActivity,
 }: {
   userId: string
   today: string
@@ -74,6 +84,16 @@ export default function MenuClient({
   menu: MenuItem[]
   selections: Selection[]
   deadlines: Deadline[]
+  submitUrl?: string
+  submitExtraBody?: Record<string, string>
+  kioskMode?: boolean
+  heading?: string
+  description?: string
+  infoTitle?: string
+  infoBody?: string
+  selectedPersonName?: string
+  topSlot?: ReactNode
+  onActivity?: () => void
 }) {
   const [selectedDate, setSelectedDate] = useState(today)
   const [localSelections, setLocalSelections] = useState<Selection[]>(selections)
@@ -239,6 +259,7 @@ export default function MenuClient({
   }
 
   const handleSelect = async (datum: string, typ: MealType, volba: Variant) => {
+    onActivity?.()
     const state = getDeadlineState(datum, typ)
 
     if (state.locked) {
@@ -250,10 +271,10 @@ export default function MenuClient({
     setSavingKey(key)
     setMessage('')
 
-    const res = await fetch('/api/menu/select', {
+    const res = await fetch(submitUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ datum, typ_jedla: typ, volba }),
+      body: JSON.stringify({ datum, typ_jedla: typ, volba, ...(submitExtraBody || {}) }),
     })
 
     let result: any = {}
@@ -294,6 +315,7 @@ export default function MenuClient({
     }
 
     setSavingKey(null)
+    onActivity?.()
   }
 
   const renderMealSection = (typ: MealType) => {
@@ -586,9 +608,13 @@ export default function MenuClient({
           gap: 16,
         }}
       >
-        <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
+        {kioskMode ? (
           <img src="/pohoda-30.svg" alt="POHODA" style={{ height: 46 }} />
-        </a>
+        ) : (
+          <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
+            <img src="/pohoda-30.svg" alt="POHODA" style={{ height: 46 }} />
+          </a>
+        )}
 
         <div
           style={{
@@ -603,6 +629,8 @@ export default function MenuClient({
           {formatFullDate(selectedDate)}
         </div>
       </div>
+
+      {topSlot}
 
       <div
         style={{
@@ -622,8 +650,26 @@ export default function MenuClient({
             fontWeight: 900,
           }}
         >
-          Výber stravy
+          {heading}
         </h1>
+
+        {selectedPersonName && (
+          <div
+            style={{
+              margin: '0 0 12px 0',
+              display: 'inline-block',
+              background: '#000',
+              color: '#fff',
+              border: '3px solid #000',
+              borderRadius: 999,
+              padding: '8px 14px',
+              fontSize: 15,
+              fontWeight: 900,
+            }}
+          >
+            {selectedPersonName}
+          </div>
+        )}
 
         <p
           style={{
@@ -632,7 +678,7 @@ export default function MenuClient({
             fontWeight: 700,
           }}
         >
-          Vyber si jedlo na každý deň. Po uzávierke už výber nebude možné meniť.
+          {description}
         </p>
 
         <div
@@ -652,7 +698,7 @@ export default function MenuClient({
               marginBottom: 4,
             }}
           >
-            Ak nič nezmeníš, platí tvoja predvolená strava: {defaultFoodLabel}.
+            {infoTitle || `Ak nič nezmeníš, platí tvoja predvolená strava: ${defaultFoodLabel}.`}
           </div>
           <div
             style={{
@@ -661,7 +707,7 @@ export default function MenuClient({
               lineHeight: 1.35,
             }}
           >
-            Výber ukladáme iba vtedy, keď klikneš na konkrétnu možnosť.
+            {infoBody || 'Výber ukladáme iba vtedy, keď klikneš na konkrétnu možnosť.'}
           </div>
         </div>
 
@@ -680,7 +726,10 @@ export default function MenuClient({
             return (
               <button
                 key={date}
-                onClick={() => setSelectedDate(date)}
+                onClick={() => {
+                  onActivity?.()
+                  setSelectedDate(date)
+                }}
                 style={{
                   flex: '0 0 auto',
                   padding: '12px 16px',

@@ -596,7 +596,8 @@ export default function PersonalistaClient({
     adminVydaj: false,
     vydaj: false,
     groupCreator: false,
-    wristbandKiosk: false
+    wristbandKiosk: false,
+    menuKiosk: false
   })
   const [accessCodeLoading, setAccessCodeLoading] = useState(false)
   const [accessCodeLoaded, setAccessCodeLoaded] = useState(false)
@@ -1297,7 +1298,8 @@ export default function PersonalistaClient({
       adminVydaj: selectedPerson.globalRoles.includes('ADMIN_VYDAJ'),
       vydaj: selectedPerson.globalRoles.includes('VYDAJ'),
       groupCreator: selectedPerson.globalRoles.includes('GROUP_CREATOR'),
-      wristbandKiosk: selectedPerson.globalRoles.includes('WRISTBAND_KIOSK')
+      wristbandKiosk: selectedPerson.globalRoles.includes('WRISTBAND_KIOSK'),
+      menuKiosk: selectedPerson.globalRoles.includes('MENU_KIOSK')
     })
     const preservedMessage = preservedDetailMessageRef.current
 
@@ -3097,7 +3099,8 @@ export default function PersonalistaClient({
       ...(roleForm.adminVydaj ? ['ADMIN_VYDAJ'] : []),
       ...(roleForm.vydaj ? ['VYDAJ'] : []),
       ...(roleForm.groupCreator ? ['GROUP_CREATOR'] : []),
-      ...(roleForm.wristbandKiosk ? ['WRISTBAND_KIOSK'] : [])
+      ...(roleForm.wristbandKiosk ? ['WRISTBAND_KIOSK'] : []),
+      ...(roleForm.menuKiosk ? ['MENU_KIOSK'] : [])
     ]
 
     postDetailAction(
@@ -6484,6 +6487,20 @@ export default function PersonalistaClient({
                         style={styles.checkbox}
                       />
                       <span>Preskenovanie naramkov kiosk</span>
+                    </label>
+
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={roleForm.menuKiosk}
+                        onChange={event => setRoleForm(prev => ({
+                          ...prev,
+                          menuKiosk: event.target.checked
+                        }))}
+                        disabled={detailLoading}
+                        style={styles.checkbox}
+                      />
+                      <span>Výber stravy kiosk</span>
                     </label>
                   </div>
 
