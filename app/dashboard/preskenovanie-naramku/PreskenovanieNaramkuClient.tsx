@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import QrCameraScanner from '@/app/dashboard/skupinovy-vydaj/QrCameraScanner'
 
 type Step = 'PERSON' | 'WRISTBAND' | 'DONE'
@@ -63,7 +63,8 @@ export default function PreskenovanieNaramkuClient({
   actorName: string
   isAdmin: boolean
 }) {
-  const manualInputRef = useRef<HTMLInputElement | null>(null)
+  const scannerBufferRef = useRef('')
+  const scannerLastKeyAtRef = useRef(0)
   const resetTimerRef = useRef<number | null>(null)
   const stepTimeoutRef = useRef<number | null>(null)
   const stepRef = useRef<Step>('PERSON')
@@ -74,7 +75,6 @@ export default function PreskenovanieNaramkuClient({
   const [step, setStep] = useState<Step>('PERSON')
   const [currentQr, setCurrentQr] = useState('')
   const [person, setPerson] = useState<Person | null>(null)
-  const [manualValue, setManualValue] = useState('')
   const [message, setMessage] = useState('Pripravené na preskenovanie.')
   const [tone, setTone] = useState<Tone>('')
   const [loading, setLoading] = useState(false)
@@ -95,17 +95,13 @@ export default function PreskenovanieNaramkuClient({
     currentQrRef.current = ''
     personUserIdRef.current = ''
     setPerson(null)
-    setManualValue('')
     setMessage('Pripravené na preskenovanie.')
     setTone('')
     setLoading(false)
     loadingRef.current = false
-    setTimeout(() => manualInputRef.current?.focus(), 80)
   }
 
   useEffect(() => {
-    manualInputRef.current?.focus()
-
     return () => {
       if (resetTimerRef.current) {
         window.clearTimeout(resetTimerRef.current)
@@ -114,6 +110,39 @@ export default function PreskenovanieNaramkuClient({
         window.clearTimeout(stepTimeoutRef.current)
       }
     }
+  }, [])
+
+  useEffect(() => {
+    const handleScannerKey = (event: globalThis.KeyboardEvent) => {
+      if (event.ctrlKey || event.altKey || event.metaKey) return
+
+      const target = event.target as HTMLElement | null
+      const tagName = target?.tagName?.toLowerCase()
+      if (tagName === 'input' || tagName === 'textarea' || target?.isContentEditable) return
+
+      const now = Date.now()
+      if (now - scannerLastKeyAtRef.current > 180) {
+        scannerBufferRef.current = ''
+      }
+      scannerLastKeyAtRef.current = now
+
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        const value = scannerBufferRef.current
+        scannerBufferRef.current = ''
+        if (value) {
+          event.preventDefault()
+          void processQr(value)
+        }
+        return
+      }
+
+      if (event.key.length === 1) {
+        scannerBufferRef.current += event.key
+      }
+    }
+
+    window.addEventListener('keydown', handleScannerKey)
+    return () => window.removeEventListener('keydown', handleScannerKey)
   }, [])
 
   const processQr = async (rawValue: string) => {
@@ -176,8 +205,6 @@ export default function PreskenovanieNaramkuClient({
         const okMessage = 'Osoba načítaná. Teraz načítaj náramok.'
         setMessage(okMessage)
         setTone('success')
-        setManualValue('')
-        setTimeout(() => manualInputRef.current?.focus(), 80)
         return { tone: 'success' as const, message: okMessage }
       }
 
@@ -190,7 +217,6 @@ export default function PreskenovanieNaramkuClient({
       setTone('success')
       stepRef.current = 'DONE'
       setStep('DONE')
-      setManualValue('')
       resetTimerRef.current = window.setTimeout(() => {
         resetFlow()
       }, 2600)
@@ -205,21 +231,6 @@ export default function PreskenovanieNaramkuClient({
       loadingRef.current = false
       setLoading(false)
     }
-  }
-
-  const submitManual = async () => {
-    const result = await processQr(manualValue)
-
-    if (result.tone !== 'error') {
-      setManualValue('')
-    }
-  }
-
-  const handleManualKeyDown = async (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== 'Enter') return
-
-    event.preventDefault()
-    await submitManual()
   }
 
   return (
@@ -304,33 +315,26 @@ export default function PreskenovanieNaramkuClient({
             </section>
 
             <section style={styles.panel}>
-              <div style={styles.panelTitle}>Ručné načítanie</div>
-              <p style={styles.hint}>
-                Pole slúži pre USB alebo Bluetooth čítačku. Po načítaní stlač Enter.
-              </p>
+              <div style={styles.panelTitle}>Stav terminálu</div>
 
-              <input
-                ref={manualInputRef}
-                value={manualValue}
-                onChange={event => setManualValue(event.target.value)}
-                onKeyDown={handleManualKeyDown}
-                style={styles.input}
-                disabled={loading || step === 'DONE'}
-                autoComplete="off"
-                inputMode="text"
-                placeholder={step === 'WRISTBAND' ? 'Načítaj QR náramku' : 'Načítaj aktuálny QR osoby'}
-              />
+              <div style={styles.terminalStatusGrid}>
+                <div style={styles.terminalStatusCard}>
+                  <span style={styles.terminalLabel}>Skener</span>
+                  <b style={styles.terminalValue}>{loading ? 'Spracováva' : 'Pripravený'}</b>
+                </div>
+
+                <div style={styles.terminalStatusCard}>
+                  <span style={styles.terminalLabel}>Aktuálny krok</span>
+                  <b style={styles.terminalValue}>{stepTitle(step)}</b>
+                </div>
+
+                <div style={styles.terminalStatusCard}>
+                  <span style={styles.terminalLabel}>Osoba</span>
+                  <b style={styles.terminalValue}>{person?.personName || '-'}</b>
+                </div>
+              </div>
 
               <div style={styles.actionRow}>
-                <button
-                  type="button"
-                  style={styles.primaryButton}
-                  disabled={loading || step === 'DONE'}
-                  onClick={submitManual}
-                >
-                  {loading ? 'Spracúvam...' : 'Spracovať QR'}
-                </button>
-
                 <button
                   type="button"
                   style={styles.secondaryButton}
@@ -339,15 +343,6 @@ export default function PreskenovanieNaramkuClient({
                 >
                   Začať odznova
                 </button>
-              </div>
-
-              <div style={styles.stepsList}>
-                <div style={step === 'PERSON' ? styles.activeStep : styles.step}>
-                  1. Aktuálny QR osoby
-                </div>
-                <div style={step === 'WRISTBAND' ? styles.activeStep : styles.step}>
-                  2. Nový QR náramku
-                </div>
               </div>
             </section>
           </div>
@@ -470,40 +465,35 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950,
     marginBottom: 10
   },
-  hint: {
-    margin: '0 0 12px 0',
-    fontSize: 13,
-    lineHeight: 1.35,
-    fontWeight: 800,
-    opacity: 0.72
+  terminalStatusGrid: {
+    display: 'grid',
+    gap: 10
   },
-  input: {
-    width: '100%',
-    height: 48,
+  terminalStatusCard: {
     border: '3px solid #000',
-    borderRadius: 12,
-    padding: '0 12px',
-    fontSize: 18,
-    fontWeight: 900,
-    outline: 'none',
-    boxSizing: 'border-box'
+    borderRadius: 16,
+    padding: 12,
+    background: '#f3f4f6',
+    display: 'grid',
+    gap: 4
+  },
+  terminalLabel: {
+    fontSize: 11,
+    fontWeight: 950,
+    textTransform: 'uppercase',
+    opacity: 0.62
+  },
+  terminalValue: {
+    fontSize: 17,
+    lineHeight: 1.15,
+    fontWeight: 950,
+    overflowWrap: 'anywhere'
   },
   actionRow: {
     display: 'flex',
     flexWrap: 'wrap',
     gap: 10,
     marginTop: 12
-  },
-  primaryButton: {
-    minHeight: 44,
-    border: '3px solid #000',
-    borderRadius: 999,
-    background: '#56db3f',
-    color: '#000',
-    padding: '0 16px',
-    fontSize: 14,
-    fontWeight: 950,
-    boxShadow: '4px 4px 0 #000'
   },
   secondaryButton: {
     minHeight: 44,
@@ -515,26 +505,5 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 14,
     fontWeight: 950,
     boxShadow: '4px 4px 0 #000'
-  },
-  stepsList: {
-    display: 'grid',
-    gap: 8,
-    marginTop: 18
-  },
-  step: {
-    border: '2px solid #000',
-    borderRadius: 12,
-    padding: 10,
-    fontSize: 13,
-    fontWeight: 900,
-    background: '#f3f4f6'
-  },
-  activeStep: {
-    border: '3px solid #000',
-    borderRadius: 12,
-    padding: 10,
-    fontSize: 13,
-    fontWeight: 950,
-    background: '#fff3bf'
   }
 }
