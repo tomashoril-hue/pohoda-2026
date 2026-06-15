@@ -14,6 +14,7 @@ type ScanResult = {
 type Props = {
   disabled?: boolean
   autoStopMs?: number
+  showLastMessage?: boolean
   placeholderAlt?: string
   placeholderSrc?: string
   onScan: (value: string) => Promise<ScanResult>
@@ -72,7 +73,14 @@ function thresholdImage(imageData: ImageData) {
   return output
 }
 
-export default function QrCameraScanner({ disabled, autoStopMs, placeholderAlt = '', placeholderSrc, onScan }: Props) {
+export default function QrCameraScanner({
+  disabled,
+  autoStopMs,
+  showLastMessage = true,
+  placeholderAlt = '',
+  placeholderSrc,
+  onScan
+}: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -154,6 +162,19 @@ export default function QrCameraScanner({ disabled, autoStopMs, placeholderAlt =
       setScanFlash(null)
       flashTimerRef.current = null
     }, 360)
+  }
+
+  const scheduleAutoStop = () => {
+    if (autoStopTimerRef.current) {
+      window.clearTimeout(autoStopTimerRef.current)
+      autoStopTimerRef.current = null
+    }
+
+    if (autoStopMs && autoStopMs > 0) {
+      autoStopTimerRef.current = window.setTimeout(() => {
+        setCameraOpen(false)
+      }, autoStopMs)
+    }
   }
 
   const stopCamera = () => {
@@ -281,6 +302,7 @@ export default function QrCameraScanner({ disabled, autoStopMs, placeholderAlt =
     lastScanTextRef.current = value
     lastScanTimeRef.current = nowMs
     busyRef.current = true
+    scheduleAutoStop()
 
     try {
       const result = await onScan(value)
@@ -336,11 +358,7 @@ export default function QrCameraScanner({ disabled, autoStopMs, placeholderAlt =
       setCameraReady(true)
       updateTorchSupport()
       setCameraStatus('Kamera je zapnuta. Skenujte QR.')
-      if (autoStopMs && autoStopMs > 0) {
-        autoStopTimerRef.current = window.setTimeout(() => {
-          setCameraOpen(false)
-        }, autoStopMs)
-      }
+      scheduleAutoStop()
       scheduleCameraScan()
     } catch (err: any) {
       setCameraReady(false)
@@ -438,7 +456,7 @@ export default function QrCameraScanner({ disabled, autoStopMs, placeholderAlt =
         </div>
       )}
 
-      {lastMessage && <div style={styles.lastMessage}>{lastMessage}</div>}
+      {showLastMessage && lastMessage && <div style={styles.lastMessage}>{lastMessage}</div>}
     </div>
   )
 }

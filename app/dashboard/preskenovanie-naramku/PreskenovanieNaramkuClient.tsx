@@ -308,7 +308,8 @@ export default function PreskenovanieNaramkuClient({
               <div style={styles.panelTitle}>Kamera</div>
               <QrCameraScanner
                 disabled={loading || step === 'DONE'}
-                autoStopMs={60000}
+                autoStopMs={300000}
+                showLastMessage={false}
                 placeholderAlt="Pohoda Pass"
                 placeholderSrc="/icon.png"
                 onScan={processQr}
@@ -462,7 +463,7 @@ const styles: Record<string, CSSProperties> = {
     background: '#fff',
     display: 'flex',
     flexDirection: 'column',
-    minHeight: 560
+    minHeight: 0
   },
   terminalPanel: {
     display: 'flex',
@@ -476,7 +477,7 @@ const styles: Record<string, CSSProperties> = {
   terminalStatusGrid: {
     display: 'grid',
     gap: 10,
-    flex: 1
+    flex: 0
   },
   terminalStatusCard: {
     border: '3px solid #000',
