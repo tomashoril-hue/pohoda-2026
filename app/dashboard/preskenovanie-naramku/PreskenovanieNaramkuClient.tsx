@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import QrCameraScanner from '@/app/dashboard/skupinovy-vydaj/QrCameraScanner'
 
 type Step = 'PERSON' | 'WRISTBAND' | 'DONE'
@@ -63,6 +63,8 @@ export default function PreskenovanieNaramkuClient({
   actorName: string
   isAdmin: boolean
 }) {
+  const scannerInputRef = useRef<HTMLInputElement | null>(null)
+  const scannerInputBufferRef = useRef('')
   const scannerBufferRef = useRef('')
   const scannerLastKeyAtRef = useRef(0)
   const resetTimerRef = useRef<number | null>(null)
@@ -78,6 +80,21 @@ export default function PreskenovanieNaramkuClient({
   const [message, setMessage] = useState('Pripravené na preskenovanie.')
   const [tone, setTone] = useState<Tone>('')
   const [loading, setLoading] = useState(false)
+
+  const focusScannerInput = (delay = 0) => {
+    window.setTimeout(() => {
+      scannerInputRef.current?.focus({ preventScroll: true })
+    }, delay)
+  }
+
+  const clearScannerInput = () => {
+    scannerInputBufferRef.current = ''
+    scannerBufferRef.current = ''
+
+    if (scannerInputRef.current) {
+      scannerInputRef.current.value = ''
+    }
+  }
 
   const resetFlow = () => {
     if (resetTimerRef.current) {
@@ -99,9 +116,13 @@ export default function PreskenovanieNaramkuClient({
     setTone('')
     setLoading(false)
     loadingRef.current = false
+    clearScannerInput()
+    focusScannerInput(60)
   }
 
   useEffect(() => {
+    focusScannerInput(120)
+
     return () => {
       if (resetTimerRef.current) {
         window.clearTimeout(resetTimerRef.current)
@@ -112,6 +133,23 @@ export default function PreskenovanieNaramkuClient({
     }
   }, [])
 
+  const submitScannerInput = (rawValue: string) => {
+    clearScannerInput()
+    focusScannerInput(40)
+
+    if (rawValue) {
+      void processQr(rawValue)
+    }
+  }
+
+  const handleHiddenScannerKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter' && event.key !== 'Tab') return
+
+    event.preventDefault()
+    const value = event.currentTarget.value || scannerInputBufferRef.current
+    submitScannerInput(value)
+  }
+
   useEffect(() => {
     const handleScannerKey = (event: globalThis.KeyboardEvent) => {
       if (event.ctrlKey || event.altKey || event.metaKey) return
@@ -121,7 +159,7 @@ export default function PreskenovanieNaramkuClient({
       if (tagName === 'input' || tagName === 'textarea' || target?.isContentEditable) return
 
       const now = Date.now()
-      if (now - scannerLastKeyAtRef.current > 1000) {
+      if (now - scannerLastKeyAtRef.current > 180) {
         scannerBufferRef.current = ''
       }
       scannerLastKeyAtRef.current = now
@@ -131,7 +169,7 @@ export default function PreskenovanieNaramkuClient({
         scannerBufferRef.current = ''
         if (value) {
           event.preventDefault()
-          void processQr(value)
+          submitScannerInput(value)
         }
         return
       }
@@ -230,6 +268,7 @@ export default function PreskenovanieNaramkuClient({
     } finally {
       loadingRef.current = false
       setLoading(false)
+      focusScannerInput(80)
     }
   }
 
@@ -268,6 +307,22 @@ export default function PreskenovanieNaramkuClient({
       `}</style>
 
       <img className="wristband-kiosk-bg-logo" src="/pohoda-30.svg" alt="" aria-hidden="true" style={styles.backgroundLogo} />
+      <input
+        ref={scannerInputRef}
+        type="text"
+        inputMode="none"
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        aria-label="SkrytĂ˝ vstup pre QR ÄŤĂ­taÄŤku"
+        tabIndex={-1}
+        onChange={event => {
+          scannerInputBufferRef.current = event.currentTarget.value
+        }}
+        onKeyDown={handleHiddenScannerKeyDown}
+        style={styles.hiddenScannerInput}
+      />
 
       <div className="wristband-kiosk-shell" style={styles.shell}>
         <section className="wristband-kiosk-card" style={styles.card}>
@@ -361,6 +416,17 @@ const styles: Record<string, CSSProperties> = {
     color: '#000',
     position: 'relative',
     overflow: 'hidden'
+  },
+  hiddenScannerInput: {
+    position: 'fixed',
+    left: -1000,
+    top: -1000,
+    width: 1,
+    height: 1,
+    opacity: 0,
+    border: 0,
+    padding: 0,
+    pointerEvents: 'none'
   },
   backgroundLogo: {
     position: 'absolute',
