@@ -121,7 +121,7 @@ export default function PreskenovanieNaramkuClient({
       if (tagName === 'input' || tagName === 'textarea' || target?.isContentEditable) return
 
       const now = Date.now()
-      if (now - scannerLastKeyAtRef.current > 180) {
+      if (now - scannerLastKeyAtRef.current > 1000) {
         scannerBufferRef.current = ''
       }
       scannerLastKeyAtRef.current = now
@@ -314,7 +314,7 @@ export default function PreskenovanieNaramkuClient({
               />
             </section>
 
-            <section style={styles.panel}>
+            <section style={{ ...styles.panel, ...styles.terminalPanel }}>
               <div style={styles.panelTitle}>Stav terminálu</div>
 
               <div style={styles.terminalStatusGrid}>
@@ -460,6 +460,11 @@ const styles: Record<string, CSSProperties> = {
     padding: 16,
     background: '#fff'
   },
+  terminalPanel: {
+    minHeight: 486,
+    display: 'flex',
+    flexDirection: 'column'
+  },
   panelTitle: {
     fontSize: 18,
     fontWeight: 950,
@@ -467,7 +472,8 @@ const styles: Record<string, CSSProperties> = {
   },
   terminalStatusGrid: {
     display: 'grid',
-    gap: 10
+    gap: 10,
+    flex: 1
   },
   terminalStatusCard: {
     border: '3px solid #000',
