@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import QrCameraScanner from '@/app/dashboard/skupinovy-vydaj/QrCameraScanner'
 
 type Step = 'PERSON' | 'WRISTBAND' | 'DONE'
@@ -10,6 +10,13 @@ type Tone = 'success' | 'error' | 'warning' | ''
 type Person = {
   userId: string
   personName: string
+}
+
+type ScanDebug = {
+  source: string
+  raw: string
+  normalized: string
+  length: number
 }
 
 function normalizeQrInput(value: any) {
@@ -63,8 +70,6 @@ export default function PreskenovanieNaramkuClient({
   actorName: string
   isAdmin: boolean
 }) {
-  const scannerInputRef = useRef<HTMLInputElement | null>(null)
-  const scannerInputBufferRef = useRef('')
   const scannerBufferRef = useRef('')
   const scannerLastKeyAtRef = useRef(0)
   const resetTimerRef = useRef<number | null>(null)
@@ -80,21 +85,7 @@ export default function PreskenovanieNaramkuClient({
   const [message, setMessage] = useState('Pripravené na preskenovanie.')
   const [tone, setTone] = useState<Tone>('')
   const [loading, setLoading] = useState(false)
-
-  const focusScannerInput = (delay = 0) => {
-    window.setTimeout(() => {
-      scannerInputRef.current?.focus({ preventScroll: true })
-    }, delay)
-  }
-
-  const clearScannerInput = () => {
-    scannerInputBufferRef.current = ''
-    scannerBufferRef.current = ''
-
-    if (scannerInputRef.current) {
-      scannerInputRef.current.value = ''
-    }
-  }
+  const [scanDebug, setScanDebug] = useState<ScanDebug | null>(null)
 
   const resetFlow = () => {
     if (resetTimerRef.current) {
@@ -116,13 +107,10 @@ export default function PreskenovanieNaramkuClient({
     setTone('')
     setLoading(false)
     loadingRef.current = false
-    clearScannerInput()
-    focusScannerInput(60)
+    setScanDebug(null)
   }
 
   useEffect(() => {
-    focusScannerInput(120)
-
     return () => {
       if (resetTimerRef.current) {
         window.clearTimeout(resetTimerRef.current)
@@ -133,23 +121,6 @@ export default function PreskenovanieNaramkuClient({
     }
   }, [])
 
-  const submitScannerInput = (rawValue: string) => {
-    clearScannerInput()
-    focusScannerInput(40)
-
-    if (rawValue) {
-      void processQr(rawValue)
-    }
-  }
-
-  const handleHiddenScannerKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== 'Enter' && event.key !== 'Tab') return
-
-    event.preventDefault()
-    const value = event.currentTarget.value || scannerInputBufferRef.current
-    submitScannerInput(value)
-  }
-
   useEffect(() => {
     const handleScannerKey = (event: globalThis.KeyboardEvent) => {
       if (event.ctrlKey || event.altKey || event.metaKey) return
@@ -159,7 +130,7 @@ export default function PreskenovanieNaramkuClient({
       if (tagName === 'input' || tagName === 'textarea' || target?.isContentEditable) return
 
       const now = Date.now()
-      if (now - scannerLastKeyAtRef.current > 180) {
+      if (now - scannerLastKeyAtRef.current > 1000) {
         scannerBufferRef.current = ''
       }
       scannerLastKeyAtRef.current = now
@@ -169,7 +140,7 @@ export default function PreskenovanieNaramkuClient({
         scannerBufferRef.current = ''
         if (value) {
           event.preventDefault()
-          submitScannerInput(value)
+          void processQr(value, 'Čítačka')
         }
         return
       }
@@ -183,8 +154,14 @@ export default function PreskenovanieNaramkuClient({
     return () => window.removeEventListener('keydown', handleScannerKey)
   }, [])
 
-  const processQr = async (rawValue: string) => {
+  const processQr = async (rawValue: string, source = 'Kamera') => {
     const value = normalizeQrInput(rawValue)
+    setScanDebug({
+      source,
+      raw: String(rawValue || ''),
+      normalized: value,
+      length: String(rawValue || '').length
+    })
 
     if (!value) {
       return { tone: 'warning' as const, message: 'QR kód je prázdny.' }
@@ -268,7 +245,6 @@ export default function PreskenovanieNaramkuClient({
     } finally {
       loadingRef.current = false
       setLoading(false)
-      focusScannerInput(80)
     }
   }
 
@@ -303,26 +279,11 @@ export default function PreskenovanieNaramkuClient({
           .wristband-kiosk-card { padding: 18px !important; border-radius: 22px !important; box-shadow: 7px 7px 0 #000 !important; }
           .wristband-kiosk-title { font-size: 30px !important; }
           .wristband-kiosk-grid { grid-template-columns: 1fr !important; }
+          .wristband-kiosk-panel { min-height: auto !important; }
         }
       `}</style>
 
       <img className="wristband-kiosk-bg-logo" src="/pohoda-30.svg" alt="" aria-hidden="true" style={styles.backgroundLogo} />
-      <input
-        ref={scannerInputRef}
-        type="text"
-        inputMode="none"
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        spellCheck={false}
-        aria-label="SkrytĂ˝ vstup pre QR ÄŤĂ­taÄŤku"
-        tabIndex={-1}
-        onChange={event => {
-          scannerInputBufferRef.current = event.currentTarget.value
-        }}
-        onKeyDown={handleHiddenScannerKeyDown}
-        style={styles.hiddenScannerInput}
-      />
 
       <div className="wristband-kiosk-shell" style={styles.shell}>
         <section className="wristband-kiosk-card" style={styles.card}>
@@ -358,7 +319,7 @@ export default function PreskenovanieNaramkuClient({
           </div>
 
           <div className="wristband-kiosk-grid" style={styles.grid}>
-            <section style={styles.panel}>
+            <section className="wristband-kiosk-panel" style={styles.panel}>
               <div style={styles.panelTitle}>Kamera</div>
               <QrCameraScanner
                 disabled={loading || step === 'DONE'}
@@ -369,7 +330,7 @@ export default function PreskenovanieNaramkuClient({
               />
             </section>
 
-            <section style={{ ...styles.panel, ...styles.terminalPanel }}>
+            <section className="wristband-kiosk-panel" style={{ ...styles.panel, ...styles.terminalPanel }}>
               <div style={styles.panelTitle}>Stav terminálu</div>
 
               <div style={styles.terminalStatusGrid}>
@@ -386,6 +347,21 @@ export default function PreskenovanieNaramkuClient({
                 <div style={styles.terminalStatusCard}>
                   <span style={styles.terminalLabel}>Osoba</span>
                   <b style={styles.terminalValue}>{person?.personName || '-'}</b>
+                </div>
+
+                <div style={styles.debugCard}>
+                  <span style={styles.terminalLabel}>Posledné načítanie</span>
+                  {scanDebug ? (
+                    <>
+                      <b style={styles.debugSource}>{scanDebug.source} · {scanDebug.length} znakov</b>
+                      <span style={styles.debugLabel}>Surový text</span>
+                      <code style={styles.debugCode}>{scanDebug.raw}</code>
+                      <span style={styles.debugLabel}>Po normalizácii</span>
+                      <code style={styles.debugCode}>{scanDebug.normalized}</code>
+                    </>
+                  ) : (
+                    <b style={styles.terminalValue}>-</b>
+                  )}
                 </div>
               </div>
 
@@ -416,17 +392,6 @@ const styles: Record<string, CSSProperties> = {
     color: '#000',
     position: 'relative',
     overflow: 'hidden'
-  },
-  hiddenScannerInput: {
-    position: 'fixed',
-    left: -1000,
-    top: -1000,
-    width: 1,
-    height: 1,
-    opacity: 0,
-    border: 0,
-    padding: 0,
-    pointerEvents: 'none'
   },
   backgroundLogo: {
     position: 'absolute',
@@ -518,16 +483,18 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'minmax(0, 1.1fr) minmax(320px, 0.9fr)',
     gap: 16,
-    alignItems: 'start'
+    alignItems: 'stretch'
   },
   panel: {
     border: '3px solid #000',
     borderRadius: 22,
     padding: 16,
-    background: '#fff'
+    background: '#fff',
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: 560
   },
   terminalPanel: {
-    minHeight: 486,
     display: 'flex',
     flexDirection: 'column'
   },
@@ -548,6 +515,40 @@ const styles: Record<string, CSSProperties> = {
     background: '#f3f4f6',
     display: 'grid',
     gap: 4
+  },
+  debugCard: {
+    border: '3px solid #000',
+    borderRadius: 16,
+    padding: 12,
+    background: '#fff3bf',
+    display: 'grid',
+    gap: 7
+  },
+  debugSource: {
+    fontSize: 15,
+    lineHeight: 1.2,
+    fontWeight: 950
+  },
+  debugLabel: {
+    fontSize: 10,
+    fontWeight: 950,
+    textTransform: 'uppercase',
+    opacity: 0.62
+  },
+  debugCode: {
+    display: 'block',
+    maxHeight: 78,
+    overflow: 'auto',
+    border: '2px solid #000',
+    borderRadius: 10,
+    background: '#fff',
+    padding: 9,
+    color: '#000',
+    fontSize: 12,
+    lineHeight: 1.25,
+    fontWeight: 850,
+    overflowWrap: 'anywhere',
+    whiteSpace: 'pre-wrap'
   },
   terminalLabel: {
     fontSize: 11,
