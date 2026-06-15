@@ -168,7 +168,7 @@ export default function PreskenovanieNaramkuClient({
         })
         stepRef.current = 'WRISTBAND'
         setStep('WRISTBAND')
-        const okMessage = `Osoba načítaná: ${json.personName || 'Bez mena'}. Teraz načítaj náramok.`
+        const okMessage = 'Osoba načítaná. Teraz načítaj náramok.'
         setMessage(okMessage)
         setTone('success')
         setManualValue('')
@@ -176,7 +176,7 @@ export default function PreskenovanieNaramkuClient({
         return { tone: 'success' as const, message: okMessage }
       }
 
-      const okMessage = json.message || 'Náramok bol úspešne priradený.'
+      const okMessage = 'Náramok priradený.'
       setMessage(okMessage)
       setTone('success')
       stepRef.current = 'DONE'
@@ -238,106 +238,110 @@ export default function PreskenovanieNaramkuClient({
 
         @media (max-width: 720px) {
           .wristband-kiosk-page { padding: 12px !important; }
+          .wristband-kiosk-bg-logo { top: 18px !important; width: min(86vw, 360px) !important; opacity: 0.18 !important; }
+          .wristband-kiosk-shell { padding-top: 96px !important; }
+          .wristband-kiosk-topbar { margin-bottom: 12px !important; }
           .wristband-kiosk-card { padding: 18px !important; border-radius: 22px !important; box-shadow: 7px 7px 0 #000 !important; }
           .wristband-kiosk-title { font-size: 30px !important; }
           .wristband-kiosk-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
 
-      <section className="wristband-kiosk-card" style={styles.card}>
-        <header style={styles.header}>
-          <div style={styles.brandBlock}>
-            <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
-            <span style={styles.actor}>Obsluha: {actorName}</span>
-          </div>
+      <img className="wristband-kiosk-bg-logo" src="/pohoda-30.svg" alt="" aria-hidden="true" style={styles.backgroundLogo} />
+
+      <div className="wristband-kiosk-shell" style={styles.shell}>
+        <div className="wristband-kiosk-topbar" style={styles.topBar}>
+          <span style={styles.actor}>Obsluha: {actorName}</span>
 
           {isAdmin && (
             <Link href="/dashboard" style={styles.homeButton}>
               Domov
             </Link>
           )}
-        </header>
+        </div>
 
-        <div style={styles.titleRow}>
-          <div>
-            <span style={styles.kicker}>Preskenovanie náramku</span>
-            <h1 className="wristband-kiosk-title" style={styles.title}>{stepTitle(step)}</h1>
+        <section className="wristband-kiosk-card" style={styles.card}>
+          <div style={styles.titleRow}>
+            <div>
+              <span style={styles.kicker}>Preskenovanie náramku</span>
+              <h1 className="wristband-kiosk-title" style={styles.title}>{stepTitle(step)}</h1>
+            </div>
+            <span style={styles.stepBadge}>{stepLabel(step)}</span>
           </div>
-          <span style={styles.stepBadge}>{stepLabel(step)}</span>
-        </div>
 
-        <div
-          style={{
-            ...styles.statusBox,
-            background: statusBackground(tone)
-          }}
-        >
-          <b>{message}</b>
-          {person && (
-            <span>
-              Osoba: {person.personName}
-            </span>
-          )}
-        </div>
+          <div
+            style={{
+              ...styles.statusBox,
+              background: statusBackground(tone)
+            }}
+          >
+            <b>{message}</b>
+            {person && (
+              <span>
+                Osoba: {person.personName}
+              </span>
+            )}
+          </div>
 
-        <div className="wristband-kiosk-grid" style={styles.grid}>
-          <section style={styles.panel}>
-            <div style={styles.panelTitle}>Kamera</div>
-            <QrCameraScanner
-              disabled={loading || step === 'DONE'}
-              onScan={processQr}
-            />
-          </section>
-
-          <section style={styles.panel}>
-            <div style={styles.panelTitle}>Ručné načítanie</div>
-            <p style={styles.hint}>
-              Pole slúži pre USB alebo Bluetooth čítačku. Po načítaní stlač Enter.
-            </p>
-
-            <input
-              ref={manualInputRef}
-              value={manualValue}
-              onChange={event => setManualValue(event.target.value)}
-              onKeyDown={handleManualKeyDown}
-              style={styles.input}
-              disabled={loading || step === 'DONE'}
-              autoComplete="off"
-              inputMode="text"
-              placeholder={step === 'WRISTBAND' ? 'Načítaj QR náramku' : 'Načítaj aktuálny QR osoby'}
-            />
-
-            <div style={styles.actionRow}>
-              <button
-                type="button"
-                style={styles.primaryButton}
+          <div className="wristband-kiosk-grid" style={styles.grid}>
+            <section style={styles.panel}>
+              <div style={styles.panelTitle}>Kamera</div>
+              <QrCameraScanner
                 disabled={loading || step === 'DONE'}
-                onClick={submitManual}
-              >
-                {loading ? 'Spracúvam...' : 'Spracovať QR'}
-              </button>
+                onScan={processQr}
+              />
+            </section>
 
-              <button
-                type="button"
-                style={styles.secondaryButton}
-                disabled={loading}
-                onClick={resetFlow}
-              >
-                Začať odznova
-              </button>
-            </div>
+            <section style={styles.panel}>
+              <div style={styles.panelTitle}>Ručné načítanie</div>
+              <p style={styles.hint}>
+                Pole slúži pre USB alebo Bluetooth čítačku. Po načítaní stlač Enter.
+              </p>
 
-            <div style={styles.stepsList}>
-              <div style={step === 'PERSON' ? styles.activeStep : styles.step}>
-                1. Aktuálny QR osoby
+              <input
+                ref={manualInputRef}
+                value={manualValue}
+                onChange={event => setManualValue(event.target.value)}
+                onKeyDown={handleManualKeyDown}
+                style={styles.input}
+                disabled={loading || step === 'DONE'}
+                autoComplete="off"
+                inputMode="text"
+                placeholder={step === 'WRISTBAND' ? 'Načítaj QR náramku' : 'Načítaj aktuálny QR osoby'}
+              />
+
+              <div style={styles.actionRow}>
+                <button
+                  type="button"
+                  style={styles.primaryButton}
+                  disabled={loading || step === 'DONE'}
+                  onClick={submitManual}
+                >
+                  {loading ? 'Spracúvam...' : 'Spracovať QR'}
+                </button>
+
+                <button
+                  type="button"
+                  style={styles.secondaryButton}
+                  disabled={loading}
+                  onClick={resetFlow}
+                >
+                  Začať odznova
+                </button>
               </div>
-              <div style={step === 'WRISTBAND' ? styles.activeStep : styles.step}>
-                2. Nový QR náramku
+
+              <div style={styles.stepsList}>
+                <div style={step === 'PERSON' ? styles.activeStep : styles.step}>
+                  1. Aktuálny QR osoby
+                </div>
+                <div style={step === 'WRISTBAND' ? styles.activeStep : styles.step}>
+                  2. Nový QR náramku
+                </div>
               </div>
-            </div>
-          </section>
-        </div>
-      </section>
+            </section>
+          </div>
+        </section>
+      </div>
     </main>
   )
 }
@@ -348,10 +352,30 @@ const styles: Record<string, CSSProperties> = {
     background: 'linear-gradient(135deg, #7417e8 0%, #ed59dc 45%, #56db3f 100%)',
     padding: 24,
     fontFamily: 'Arial, Helvetica, sans-serif',
-    color: '#000'
+    color: '#000',
+    position: 'relative',
+    overflow: 'hidden'
+  },
+  backgroundLogo: {
+    position: 'absolute',
+    top: 22,
+    left: '50%',
+    width: 'min(72vw, 560px)',
+    maxHeight: 180,
+    objectFit: 'contain',
+    transform: 'translateX(-50%)',
+    opacity: 0.16,
+    pointerEvents: 'none',
+    zIndex: 0
+  },
+  shell: {
+    maxWidth: 1040,
+    margin: '0 auto',
+    paddingTop: 124,
+    position: 'relative',
+    zIndex: 1
   },
   card: {
-    maxWidth: 1040,
     margin: '0 auto',
     background: '#fff',
     border: '4px solid #000',
@@ -359,23 +383,13 @@ const styles: Record<string, CSSProperties> = {
     padding: 28,
     boxShadow: '12px 12px 0 #000'
   },
-  header: {
+  topBar: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 16,
-    marginBottom: 22
-  },
-  brandBlock: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 14,
-    flexWrap: 'wrap'
-  },
-  logo: {
-    height: 46,
-    maxWidth: 210,
-    objectFit: 'contain'
+    flexWrap: 'wrap',
+    marginBottom: 16
   },
   actor: {
     border: '3px solid #000',
