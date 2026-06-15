@@ -12,6 +12,37 @@ type Person = {
   personName: string
 }
 
+function normalizeQrInput(value: any) {
+  let text = String(value || '').trim()
+
+  if (!text) return ''
+
+  text = text
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim()
+
+  try {
+    const url = new URL(text)
+    const queryValue =
+      url.searchParams.get('qr') ||
+      url.searchParams.get('qrCode') ||
+      url.searchParams.get('code') ||
+      url.searchParams.get('token')
+
+    if (queryValue) {
+      text = queryValue
+    } else {
+      const lastPathPart = url.pathname.split('/').filter(Boolean).pop()
+      if (lastPathPart) text = lastPathPart
+    }
+  } catch {
+    // QR values are usually plain text. URL parsing is only a compatibility path.
+  }
+
+  return text.replace(/\s+/g, '').trim()
+}
+
 function stepLabel(step: Step) {
   if (step === 'WRISTBAND') return '2 / 2'
   if (step === 'DONE') return 'Hotovo'
@@ -43,6 +74,7 @@ export default function PreskenovanieNaramkuClient({
   const stepRef = useRef<Step>('PERSON')
   const currentQrRef = useRef('')
   const personUserIdRef = useRef('')
+  const loadingRef = useRef(false)
 
   const [step, setStep] = useState<Step>('PERSON')
   const [currentQr, setCurrentQr] = useState('')
@@ -68,6 +100,7 @@ export default function PreskenovanieNaramkuClient({
     setMessage('Pripravené na preskenovanie.')
     setTone('')
     setLoading(false)
+    loadingRef.current = false
     setTimeout(() => manualInputRef.current?.focus(), 80)
   }
 
@@ -82,13 +115,13 @@ export default function PreskenovanieNaramkuClient({
   }, [])
 
   const processQr = async (rawValue: string) => {
-    const value = rawValue.trim()
+    const value = normalizeQrInput(rawValue)
 
     if (!value) {
       return { tone: 'warning' as const, message: 'QR kód je prázdny.' }
     }
 
-    if (loading) {
+    if (loadingRef.current) {
       return { tone: 'warning' as const, message: 'Spracovanie už prebieha.' }
     }
 
@@ -99,6 +132,7 @@ export default function PreskenovanieNaramkuClient({
       return { tone: 'warning' as const, message: 'Začínam ďalšie preskenovanie.' }
     }
 
+    loadingRef.current = true
     setLoading(true)
     setMessage('Spracovávam QR kód...')
     setTone('warning')
@@ -159,6 +193,7 @@ export default function PreskenovanieNaramkuClient({
       setTone('error')
       return { tone: 'error' as const, message: 'Chyba spojenia so serverom.' }
     } finally {
+      loadingRef.current = false
       setLoading(false)
     }
   }

@@ -7,6 +7,37 @@ function cleanText(value: any) {
   return String(value || '').trim()
 }
 
+function cleanQrText(value: any) {
+  let text = cleanText(value)
+
+  if (!text) return ''
+
+  text = text
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim()
+
+  try {
+    const url = new URL(text)
+    const queryValue =
+      url.searchParams.get('qr') ||
+      url.searchParams.get('qrCode') ||
+      url.searchParams.get('code') ||
+      url.searchParams.get('token')
+
+    if (queryValue) {
+      text = queryValue
+    } else {
+      const lastPathPart = url.pathname.split('/').filter(Boolean).pop()
+      if (lastPathPart) text = lastPathPart
+    }
+  } catch {
+    // QR values are usually plain text. URL parsing is only a compatibility path.
+  }
+
+  return text.replace(/\s+/g, '').trim()
+}
+
 function fullName(profile: any) {
   return `${profile?.meno || ''} ${profile?.priezvisko || ''}`.trim()
 }
@@ -235,8 +266,8 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const mode = cleanText(body.mode).toUpperCase()
-    const currentQr = cleanText(body.currentQr)
-    const wristbandQr = cleanText(body.wristbandQr)
+    const currentQr = cleanQrText(body.currentQr)
+    const wristbandQr = cleanQrText(body.wristbandQr)
     const userId = cleanText(body.userId)
 
     if (mode !== 'LOOKUP' && mode !== 'REPLACE') {
