@@ -128,6 +128,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [pickupResults, setPickupResults] = useState<SearchUser[]>([])
   const [pickupLoading, setPickupLoading] = useState(false)
   const [pickupModalOpen, setPickupModalOpen] = useState(false)
+  const [pendingPickupUserIds, setPendingPickupUserIds] = useState<string[]>([])
   const [existingIssues, setExistingIssues] = useState<ExistingIssue[]>([])
   const [editingIssueId, setEditingIssueId] = useState('')
   const [issueLoading, setIssueLoading] = useState(false)
@@ -145,6 +146,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchUser[]>([])
   const [delegateSearchAll, setDelegateSearchAll] = useState(false)
+  const [pendingDelegateUserIds, setPendingDelegateUserIds] = useState<string[]>([])
   const [delegateNote, setDelegateNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState('')
@@ -215,6 +217,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   function openDelegateModal() {
     setDelegatesPanelOpen(true)
     setDelegateSearchAll(false)
+    setPendingDelegateUserIds([])
     setMessage('')
     void searchUsers('', false)
   }
@@ -224,6 +227,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setDelegateSearchAll(false)
     setSearchQuery('')
     setSearchResults([])
+    setPendingDelegateUserIds([])
     setDelegateNote('')
     setMessage('')
   }
@@ -232,12 +236,14 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setPickupModalOpen(true)
     setPickupQuery('')
     setPickupResults([])
+    setPendingPickupUserIds([])
   }
 
   function closePickupModal() {
     setPickupModalOpen(false)
     setPickupQuery('')
     setPickupResults([])
+    setPendingPickupUserIds([])
   }
 
   const renderDateInput = (
@@ -547,22 +553,39 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     }
   }
 
-  function addPickupUser(user: SearchUser) {
+  function togglePendingPickupUser(userId: string) {
+    if (pickupUserIds.includes(userId)) return
+
+    setPendingPickupUserIds(current => {
+      return current.includes(userId)
+        ? current.filter(id => id !== userId)
+        : [...current, userId]
+    })
+  }
+
+  function addPendingPickupUsers() {
+    const users = pickupResults.filter(user => pendingPickupUserIds.includes(user.id))
+
+    if (users.length === 0) return
+
     setPickupUsers(current => {
-      if (current.some(item => item.id === user.id)) return current
-      return [...current, user]
+      const existing = new Set(current.map(user => user.id))
+      return [
+        ...current,
+        ...users.filter(user => !existing.has(user.id))
+      ]
     })
-    setPickupUserIds(current => {
-      if (current.includes(user.id)) return current
-      return [...current, user.id]
-    })
-    setPickupQuery('')
-    setPickupResults([])
+    setPickupUserIds(current => Array.from(new Set([
+      ...current,
+      ...users.map(user => user.id)
+    ])))
+    setPendingPickupUserIds([])
   }
 
   function removePickupUser(userId: string) {
     setPickupUsers(current => current.filter(user => user.id !== userId))
     setPickupUserIds(current => current.filter(id => id !== userId))
+    setPendingPickupUserIds(current => current.filter(id => id !== userId))
   }
 
   async function saveIssue() {
@@ -646,8 +669,20 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     }
   }
 
-  async function addDelegate(user: SearchUser) {
+  function togglePendingDelegateUser(userId: string) {
+    if (delegates.some(delegate => delegate.userId === userId)) return
+
+    setPendingDelegateUserIds(current => {
+      return current.includes(userId)
+        ? current.filter(id => id !== userId)
+        : [...current, userId]
+    })
+  }
+
+  async function addDelegate(user: SearchUser, options: { clearSearch?: boolean } = {}) {
     if (!selectedGroupId) return
+
+    const clearSearch = options.clearSearch ?? true
 
     setLoading(true)
     setMessage('')
@@ -671,15 +706,32 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
         ...current,
         [selectedGroupId]: json.delegates || []
       }))
-      setSearchQuery('')
-      setSearchResults([])
-      setDelegateNote('')
+      if (clearSearch) {
+        setSearchQuery('')
+        setSearchResults([])
+        setDelegateNote('')
+      }
       setMessage(json.message || 'Poverena osoba bola pridana.')
     } catch (err: any) {
       setMessage(err?.message || 'Poverenu osobu sa nepodarilo pridat.', 'error')
     } finally {
       setLoading(false)
     }
+  }
+
+  async function addPendingDelegates() {
+    const users = searchResults.filter(user => pendingDelegateUserIds.includes(user.id))
+
+    if (users.length === 0) return
+
+    for (const user of users) {
+      await addDelegate(user, { clearSearch: false })
+    }
+
+    setPendingDelegateUserIds([])
+    setDelegateNote('')
+    setMessage(`Pridane osoby: ${users.length}.`)
+    void searchUsers(searchQuery, delegateSearchAll)
   }
 
   async function removeDelegate(delegate: Delegate) {
@@ -702,6 +754,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
         ...current,
         [delegate.registrationGroupId]: json.delegates || []
       }))
+      setPendingDelegateUserIds(current => current.filter(id => id !== delegate.userId))
       setMessage(json.message || 'Poverena osoba bola odobrana.')
     } catch (err: any) {
       setMessage(err?.message || 'Poverenu osobu sa nepodarilo odobrat.', 'error')
@@ -753,6 +806,13 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           .issue-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
           .issue-person-row { grid-template-columns: 1fr !important; }
           .issue-person-meta { justify-content: flex-start !important; }
+          .group-picker-menu {
+            position: fixed !important;
+            left: 10px !important;
+            right: 10px !important;
+            top: 120px !important;
+            max-height: calc(100vh - 150px) !important;
+          }
         }
       `}</style>
 
@@ -956,7 +1016,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     </div>
 
                     <div style={styles.formGrid}>
-                      <label style={styles.field}>
+                      <div style={styles.field}>
                         <span>Registracna skupina</span>
                         <div style={styles.groupPicker}>
                           <button
@@ -969,7 +1029,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                           </button>
 
                           {groupPickerOpen && (
-                            <div style={styles.groupPickerMenu}>
+                            <div className="group-picker-menu" style={styles.groupPickerMenu}>
                               <input
                                 type="search"
                                 value={groupQuery}
@@ -1000,7 +1060,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                             </div>
                           )}
                         </div>
-                      </label>
+                      </div>
 
                       <label style={styles.field}>
                         <span>Datum</span>
@@ -1301,20 +1361,39 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                             : 'V skupine nie je nikto dalsi na pridanie.'}
                         </div>
                       ) : (
-                        searchResults.map(user => (
-                          <button
-                            key={user.id}
-                            type="button"
-                            onClick={() => addDelegate(user)}
-                            disabled={loading || delegates.some(delegate => delegate.userId === user.id)}
-                            style={styles.resultButton}
-                          >
-                            <b>{user.name}</b>
-                            {user.email && <span>{user.email}</span>}
-                          </button>
-                        ))
+                        searchResults.map(user => {
+                          const alreadyAdded = delegates.some(delegate => delegate.userId === user.id)
+                          const selected = pendingDelegateUserIds.includes(user.id)
+
+                          return (
+                            <button
+                              key={user.id}
+                              type="button"
+                              onClick={() => togglePendingDelegateUser(user.id)}
+                              disabled={loading || alreadyAdded}
+                              style={{
+                                ...styles.resultButton,
+                                ...(selected ? styles.resultButtonSelected : {}),
+                                ...(alreadyAdded ? styles.resultButtonMuted : {})
+                              }}
+                            >
+                              <b>{user.name}</b>
+                              {user.email && <span>{user.email}</span>}
+                              <small>{alreadyAdded ? 'Uz povereny' : selected ? 'Oznaceny na pridanie' : 'Kliknutim oznacis'}</small>
+                            </button>
+                          )
+                        })
                       )}
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={addPendingDelegates}
+                      disabled={loading || pendingDelegateUserIds.length === 0}
+                      style={styles.primaryButton}
+                    >
+                      {loading ? 'Ukladam...' : `Pridat oznacenych (${pendingDelegateUserIds.length})`}
+                    </button>
                   </div>
                 </>
               )}
@@ -1387,20 +1466,39 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
               {pickupResults.length > 0 && (
                 <div style={styles.searchResults}>
-                  {pickupResults.map(user => (
-                    <button
-                      key={user.id}
-                      type="button"
-                      onClick={() => addPickupUser(user)}
-                      disabled={pickupUserIds.includes(user.id)}
-                      style={styles.resultButton}
-                    >
-                      <b>{user.name}</b>
-                      {user.email && <span>{user.email}</span>}
-                    </button>
-                  ))}
+                  {pickupResults.map(user => {
+                    const alreadyAdded = pickupUserIds.includes(user.id)
+                    const selected = pendingPickupUserIds.includes(user.id)
+
+                    return (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => togglePendingPickupUser(user.id)}
+                        disabled={alreadyAdded}
+                        style={{
+                          ...styles.resultButton,
+                          ...(selected ? styles.resultButtonSelected : {}),
+                          ...(alreadyAdded ? styles.resultButtonMuted : {})
+                        }}
+                      >
+                        <b>{user.name}</b>
+                        {user.email && <span>{user.email}</span>}
+                        <small>{alreadyAdded ? 'Uz pridany' : selected ? 'Oznaceny na pridanie' : 'Kliknutim oznacis'}</small>
+                      </button>
+                    )
+                  })}
                 </div>
               )}
+
+              <button
+                type="button"
+                onClick={addPendingPickupUsers}
+                disabled={pendingPickupUserIds.length === 0}
+                style={styles.primaryButton}
+              >
+                Pridat oznacenych ({pendingPickupUserIds.length})
+              </button>
             </div>
           </div>
         )}
@@ -1568,13 +1666,19 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     background: '#fff',
     padding: 8,
-    boxShadow: '0 16px 40px rgba(17, 24, 39, 0.14)'
+    boxShadow: '0 16px 40px rgba(17, 24, 39, 0.14)',
+    maxHeight: 'min(360px, 55vh)',
+    overflow: 'hidden',
+    touchAction: 'pan-y'
   },
   groupPickerList: {
     display: 'grid',
     gap: 4,
-    maxHeight: 230,
-    overflow: 'auto',
+    maxHeight: 'min(280px, 42vh)',
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    overscrollBehavior: 'contain',
+    touchAction: 'pan-y',
     marginTop: 8,
     paddingRight: 2
   },
@@ -2259,6 +2363,15 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'left',
     fontSize: 12,
     fontWeight: 850
+  },
+  resultButtonSelected: {
+    background: '#f0fdf4',
+    borderColor: '#22c55e',
+    boxShadow: 'inset 3px 0 0 #22c55e'
+  },
+  resultButtonMuted: {
+    background: '#f9fafb',
+    color: '#9ca3af'
   },
   feedbackOk: {
     marginTop: 12,
