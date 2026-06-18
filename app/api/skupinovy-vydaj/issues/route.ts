@@ -232,6 +232,8 @@ async function loadIssuePeople(issueId: string, date: string, meal: MealType) {
     const base = {
       id: item.user_id,
       name: fullName(user) || item.user_id,
+      firstName: user?.meno || '',
+      lastName: user?.priezvisko || '',
       email: user?.email || '',
       choice,
       source,

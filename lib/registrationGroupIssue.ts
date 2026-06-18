@@ -9,6 +9,8 @@ export type IssueAccess = 'ADMIN' | 'MANAGER' | 'DELEGATE' | ''
 export type IssuablePerson = {
   id: string
   name: string
+  firstName?: string
+  lastName?: string
   email: string
   choice: FoodChoice
   source: 'REGISTRATION_GROUP' | 'SEARCH' | 'QR'
@@ -258,6 +260,8 @@ export async function filterIssuablePeople({
       return {
         id: user.id,
         name: fullName(user),
+        firstName: user.meno || '',
+        lastName: user.priezvisko || '',
         email: user.email || '',
         choice,
         source

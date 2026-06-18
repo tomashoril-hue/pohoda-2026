@@ -33,6 +33,8 @@ type SearchUser = {
 type IssuePerson = {
   id: string
   name: string
+  firstName?: string
+  lastName?: string
   email: string
   choice: 'MASO' | 'VEGE' | 'DIETA'
   source: 'REGISTRATION_GROUP' | 'SEARCH' | 'QR'
@@ -88,6 +90,28 @@ function isIssuePersonReady(person: IssuePerson) {
   return person.issuable !== false
 }
 
+function displayIssuePersonName(person: IssuePerson) {
+  const firstName = String(person.firstName || '').trim()
+  const lastName = String(person.lastName || '').trim()
+
+  if (lastName || firstName) return `${lastName} ${firstName}`.trim()
+  return person.name
+}
+
+function compareIssuePeople(a: IssuePerson, b: IssuePerson) {
+  const aLastName = String(a.lastName || '').trim()
+  const bLastName = String(b.lastName || '').trim()
+  const aFirstName = String(a.firstName || '').trim()
+  const bFirstName = String(b.firstName || '').trim()
+
+  return (
+    aLastName.localeCompare(bLastName, 'sk', { sensitivity: 'base' }) ||
+    aFirstName.localeCompare(bFirstName, 'sk', { sensitivity: 'base' }) ||
+    a.name.localeCompare(b.name, 'sk', { sensitivity: 'base' }) ||
+    a.email.localeCompare(b.email, 'sk', { sensitivity: 'base' })
+  )
+}
+
 export default function SkupinovyVydajClient({ initialDate, groups, delegatesByGroupId }: Props) {
   const [date, setDate] = useState(initialDate)
   const [meal, setMeal] = useState<MealSelection>('')
@@ -136,17 +160,20 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   }, { MASO: 0, VEGE: 0, DIETA: 0, SPOLU: 0 })
   const filteredIssuePeople = useMemo(() => {
     const query = issuePersonFilter.trim().toLowerCase()
-    if (!query) return issuePeople
+    const filtered = query
+      ? issuePeople.filter(person => {
+          return [
+            displayIssuePersonName(person),
+            person.name,
+            person.email,
+            person.choice,
+            sourceLabel(person.source),
+            person.issueStatusLabel || ''
+          ].join(' ').toLowerCase().includes(query)
+        })
+      : issuePeople
 
-    return issuePeople.filter(person => {
-      return [
-        person.name,
-        person.email,
-        person.choice,
-        sourceLabel(person.source),
-        person.issueStatusLabel || ''
-      ].join(' ').toLowerCase().includes(query)
-    })
+    return [...filtered].sort(compareIssuePeople)
   }, [issuePeople, issuePersonFilter])
 
   function setMessage(message: string, type: 'ok' | 'error' = 'ok') {
@@ -784,7 +811,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                               style={styles.checkbox}
                             />
                             <span>
-                              <b>{person.name}</b>
+                              <b>{displayIssuePersonName(person)}</b>
                               {person.email && <small>{person.email}</small>}
                             </span>
                           </label>
