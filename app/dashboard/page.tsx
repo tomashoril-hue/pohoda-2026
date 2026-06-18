@@ -79,8 +79,7 @@ function menuVariantLabel(value: string | null | undefined) {
   return isDietFood(value) ? 'DIÉTA' : value
 }
 
-function entitlementLabel(value: boolean | null | undefined, hasRow: boolean) {
-  if (!hasRow) return 'NEZNÁME'
+function entitlementLabel(value: boolean | null | undefined) {
   return value ? 'ÁNO' : 'NIE'
 }
 
@@ -128,6 +127,7 @@ function formatTime(value: string | null | undefined) {
 
 function mealState({
   entitlement,
+  hasEntitlementRow,
   noInterest,
   issued,
   legacyBulkItem,
@@ -136,6 +136,7 @@ function mealState({
   issuedRegistrationIssue
 }: {
   entitlement: string
+  hasEntitlementRow: boolean
   noInterest: boolean
   issued: any
   legacyBulkItem: any
@@ -163,7 +164,7 @@ function mealState({
     return { label: 'Vydané osobne', detail: '', tone: 'issued' }
   }
 
-  if (entitlement === 'NIE') {
+  if (entitlement === 'NIE' && hasEntitlementRow) {
     return { label: 'Bez nároku', detail: '', tone: 'blocked' }
   }
 
@@ -506,7 +507,8 @@ export default async function DashboardPage({
   const todayMeals = [
     {
       typJedla: 'OBED',
-      entitlement: entitlementLabel(entitlement?.obed, hasEntitlementRow),
+      entitlement: entitlementLabel(entitlement?.obed),
+      hasEntitlementRow,
       selection: obedSelection,
       menuText: getMenuText('OBED', showDiet),
       issued: getIssued('OBED'),
@@ -515,7 +517,8 @@ export default async function DashboardPage({
     },
     {
       typJedla: 'VECERA',
-      entitlement: entitlementLabel(entitlement?.vecera, hasEntitlementRow),
+      entitlement: entitlementLabel(entitlement?.vecera),
+      hasEntitlementRow,
       selection: veceraSelection,
       menuText: getMenuText('VECERA', showDiet),
       issued: getIssued('VECERA'),
@@ -631,6 +634,7 @@ export default async function DashboardPage({
               const noInterest = meal.selection?.volba === 'BEZ_ZAUJMU'
               const state = mealState({
                 entitlement: meal.entitlement,
+                hasEntitlementRow: meal.hasEntitlementRow,
                 noInterest,
                 issued: meal.issued,
                 legacyBulkItem: meal.bulk,
