@@ -1219,7 +1219,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           <div style={styles.modalOverlay} onClick={() => setQrModalOpen(false)}>
             <div style={styles.qrModal} onClick={event => event.stopPropagation()}>
               <div style={styles.qrModalHeader}>
-                <div>
+                <div style={styles.modalTitleBlock}>
                   <b>Pridat cez QR</b>
                   <span>Skenujte QR kody postupne. Osoby sa budu pridavat do pripravovaneho vydaja.</span>
                 </div>
@@ -1246,7 +1246,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           <div style={styles.modalOverlay} onClick={closeDelegateModal}>
             <div style={styles.peopleModal} onClick={event => event.stopPropagation()}>
               <div style={styles.qrModalHeader}>
-                <div>
+                <div style={styles.modalTitleBlock}>
                   <b>Sprava poverenych osob</b>
                   <span>{selectedGroup.name}</span>
                 </div>
@@ -1411,7 +1411,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           <div style={styles.modalOverlay} onClick={closePickupModal}>
             <div style={styles.peopleModal} onClick={event => event.stopPropagation()}>
               <div style={styles.qrModalHeader}>
-                <div>
+                <div style={styles.modalTitleBlock}>
                   <b>Opravneni prevziat</b>
                   <span>Osoby, ktore mozu prevziat tento skupinovy vydaj.</span>
                 </div>
@@ -1424,6 +1424,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 >
                   x
                 </button>
+              </div>
+
+              <div style={styles.peopleSectionHeader}>
+                <b>Opravneni prevziat</b>
+                <span>{pickupUserIds.length} osob</span>
               </div>
 
               {pickupUsers.length === 0 ? (
@@ -1450,55 +1455,59 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 </div>
               )}
 
-              <label style={styles.field}>
-                <span style={styles.label}>Pridat osobu na prevzatie</span>
-                <input
-                  type="search"
-                  value={pickupQuery}
-                  onChange={event => searchPickupUsers(event.target.value)}
-                  placeholder="Zadaj aspon 3 znaky"
-                  style={styles.input}
-                  disabled={issueLoading}
-                />
-              </label>
+              <div style={styles.searchBox}>
+                <label style={styles.field}>
+                  <span style={styles.label}>Pridat osobu na prevzatie</span>
+                  <input
+                    type="search"
+                    value={pickupQuery}
+                    onChange={event => searchPickupUsers(event.target.value)}
+                    placeholder="Zadaj aspon 3 znaky"
+                    style={styles.input}
+                    disabled={issueLoading}
+                  />
+                </label>
 
-              {pickupLoading && <div style={styles.emptyBox}>Vyhladavam...</div>}
+                {pickupLoading && <div style={styles.emptyBox}>Vyhladavam...</div>}
 
-              {pickupResults.length > 0 && (
                 <div style={styles.searchResults}>
-                  {pickupResults.map(user => {
-                    const alreadyAdded = pickupUserIds.includes(user.id)
-                    const selected = pendingPickupUserIds.includes(user.id)
+                  {pickupResults.length === 0 ? (
+                    <div style={styles.emptyBox}>Pre vyhladavanie zadaj aspon 3 znaky.</div>
+                  ) : (
+                    pickupResults.map(user => {
+                      const alreadyAdded = pickupUserIds.includes(user.id)
+                      const selected = pendingPickupUserIds.includes(user.id)
 
-                    return (
-                      <button
-                        key={user.id}
-                        type="button"
-                        onClick={() => togglePendingPickupUser(user.id)}
-                        disabled={alreadyAdded}
-                        style={{
-                          ...styles.resultButton,
-                          ...(selected ? styles.resultButtonSelected : {}),
-                          ...(alreadyAdded ? styles.resultButtonMuted : {})
-                        }}
-                      >
-                        <b>{user.name}</b>
-                        {user.email && <span>{user.email}</span>}
-                        <small>{alreadyAdded ? 'Uz pridany' : selected ? 'Oznaceny na pridanie' : 'Kliknutim oznacis'}</small>
-                      </button>
-                    )
-                  })}
+                      return (
+                        <button
+                          key={user.id}
+                          type="button"
+                          onClick={() => togglePendingPickupUser(user.id)}
+                          disabled={alreadyAdded}
+                          style={{
+                            ...styles.resultButton,
+                            ...(selected ? styles.resultButtonSelected : {}),
+                            ...(alreadyAdded ? styles.resultButtonMuted : {})
+                          }}
+                        >
+                          <b>{user.name}</b>
+                          {user.email && <span>{user.email}</span>}
+                          <small>{alreadyAdded ? 'Uz pridany' : selected ? 'Oznaceny na pridanie' : 'Kliknutim oznacis'}</small>
+                        </button>
+                      )
+                    })
+                  )}
                 </div>
-              )}
 
-              <button
-                type="button"
-                onClick={addPendingPickupUsers}
-                disabled={pendingPickupUserIds.length === 0}
-                style={styles.primaryButton}
-              >
-                Pridat oznacenych ({pendingPickupUserIds.length})
-              </button>
+                <button
+                  type="button"
+                  onClick={addPendingPickupUsers}
+                  disabled={pendingPickupUserIds.length === 0}
+                  style={styles.primaryButton}
+                >
+                  Pridat oznacenych ({pendingPickupUserIds.length})
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -2414,9 +2423,11 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'rgba(17, 24, 39, 0.55)',
     zIndex: 50,
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
-    padding: 16
+    padding: 16,
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch'
   },
   qrModal: {
     width: '100%',
@@ -2433,20 +2444,28 @@ const styles: Record<string, React.CSSProperties> = {
   peopleModal: {
     width: '100%',
     maxWidth: 620,
-    maxHeight: 'calc(100vh - 32px)',
+    maxHeight: 'calc(100dvh - 32px)',
     overflow: 'auto',
     background: '#fff',
     borderRadius: 14,
     padding: 14,
     boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
     display: 'grid',
-    gap: 12
+    gap: 12,
+    margin: '0 0 16px 0'
   },
   qrModalHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     gap: 10,
     alignItems: 'flex-start'
+  },
+  modalTitleBlock: {
+    display: 'grid',
+    gap: 4,
+    minWidth: 0,
+    fontSize: 13,
+    fontWeight: 850
   },
   qrCloseButton: {
     width: 34,
