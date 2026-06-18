@@ -29,8 +29,8 @@ export async function canManageRegistrationGroup(userId: string, registrationGro
   return Boolean(data?.length)
 }
 
-export async function canUseGroupIssue(userId: string, access: Pick<GlobalAccess, 'isAdmin'>) {
-  if (access.isAdmin) return true
+export async function canUseGroupIssue(userId: string, access: Pick<GlobalAccess, 'isAdmin' | 'isPersonalista'>) {
+  if (access.isAdmin || access.isPersonalista) return true
 
   const [managedGroupIds, delegatedGroupIds] = await Promise.all([
     getManagedRegistrationGroupIds(userId),

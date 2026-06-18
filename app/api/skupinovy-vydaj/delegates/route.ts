@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { canManageRegistrationGroup } from '@/lib/registrationGroupManagers'
+import { fullName, loadRegistrationGroupPeople, loadUsersByIds, normalizeDate } from '@/lib/registrationGroupIssue'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function cleanText(value: any) {
@@ -11,9 +12,24 @@ function cleanText(value: any) {
 async function canManageDelegates(actorId: string, registrationGroupId: string) {
   const access = await getGlobalAccess(actorId)
 
-  if (access.isAdmin) return true
+  if (access.isAdmin || access.isPersonalista) return true
 
   return canManageRegistrationGroup(actorId, registrationGroupId)
+}
+
+function todayIsoDate() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Bratislava',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date())
+
+  const year = parts.find(part => part.type === 'year')?.value
+  const month = parts.find(part => part.type === 'month')?.value
+  const day = parts.find(part => part.type === 'day')?.value
+
+  return `${year}-${month}-${day}`
 }
 
 async function loadDelegates(registrationGroupId: string) {
@@ -25,28 +41,26 @@ async function loadDelegates(registrationGroupId: string) {
       registration_group_id,
       active,
       note,
-      created_at,
-      users (
-        id,
-        meno,
-        priezvisko,
-        email
-      )
+      created_at
     `)
     .eq('registration_group_id', registrationGroupId)
     .eq('active', true)
 
   if (error) throw error
 
+  const userIds = (data || []).map((row: any) => row.user_id).filter(Boolean)
+  const users = await loadUsersByIds(userIds)
+  const userById = new Map(users.map((user: any) => [user.id, user]))
+
   return (data || [])
     .map((row: any) => {
-      const user = Array.isArray(row.users) ? row.users[0] : row.users
+      const user: any = userById.get(row.user_id)
 
       return {
         id: row.id,
         userId: row.user_id,
         registrationGroupId: row.registration_group_id,
-        name: `${user?.meno || ''} ${user?.priezvisko || ''}`.trim() || user?.email || 'Bez mena',
+        name: fullName(user) || row.user_id,
         email: user?.email || '',
         note: row.note || '',
         createdAt: row.created_at || ''
@@ -66,6 +80,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const userId = cleanText(body.userId)
     const registrationGroupId = cleanText(body.registrationGroupId)
+    const date = normalizeDate(body.date || body.datum) || todayIsoDate()
     const note = cleanText(body.note)
 
     if (!userId) {
@@ -76,7 +91,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Chyba registracna skupina.' }, { status: 400 })
     }
 
-    const allowed = await canManageDelegates(actor.id, registrationGroupId)
+    const access = await getGlobalAccess(actor.id)
+    const privileged = access.isAdmin || access.isPersonalista
+    const manager = await canManageRegistrationGroup(actor.id, registrationGroupId)
+    const allowed = privileged || manager
 
     if (!allowed) {
       return NextResponse.json(
@@ -111,6 +129,18 @@ export async function POST(req: NextRequest) {
 
     if (String(targetUser.aktivny || '').toUpperCase() !== 'ANO') {
       return NextResponse.json({ error: 'Neaktivnu osobu nie je mozne poverit.' }, { status: 400 })
+    }
+
+    if (!privileged) {
+      const groupPeople = await loadRegistrationGroupPeople(registrationGroupId, date)
+      const targetInGroup = groupPeople.some((user: any) => user.id === userId)
+
+      if (!targetInGroup) {
+        return NextResponse.json(
+          { error: 'Manager moze poverit iba osobu z tejto registracnej skupiny.' },
+          { status: 403 }
+        )
+      }
     }
 
     const { data: beforeRows } = await supabaseServer

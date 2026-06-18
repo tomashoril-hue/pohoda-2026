@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Chyba registracna skupina, datum alebo jedlo.' }, { status: 400 })
     }
 
-    if (query.length < 2) {
+    if (query.length < 3) {
       return NextResponse.json({ people: [] })
     }
 

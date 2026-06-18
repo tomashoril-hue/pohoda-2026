@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { canUseGroupIssue, getDelegatedRegistrationGroupIds, getManagedRegistrationGroupIds } from '@/lib/registrationGroupManagers'
+import { fullName, loadUsersByIds } from '@/lib/registrationGroupIssue'
 import { supabaseServer } from '@/lib/supabaseServer'
 import SkupinovyVydajClient from './SkupinovyVydajClient'
 
@@ -20,7 +21,8 @@ function todayIsoDate() {
   return `${year}-${month}-${day}`
 }
 
-async function loadGroupIssueAccess(userId: string, isAdmin: boolean) {
+async function loadGroupIssueAccess(userId: string, access: { isAdmin: boolean, isPersonalista: boolean }) {
+  const privileged = access.isAdmin || access.isPersonalista
   const [managedIds, delegatedIds, allGroupsResult] = await Promise.all([
     getManagedRegistrationGroupIds(userId),
     getDelegatedRegistrationGroupIds(userId),
@@ -34,7 +36,7 @@ async function loadGroupIssueAccess(userId: string, isAdmin: boolean) {
   if (allGroupsResult.error) throw allGroupsResult.error
 
   const allGroups = allGroupsResult.data || []
-  const managedSet = new Set(isAdmin ? allGroups.map((group: any) => group.id) : managedIds)
+  const managedSet = new Set(privileged ? allGroups.map((group: any) => group.id) : managedIds)
   const delegatedSet = new Set(delegatedIds)
   const allowedIds = new Set([...Array.from(managedSet), ...Array.from(delegatedSet)])
 
@@ -44,6 +46,7 @@ async function loadGroupIssueAccess(userId: string, isAdmin: boolean) {
       id: group.id,
       name: group.name || '',
       canManageDelegates: managedSet.has(group.id),
+      canSearchAllDelegates: privileged,
       accessLabel: managedSet.has(group.id) ? 'Manager' : 'Povereny'
     }))
 
@@ -62,13 +65,7 @@ async function loadGroupIssueAccess(userId: string, isAdmin: boolean) {
         registration_group_id,
         active,
         note,
-        created_at,
-        users (
-          id,
-          meno,
-          priezvisko,
-          email
-        )
+        created_at
       `)
       .in('registration_group_id', managedGroupIds)
       .eq('active', true)
@@ -78,15 +75,18 @@ async function loadGroupIssueAccess(userId: string, isAdmin: boolean) {
     }
   }
 
+  const delegateUserIds = Array.from(new Set(delegateRows.map((row: any) => row.user_id).filter(Boolean)))
+  const delegateUsers = await loadUsersByIds(delegateUserIds)
+  const delegateUserById = new Map(delegateUsers.map((user: any) => [user.id, user]))
   const delegatesByGroupId: Record<string, any[]> = {}
 
   delegateRows.forEach((row: any) => {
-    const user = Array.isArray(row.users) ? row.users[0] : row.users
+    const user: any = delegateUserById.get(row.user_id)
     const item = {
       id: row.id,
       userId: row.user_id,
       registrationGroupId: row.registration_group_id,
-      name: `${user?.meno || ''} ${user?.priezvisko || ''}`.trim() || user?.email || 'Bez mena',
+      name: fullName(user) || row.user_id,
       email: user?.email || '',
       note: row.note || '',
       createdAt: row.created_at || ''
@@ -120,7 +120,7 @@ export default async function SkupinovyVydajPage() {
     redirect('/dashboard')
   }
 
-  const groupIssueAccess = await loadGroupIssueAccess(user.id, access.isAdmin)
+  const groupIssueAccess = await loadGroupIssueAccess(user.id, access)
 
   return (
     <SkupinovyVydajClient

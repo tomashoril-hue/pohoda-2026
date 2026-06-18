@@ -11,6 +11,7 @@ type RegistrationGroupOption = {
   id: string
   name: string
   canManageDelegates: boolean
+  canSearchAllDelegates?: boolean
   accessLabel: string
 }
 
@@ -126,6 +127,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [pickupQuery, setPickupQuery] = useState('')
   const [pickupResults, setPickupResults] = useState<SearchUser[]>([])
   const [pickupLoading, setPickupLoading] = useState(false)
+  const [pickupModalOpen, setPickupModalOpen] = useState(false)
   const [existingIssues, setExistingIssues] = useState<ExistingIssue[]>([])
   const [editingIssueId, setEditingIssueId] = useState('')
   const [issueLoading, setIssueLoading] = useState(false)
@@ -137,9 +139,12 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [existingIssuesLoaded, setExistingIssuesLoaded] = useState(false)
   const [selectedGroupId, setSelectedGroupId] = useState(groups.length === 1 ? groups[0]?.id || '' : '')
   const [delegatesPanelOpen, setDelegatesPanelOpen] = useState(false)
+  const [groupPickerOpen, setGroupPickerOpen] = useState(false)
+  const [groupQuery, setGroupQuery] = useState('')
   const [delegateMap, setDelegateMap] = useState<Record<string, Delegate[]>>(delegatesByGroupId)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchUser[]>([])
+  const [delegateSearchAll, setDelegateSearchAll] = useState(false)
   const [delegateNote, setDelegateNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState('')
@@ -148,6 +153,13 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const selectedGroup = useMemo(() => {
     return groups.find(group => group.id === selectedGroupId) || null
   }, [groups, selectedGroupId])
+
+  const filteredGroups = useMemo(() => {
+    const query = groupQuery.trim().toLowerCase()
+    if (!query) return groups
+
+    return groups.filter(group => group.name.toLowerCase().includes(query))
+  }, [groups, groupQuery])
 
   const delegates = selectedGroupId ? delegateMap[selectedGroupId] || [] : []
   const selectionReady = Boolean(date && selectedGroupId && meal)
@@ -184,6 +196,48 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   function setIssueMessage(message: string, type: 'ok' | 'error' = 'ok') {
     setIssueFeedback(message)
     setIssueFeedbackType(type)
+  }
+
+  function selectRegistrationGroup(nextGroupId: string) {
+    setSelectedGroupId(nextGroupId)
+    setGroupPickerOpen(false)
+    setGroupQuery('')
+    setDelegatesPanelOpen(false)
+    setDelegateSearchAll(false)
+    setSearchQuery('')
+    setSearchResults([])
+    setDelegateNote('')
+    setFeedback('')
+    setSelectionOpen(true)
+    resetIssueState({ preserveMeal: true })
+  }
+
+  function openDelegateModal() {
+    setDelegatesPanelOpen(true)
+    setDelegateSearchAll(false)
+    setMessage('')
+    void searchUsers('', false)
+  }
+
+  function closeDelegateModal() {
+    setDelegatesPanelOpen(false)
+    setDelegateSearchAll(false)
+    setSearchQuery('')
+    setSearchResults([])
+    setDelegateNote('')
+    setMessage('')
+  }
+
+  function openPickupModal() {
+    setPickupModalOpen(true)
+    setPickupQuery('')
+    setPickupResults([])
+  }
+
+  function closePickupModal() {
+    setPickupModalOpen(false)
+    setPickupQuery('')
+    setPickupResults([])
   }
 
   const renderDateInput = (
@@ -470,7 +524,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setPickupQuery(query)
     setPickupResults([])
 
-    if (!selectedGroupId || query.trim().length < 2) return
+    if (!selectedGroupId || query.trim().length < 3) return
 
     setPickupLoading(true)
 
@@ -560,11 +614,14 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     }
   }
 
-  async function searchUsers(query: string) {
+  async function searchUsers(query: string, searchAll = delegateSearchAll) {
     setSearchQuery(query)
     setSearchResults([])
 
-    if (!selectedGroupId || query.trim().length < 2) return
+    const searchText = query.trim()
+
+    if (!selectedGroupId) return
+    if (searchAll && searchText.length < 3) return
 
     setLoading(true)
     setMessage('')
@@ -572,8 +629,10 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     try {
       const params = new URLSearchParams({
         registrationGroupId: selectedGroupId,
-        q: query
+        date,
+        q: searchAll || searchText.length >= 3 ? searchText : ''
       })
+      if (searchAll) params.set('scope', 'all')
       const res = await fetch(`/api/skupinovy-vydaj/delegates/search?${params.toString()}`)
       const json = await res.json()
 
@@ -600,6 +659,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
         body: JSON.stringify({
           userId: user.id,
           registrationGroupId: selectedGroupId,
+          date,
           note: delegateNote
         })
       })
@@ -829,67 +889,14 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   )}
                 </div>
 
-                <div style={styles.pickupPanel}>
-                  <div style={styles.peopleSectionHeader}>
-                    <b>Opravneni prevziat</b>
-                    <span>{pickupUserIds.length} osob</span>
-                  </div>
-
-                  {pickupUsers.length === 0 ? (
-                    <div style={styles.emptyBox}>Ak nikoho nezvolis, prevziat bude moct vytvarajuca osoba.</div>
-                  ) : (
-                    <div style={styles.pickupList}>
-                      {pickupUsers.map(user => (
-                        <div key={user.id} style={styles.pickupUserRow}>
-                          <span>
-                            <b>{user.name}</b>
-                            {user.email && <small>{user.email}</small>}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => removePickupUser(user.id)}
-                            disabled={issueLoading}
-                            style={styles.removeButton}
-                            title="Odobrat opravnenie"
-                          >
-                            x
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <label style={styles.field}>
-                    <span style={styles.label}>Pridat osobu na prevzatie</span>
-                    <input
-                      type="search"
-                      value={pickupQuery}
-                      onChange={event => searchPickupUsers(event.target.value)}
-                      placeholder="Meno, priezvisko alebo email"
-                      style={styles.input}
-                      disabled={issueLoading}
-                    />
-                  </label>
-
-                  {pickupLoading && <div style={styles.emptyBox}>Vyhladavam...</div>}
-
-                  {pickupResults.length > 0 && (
-                    <div style={styles.searchResults}>
-                      {pickupResults.map(user => (
-                        <button
-                          key={user.id}
-                          type="button"
-                          onClick={() => addPickupUser(user)}
-                          disabled={pickupUserIds.includes(user.id)}
-                          style={styles.resultButton}
-                        >
-                          <b>{user.name}</b>
-                          {user.email && <span>{user.email}</span>}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={openPickupModal}
+                  disabled={issueLoading}
+                  style={{ ...styles.secondaryButton, marginTop: 12, width: '100%' }}
+                >
+                  Opravneni prevziat ({pickupUserIds.length})
+                </button>
 
                     <button
                       type="button"
@@ -951,28 +958,48 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     <div style={styles.formGrid}>
                       <label style={styles.field}>
                         <span>Registracna skupina</span>
-                        <select
-                          value={selectedGroupId}
-                          onChange={event => {
-                            const nextGroupId = event.target.value
-                            setSelectedGroupId(nextGroupId)
-                            setDelegatesPanelOpen(false)
-                            setSearchQuery('')
-                            setSearchResults([])
-                            setDelegateNote('')
-                            setFeedback('')
-                            setSelectionOpen(true)
-                            resetIssueState({ preserveMeal: true })
-                          }}
-                          style={styles.input}
-                        >
-                          <option value="">Vyberte</option>
-                          {groups.map(group => (
-                            <option key={group.id} value={group.id}>
-                              {group.name}
-                            </option>
-                          ))}
-                        </select>
+                        <div style={styles.groupPicker}>
+                          <button
+                            type="button"
+                            onClick={() => setGroupPickerOpen(current => !current)}
+                            style={styles.groupPickerButton}
+                          >
+                            <span>{selectedGroup?.name || 'Vyberte'}</span>
+                            <b>{groupPickerOpen ? '^' : 'v'}</b>
+                          </button>
+
+                          {groupPickerOpen && (
+                            <div style={styles.groupPickerMenu}>
+                              <input
+                                type="search"
+                                value={groupQuery}
+                                onChange={event => setGroupQuery(event.target.value)}
+                                placeholder="Hladat registracnu skupinu"
+                                style={styles.filterInput}
+                              />
+
+                              <div style={styles.groupPickerList}>
+                                {filteredGroups.length === 0 ? (
+                                  <div style={styles.emptyBox}>Skupina sa nenasla.</div>
+                                ) : (
+                                  filteredGroups.map(group => (
+                                    <button
+                                      key={group.id}
+                                      type="button"
+                                      onClick={() => selectRegistrationGroup(group.id)}
+                                      style={{
+                                        ...styles.groupPickerOption,
+                                        ...(group.id === selectedGroupId ? styles.groupPickerOptionActive : {})
+                                      }}
+                                    >
+                                      {group.name}
+                                    </button>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </label>
 
                       <label style={styles.field}>
@@ -1032,13 +1059,10 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                         {selectedGroup.canManageDelegates ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              setDelegatesPanelOpen(current => !current)
-                              setMessage('')
-                            }}
+                            onClick={openDelegateModal}
                             style={styles.smallButtonWhite}
                           >
-                            {delegatesPanelOpen ? 'Zavriet' : 'Spravovat'}
+                            Spravovat
                           </button>
                         ) : (
                           <span style={styles.delegateSummaryMuted}>Spravuje manager skupiny.</span>
@@ -1048,97 +1072,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   </>
                 )}
               </section>
-              )}
-
-              {!confirmed && delegatesPanelOpen && selectedGroup && (
-                <section style={{ ...styles.panel, order: 2 }}>
-                  <div style={styles.delegateHeader}>
-                    <div>
-                      <h2 style={styles.delegateTitle}>Sprava poverenych osob</h2>
-                      <p style={styles.delegateHint}>
-                        {selectedGroup.name}. Poverene osoby mozu pripravovat skupinovy vydaj pre tuto registracnu skupinu.
-                      </p>
-                    </div>
-                    <span style={styles.countBadge}>{delegates.length}</span>
-                  </div>
-
-                  {!selectedGroup.canManageDelegates ? (
-                    <div style={styles.infoBox}>Tuto cast moze menit iba manager registracnej skupiny.</div>
-                  ) : (
-                    <>
-                      <div style={styles.delegateList}>
-                        {delegates.length === 0 ? (
-                          <div style={styles.emptyBox}>Zatial nie je povereny nikto.</div>
-                        ) : (
-                          delegates.map(delegate => (
-                            <div className="delegate-row" key={delegate.id} style={styles.delegateRow}>
-                              <div style={styles.delegateName}>
-                                <b>{delegate.name}</b>
-                                {delegate.email && <span>{delegate.email}</span>}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => removeDelegate(delegate)}
-                                disabled={loading}
-                                style={styles.removeButton}
-                                title="Odobrat poverenie"
-                              >
-                                x
-                              </button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-
-                      <div style={styles.searchBox}>
-                        <label style={styles.field}>
-                          <span style={styles.label}>Vyhladat osobu</span>
-                          <input
-                            type="search"
-                            value={searchQuery}
-                            onChange={event => searchUsers(event.target.value)}
-                            placeholder="Meno, priezvisko alebo email"
-                            style={styles.input}
-                          />
-                        </label>
-
-                        <label style={styles.field}>
-                          <span style={styles.label}>Poznamka</span>
-                          <input
-                            type="text"
-                            value={delegateNote}
-                            onChange={event => setDelegateNote(event.target.value)}
-                            placeholder="Volitelne"
-                            style={styles.input}
-                          />
-                        </label>
-
-                        {searchResults.length > 0 && (
-                          <div style={styles.searchResults}>
-                            {searchResults.map(user => (
-                              <button
-                                key={user.id}
-                                type="button"
-                                onClick={() => addDelegate(user)}
-                                disabled={loading || delegates.some(delegate => delegate.userId === user.id)}
-                                style={styles.resultButton}
-                              >
-                                <b>{user.name}</b>
-                                {user.email && <span>{user.email}</span>}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-
-                  {feedback && (
-                    <div style={feedbackType === 'ok' ? styles.feedbackOk : styles.feedbackError}>
-                      {feedback}
-                    </div>
-                  )}
-                </section>
               )}
 
               {!confirmed && selectionReady && (!selectionOpen || existingIssuesLoaded) && (
@@ -1245,6 +1178,229 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 disabled={issueLoading || !selectedGroupId || !date || !meal}
                 onScan={addIssuePersonByQr}
               />
+            </div>
+          </div>
+        )}
+
+        {delegatesPanelOpen && selectedGroup && (
+          <div style={styles.modalOverlay} onClick={closeDelegateModal}>
+            <div style={styles.peopleModal} onClick={event => event.stopPropagation()}>
+              <div style={styles.qrModalHeader}>
+                <div>
+                  <b>Sprava poverenych osob</b>
+                  <span>{selectedGroup.name}</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeDelegateModal}
+                  style={styles.qrCloseButton}
+                  disabled={loading}
+                >
+                  x
+                </button>
+              </div>
+
+              {!selectedGroup.canManageDelegates ? (
+                <div style={styles.infoBox}>Tuto cast moze menit iba manager registracnej skupiny.</div>
+              ) : (
+                <>
+                  <div style={styles.peopleSectionHeader}>
+                    <b>Poverene osoby</b>
+                    <span>{delegates.length} osob</span>
+                  </div>
+
+                  <div style={styles.delegateList}>
+                    {delegates.length === 0 ? (
+                      <div style={styles.emptyBox}>Zatial nie je povereny nikto.</div>
+                    ) : (
+                      delegates.map(delegate => (
+                        <div className="delegate-row" key={delegate.id} style={styles.delegateRow}>
+                          <div style={styles.delegateName}>
+                            <b>{delegate.name}</b>
+                            {delegate.email && <span>{delegate.email}</span>}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeDelegate(delegate)}
+                            disabled={loading}
+                            style={styles.removeButton}
+                            title="Odobrat poverenie"
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div style={styles.searchBox}>
+                    {selectedGroup.canSearchAllDelegates && (
+                      <div style={styles.segment}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDelegateSearchAll(false)
+                            void searchUsers('', false)
+                          }}
+                          style={{
+                            ...styles.segmentButton,
+                            ...(!delegateSearchAll ? styles.segmentButtonActive : {})
+                          }}
+                        >
+                          Zo skupiny
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDelegateSearchAll(true)
+                            setSearchQuery('')
+                            setSearchResults([])
+                          }}
+                          style={{
+                            ...styles.segmentButton,
+                            ...(delegateSearchAll ? styles.segmentButtonActive : {})
+                          }}
+                        >
+                          Vsetci ludia
+                        </button>
+                      </div>
+                    )}
+
+                    <label style={styles.field}>
+                      <span style={styles.label}>
+                        {delegateSearchAll ? 'Vyhladat osobu mimo skupiny' : 'Vyhladat v registracnej skupine'}
+                      </span>
+                      <input
+                        type="search"
+                        value={searchQuery}
+                        onChange={event => searchUsers(event.target.value)}
+                        placeholder={delegateSearchAll ? 'Zadaj aspon 3 znaky' : 'Zoznam skupiny alebo hladaj od 3 znakov'}
+                        style={styles.input}
+                      />
+                    </label>
+
+                    <label style={styles.field}>
+                      <span style={styles.label}>Poznamka</span>
+                      <input
+                        type="text"
+                        value={delegateNote}
+                        onChange={event => setDelegateNote(event.target.value)}
+                        placeholder="Volitelne"
+                        style={styles.input}
+                      />
+                    </label>
+
+                    {loading && <div style={styles.emptyBox}>Nacitavam...</div>}
+
+                    <div style={styles.searchResults}>
+                      {searchResults.length === 0 ? (
+                        <div style={styles.emptyBox}>
+                          {delegateSearchAll
+                            ? 'Pre vyhladavanie mimo skupiny zadaj aspon 3 znaky.'
+                            : 'V skupine nie je nikto dalsi na pridanie.'}
+                        </div>
+                      ) : (
+                        searchResults.map(user => (
+                          <button
+                            key={user.id}
+                            type="button"
+                            onClick={() => addDelegate(user)}
+                            disabled={loading || delegates.some(delegate => delegate.userId === user.id)}
+                            style={styles.resultButton}
+                          >
+                            <b>{user.name}</b>
+                            {user.email && <span>{user.email}</span>}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {feedback && (
+                <div style={feedbackType === 'ok' ? styles.feedbackOk : styles.feedbackError}>
+                  {feedback}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {pickupModalOpen && (
+          <div style={styles.modalOverlay} onClick={closePickupModal}>
+            <div style={styles.peopleModal} onClick={event => event.stopPropagation()}>
+              <div style={styles.qrModalHeader}>
+                <div>
+                  <b>Opravneni prevziat</b>
+                  <span>Osoby, ktore mozu prevziat tento skupinovy vydaj.</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closePickupModal}
+                  style={styles.qrCloseButton}
+                  disabled={issueLoading}
+                >
+                  x
+                </button>
+              </div>
+
+              {pickupUsers.length === 0 ? (
+                <div style={styles.emptyBox}>Ak nikoho nezvolis, prevziat bude moct vytvarajuca osoba.</div>
+              ) : (
+                <div style={styles.pickupList}>
+                  {pickupUsers.map(user => (
+                    <div key={user.id} style={styles.pickupUserRow}>
+                      <span>
+                        <b>{user.name}</b>
+                        {user.email && <small>{user.email}</small>}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removePickupUser(user.id)}
+                        disabled={issueLoading}
+                        style={styles.removeButton}
+                        title="Odobrat opravnenie"
+                      >
+                        x
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <label style={styles.field}>
+                <span style={styles.label}>Pridat osobu na prevzatie</span>
+                <input
+                  type="search"
+                  value={pickupQuery}
+                  onChange={event => searchPickupUsers(event.target.value)}
+                  placeholder="Zadaj aspon 3 znaky"
+                  style={styles.input}
+                  disabled={issueLoading}
+                />
+              </label>
+
+              {pickupLoading && <div style={styles.emptyBox}>Vyhladavam...</div>}
+
+              {pickupResults.length > 0 && (
+                <div style={styles.searchResults}>
+                  {pickupResults.map(user => (
+                    <button
+                      key={user.id}
+                      type="button"
+                      onClick={() => addPickupUser(user)}
+                      disabled={pickupUserIds.includes(user.id)}
+                      style={styles.resultButton}
+                    >
+                      <b>{user.name}</b>
+                      {user.email && <span>{user.email}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1381,6 +1537,62 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'minmax(0, 1fr)',
     gap: 10
+  },
+  groupPicker: {
+    position: 'relative',
+    minWidth: 0
+  },
+  groupPickerButton: {
+    width: '100%',
+    minHeight: 38,
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
+    background: '#fff',
+    color: '#111827',
+    padding: '0 9px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    textAlign: 'left',
+    fontSize: 13,
+    fontWeight: 850
+  },
+  groupPickerMenu: {
+    position: 'absolute',
+    zIndex: 20,
+    top: 'calc(100% + 4px)',
+    left: 0,
+    right: 0,
+    border: '1px solid #d1d5db',
+    borderRadius: 8,
+    background: '#fff',
+    padding: 8,
+    boxShadow: '0 16px 40px rgba(17, 24, 39, 0.14)'
+  },
+  groupPickerList: {
+    display: 'grid',
+    gap: 4,
+    maxHeight: 230,
+    overflow: 'auto',
+    marginTop: 8,
+    paddingRight: 2
+  },
+  groupPickerOption: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    background: '#fff',
+    color: '#111827',
+    padding: '8px 9px',
+    textAlign: 'left',
+    fontSize: 12,
+    fontWeight: 850
+  },
+  groupPickerOptionActive: {
+    background: '#f0fdf4',
+    borderColor: '#22c55e',
+    color: '#14532d',
+    boxShadow: 'inset 3px 0 0 #22c55e'
   },
   field: {
     display: 'grid',
@@ -2100,6 +2312,18 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'auto',
     background: '#fff',
     borderRadius: 18,
+    padding: 14,
+    boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
+    display: 'grid',
+    gap: 12
+  },
+  peopleModal: {
+    width: '100%',
+    maxWidth: 620,
+    maxHeight: 'calc(100vh - 32px)',
+    overflow: 'auto',
+    background: '#fff',
+    borderRadius: 14,
     padding: 14,
     boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
     display: 'grid',
