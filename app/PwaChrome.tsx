@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 
 const refreshThreshold = 72
 const maxPullDistance = 104
+const disablePullRefreshClass = 'pwa-disable-pull-refresh'
 
 function isIosStandalone() {
   const iosDevice =
@@ -37,8 +38,12 @@ export default function PwaChrome() {
       setPullDistance(0)
     }
 
+    const pullRefreshDisabled = () => {
+      return document.documentElement.classList.contains(disablePullRefreshClass)
+    }
+
     const handleTouchStart = (event: TouchEvent) => {
-      if (refreshing || window.scrollY > 0 || event.touches.length !== 1) {
+      if (pullRefreshDisabled() || refreshing || window.scrollY > 0 || event.touches.length !== 1) {
         resetPull()
         return
       }
@@ -51,6 +56,11 @@ export default function PwaChrome() {
 
     const handleTouchMove = (event: TouchEvent) => {
       const start = touchStart.current
+
+      if (pullRefreshDisabled()) {
+        resetPull()
+        return
+      }
 
       if (!start || window.scrollY > 0 || event.touches.length !== 1) return
 
@@ -70,6 +80,11 @@ export default function PwaChrome() {
     }
 
     const handleTouchEnd = () => {
+      if (pullRefreshDisabled()) {
+        resetPull()
+        return
+      }
+
       if (pullDistanceRef.current < refreshThreshold) {
         resetPull()
         return

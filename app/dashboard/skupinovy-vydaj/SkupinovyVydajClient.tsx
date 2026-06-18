@@ -69,6 +69,7 @@ const MEAL_OPTIONS: Array<{ value: MealType, label: string }> = [
   { value: 'OBED', label: 'Obed' },
   { value: 'VECERA', label: 'Vecera' }
 ]
+const PWA_DISABLE_PULL_REFRESH_CLASS = 'pwa-disable-pull-refresh'
 
 function fullDateLabel(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value || '-'
@@ -263,6 +264,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     const previousBodyWidth = body.style.width
     const previousViewportHeight = root.style.getPropertyValue('--group-issue-viewport-height')
 
+    root.classList.add(PWA_DISABLE_PULL_REFRESH_CLASS)
     root.style.setProperty('overscroll-behavior-y', 'none')
     body.style.setProperty('overscroll-behavior-y', 'none')
     root.style.overflow = 'hidden'
@@ -344,6 +346,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     window.addEventListener('resize', updateViewportHeight)
 
     return () => {
+      root.classList.remove(PWA_DISABLE_PULL_REFRESH_CLASS)
       document.removeEventListener('touchstart', onTouchStart)
       document.removeEventListener('touchmove', onTouchMove)
       window.removeEventListener('touchmove', onTouchMove)
@@ -947,6 +950,9 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
             -webkit-overflow-scrolling: touch !important;
             overscroll-behavior-y: none !important;
             padding: 10px 10px max(10px, env(safe-area-inset-bottom)) 10px !important;
+          }
+          .pwa-ios-standalone .group-issue-page {
+            padding-top: max(18px, calc(env(safe-area-inset-top) + 12px)) !important;
           }
           .group-issue-shell { gap: 8px !important; }
           .group-issue-layout { grid-template-columns: 1fr !important; }
