@@ -198,9 +198,23 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     const body = document.body
     const previousRootOverscroll = root.style.getPropertyValue('overscroll-behavior-y')
     const previousBodyOverscroll = body.style.getPropertyValue('overscroll-behavior-y')
+    const previousRootOverflow = root.style.overflow
+    const previousBodyOverflow = body.style.overflow
+    const previousRootHeight = root.style.height
+    const previousBodyHeight = body.style.height
+    const previousViewportHeight = root.style.getPropertyValue('--group-issue-viewport-height')
 
     root.style.setProperty('overscroll-behavior-y', 'none')
     body.style.setProperty('overscroll-behavior-y', 'none')
+    root.style.overflow = 'hidden'
+    body.style.overflow = 'hidden'
+    root.style.height = '100%'
+    body.style.height = '100%'
+
+    function updateViewportHeight() {
+      const height = window.visualViewport?.height || window.innerHeight
+      root.style.setProperty('--group-issue-viewport-height', `${height}px`)
+    }
 
     function findScrollableParent(target: EventTarget | null) {
       let element = target instanceof HTMLElement ? target : null
@@ -240,12 +254,22 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
     document.addEventListener('touchstart', onTouchStart, { passive: true })
     document.addEventListener('touchmove', onTouchMove, { passive: false })
+    updateViewportHeight()
+    window.visualViewport?.addEventListener('resize', updateViewportHeight)
+    window.addEventListener('resize', updateViewportHeight)
 
     return () => {
       document.removeEventListener('touchstart', onTouchStart)
       document.removeEventListener('touchmove', onTouchMove)
+      window.visualViewport?.removeEventListener('resize', updateViewportHeight)
+      window.removeEventListener('resize', updateViewportHeight)
       root.style.setProperty('overscroll-behavior-y', previousRootOverscroll)
       body.style.setProperty('overscroll-behavior-y', previousBodyOverscroll)
+      root.style.overflow = previousRootOverflow
+      body.style.overflow = previousBodyOverflow
+      root.style.height = previousRootHeight
+      body.style.height = previousBodyHeight
+      root.style.setProperty('--group-issue-viewport-height', previousViewportHeight)
     }
   }, [])
 
@@ -852,7 +876,17 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
         }
 
         @media (max-width: 720px) {
-          .group-issue-page { padding: 10px !important; }
+          .group-issue-page {
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100% !important;
+            height: var(--group-issue-viewport-height, 100dvh) !important;
+            min-height: 0 !important;
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            overscroll-behavior-y: none !important;
+            padding: 10px 10px max(10px, env(safe-area-inset-bottom)) 10px !important;
+          }
           .group-issue-shell { gap: 8px !important; }
           .group-issue-layout { grid-template-columns: 1fr !important; }
           .group-issue-sidebar { order: 1 !important; }
@@ -2480,20 +2514,23 @@ const styles: Record<string, React.CSSProperties> = {
   modalOverlay: {
     position: 'fixed',
     inset: 0,
+    height: 'var(--group-issue-viewport-height, 100dvh)',
     background: 'rgba(17, 24, 39, 0.55)',
     zIndex: 50,
     display: 'flex',
     alignItems: 'flex-start',
     justifyContent: 'center',
-    padding: 16,
+    padding: 'max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)) 16px',
     overflowY: 'auto',
-    WebkitOverflowScrolling: 'touch'
+    WebkitOverflowScrolling: 'touch',
+    overscrollBehaviorY: 'contain'
   },
   qrModal: {
     width: '100%',
     maxWidth: 430,
-    maxHeight: 'calc(100vh - 32px)',
+    maxHeight: 'calc(var(--group-issue-viewport-height, 100dvh) - 32px)',
     overflow: 'auto',
+    WebkitOverflowScrolling: 'touch',
     background: '#fff',
     borderRadius: 18,
     padding: 14,
@@ -2504,8 +2541,9 @@ const styles: Record<string, React.CSSProperties> = {
   peopleModal: {
     width: '100%',
     maxWidth: 620,
-    maxHeight: 'calc(100dvh - 32px)',
+    maxHeight: 'calc(var(--group-issue-viewport-height, 100dvh) - 32px)',
     overflow: 'auto',
+    WebkitOverflowScrolling: 'touch',
     background: '#fff',
     borderRadius: 14,
     padding: 14,
