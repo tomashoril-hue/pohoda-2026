@@ -21,6 +21,7 @@ type ParsedRow = {
   registrationGroupName: string
   validFrom: string
   validTo: string
+  importNote: string
   obed: boolean
   vecera: boolean
   assignQr: boolean
@@ -369,6 +370,7 @@ export default function ImportClient({
         registrationGroupName: registrationGroup?.name || '',
         validFrom,
         validTo,
+        importNote: firstValue(raw, ['poznamka', 'poznámka', 'note', 'personal_note', 'osobna_poznamka']),
         obed,
         vecera,
         assignQr: boolValue(firstValue(raw, ['qr', 'assign_qr', 'priradit_qr']), defaultAssignQr),
@@ -415,6 +417,7 @@ export default function ImportClient({
             registrationGroupId: row.registrationGroupId,
             validFrom: row.validFrom,
             validTo: row.validTo,
+            importNote: row.importNote,
             obed: row.obed,
             vecera: row.vecera,
             assignQr: row.assignQr,
@@ -530,8 +533,8 @@ export default function ImportClient({
           <div style={styles.breadcrumb}>Personalistika / Import</div>
           <h1 style={styles.title}>Import Excel/CSV</h1>
           <p style={styles.subtitle}>
-            CSV stlpce: meno, priezvisko, email, telefon, strava, skupina, od, do, obed, vecera, qr, kod.
-            Stlpec skupina je registracna skupina.
+            CSV stlpce: meno, priezvisko, email, telefon, strava, skupina, od, do, obed, vecera, qr, kod, poznamka.
+            Stlpec skupina je registracna skupina. Poznamka sa ulozi k osobe.
           </p>
         </div>
 
@@ -686,13 +689,14 @@ export default function ImportClient({
               <span>Reg skupina</span>
               <span>Od</span>
               <span>Do</span>
+              <span>Poznamka</span>
               <span>Obed</span>
               <span>Vecera</span>
               <span>QR</span>
               <span>Kod</span>
               <span>Pristupovy kod</span>
               <span>Stav</span>
-              <span>Poznamka</span>
+              <span>Sprava</span>
             </div>
 
             {visibleRows.slice(0, 500).map(row => (
@@ -721,6 +725,13 @@ export default function ImportClient({
                 </select>
                 {compactDateInput(row.validFrom, value => updateRow(row.rowNumber, { validFrom: value }), row.status === 'OK')}
                 {compactDateInput(row.validTo, value => updateRow(row.rowNumber, { validTo: value }), row.status === 'OK')}
+                <input
+                  value={row.importNote}
+                  onChange={event => updateRow(row.rowNumber, { importNote: event.target.value })}
+                  style={styles.noteInput}
+                  disabled={row.status === 'OK'}
+                  placeholder="poznamka"
+                />
                 <span style={styles.centerCell}><input type="checkbox" checked={row.obed} onChange={event => updateRow(row.rowNumber, { obed: event.target.checked })} disabled={row.status === 'OK'} /></span>
                 <span style={styles.centerCell}><input type="checkbox" checked={row.vecera} onChange={event => updateRow(row.rowNumber, { vecera: event.target.checked })} disabled={row.status === 'OK'} /></span>
                 <span style={styles.centerCell}><input type="checkbox" checked={row.assignQr} onChange={event => updateRow(row.rowNumber, { assignQr: event.target.checked })} disabled={row.status === 'OK'} /></span>
@@ -914,13 +925,13 @@ const styles: Record<string, React.CSSProperties> = {
   compactDateInput: {
     width: '100%',
     maxWidth: '100%',
-    minWidth: 0,
+    minWidth: 112,
     height: 26,
     boxSizing: 'border-box',
     border: '1px solid #d1d5db',
     borderRadius: 4,
-    padding: '3px 4px',
-    fontSize: 10,
+    padding: '3px 6px',
+    fontSize: 11,
     fontWeight: 900,
     background: '#fff',
     color: '#111827',
@@ -1126,9 +1137,9 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center'
   },
   tableHeader: {
-    minWidth: 1360,
+    minWidth: 1780,
     display: 'grid',
-    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 92px 92px 48px 52px 42px 46px 86px 72px minmax(140px, 1fr)',
+    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 118px 118px 180px 48px 52px 42px 46px 86px 72px minmax(160px, 1fr)',
     gap: 4,
     padding: '7px 8px',
     background: '#eef2f7',
@@ -1139,9 +1150,9 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase'
   },
   tableRow: {
-    minWidth: 1360,
+    minWidth: 1780,
     display: 'grid',
-    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 92px 92px 48px 52px 42px 46px 86px 72px minmax(140px, 1fr)',
+    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 118px 118px 180px 48px 52px 42px 46px 86px 72px minmax(160px, 1fr)',
     gap: 4,
     padding: '6px 8px',
     borderBottom: '1px solid #f3f4f6',
@@ -1184,6 +1195,22 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     textOverflow: 'ellipsis'
   },
+  noteInput: {
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    minInlineSize: 0,
+    boxSizing: 'border-box',
+    overflow: 'hidden',
+    border: '1px solid #d1d5db',
+    borderRadius: 4,
+    padding: '5px 6px',
+    fontSize: 11,
+    fontWeight: 800,
+    background: '#fff',
+    color: '#111827',
+    outline: 'none'
+  },
   noteCell: {
     minHeight: 26,
     padding: '5px 6px',
@@ -1196,7 +1223,7 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: 'nowrap'
   },
   tableLimitNotice: {
-    minWidth: 1360,
+    minWidth: 1780,
     padding: '8px 10px',
     borderTop: '1px solid #e5e7eb',
     background: '#fffbeb',
