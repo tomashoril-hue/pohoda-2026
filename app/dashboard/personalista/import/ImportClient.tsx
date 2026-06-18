@@ -709,7 +709,7 @@ export default function ImportClient({
                 <input value={row.meno} onChange={event => updateRow(row.rowNumber, { meno: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} />
                 <input value={row.priezvisko} onChange={event => updateRow(row.rowNumber, { priezvisko: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} />
                 <input value={row.email} onChange={event => updateRow(row.rowNumber, { email: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} placeholder="email nepovinny" />
-                <input value={row.telefon} onChange={event => updateRow(row.rowNumber, { telefon: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'} placeholder="telefon" />
+                <input value={row.telefon} onChange={event => updateRow(row.rowNumber, { telefon: event.target.value })} style={styles.phoneInput} disabled={row.status === 'OK'} placeholder="telefon" />
                 <select value={row.typStravy} onChange={event => updateRow(row.rowNumber, { typStravy: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'}>
                   <option value="MASO">MASO</option>
                   <option value="VEGE">VEGE</option>
@@ -927,6 +927,22 @@ const styles: Record<string, React.CSSProperties> = {
     colorScheme: 'light',
     outline: 'none'
   },
+  phoneInput: {
+    width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    minInlineSize: 0,
+    boxSizing: 'border-box',
+    overflow: 'visible',
+    border: '1px solid #d1d5db',
+    borderRadius: 4,
+    padding: '5px 6px',
+    fontSize: 11,
+    fontWeight: 800,
+    background: '#fff',
+    color: '#111827',
+    outline: 'none'
+  },
   checkGrid: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -1126,9 +1142,9 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center'
   },
   tableHeader: {
-    minWidth: 1580,
+    minWidth: 1760,
     display: 'grid',
-    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 118px 118px 48px 52px 42px 46px 86px 72px minmax(160px, 1fr)',
+    gridTemplateColumns: '48px 112px 128px 210px 132px 76px 168px 124px 124px 48px 52px 42px 46px 86px 72px minmax(260px, 1fr)',
     gap: 4,
     padding: '7px 8px',
     background: '#eef2f7',
@@ -1139,9 +1155,9 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase'
   },
   tableRow: {
-    minWidth: 1580,
+    minWidth: 1760,
     display: 'grid',
-    gridTemplateColumns: '48px 112px 128px 210px 92px 76px 168px 118px 118px 48px 52px 42px 46px 86px 72px minmax(160px, 1fr)',
+    gridTemplateColumns: '48px 112px 128px 210px 132px 76px 168px 124px 124px 48px 52px 42px 46px 86px 72px minmax(260px, 1fr)',
     gap: 4,
     padding: '6px 8px',
     borderBottom: '1px solid #f3f4f6',
@@ -1188,15 +1204,16 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: 26,
     padding: '5px 6px',
     boxSizing: 'border-box',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 800,
     color: '#6b7280',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap'
+    overflow: 'visible',
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
+    lineHeight: 1.25
   },
   tableLimitNotice: {
-    minWidth: 1580,
+    minWidth: 1760,
     padding: '8px 10px',
     borderTop: '1px solid #e5e7eb',
     background: '#fffbeb',
