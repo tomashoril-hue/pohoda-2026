@@ -59,15 +59,15 @@ function mealLabel(value: string) {
 
 function choiceLabel(value: string | null | undefined, defaultValue?: string | null) {
   if (value === 'BEZ_ZAUJMU') return 'ODHLÁSENÉ'
-  if (value === 'MASO') return 'MASO'
+  if (value === 'MASO') return 'MÄSO'
   if (value === 'VEGE') return 'VEGE'
   if (isDietFood(value)) return 'DIÉTA'
 
-  if (defaultValue === 'MASO') return 'PREDVOLENÉ MASO'
-  if (defaultValue === 'VEGE') return 'PREDVOLENÉ VEGE'
-  if (isDietFood(defaultValue)) return 'PREDVOLENÁ DIÉTA'
+  if (defaultValue === 'MASO') return 'PREDVOLENÉ: MÄSO'
+  if (defaultValue === 'VEGE') return 'PREDVOLENÉ: VEGE'
+  if (isDietFood(defaultValue)) return 'PREDVOLENÉ: DIÉTA'
 
-  return 'NEZADANÉ'
+  return 'PREDVOLENÉ: BEZ STRAVY'
 }
 
 function isDietFood(value: string | null | undefined) {
