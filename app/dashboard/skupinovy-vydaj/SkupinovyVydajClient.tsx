@@ -184,6 +184,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [searchResults, setSearchResults] = useState<SearchUser[]>([])
   const [delegateSearchAll, setDelegateSearchAll] = useState(false)
   const [pendingDelegateUserIds, setPendingDelegateUserIds] = useState<string[]>([])
+  const [delegateListReady, setDelegateListReady] = useState(false)
   const [delegateNote, setDelegateNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState('')
@@ -392,12 +393,14 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     resetIssueState({ preserveMeal: true })
   }
 
-  function openDelegateModal() {
+  async function openDelegateModal() {
     setDelegatesPanelOpen(true)
     setDelegateSearchAll(false)
     setPendingDelegateUserIds(delegates.map(delegate => delegate.userId))
+    setDelegateListReady(false)
     setMessage('')
-    void searchUsers('', false)
+    await searchUsers('', false)
+    setDelegateListReady(true)
   }
 
   function closeDelegateModal() {
@@ -406,6 +409,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setSearchQuery('')
     setSearchResults([])
     setPendingDelegateUserIds([])
+    setDelegateListReady(false)
     setDelegateNote('')
     setMessage('')
   }
@@ -1492,7 +1496,9 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     {loading && <div style={styles.emptyBox}>Nacitavam...</div>}
 
                     <div style={styles.searchResults}>
-                      {delegateCandidates.length === 0 ? (
+                      {!delegateListReady ? (
+                        <div style={styles.emptyBox}>Nacitavam osoby zo skupiny...</div>
+                      ) : delegateCandidates.length === 0 ? (
                         <div style={styles.emptyBox}>
                           {delegateSearchAll
                             ? 'Pre vyhladavanie mimo skupiny zadaj aspon 3 znaky.'
@@ -1552,7 +1558,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     <button
                       type="button"
                       onClick={addPendingDelegates}
-                      disabled={loading || !delegateSelectionChanged}
+                      disabled={loading || !delegateListReady || !delegateSelectionChanged}
                       style={styles.primaryButton}
                     >
                       {loading ? 'Ukladam...' : `Ulozit zmeny (${pendingDelegateUserIds.length})`}
