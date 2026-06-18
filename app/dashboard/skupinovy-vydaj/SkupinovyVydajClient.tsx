@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import QrCameraScanner from './QrCameraScanner'
 
@@ -189,6 +189,65 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
     return [...filtered].sort(compareIssuePeople)
   }, [issuePeople, issuePersonFilter])
+
+  useEffect(() => {
+    if (!window.matchMedia('(pointer: coarse)').matches) return
+
+    let touchStartY = 0
+    const root = document.documentElement
+    const body = document.body
+    const previousRootOverscroll = root.style.getPropertyValue('overscroll-behavior-y')
+    const previousBodyOverscroll = body.style.getPropertyValue('overscroll-behavior-y')
+
+    root.style.setProperty('overscroll-behavior-y', 'none')
+    body.style.setProperty('overscroll-behavior-y', 'none')
+
+    function findScrollableParent(target: EventTarget | null) {
+      let element = target instanceof HTMLElement ? target : null
+
+      while (element && element !== document.body) {
+        const style = window.getComputedStyle(element)
+        const canScroll = (
+          (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+          element.scrollHeight > element.clientHeight
+        )
+
+        if (canScroll) return element
+        element = element.parentElement
+      }
+
+      return null
+    }
+
+    function onTouchStart(event: TouchEvent) {
+      if (event.touches.length !== 1) return
+      touchStartY = event.touches[0].clientY
+    }
+
+    function onTouchMove(event: TouchEvent) {
+      if (event.touches.length !== 1) return
+
+      const deltaY = event.touches[0].clientY - touchStartY
+      if (deltaY <= 0) return
+
+      const scrollableParent = findScrollableParent(event.target)
+      if (scrollableParent && scrollableParent.scrollTop > 0) return
+
+      if (window.scrollY <= 0 || scrollableParent?.scrollTop === 0) {
+        event.preventDefault()
+      }
+    }
+
+    document.addEventListener('touchstart', onTouchStart, { passive: true })
+    document.addEventListener('touchmove', onTouchMove, { passive: false })
+
+    return () => {
+      document.removeEventListener('touchstart', onTouchStart)
+      document.removeEventListener('touchmove', onTouchMove)
+      root.style.setProperty('overscroll-behavior-y', previousRootOverscroll)
+      body.style.setProperty('overscroll-behavior-y', previousBodyOverscroll)
+    }
+  }, [])
 
   function setMessage(message: string, type: 'ok' | 'error' = 'ok') {
     setFeedback(message)
@@ -1522,7 +1581,8 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#f3f4f6',
     padding: 14,
     color: '#111827',
-    fontFamily: 'Arial, Helvetica, sans-serif'
+    fontFamily: 'Arial, Helvetica, sans-serif',
+    overscrollBehaviorY: 'none'
   },
   shell: {
     maxWidth: 1040,
