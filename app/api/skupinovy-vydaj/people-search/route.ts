@@ -6,6 +6,7 @@ import {
   filterIssuablePeople,
   fullName,
   getIssueAccess,
+  loadRegistrationGroupPeople,
   normalizeDate,
   normalizeMeal
 } from '@/lib/registrationGroupIssue'
@@ -22,6 +23,7 @@ export async function GET(req: NextRequest) {
     const date = normalizeDate(req.nextUrl.searchParams.get('date'))
     const meal = normalizeMeal(req.nextUrl.searchParams.get('meal'))
     const mode = cleanText(req.nextUrl.searchParams.get('mode')).toUpperCase()
+    const scope = cleanText(req.nextUrl.searchParams.get('scope')).toUpperCase()
     const query = cleanText(req.nextUrl.searchParams.get('q')).replaceAll('%', '').replaceAll(',', ' ')
 
     if (!registrationGroupId || (mode !== 'PICKUP' && (!date || !meal))) {
@@ -32,12 +34,54 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ people: [] })
     }
 
+    if (scope === 'OUTSIDE' && !date) {
+      return NextResponse.json({ error: 'Chyba datum.' }, { status: 400 })
+    }
+
     const access = await getIssueAccess(actor.id, registrationGroupId)
 
     if (!access) {
       return NextResponse.json({ error: 'Nemas opravnenie pre tuto registracnu skupinu.' }, { status: 403 })
     }
 
+    if (mode === 'PICKUP' && scope !== 'OUTSIDE') {
+      if (!date) {
+        return NextResponse.json({ error: 'Chyba datum.' }, { status: 400 })
+      }
+
+      const groupPeopleForPickup = await loadRegistrationGroupPeople(registrationGroupId, date)
+      const normalizedQuery = query.toLowerCase()
+      const people = groupPeopleForPickup
+        .filter((user: any) => {
+          return [
+            user.meno,
+            user.priezvisko,
+            user.email,
+            `${user.priezvisko || ''} ${user.meno || ''}`,
+            `${user.meno || ''} ${user.priezvisko || ''}`
+          ].join(' ').toLowerCase().includes(normalizedQuery)
+        })
+        .sort((a: any, b: any) => {
+          return (
+            String(a.priezvisko || '').localeCompare(String(b.priezvisko || ''), 'sk', { sensitivity: 'base' }) ||
+            String(a.meno || '').localeCompare(String(b.meno || ''), 'sk', { sensitivity: 'base' }) ||
+            String(a.email || '').localeCompare(String(b.email || ''), 'sk', { sensitivity: 'base' })
+          )
+        })
+        .slice(0, 16)
+        .map((user: any) => ({
+          id: user.id,
+          name: fullName(user),
+          email: user.email || ''
+        }))
+
+      return NextResponse.json({ people })
+    }
+
+    const groupPeople = scope === 'OUTSIDE'
+      ? await loadRegistrationGroupPeople(registrationGroupId, date)
+      : []
+    const groupUserIds = new Set(groupPeople.map((user: any) => user.id).filter(Boolean))
     const pattern = `%${query}%`
     const { data, error } = await supabaseServer
       .from('users')
@@ -46,7 +90,7 @@ export async function GET(req: NextRequest) {
       .or(`meno.ilike.${pattern},priezvisko.ilike.${pattern},email.ilike.${pattern}`)
       .order('priezvisko', { ascending: true })
       .order('meno', { ascending: true })
-      .limit(16)
+      .limit(scope === 'OUTSIDE' ? 80 : 16)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
@@ -54,11 +98,14 @@ export async function GET(req: NextRequest) {
 
     if (mode === 'PICKUP') {
       return NextResponse.json({
-        people: (data || []).map((user: any) => ({
-          id: user.id,
-          name: fullName(user),
-          email: user.email || ''
-        }))
+        people: (data || [])
+          .filter((user: any) => scope !== 'OUTSIDE' || !groupUserIds.has(user.id))
+          .slice(0, 16)
+          .map((user: any) => ({
+            id: user.id,
+            name: fullName(user),
+            email: user.email || ''
+          }))
       })
     }
 

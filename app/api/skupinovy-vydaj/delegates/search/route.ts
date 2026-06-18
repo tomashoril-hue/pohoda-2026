@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    if (scope === 'ALL') {
+    if (scope === 'ALL' || scope === 'OUTSIDE') {
       if (!privileged) {
         return NextResponse.json(
           { error: 'Mimo registracnej skupiny moze vyhladavat iba admin alebo personalista.' },
@@ -53,6 +53,12 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ users: [] })
       }
 
+      if (!date) {
+        return NextResponse.json({ error: 'Chyba datum.' }, { status: 400 })
+      }
+
+      const groupPeople = await loadRegistrationGroupPeople(registrationGroupId, date)
+      const groupUserIds = new Set(groupPeople.map((user: any) => user.id).filter(Boolean))
       const pattern = `%${query}%`
       const { data, error } = await supabaseServer
         .from('users')
@@ -61,17 +67,20 @@ export async function GET(req: NextRequest) {
         .or(`meno.ilike.${pattern},priezvisko.ilike.${pattern},email.ilike.${pattern}`)
         .order('priezvisko', { ascending: true })
         .order('meno', { ascending: true })
-        .limit(16)
+        .limit(80)
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 })
       }
 
-      const users = (data || []).map((user: any) => ({
-        id: user.id,
-        name: fullName(user),
-        email: user.email || ''
-      }))
+      const users = (data || [])
+        .filter((user: any) => !groupUserIds.has(user.id))
+        .slice(0, 16)
+        .map((user: any) => ({
+          id: user.id,
+          name: fullName(user),
+          email: user.email || ''
+        }))
 
       return NextResponse.json({ users })
     }

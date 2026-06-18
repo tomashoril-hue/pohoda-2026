@@ -164,6 +164,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [pickupQuery, setPickupQuery] = useState('')
   const [pickupResults, setPickupResults] = useState<SearchUser[]>([])
   const [pickupLoading, setPickupLoading] = useState(false)
+  const [pickupSearchOutside, setPickupSearchOutside] = useState(false)
   const [pickupModalOpen, setPickupModalOpen] = useState(false)
   const [pendingPickupUserIds, setPendingPickupUserIds] = useState<string[]>([])
   const [existingIssues, setExistingIssues] = useState<ExistingIssue[]>([])
@@ -231,19 +232,21 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     return selectedIssuePeople.map(issuePersonToSearchUser)
   }, [selectedIssuePeople])
   const delegateCandidates = useMemo(() => {
-    return mergeSearchUsers(
-      delegates.map(delegate => ({
+    const selectedDelegates = delegates.map(delegate => ({
         id: delegate.userId,
         name: delegate.name,
         email: delegate.email || ''
-      })),
-      issuePickupCandidates,
-      searchResults
-    )
-  }, [delegates, issuePickupCandidates, searchResults])
+    }))
+
+    return delegateSearchAll
+      ? mergeSearchUsers(selectedDelegates, searchResults)
+      : mergeSearchUsers(selectedDelegates, issuePickupCandidates, searchResults)
+  }, [delegateSearchAll, delegates, issuePickupCandidates, searchResults])
   const pickupCandidateUsers = useMemo(() => {
-    return mergeSearchUsers(pickupUsers, issuePickupCandidates, pickupResults)
-  }, [pickupUsers, issuePickupCandidates, pickupResults])
+    return pickupSearchOutside
+      ? mergeSearchUsers(pickupUsers, pickupResults)
+      : mergeSearchUsers(pickupUsers, issuePickupCandidates, pickupResults)
+  }, [pickupSearchOutside, pickupUsers, issuePickupCandidates, pickupResults])
   const delegateUserIds = useMemo(() => delegates.map(delegate => delegate.userId), [delegates])
   const delegateSelectionChanged = !sameIds(delegateUserIds, pendingDelegateUserIds)
   const pickupSelectionChanged = !sameIds(pickupUserIds, pendingPickupUserIds)
@@ -416,6 +419,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
   function openPickupModal() {
     setPickupModalOpen(true)
+    setPickupSearchOutside(false)
     setPickupQuery('')
     setPickupResults([])
     setPendingPickupUserIds(pickupUserIds)
@@ -423,6 +427,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
   function closePickupModal() {
     setPickupModalOpen(false)
+    setPickupSearchOutside(false)
     setPickupQuery('')
     setPickupResults([])
     setPendingPickupUserIds([])
@@ -708,7 +713,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     }
   }
 
-  async function searchPickupUsers(query: string) {
+  async function searchPickupUsers(query: string, searchOutside = pickupSearchOutside) {
     setPickupQuery(query)
     setPickupResults([])
 
@@ -720,8 +725,10 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       const params = new URLSearchParams({
         registrationGroupId: selectedGroupId,
         mode: 'pickup',
+        date,
         q: query
       })
+      if (searchOutside) params.set('scope', 'outside')
       const res = await fetch(`/api/skupinovy-vydaj/people-search?${params.toString()}`)
       const json = await res.json()
 
@@ -823,7 +830,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
         date,
         q: searchAll || searchText.length >= 3 ? searchText : ''
       })
-      if (searchAll) params.set('scope', 'all')
+      if (searchAll) params.set('scope', 'outside')
       const res = await fetch(`/api/skupinovy-vydaj/delegates/search?${params.toString()}`)
       const json = await res.json()
 
@@ -1464,20 +1471,20 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                             ...(delegateSearchAll ? styles.segmentButtonActive : {})
                           }}
                         >
-                          Vsetci ludia
+                          Mimo skupiny
                         </button>
                       </div>
                     )}
 
                     <label style={styles.field}>
                       <span style={styles.label}>
-                        {delegateSearchAll ? 'Vyhladat osobu mimo skupiny' : 'Vyhladat v registracnej skupine'}
+                        {delegateSearchAll ? 'Vyhladat mimo registracnej skupiny' : 'Vyhladat v registracnej skupine'}
                       </span>
                       <input
                         type="search"
                         value={searchQuery}
                         onChange={event => searchUsers(event.target.value)}
-                        placeholder={delegateSearchAll ? 'Zadaj aspon 3 znaky' : 'Zoznam skupiny alebo hladaj od 3 znakov'}
+                        placeholder={delegateSearchAll ? 'Zadaj aspon 3 znaky mimo skupiny' : 'Zoznam skupiny alebo hladaj od 3 znakov'}
                         style={styles.input}
                       />
                     </label>
@@ -1596,13 +1603,48 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     <span>{pendingPickupUserIds.length} oznacenych / {pickupCandidateUsers.length} v zozname</span>
                   </div>
 
+                  {selectedGroup?.canSearchAllDelegates && (
+                    <div style={styles.segment}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPickupSearchOutside(false)
+                          setPickupQuery('')
+                          setPickupResults([])
+                        }}
+                        style={{
+                          ...styles.segmentButton,
+                          ...(!pickupSearchOutside ? styles.segmentButtonActive : {})
+                        }}
+                      >
+                        Zo skupiny
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPickupSearchOutside(true)
+                          setPickupQuery('')
+                          setPickupResults([])
+                        }}
+                        style={{
+                          ...styles.segmentButton,
+                          ...(pickupSearchOutside ? styles.segmentButtonActive : {})
+                        }}
+                      >
+                        Mimo skupiny
+                      </button>
+                    </div>
+                  )}
+
                   <label style={styles.field}>
-                    <span style={styles.label}>Vyhladat dalsiu osobu</span>
+                    <span style={styles.label}>
+                      {pickupSearchOutside ? 'Vyhladat mimo registracnej skupiny' : 'Vyhladat v registracnej skupine'}
+                    </span>
                     <input
                       type="search"
                       value={pickupQuery}
                       onChange={event => searchPickupUsers(event.target.value)}
-                      placeholder="Zadaj aspon 3 znaky"
+                      placeholder={pickupSearchOutside ? 'Zadaj aspon 3 znaky mimo skupiny' : 'Zadaj aspon 3 znaky v skupine'}
                       style={styles.input}
                       disabled={issueLoading}
                     />
@@ -1612,7 +1654,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
                   <div style={styles.searchResults}>
                     {pickupCandidateUsers.length === 0 ? (
-                      <div style={styles.emptyBox}>Vyber osoby vo vydaji alebo zadaj aspon 3 znaky.</div>
+                      <div style={styles.emptyBox}>
+                        {pickupSearchOutside
+                          ? 'Pre vyhladavanie mimo skupiny zadaj aspon 3 znaky.'
+                          : 'Vyber osoby vo vydaji alebo zadaj aspon 3 znaky v skupine.'}
+                      </div>
                     ) : (
                       pickupCandidateUsers.map(user => {
                         const originallySelected = pickupUserIds.includes(user.id)
