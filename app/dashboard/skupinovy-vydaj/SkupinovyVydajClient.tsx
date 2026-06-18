@@ -902,7 +902,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       }
       setDelegateNote('')
       setMessage(`Ulozene. Pridane: ${usersToAdd.length}, odobrate: ${delegatesToRemove.length}.`)
-      void searchUsers(searchQuery, delegateSearchAll)
     } catch (err: any) {
       setMessage(err?.message || 'Poverene osoby sa nepodarilo ulozit.', 'error')
     } finally {
@@ -1422,10 +1421,13 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
               </div>
 
               {!selectedGroup.canManageDelegates ? (
-                <div style={styles.infoBox}>Tuto cast moze menit iba manager registracnej skupiny.</div>
+                <div style={styles.modalScrollBody}>
+                  <div style={styles.infoBox}>Tuto cast moze menit iba manager registracnej skupiny.</div>
+                </div>
               ) : (
                 <>
-                  <div style={styles.searchBox}>
+                  <div style={styles.modalScrollBody}>
+                    <div style={styles.searchBox}>
                     <div style={styles.peopleSectionHeader}>
                       <b>Poverene osoby</b>
                       <span>{pendingDelegateUserIds.length} oznacenych / {delegateCandidates.length} v zozname</span>
@@ -1501,6 +1503,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                           const originallySelected = delegateUserIds.includes(user.id)
                           const selected = pendingDelegateUserIds.includes(user.id)
                           const changed = originallySelected !== selected
+                          const willAdd = selected && !originallySelected
+                          const willRemove = !selected && originallySelected
 
                           return (
                             <button
@@ -1510,23 +1514,41 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                               disabled={loading}
                               style={{
                                 ...styles.resultButton,
-                                ...(selected ? styles.resultButtonSelected : {}),
-                                ...(changed ? styles.resultButtonChanged : {})
+                                ...(selected && !willAdd ? styles.resultButtonSelected : {}),
+                                ...(willAdd ? styles.resultButtonAdded : {}),
+                                ...(willRemove ? styles.resultButtonRemoved : {})
                               }}
                             >
-                              <b>{user.name}</b>
-                              {user.email && <span>{user.email}</span>}
-                              <small>
-                                {changed
-                                  ? selected ? 'Bude pridany po ulozeni' : 'Bude odobraty po ulozeni'
-                                  : selected ? 'Povereny' : 'Kliknutim oznacis'}
-                              </small>
+                              <span style={{
+                                ...styles.resultMarker,
+                                ...(selected ? styles.resultMarkerSelected : {}),
+                                ...(willRemove ? styles.resultMarkerRemoved : {})
+                              }}>
+                                {selected ? '✓' : willRemove ? '-' : ''}
+                              </span>
+                              <span style={styles.resultText}>
+                                <b>{user.name}</b>
+                                {user.email && <span>{user.email}</span>}
+                                <small>
+                                  {changed
+                                    ? selected ? 'Bude pridany po ulozeni' : 'Bude odobraty po ulozeni'
+                                    : selected ? 'Povereny' : 'Kliknutim oznacis'}
+                                </small>
+                              </span>
                             </button>
                           )
                         })
                       )}
                     </div>
+                    </div>
+                  </div>
 
+                  <div style={styles.modalFooter}>
+                    {feedback && (
+                      <div style={feedbackType === 'ok' ? styles.feedbackOkCompact : styles.feedbackErrorCompact}>
+                        {feedback}
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={addPendingDelegates}
@@ -1537,12 +1559,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     </button>
                   </div>
                 </>
-              )}
-
-              {feedback && (
-                <div style={feedbackType === 'ok' ? styles.feedbackOk : styles.feedbackError}>
-                  {feedback}
-                </div>
               )}
             </div>
           </div>
@@ -1567,59 +1583,75 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 </button>
               </div>
 
-              <div style={styles.searchBox}>
-                <div style={styles.peopleSectionHeader}>
-                  <b>Opravneni prevziat</b>
-                  <span>{pendingPickupUserIds.length} oznacenych / {pickupCandidateUsers.length} v zozname</span>
+              <div style={styles.modalScrollBody}>
+                <div style={styles.searchBox}>
+                  <div style={styles.peopleSectionHeader}>
+                    <b>Opravneni prevziat</b>
+                    <span>{pendingPickupUserIds.length} oznacenych / {pickupCandidateUsers.length} v zozname</span>
+                  </div>
+
+                  <label style={styles.field}>
+                    <span style={styles.label}>Vyhladat dalsiu osobu</span>
+                    <input
+                      type="search"
+                      value={pickupQuery}
+                      onChange={event => searchPickupUsers(event.target.value)}
+                      placeholder="Zadaj aspon 3 znaky"
+                      style={styles.input}
+                      disabled={issueLoading}
+                    />
+                  </label>
+
+                  {pickupLoading && <div style={styles.emptyBox}>Vyhladavam...</div>}
+
+                  <div style={styles.searchResults}>
+                    {pickupCandidateUsers.length === 0 ? (
+                      <div style={styles.emptyBox}>Vyber osoby vo vydaji alebo zadaj aspon 3 znaky.</div>
+                    ) : (
+                      pickupCandidateUsers.map(user => {
+                        const originallySelected = pickupUserIds.includes(user.id)
+                        const selected = pendingPickupUserIds.includes(user.id)
+                        const changed = originallySelected !== selected
+                        const willAdd = selected && !originallySelected
+                        const willRemove = !selected && originallySelected
+
+                        return (
+                          <button
+                            key={user.id}
+                            type="button"
+                            onClick={() => togglePendingPickupUser(user.id)}
+                            style={{
+                              ...styles.resultButton,
+                              ...(selected && !willAdd ? styles.resultButtonSelected : {}),
+                              ...(willAdd ? styles.resultButtonAdded : {}),
+                              ...(willRemove ? styles.resultButtonRemoved : {})
+                            }}
+                          >
+                            <span style={{
+                              ...styles.resultMarker,
+                              ...(selected ? styles.resultMarkerSelected : {}),
+                              ...(willRemove ? styles.resultMarkerRemoved : {})
+                            }}>
+                              {selected ? '✓' : willRemove ? '-' : ''}
+                            </span>
+                            <span style={styles.resultText}>
+                              <b>{user.name}</b>
+                              {user.email && <span>{user.email}</span>}
+                              <small>
+                                {changed
+                                  ? selected ? 'Bude pridany po ulozeni' : 'Bude odobraty po ulozeni'
+                                  : selected ? 'Opravneny' : 'Kliknutim oznacis'}
+                              </small>
+                            </span>
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
                 </div>
+              </div>
 
-                <label style={styles.field}>
-                  <span style={styles.label}>Vyhladat dalsiu osobu</span>
-                  <input
-                    type="search"
-                    value={pickupQuery}
-                    onChange={event => searchPickupUsers(event.target.value)}
-                    placeholder="Zadaj aspon 3 znaky"
-                    style={styles.input}
-                    disabled={issueLoading}
-                  />
-                </label>
-
-                {pickupLoading && <div style={styles.emptyBox}>Vyhladavam...</div>}
-
-                <div style={styles.searchResults}>
-                  {pickupCandidateUsers.length === 0 ? (
-                    <div style={styles.emptyBox}>Vyber osoby vo vydaji alebo zadaj aspon 3 znaky.</div>
-                  ) : (
-                    pickupCandidateUsers.map(user => {
-                      const originallySelected = pickupUserIds.includes(user.id)
-                      const selected = pendingPickupUserIds.includes(user.id)
-                      const changed = originallySelected !== selected
-
-                      return (
-                        <button
-                          key={user.id}
-                          type="button"
-                          onClick={() => togglePendingPickupUser(user.id)}
-                          style={{
-                            ...styles.resultButton,
-                            ...(selected ? styles.resultButtonSelected : {}),
-                            ...(changed ? styles.resultButtonChanged : {})
-                          }}
-                        >
-                          <b>{user.name}</b>
-                          {user.email && <span>{user.email}</span>}
-                          <small>
-                            {changed
-                              ? selected ? 'Bude pridany po ulozeni' : 'Bude odobraty po ulozeni'
-                              : selected ? 'Opravneny' : 'Kliknutim oznacis'}
-                          </small>
-                        </button>
-                      )
-                    })
-                  )}
-                </div>
-
+              <div style={styles.modalFooter}>
                 <button
                   type="button"
                   onClick={savePickupSelection}
@@ -2490,6 +2522,8 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#111827',
     padding: 9,
     display: 'grid',
+    gridTemplateColumns: '24px minmax(0, 1fr)',
+    alignItems: 'center',
     gap: 3,
     textAlign: 'left',
     fontSize: 12,
@@ -2500,9 +2534,45 @@ const styles: Record<string, React.CSSProperties> = {
     borderColor: '#22c55e',
     boxShadow: 'inset 3px 0 0 #22c55e'
   },
-  resultButtonChanged: {
-    borderColor: '#f59e0b',
-    boxShadow: 'inset 3px 0 0 #f59e0b'
+  resultButtonAdded: {
+    background: '#eff6ff',
+    borderColor: '#3b82f6',
+    boxShadow: 'inset 3px 0 0 #3b82f6'
+  },
+  resultButtonRemoved: {
+    background: '#fef2f2',
+    borderColor: '#ef4444',
+    boxShadow: 'inset 3px 0 0 #ef4444',
+    color: '#7f1d1d'
+  },
+  resultMarker: {
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    border: '1px solid #d1d5db',
+    background: '#fff',
+    color: '#6b7280',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 12,
+    fontWeight: 950,
+    lineHeight: 1
+  },
+  resultMarkerSelected: {
+    background: '#22c55e',
+    borderColor: '#22c55e',
+    color: '#fff'
+  },
+  resultMarkerRemoved: {
+    background: '#ef4444',
+    borderColor: '#ef4444',
+    color: '#fff'
+  },
+  resultText: {
+    display: 'grid',
+    gap: 3,
+    minWidth: 0
   },
   feedbackOk: {
     marginTop: 12,
@@ -2520,6 +2590,24 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #fecaca',
     borderRadius: 6,
     padding: 10,
+    color: '#991b1b',
+    fontSize: 12,
+    fontWeight: 900
+  },
+  feedbackOkCompact: {
+    background: '#f0fdf4',
+    border: '1px solid #bbf7d0',
+    borderRadius: 6,
+    padding: '8px 10px',
+    color: '#14532d',
+    fontSize: 12,
+    fontWeight: 900
+  },
+  feedbackErrorCompact: {
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: 6,
+    padding: '8px 10px',
     color: '#991b1b',
     fontSize: 12,
     fontWeight: 900
@@ -2570,21 +2658,40 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     maxWidth: 620,
     maxHeight: 'calc(var(--group-issue-viewport-height, 100dvh) - 64px)',
-    overflow: 'auto',
-    WebkitOverflowScrolling: 'touch',
+    overflow: 'hidden',
     background: '#fff',
     borderRadius: 14,
-    padding: 14,
     boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
-    display: 'grid',
-    gap: 12,
+    display: 'flex',
+    flexDirection: 'column',
     margin: '0 0 16px 0'
   },
   qrModalHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     gap: 10,
-    alignItems: 'flex-start'
+    alignItems: 'flex-start',
+    padding: '14px 14px 10px 14px',
+    borderBottom: '1px solid #e5e7eb',
+    background: '#fff',
+    flex: '0 0 auto'
+  },
+  modalScrollBody: {
+    minHeight: 0,
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    overscrollBehaviorY: 'contain',
+    padding: '0 14px 14px 14px',
+    flex: '1 1 auto'
+  },
+  modalFooter: {
+    flex: '0 0 auto',
+    display: 'grid',
+    gap: 8,
+    padding: 14,
+    borderTop: '1px solid #e5e7eb',
+    background: '#fff',
+    boxShadow: '0 -8px 18px rgba(17, 24, 39, 0.06)'
   },
   modalTitleBlock: {
     display: 'grid',
