@@ -67,7 +67,6 @@ async function createImportedPerson({
   const typStravy = normalizeFood(row.typStravy)
   const validFrom = normalizeText(row.validFrom)
   const validTo = normalizeText(row.validTo)
-  const importNote = normalizeText(row.importNote)
   const registrationGroupId = normalizeText(row.registrationGroupId) || null
   const generateAccessCode = row.generateAccessCode === true
   const obed = !!row.obed
@@ -101,7 +100,6 @@ async function createImportedPerson({
       zdroj: 'PERSONALISTA',
       aktivny: 'ANO',
       registration_group_id: registrationGroupId,
-      personal_note: importNote || null,
       manual_created_by: currentUserId,
       updated_at: now
     })
@@ -232,7 +230,6 @@ async function createImportedPerson({
         registration_group_id: registrationGroupId,
         valid_from: validFrom,
         valid_to: validTo,
-        import_note: importNote,
         obed,
         vecera,
         qr_assigned: !!assignedQrCode,
