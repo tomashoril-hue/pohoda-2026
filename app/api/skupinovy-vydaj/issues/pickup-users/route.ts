@@ -27,6 +27,10 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Chyba skupinovy vydaj.' }, { status: 400 })
     }
 
+    if (userIds.length === 0) {
+      return NextResponse.json({ error: 'Pridaj aspon jednu osobu opravnenu prevziat vydaj.' }, { status: 400 })
+    }
+
     const { data: issue, error: issueError } = await supabaseServer
       .from('registration_group_issues')
       .select('id, registration_group_id, status')
@@ -45,7 +49,6 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Nemas opravnenie pre tuto registracnu skupinu.' }, { status: 403 })
     }
 
-    const finalUserIds = userIds.length > 0 ? userIds : [actor.id]
     const { error: deleteError } = await supabaseServer
       .from('registration_group_issue_pickup_users')
       .delete()
@@ -55,7 +58,7 @@ export async function PUT(req: NextRequest) {
 
     const { error: insertError } = await supabaseServer
       .from('registration_group_issue_pickup_users')
-      .insert(finalUserIds.map(userId => ({
+      .insert(userIds.map(userId => ({
         issue_id: issue.id,
         user_id: userId,
         created_by: actor.id
@@ -63,9 +66,9 @@ export async function PUT(req: NextRequest) {
 
     if (insertError) throw insertError
 
-    const users = await loadUsersByIds(finalUserIds)
+    const users = await loadUsersByIds(userIds)
     const userById = new Map(users.map((user: any) => [user.id, user]))
-    const pickupUsers = finalUserIds.map(userId => {
+    const pickupUsers = userIds.map(userId => {
       const user: any = userById.get(userId)
       return {
         id: userId,
@@ -76,7 +79,7 @@ export async function PUT(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      pickupUserIds: finalUserIds,
+      pickupUserIds: userIds,
       pickupUsers,
       message: 'Opravneni prevziat boli ulozeni.'
     })

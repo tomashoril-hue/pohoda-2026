@@ -813,6 +813,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   }
 
   async function savePickupSelection() {
+    if (pendingPickupUserIds.length === 0) {
+      setIssueMessage('Pridaj aspon jednu osobu opravnenu prevziat vydaj.', 'error')
+      return
+    }
+
     const usersById = new Map(pickupCandidateUsers.map(user => [user.id, user]))
     const nextUsers = pendingPickupUserIds
       .map(id => usersById.get(id))
@@ -893,9 +898,19 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
         ? 'Skupinovy vydaj bol upraveny.'
         : 'Skupinovy vydaj bol vytvoreny.')
 
-      resetIssueState({ preserveMeal: true })
       setQrModalOpen(false)
       setSelectionOpen(false)
+
+      if (!wasEditing && json.issueId) {
+        await loadExistingIssuesFor(selectedGroupId, date, meal)
+        await editExistingIssue(json.issueId)
+        setPendingPickupUserIds([])
+        setPickupModalOpen(true)
+        setIssueMessage('Skupinovy vydaj bol vytvoreny. Teraz pridaj opravnenych prevziat.')
+        return
+      }
+
+      resetIssueState({ preserveMeal: true })
       await loadExistingIssuesFor(selectedGroupId, date, meal)
       setIssueMessage(successMessage)
     } catch (err: any) {
@@ -1069,6 +1084,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           .issue-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
           .issue-person-row { grid-template-columns: 1fr !important; }
           .issue-person-meta { justify-content: flex-start !important; }
+          .workflow-steps { grid-template-columns: 1fr !important; }
           .group-picker-menu {
             position: fixed !important;
             left: 10px !important;
@@ -1127,6 +1143,29 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     style={styles.input}
                   />
                 </label>
+
+                <div className="workflow-steps" style={styles.workflowSteps}>
+                  <div style={{ ...styles.workflowStep, ...styles.workflowStepActive }}>
+                    <span style={styles.workflowStepNumber}>1</span>
+                    <div style={styles.workflowStepText}>
+                      <b>Osoby vo vydaji</b>
+                      <small>Vyber ludi, pre ktorych sa pripravuje jedlo.</small>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      ...styles.workflowStep,
+                      ...(editingIssueId ? styles.workflowStepActive : styles.workflowStepLocked)
+                    }}
+                  >
+                    <span style={styles.workflowStepNumber}>2</span>
+                    <div style={styles.workflowStepText}>
+                      <b>Opravneni prevziat</b>
+                      <small>{editingIssueId ? 'Vyber osoby, ktore mozu vydaj prevziat.' : 'Tento krok sa otvori po vytvoreni vydaja.'}</small>
+                    </div>
+                  </div>
+                </div>
 
                 <div style={styles.issueToolbar}>
                   <button
@@ -1242,22 +1281,39 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={openPickupModal}
-                  disabled={issueLoading}
-                  style={{ ...styles.secondaryButton, marginTop: 12, width: '100%' }}
-                >
-                  Opravneni prevziat ({pickupUserIds.length})
-                </button>
+                {editingIssueId ? (
+                  <div style={styles.pickupStepCard}>
+                    <div style={styles.pickupStepInfo}>
+                      <b>Opravneni prevziat</b>
+                      <span>
+                        {pickupUserIds.length > 0
+                          ? `${pickupUserIds.length} osob moze prevziat tento vydaj.`
+                          : 'Zatial nie je pridana ziadna osoba na prevzatie.'}
+                      </span>
+                    </div>
 
                     <button
                       type="button"
+                      onClick={openPickupModal}
+                      disabled={issueLoading}
+                      style={styles.secondaryButton}
+                    >
+                      Upravit prevzatie
+                    </button>
+                  </div>
+                ) : (
+                  <div style={styles.nextStepHint}>
+                    Po vytvoreni vydaja sa automaticky otvori krok pre osoby opravnene prevziat.
+                  </div>
+                )}
+
+                <button
+                  type="button"
                   onClick={saveIssue}
                   disabled={issueLoading || selectedIssuePeople.length === 0}
                   style={{ ...styles.primaryButton, marginTop: 14, width: '100%' }}
                 >
-                  {issueLoading ? 'Ukladam...' : editingIssueId ? 'Ulozit upravy' : 'Vytvorit skupinovy vydaj'}
+                  {issueLoading ? 'Ukladam...' : editingIssueId ? 'Ulozit osoby vo vydaji' : 'Vytvorit a pokracovat'}
                 </button>
 
                 {createdIssue && (
@@ -2020,6 +2076,51 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 3,
     minWidth: 0
   },
+  workflowSteps: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 8,
+    marginTop: 10
+  },
+  workflowStep: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    background: '#f9fafb',
+    padding: 9,
+    display: 'grid',
+    gridTemplateColumns: '28px minmax(0, 1fr)',
+    gap: 8,
+    alignItems: 'center',
+    minWidth: 0
+  },
+  workflowStepActive: {
+    borderColor: '#86efac',
+    background: '#f0fdf4',
+    color: '#14532d'
+  },
+  workflowStepLocked: {
+    opacity: 0.72,
+    color: '#6b7280'
+  },
+  workflowStepNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    background: '#111827',
+    color: '#fff',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 12,
+    fontWeight: 950
+  },
+  workflowStepText: {
+    display: 'grid',
+    gap: 2,
+    minWidth: 0,
+    fontSize: 12,
+    fontWeight: 900
+  },
   panelHeaderRow: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -2353,6 +2454,37 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap',
     gap: 8,
     marginTop: 12
+  },
+  pickupStepCard: {
+    marginTop: 12,
+    border: '1px solid #bfdbfe',
+    borderRadius: 8,
+    background: '#eff6ff',
+    padding: 10,
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap'
+  },
+  pickupStepInfo: {
+    display: 'grid',
+    gap: 3,
+    minWidth: 0,
+    color: '#1e3a8a',
+    fontSize: 12,
+    fontWeight: 900
+  },
+  nextStepHint: {
+    marginTop: 12,
+    border: '1px dashed #d1d5db',
+    borderRadius: 8,
+    background: '#f9fafb',
+    color: '#6b7280',
+    padding: '9px 10px',
+    fontSize: 12,
+    fontWeight: 850,
+    lineHeight: 1.35
   },
   bulkButtonRow: {
     display: 'flex',

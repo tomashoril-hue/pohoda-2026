@@ -499,8 +499,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const finalPickupUserIds = pickupUserIds.length > 0 ? pickupUserIds : [actor.id]
-
     const nextStatus = statusForAccess(access)
     const now = new Date().toISOString()
     const sequence = await nextIssueSequence(registrationGroupId, date, meal)
@@ -551,7 +549,7 @@ export async function POST(req: NextRequest) {
           updated_at: now
         })))
 
-      await replacePickupUsers(issue.id, finalPickupUserIds, actor.id)
+      await replacePickupUsers(issue.id, pickupUserIds, actor.id)
     } catch (error: any) {
       await supabaseServer.from('registration_group_issues').delete().eq('id', issue.id)
       return NextResponse.json({ error: error.message }, { status: 500 })
@@ -646,8 +644,6 @@ export async function PUT(req: NextRequest) {
         { status: 400 }
       )
     }
-
-    const finalPickupUserIds = pickupUserIds.length > 0 ? pickupUserIds : [actor.id]
 
     const nextStatus = statusForAccess(access)
     const now = new Date().toISOString()
@@ -744,7 +740,7 @@ export async function PUT(req: NextRequest) {
         if (keepExistingError) throw keepExistingError
       }
 
-      await replacePickupUsers(issue.id, finalPickupUserIds, actor.id)
+      await replacePickupUsers(issue.id, pickupUserIds, actor.id)
     } catch (error: any) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
