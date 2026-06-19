@@ -167,6 +167,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [pickupSearchOutside, setPickupSearchOutside] = useState(false)
   const [pickupModalOpen, setPickupModalOpen] = useState(false)
   const [pendingPickupUserIds, setPendingPickupUserIds] = useState<string[]>([])
+  const [moveModalOpen, setMoveModalOpen] = useState(false)
+  const [moveTargetIssueId, setMoveTargetIssueId] = useState('')
   const [existingIssues, setExistingIssues] = useState<ExistingIssue[]>([])
   const [editingIssueId, setEditingIssueId] = useState('')
   const [issueLoading, setIssueLoading] = useState(false)
@@ -205,6 +207,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const delegates = selectedGroupId ? delegateMap[selectedGroupId] || [] : []
   const selectionReady = Boolean(date && selectedGroupId && meal)
   const selectedIssuePeople = issuePeople.filter(person => selectedIssueUserIds.includes(person.id))
+  const selectedMovableIssuePeople = selectedIssuePeople.filter(person => person.itemStatus === 'PLANNED')
+  const selectedHasUnmovablePeople = selectedIssuePeople.some(person => person.itemStatus !== 'PLANNED')
   const selectedIssuablePeople = selectedIssuePeople.filter(isIssuePersonReady)
   const selectedSummary = selectedIssuablePeople.reduce((summary, person) => {
     summary[person.choice] += 1
@@ -250,6 +254,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const delegateUserIds = useMemo(() => delegates.map(delegate => delegate.userId), [delegates])
   const delegateSelectionChanged = !sameIds(delegateUserIds, pendingDelegateUserIds)
   const pickupSelectionChanged = !sameIds(pickupUserIds, pendingPickupUserIds)
+  const moveTargetIssues = useMemo(() => {
+    return existingIssues.filter(issue => {
+      return issue.id !== editingIssueId && issue.meal === meal && issue.status !== 'CANCELLED'
+    })
+  }, [editingIssueId, existingIssues, meal])
 
   useEffect(() => {
     if (!window.matchMedia('(pointer: coarse)').matches) return
@@ -468,6 +477,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setIssuePersonFilter('')
     setPickupQuery('')
     setPickupResults([])
+    setMoveModalOpen(false)
+    setMoveTargetIssueId('')
     if (clearExisting) {
       setExistingIssues([])
       setExistingIssuesLoaded(false)
@@ -591,7 +602,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       if (!res.ok) throw new Error(json.error || 'Skupinovy vydaj sa nepodarilo nacitat.')
 
       const issue = json.issue
-      const people: IssuePerson[] = issue.people || []
+      const people: IssuePerson[] = (issue.people || []).filter((person: IssuePerson) => person.itemStatus !== 'REMOVED')
 
       setEditingIssueId(issue.id)
       setMeal(issue.meal || '')
@@ -603,6 +614,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setIssuePersonFilter('')
       setPickupQuery('')
       setPickupResults([])
+      setMoveModalOpen(false)
+      setMoveTargetIssueId('')
       setConfirmed(true)
       setIssueMessage('Skupinovy vydaj je nacitany na upravu.')
     } catch (err: any) {
@@ -710,6 +723,55 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
     if (action === 'NONE') {
       setSelectedIssueUserIds([])
+    }
+  }
+
+  function openMoveModal() {
+    if (!editingIssueId || selectedIssuePeople.length === 0) return
+
+    if (selectedHasUnmovablePeople) {
+      setIssueMessage('Presunut je mozne iba osoby, ktore este nemaju vydane jedlo.', 'error')
+      return
+    }
+
+    setMoveTargetIssueId(moveTargetIssues[0]?.id || '')
+    setMoveModalOpen(true)
+  }
+
+  function closeMoveModal() {
+    setMoveModalOpen(false)
+    setMoveTargetIssueId('')
+  }
+
+  async function moveSelectedPeople() {
+    if (!editingIssueId || !moveTargetIssueId || selectedMovableIssuePeople.length === 0) return
+
+    setIssueLoading(true)
+    setIssueMessage('')
+
+    try {
+      const res = await fetch('/api/skupinovy-vydaj/issues/move-people', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromIssueId: editingIssueId,
+          toIssueId: moveTargetIssueId,
+          userIds: selectedMovableIssuePeople.map(person => person.id)
+        })
+      })
+      const json = await res.json()
+
+      if (!res.ok) throw new Error(json.error || 'Osoby sa nepodarilo presunut.')
+
+      const currentIssueId = editingIssueId
+      closeMoveModal()
+      await editExistingIssue(currentIssueId)
+      await loadExistingIssuesFor(selectedGroupId, date, meal)
+      setIssueMessage(json.message || 'Osoby boli presunute.')
+    } catch (err: any) {
+      setIssueMessage(err?.message || 'Osoby sa nepodarilo presunut.', 'error')
+    } finally {
+      setIssueLoading(false)
     }
   }
 
@@ -1057,6 +1119,22 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   >
                     Pridat cez QR
                   </button>
+
+                  {editingIssueId && (
+                    <button
+                      type="button"
+                      onClick={openMoveModal}
+                      disabled={
+                        issueLoading ||
+                        selectedMovableIssuePeople.length === 0 ||
+                        selectedHasUnmovablePeople ||
+                        moveTargetIssues.length === 0
+                      }
+                      style={styles.secondaryButton}
+                    >
+                      Presunut oznacenych ({selectedMovableIssuePeople.length})
+                    </button>
+                  )}
                 </div>
 
                 <div style={styles.peopleSectionHeader}>
@@ -1408,6 +1486,82 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 disabled={issueLoading || !selectedGroupId || !date || !meal}
                 onScan={addIssuePersonByQr}
               />
+            </div>
+          </div>
+        )}
+
+        {moveModalOpen && (
+          <div style={styles.modalOverlay} onClick={closeMoveModal}>
+            <div style={styles.peopleModal} onClick={event => event.stopPropagation()}>
+              <div style={styles.qrModalHeader}>
+                <div style={styles.modalTitleBlock}>
+                  <b>Presunut oznacenych</b>
+                  <span>{selectedMovableIssuePeople.length} osob / {mealLabel(meal)} / {fullDateLabel(date)}</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeMoveModal}
+                  style={styles.qrCloseButton}
+                  disabled={issueLoading}
+                >
+                  x
+                </button>
+              </div>
+
+              <div style={styles.modalScrollBody}>
+                <div style={styles.searchBox}>
+                  <div style={styles.peopleSectionHeader}>
+                    <b>Cielovy vydaj</b>
+                    <span>{moveTargetIssues.length} moznosti</span>
+                  </div>
+
+                  {moveTargetIssues.length === 0 ? (
+                    <div style={styles.emptyBox}>Pre tento datum a jedlo neexistuje iny skupinovy vydaj.</div>
+                  ) : (
+                    <div style={styles.searchResults}>
+                      {moveTargetIssues.map(issue => {
+                        const selected = moveTargetIssueId === issue.id
+                        return (
+                          <button
+                            key={issue.id}
+                            type="button"
+                            onClick={() => setMoveTargetIssueId(issue.id)}
+                            style={{
+                              ...styles.resultButton,
+                              ...(selected ? styles.resultButtonSelected : {})
+                            }}
+                          >
+                            <span style={{
+                              ...styles.resultMarker,
+                              ...(selected ? styles.resultMarkerSelected : {})
+                            }}>
+                              {selected ? '✓' : ''}
+                            </span>
+                            <span style={styles.resultText}>
+                              <b>{issue.title}</b>
+                              <small>
+                                MASO {issue.summary.MASO} / VEGE {issue.summary.VEGE} / DIETA {issue.summary.DIETA} / SPOLU {issue.summary.SPOLU}
+                              </small>
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={styles.modalFooter}>
+                <button
+                  type="button"
+                  onClick={moveSelectedPeople}
+                  disabled={issueLoading || !moveTargetIssueId || selectedMovableIssuePeople.length === 0}
+                  style={styles.primaryButton}
+                >
+                  {issueLoading ? 'Presuvam...' : `Presunut (${selectedMovableIssuePeople.length})`}
+                </button>
+              </div>
             </div>
           </div>
         )}
