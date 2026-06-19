@@ -564,7 +564,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       const people: IssuePerson[] = json.people || []
       setIssueTitle('')
       setIssuePeople(people)
-      setSelectedIssueUserIds(people.map(person => person.id))
+      setSelectedIssueUserIds([])
       setPickupUserIds([])
       setPickupUsers([])
       setIssuePersonFilter('')
@@ -812,17 +812,48 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     })
   }
 
-  function savePickupSelection() {
+  async function savePickupSelection() {
     const usersById = new Map(pickupCandidateUsers.map(user => [user.id, user]))
     const nextUsers = pendingPickupUserIds
       .map(id => usersById.get(id))
       .filter(Boolean) as SearchUser[]
 
-    setPickupUsers(nextUsers)
-    setPickupUserIds(pendingPickupUserIds)
-    setPickupModalOpen(false)
-    setPickupQuery('')
-    setPickupResults([])
+    if (!editingIssueId) {
+      setPickupUsers(nextUsers)
+      setPickupUserIds(pendingPickupUserIds)
+      setPickupModalOpen(false)
+      setPickupQuery('')
+      setPickupResults([])
+      return
+    }
+
+    setIssueLoading(true)
+    setIssueMessage('')
+
+    try {
+      const res = await fetch('/api/skupinovy-vydaj/issues/pickup-users', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          issueId: editingIssueId,
+          pickupUserIds: pendingPickupUserIds
+        })
+      })
+      const json = await res.json()
+
+      if (!res.ok) throw new Error(json.error || 'Opravneni prevziat sa nepodarilo ulozit.')
+
+      setPickupUsers(json.pickupUsers || nextUsers)
+      setPickupUserIds(json.pickupUserIds || pendingPickupUserIds)
+      setPickupModalOpen(false)
+      setPickupQuery('')
+      setPickupResults([])
+      setIssueMessage(json.message || 'Opravneni prevziat boli ulozeni.')
+    } catch (err: any) {
+      setIssueMessage(err?.message || 'Opravneni prevziat sa nepodarilo ulozit.', 'error')
+    } finally {
+      setIssueLoading(false)
+    }
   }
 
   async function saveIssue() {
@@ -1875,10 +1906,10 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 <button
                   type="button"
                   onClick={savePickupSelection}
-                  disabled={!pickupSelectionChanged}
+                  disabled={issueLoading || !pickupSelectionChanged}
                   style={styles.primaryButton}
                 >
-                  Ulozit zmeny ({pendingPickupUserIds.length})
+                  {issueLoading ? 'Ukladam...' : `Ulozit zmeny (${pendingPickupUserIds.length})`}
                 </button>
               </div>
             </div>
