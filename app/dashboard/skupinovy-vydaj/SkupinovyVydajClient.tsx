@@ -165,6 +165,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [pickupResults, setPickupResults] = useState<SearchUser[]>([])
   const [pickupLoading, setPickupLoading] = useState(false)
   const [pickupSearchOutside, setPickupSearchOutside] = useState(false)
+  const [pendingPickupExternalUsers, setPendingPickupExternalUsers] = useState<SearchUser[]>([])
   const [pickupModalOpen, setPickupModalOpen] = useState(false)
   const [pendingPickupUserIds, setPendingPickupUserIds] = useState<string[]>([])
   const [moveModalOpen, setMoveModalOpen] = useState(false)
@@ -186,6 +187,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchUser[]>([])
   const [delegateSearchAll, setDelegateSearchAll] = useState(false)
+  const [pendingDelegateExternalUsers, setPendingDelegateExternalUsers] = useState<SearchUser[]>([])
   const [pendingDelegateUserIds, setPendingDelegateUserIds] = useState<string[]>([])
   const [delegateListReady, setDelegateListReady] = useState(false)
   const [delegateNote, setDelegateNote] = useState('')
@@ -243,14 +245,14 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     }))
 
     return delegateSearchAll
-      ? mergeSearchUsers(selectedDelegates, searchResults)
-      : mergeSearchUsers(selectedDelegates, issuePickupCandidates, searchResults)
-  }, [delegateSearchAll, delegates, issuePickupCandidates, searchResults])
+      ? searchResults
+      : mergeSearchUsers(selectedDelegates, issuePickupCandidates, pendingDelegateExternalUsers, searchResults)
+  }, [delegateSearchAll, delegates, issuePickupCandidates, pendingDelegateExternalUsers, searchResults])
   const pickupCandidateUsers = useMemo(() => {
     return pickupSearchOutside
-      ? mergeSearchUsers(pickupUsers, pickupResults)
-      : mergeSearchUsers(pickupUsers, issuePickupCandidates, pickupResults)
-  }, [pickupSearchOutside, pickupUsers, issuePickupCandidates, pickupResults])
+      ? pickupResults
+      : mergeSearchUsers(pickupUsers, issuePickupCandidates, pendingPickupExternalUsers, pickupResults)
+  }, [pickupSearchOutside, pickupUsers, issuePickupCandidates, pendingPickupExternalUsers, pickupResults])
   const delegateUserIds = useMemo(() => delegates.map(delegate => delegate.userId), [delegates])
   const delegateSelectionChanged = !sameIds(delegateUserIds, pendingDelegateUserIds)
   const pickupSelectionChanged = !sameIds(pickupUserIds, pendingPickupUserIds)
@@ -409,6 +411,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setDelegatesPanelOpen(true)
     setDelegateSearchAll(false)
     setPendingDelegateUserIds(delegates.map(delegate => delegate.userId))
+    setPendingDelegateExternalUsers([])
     setDelegateListReady(false)
     setMessage('')
     await searchUsers('', false)
@@ -421,6 +424,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setSearchQuery('')
     setSearchResults([])
     setPendingDelegateUserIds([])
+    setPendingDelegateExternalUsers([])
     setDelegateListReady(false)
     setDelegateNote('')
     setMessage('')
@@ -431,6 +435,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setPickupSearchOutside(false)
     setPickupQuery('')
     setPickupResults([])
+    setPendingPickupExternalUsers([])
     setPendingPickupUserIds(pickupUserIds)
   }
 
@@ -440,6 +445,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setPickupQuery('')
     setPickupResults([])
     setPendingPickupUserIds([])
+    setPendingPickupExternalUsers([])
   }
 
   const renderDateInput = (
@@ -477,6 +483,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setIssuePersonFilter('')
     setPickupQuery('')
     setPickupResults([])
+    setPendingPickupExternalUsers([])
     setMoveModalOpen(false)
     setMoveTargetIssueId('')
     if (clearExisting) {
@@ -812,6 +819,14 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     })
   }
 
+  function addOutsidePickupUser(user: SearchUser) {
+    setPendingPickupUserIds(current => current.includes(user.id) ? current : [...current, user.id])
+    setPendingPickupExternalUsers(current => mergeSearchUsers(current, [user]))
+    setPickupSearchOutside(false)
+    setPickupQuery('')
+    setPickupResults([])
+  }
+
   async function savePickupSelection() {
     if (pendingPickupUserIds.length === 0) {
       setIssueMessage('Pridaj aspon jednu osobu opravnenu prevziat vydaj.', 'error')
@@ -829,6 +844,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setPickupModalOpen(false)
       setPickupQuery('')
       setPickupResults([])
+      setPendingPickupExternalUsers([])
       return
     }
 
@@ -853,6 +869,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setPickupModalOpen(false)
       setPickupQuery('')
       setPickupResults([])
+      setPendingPickupExternalUsers([])
       setIssueMessage(json.message || 'Opravneni prevziat boli ulozeni.')
     } catch (err: any) {
       setIssueMessage(err?.message || 'Opravneni prevziat sa nepodarilo ulozit.', 'error')
@@ -960,6 +977,14 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     })
   }
 
+  function addOutsideDelegateUser(user: SearchUser) {
+    setPendingDelegateUserIds(current => current.includes(user.id) ? current : [...current, user.id])
+    setPendingDelegateExternalUsers(current => mergeSearchUsers(current, [user]))
+    setDelegateSearchAll(false)
+    setSearchQuery('')
+    void searchUsers('', false)
+  }
+
   async function addPendingDelegates() {
     if (!selectedGroupId) return
 
@@ -1020,6 +1045,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
         setPendingDelegateUserIds(latestDelegates.map(delegate => delegate.userId))
       }
       setDelegateNote('')
+      setPendingDelegateExternalUsers([])
       setMessage(`Ulozene. Pridane: ${usersToAdd.length}, odobrate: ${delegatesToRemove.length}.`)
     } catch (err: any) {
       setMessage(err?.message || 'Poverene osoby sa nepodarilo ulozit.', 'error')
@@ -1778,7 +1804,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                             <button
                               key={user.id}
                               type="button"
-                              onClick={() => togglePendingDelegateUser(user.id)}
+                              onClick={() => delegateSearchAll ? addOutsideDelegateUser(user) : togglePendingDelegateUser(user.id)}
                               disabled={loading}
                               style={{
                                 ...styles.resultButton,
@@ -1798,9 +1824,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                                 <b>{user.name}</b>
                                 {user.email && <span>{user.email}</span>}
                                 <small>
-                                  {changed
-                                    ? selected ? 'Bude pridany po ulozeni' : 'Bude odobraty po ulozeni'
-                                    : selected ? 'Povereny' : 'Kliknutim oznacis'}
+                                  {delegateSearchAll
+                                    ? selected ? 'Uz oznaceny' : 'Kliknutim pridas'
+                                    : changed
+                                      ? selected ? 'Bude pridany po ulozeni' : 'Bude odobraty po ulozeni'
+                                      : selected ? 'Povereny' : 'Kliknutim oznacis'}
                                 </small>
                               </span>
                             </button>
@@ -1926,7 +1954,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                           <button
                             key={user.id}
                             type="button"
-                            onClick={() => togglePendingPickupUser(user.id)}
+                            onClick={() => pickupSearchOutside ? addOutsidePickupUser(user) : togglePendingPickupUser(user.id)}
                             style={{
                               ...styles.resultButton,
                               ...(selected && !willAdd ? styles.resultButtonSelected : {}),
@@ -1945,9 +1973,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                               <b>{user.name}</b>
                               {user.email && <span>{user.email}</span>}
                               <small>
-                                {changed
-                                  ? selected ? 'Bude pridany po ulozeni' : 'Bude odobraty po ulozeni'
-                                  : selected ? 'Opravneny' : 'Kliknutim oznacis'}
+                                {pickupSearchOutside
+                                  ? selected ? 'Uz oznaceny' : 'Kliknutim pridas'
+                                  : changed
+                                    ? selected ? 'Bude pridany po ulozeni' : 'Bude odobraty po ulozeni'
+                                    : selected ? 'Opravneny' : 'Kliknutim oznacis'}
                               </small>
                             </span>
                           </button>
