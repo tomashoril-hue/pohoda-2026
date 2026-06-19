@@ -245,13 +245,13 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     }))
 
     return delegateSearchAll
-      ? searchResults
-      : mergeSearchUsers(selectedDelegates, issuePickupCandidates, pendingDelegateExternalUsers, searchResults)
+      ? mergeSearchUsers(pendingDelegateExternalUsers, searchResults)
+      : mergeSearchUsers(selectedDelegates, issuePickupCandidates, searchResults)
   }, [delegateSearchAll, delegates, issuePickupCandidates, pendingDelegateExternalUsers, searchResults])
   const pickupCandidateUsers = useMemo(() => {
     return pickupSearchOutside
-      ? pickupResults
-      : mergeSearchUsers(pickupUsers, issuePickupCandidates, pendingPickupExternalUsers, pickupResults)
+      ? mergeSearchUsers(pendingPickupExternalUsers, pickupResults)
+      : mergeSearchUsers(pickupUsers, issuePickupCandidates, pickupResults)
   }, [pickupSearchOutside, pickupUsers, issuePickupCandidates, pendingPickupExternalUsers, pickupResults])
   const delegateUserIds = useMemo(() => delegates.map(delegate => delegate.userId), [delegates])
   const delegateSelectionChanged = !sameIds(delegateUserIds, pendingDelegateUserIds)
@@ -822,7 +822,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   function addOutsidePickupUser(user: SearchUser) {
     setPendingPickupUserIds(current => current.includes(user.id) ? current : [...current, user.id])
     setPendingPickupExternalUsers(current => mergeSearchUsers(current, [user]))
-    setPickupSearchOutside(false)
     setPickupQuery('')
     setPickupResults([])
   }
@@ -833,7 +832,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       return
     }
 
-    const usersById = new Map(pickupCandidateUsers.map(user => [user.id, user]))
+    const usersById = new Map(mergeSearchUsers(pickupCandidateUsers, pendingPickupExternalUsers).map(user => [user.id, user]))
     const nextUsers = pendingPickupUserIds
       .map(id => usersById.get(id))
       .filter(Boolean) as SearchUser[]
@@ -980,9 +979,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   function addOutsideDelegateUser(user: SearchUser) {
     setPendingDelegateUserIds(current => current.includes(user.id) ? current : [...current, user.id])
     setPendingDelegateExternalUsers(current => mergeSearchUsers(current, [user]))
-    setDelegateSearchAll(false)
     setSearchQuery('')
-    void searchUsers('', false)
+    setSearchResults([])
   }
 
   async function addPendingDelegates() {
@@ -990,7 +988,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
     const selectedIds = new Set(pendingDelegateUserIds)
     const existingIds = new Set(delegates.map(delegate => delegate.userId))
-    const usersById = new Map(delegateCandidates.map(user => [user.id, user]))
+    const usersById = new Map(mergeSearchUsers(delegateCandidates, pendingDelegateExternalUsers).map(user => [user.id, user]))
     const delegatesToRemove = delegates.filter(delegate => !selectedIds.has(delegate.userId))
     const usersToAdd = pendingDelegateUserIds
       .filter(userId => !existingIds.has(userId))
