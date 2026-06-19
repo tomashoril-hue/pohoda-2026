@@ -1098,19 +1098,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 </label>
 
                 <div style={styles.issueToolbar}>
-                  <select
-                    value=""
-                    onChange={event => handleBulkIssueSelection(event.target.value)}
-                    disabled={issueLoading || issuePeople.length === 0}
-                    style={styles.toolbarSelect}
-                    aria-label="Hromadne oznacenie"
-                  >
-                    <option value="">Hromadne oznacenie</option>
-                    <option value="ALL">Oznacit vsetkych</option>
-                    <option value="READY">Oznacit vydatelnych</option>
-                    <option value="NONE">Odznacit vsetkych</option>
-                  </select>
-
                   <button
                     type="button"
                     onClick={() => setQrModalOpen(true)}
@@ -1132,7 +1119,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                       }
                       style={styles.secondaryButton}
                     >
-                      Presunut oznacenych ({selectedMovableIssuePeople.length})
+                      Presunut ({selectedMovableIssuePeople.length})
                     </button>
                   )}
                 </div>
@@ -1140,6 +1127,33 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 <div style={styles.peopleSectionHeader}>
                   <b>Osoby vo vydaji</b>
                   <span>{selectedSummary.SPOLU} vydatelnych / {selectedIssueUserIds.length} oznacenych / {issuePeople.length} spolu</span>
+                </div>
+
+                <div style={styles.bulkButtonRow}>
+                  <button
+                    type="button"
+                    onClick={() => handleBulkIssueSelection('ALL')}
+                    disabled={issueLoading || issuePeople.length === 0}
+                    style={styles.bulkButton}
+                  >
+                    Vsetci
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleBulkIssueSelection('READY')}
+                    disabled={issueLoading || issuePeople.length === 0}
+                    style={styles.bulkButton}
+                  >
+                    Vydatelni
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleBulkIssueSelection('NONE')}
+                    disabled={issueLoading || issuePeople.length === 0}
+                    style={styles.bulkButton}
+                  >
+                    Ziadni
+                  </button>
                 </div>
 
                 <input
@@ -2309,16 +2323,21 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     marginTop: 12
   },
-  toolbarSelect: {
-    minHeight: 36,
-    minWidth: 190,
+  bulkButtonRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8
+  },
+  bulkButton: {
+    minHeight: 30,
     border: '1px solid #d1d5db',
     borderRadius: 6,
     background: '#fff',
-    color: '#111827',
+    color: '#374151',
     padding: '0 9px',
-    fontSize: 12,
-    fontWeight: 900
+    fontSize: 11,
+    fontWeight: 950
   },
   prepareActions: {
     display: 'grid',
