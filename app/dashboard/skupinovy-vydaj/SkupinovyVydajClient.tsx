@@ -158,6 +158,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [issueTitle, setIssueTitle] = useState('')
   const [issuePeople, setIssuePeople] = useState<IssuePerson[]>([])
   const [selectedIssueUserIds, setSelectedIssueUserIds] = useState<string[]>([])
+  const [issuePeopleConfirmed, setIssuePeopleConfirmed] = useState(false)
   const [pickupUserIds, setPickupUserIds] = useState<string[]>([])
   const [pickupUsers, setPickupUsers] = useState<SearchUser[]>([])
   const [issuePersonFilter, setIssuePersonFilter] = useState('')
@@ -207,6 +208,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   }, [groups, groupQuery])
 
   const delegates = selectedGroupId ? delegateMap[selectedGroupId] || [] : []
+  const daySelectionReady = Boolean(date && selectedGroupId)
   const selectionReady = Boolean(date && selectedGroupId && meal)
   const selectedIssuePeople = issuePeople.filter(person => selectedIssueUserIds.includes(person.id))
   const selectedMovableIssuePeople = selectedIssuePeople.filter(person => person.itemStatus === 'PLANNED')
@@ -405,6 +407,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setFeedback('')
     setSelectionOpen(true)
     resetIssueState({ preserveMeal: true })
+    if (date) void loadExistingIssuesFor(nextGroupId, date, '')
   }
 
   async function openDelegateModal() {
@@ -478,6 +481,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     setIssueTitle('')
     setIssuePeople([])
     setSelectedIssueUserIds([])
+    setIssuePeopleConfirmed(false)
     setPickupUserIds([])
     setPickupUsers([])
     setIssuePersonFilter('')
@@ -535,15 +539,17 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
     if (!nextGroupId || !nextDate || !nextMeal) {
       setSelectionOpen(true)
-      setExistingIssues([])
-      setExistingIssuesLoaded(false)
+      if (!nextGroupId || !nextDate) {
+        setExistingIssues([])
+        setExistingIssuesLoaded(false)
+      }
       return
     }
 
     setSelectionOpen(false)
 
     try {
-      await loadExistingIssuesFor(nextGroupId, nextDate, nextMeal)
+      await loadExistingIssuesFor(nextGroupId, nextDate, '')
     } catch (err: any) {
       setIssueMessage(err?.message || 'Existujuce vydaje sa nepodarilo nacitat.', 'error')
     }
@@ -577,8 +583,10 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setIssuePersonFilter('')
       setPickupQuery('')
       setPickupResults([])
+      setPendingPickupExternalUsers([])
+      setIssuePeopleConfirmed(false)
       setEditingIssueId('')
-      await loadExistingIssuesFor(selectedGroupId, date, nextMeal)
+      await loadExistingIssuesFor(selectedGroupId, date, '')
       setConfirmed(true)
       const excludedCount = Number(json.plannedExcludedCount || 0)
       setIssueMessage(
@@ -616,6 +624,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setIssueTitle(issue.title || '')
       setIssuePeople(people)
       setSelectedIssueUserIds(people.filter(person => person.itemStatus !== 'REMOVED').map(person => person.id))
+      setIssuePeopleConfirmed(true)
       setPickupUserIds(issue.pickupUserIds || [])
       setPickupUsers(issue.pickupUsers || [])
       setIssuePersonFilter('')
@@ -650,7 +659,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       if (!res.ok) throw new Error(json.error || 'Skupinovy vydaj sa nepodarilo zrusit.')
 
       if (editingIssueId === issue.id) resetIssueState({ preserveMeal: true })
-      await loadExistingIssuesFor()
+      await loadExistingIssuesFor(selectedGroupId, date, '')
       setIssueMessage(json.message || 'Skupinovy vydaj bol zruseny.')
     } catch (err: any) {
       setIssueMessage(err?.message || 'Skupinovy vydaj sa nepodarilo zrusit.', 'error')
@@ -707,9 +716,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       if (current.includes(person.id)) return current
       return [...current, person.id]
     })
+    if (!editingIssueId) setIssuePeopleConfirmed(false)
   }
 
   function toggleIssuePerson(userId: string) {
+    if (!editingIssueId) setIssuePeopleConfirmed(false)
     setSelectedIssueUserIds(current => {
       return current.includes(userId)
         ? current.filter(id => id !== userId)
@@ -718,6 +729,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   }
 
   function handleBulkIssueSelection(action: string) {
+    if (!editingIssueId) setIssuePeopleConfirmed(false)
+
     if (action === 'ALL') {
       setSelectedIssueUserIds(issuePeople.map(person => person.id))
       return
@@ -731,6 +744,17 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
     if (action === 'NONE') {
       setSelectedIssueUserIds([])
     }
+  }
+
+  function confirmIssuePeople() {
+    if (selectedIssuePeople.length === 0) {
+      setIssueMessage('Vyber aspon jednu osobu.', 'error')
+      return
+    }
+
+    setIssuePeopleConfirmed(true)
+    setIssueMessage('Osoby vo vydaji su potvrdene. Teraz vyber, kto moze vydaj prevziat.')
+    openPickupModal()
   }
 
   function openMoveModal() {
@@ -773,7 +797,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       const currentIssueId = editingIssueId
       closeMoveModal()
       await editExistingIssue(currentIssueId)
-      await loadExistingIssuesFor(selectedGroupId, date, meal)
+      await loadExistingIssuesFor(selectedGroupId, date, '')
       setIssueMessage(json.message || 'Osoby boli presunute.')
     } catch (err: any) {
       setIssueMessage(err?.message || 'Osoby sa nepodarilo presunut.', 'error')
@@ -883,6 +907,16 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       return
     }
 
+    if (!editingIssueId && !issuePeopleConfirmed) {
+      setIssueMessage('Najprv potvrd osoby vo vydaji a potom vyber opravnenych prevziat.', 'error')
+      return
+    }
+
+    if (pickupUserIds.length === 0) {
+      setIssueMessage('Pridaj aspon jednu osobu opravnenu prevziat vydaj.', 'error')
+      return
+    }
+
     const wasEditing = Boolean(editingIssueId)
 
     setIssueLoading(true)
@@ -917,17 +951,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setQrModalOpen(false)
       setSelectionOpen(false)
 
-      if (!wasEditing && json.issueId) {
-        await loadExistingIssuesFor(selectedGroupId, date, meal)
-        await editExistingIssue(json.issueId)
-        setPendingPickupUserIds([])
-        setPickupModalOpen(true)
-        setIssueMessage('Skupinovy vydaj bol vytvoreny. Teraz pridaj opravnenych prevziat.')
-        return
-      }
-
       resetIssueState({ preserveMeal: true })
-      await loadExistingIssuesFor(selectedGroupId, date, meal)
+      await loadExistingIssuesFor(selectedGroupId, date, '')
       setIssueMessage(successMessage)
     } catch (err: any) {
       setIssueMessage(err?.message || 'Skupinovy vydaj sa nepodarilo ulozit.', 'error')
@@ -1149,7 +1174,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     onClick={() => {
                       setSelectionOpen(true)
                       resetIssueState({ clearExisting: false, preserveMeal: true })
-                      void loadExistingIssuesFor(selectedGroupId, date, meal)
+                      void loadExistingIssuesFor(selectedGroupId, date, '')
                     }}
                     style={styles.smallButtonWhite}
                   >
@@ -1180,13 +1205,13 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   <div
                     style={{
                       ...styles.workflowStep,
-                      ...(editingIssueId ? styles.workflowStepActive : styles.workflowStepLocked)
+                      ...(editingIssueId || issuePeopleConfirmed ? styles.workflowStepActive : styles.workflowStepLocked)
                     }}
                   >
                     <span style={styles.workflowStepNumber}>2</span>
                     <div style={styles.workflowStepText}>
                       <b>Opravneni prevziat</b>
-                      <small>{editingIssueId ? 'Vyber osoby, ktore mozu vydaj prevziat.' : 'Tento krok sa otvori po vytvoreni vydaja.'}</small>
+                      <small>{editingIssueId || issuePeopleConfirmed ? 'Vyber osoby, ktore mozu vydaj prevziat.' : 'Tento krok sa otvori po potvrdeni osob.'}</small>
                     </div>
                   </div>
                 </div>
@@ -1305,7 +1330,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   )}
                 </div>
 
-                {editingIssueId ? (
+                {editingIssueId || issuePeopleConfirmed ? (
                   <div style={styles.pickupStepCard}>
                     <div style={styles.pickupStepInfo}>
                       <b>Opravneni prevziat</b>
@@ -1327,18 +1352,29 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   </div>
                 ) : (
                   <div style={styles.nextStepHint}>
-                    Po vytvoreni vydaja sa automaticky otvori krok pre osoby opravnene prevziat.
+                    Najprv potvrd osoby vo vydaji. Skupinovy vydaj sa este neulozi.
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  onClick={saveIssue}
-                  disabled={issueLoading || selectedIssuePeople.length === 0}
-                  style={{ ...styles.primaryButton, marginTop: 14, width: '100%' }}
-                >
-                  {issueLoading ? 'Ukladam...' : editingIssueId ? 'Ulozit osoby vo vydaji' : 'Vytvorit a pokracovat'}
-                </button>
+                {!editingIssueId && !issuePeopleConfirmed ? (
+                  <button
+                    type="button"
+                    onClick={confirmIssuePeople}
+                    disabled={issueLoading || selectedIssuePeople.length === 0}
+                    style={{ ...styles.primaryButton, marginTop: 14, width: '100%' }}
+                  >
+                    Potvrdit osoby a pokracovat
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={saveIssue}
+                    disabled={issueLoading || selectedIssuePeople.length === 0 || pickupUserIds.length === 0}
+                    style={{ ...styles.primaryButton, marginTop: 14, width: '100%' }}
+                  >
+                    {issueLoading ? 'Ukladam...' : editingIssueId ? 'Ulozit skupinovy vydaj' : 'Ulozit skupinovy vydaj'}
+                  </button>
+                )}
 
                 {createdIssue && (
                   <div style={styles.createdBox}>
@@ -1374,7 +1410,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                       onClick={() => {
                         setSelectionOpen(true)
                         resetIssueState({ clearExisting: false, preserveMeal: true })
-                        void loadExistingIssuesFor(selectedGroupId, date, meal)
+                        void loadExistingIssuesFor(selectedGroupId, date, '')
                       }}
                       style={styles.smallButtonWhite}
                     >
@@ -1443,6 +1479,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                             setDate(value)
                             setSelectionOpen(true)
                             resetIssueState({ preserveMeal: true })
+                            if (selectedGroupId) void loadExistingIssuesFor(selectedGroupId, value, '')
                           },
                           issueLoading,
                           'Vyber datum'
@@ -1457,6 +1494,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                             setMeal(event.target.value as MealSelection)
                             setSelectionOpen(true)
                             resetIssueState({ preserveMeal: true })
+                            if (selectedGroupId && date) void loadExistingIssuesFor(selectedGroupId, date, '')
                           }}
                           disabled={issueLoading}
                           style={styles.input}
@@ -1507,12 +1545,12 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
               </section>
               )}
 
-              {!confirmed && selectionReady && (!selectionOpen || existingIssuesLoaded) && (
+              {!confirmed && daySelectionReady && (!selectionOpen || existingIssuesLoaded) && (
                 <section style={{ ...styles.panel, order: 3 }}>
                   <div style={styles.delegateHeader}>
                     <div>
-                      <h2 style={styles.delegateTitle}>Vydaje pre vyber</h2>
-                      <p style={styles.delegateHint}>{selectedGroup?.name || '-'} / {fullDateLabel(date)} / {mealLabel(meal)}</p>
+                      <h2 style={styles.delegateTitle}>Vydaje pre den</h2>
+                      <p style={styles.delegateHint}>{selectedGroup?.name || '-'} / {fullDateLabel(date)}</p>
                     </div>
                     <span style={styles.countBadge}>{existingIssues.length}</span>
                   </div>
@@ -1520,7 +1558,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   {existingLoading ? (
                     <div style={styles.emptyBox}>Nacitavam existujuce vydaje...</div>
                   ) : existingIssues.length === 0 ? (
-                    <div style={styles.emptyBox}>Pre tento vyber zatial nie je vytvoreny ziaden vydaj.</div>
+                    <div style={styles.emptyBox}>Pre tento den zatial nie je vytvoreny ziaden vydaj.</div>
                   ) : (
                     <div style={styles.existingIssuesList}>
                       {existingIssues.map(issue => (
@@ -1573,7 +1611,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                       disabled={issueLoading || !meal}
                       style={{ ...styles.primaryButton, alignSelf: 'end', width: '100%' }}
                     >
-                      {issueLoading ? 'Nacitavam...' : 'Pripravit novy vydaj'}
+                      {issueLoading ? 'Nacitavam...' : meal ? 'Pripravit novy vydaj' : 'Vyber jedlo pre novy vydaj'}
                     </button>
                   </div>
 
@@ -1993,7 +2031,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   disabled={issueLoading || !pickupSelectionChanged}
                   style={styles.primaryButton}
                 >
-                  {issueLoading ? 'Ukladam...' : `Ulozit zmeny (${pendingPickupUserIds.length})`}
+                  {issueLoading
+                    ? 'Ukladam...'
+                    : editingIssueId
+                      ? `Ulozit zmeny (${pendingPickupUserIds.length})`
+                      : `Potvrdit prevzatie (${pendingPickupUserIds.length})`}
                 </button>
               </div>
             </div>

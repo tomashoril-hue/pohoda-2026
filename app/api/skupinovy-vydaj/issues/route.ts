@@ -482,6 +482,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Vyber aspon jednu osobu.' }, { status: 400 })
     }
 
+    if (pickupUserIds.length === 0) {
+      return NextResponse.json({ error: 'Pridaj aspon jednu osobu opravnenu prevziat vydaj.' }, { status: 400 })
+    }
+
     const access = await validateIssueAccess(actor.id, registrationGroupId)
     const registrationGroup = await loadRegistrationGroup(registrationGroupId)
 
@@ -597,6 +601,10 @@ export async function PUT(req: NextRequest) {
 
     if (requestedPeople.length === 0) {
       return NextResponse.json({ error: 'Vyber aspon jednu osobu.' }, { status: 400 })
+    }
+
+    if (pickupUserIds.length === 0) {
+      return NextResponse.json({ error: 'Pridaj aspon jednu osobu opravnenu prevziat vydaj.' }, { status: 400 })
     }
 
     const issue = await loadIssueOr404(issueId)
