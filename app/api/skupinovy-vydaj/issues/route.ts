@@ -77,6 +77,27 @@ function statusForAccess(access: IssueAccess) {
   }
 }
 
+function bratislavaTodayIsoDate() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Bratislava',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date())
+
+  const year = parts.find(part => part.type === 'year')?.value
+  const month = parts.find(part => part.type === 'month')?.value
+  const day = parts.find(part => part.type === 'day')?.value
+
+  return `${year}-${month}-${day}`
+}
+
+function assertEditableDate(date: string) {
+  if (date < bratislavaTodayIsoDate()) {
+    throw Object.assign(new Error('Starší skupinový výdaj je možné iba prezerať.'), { status: 400 })
+  }
+}
+
 async function loadActiveIssueIds(date: string, meal: MealType, excludedIssueId: string) {
   const { data, error } = await supabaseServer
     .from('registration_group_issues')
@@ -520,6 +541,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Chyba registracna skupina, datum alebo jedlo.' }, { status: 400 })
     }
 
+    assertEditableDate(date)
+
     if (requestedPeople.length === 0) {
       return NextResponse.json({ error: 'Vyber aspon jednu osobu.' }, { status: 400 })
     }
@@ -663,6 +686,8 @@ export async function PUT(req: NextRequest) {
     if (!date || !meal || issue.status === 'CANCELLED') {
       return NextResponse.json({ error: 'Skupinovy vydaj nie je mozne upravit.' }, { status: 400 })
     }
+
+    assertEditableDate(date)
 
     const access = await validateIssueAccess(actor.id, issue.registration_group_id)
     const registrationGroup = await loadRegistrationGroup(issue.registration_group_id)
@@ -850,6 +875,13 @@ export async function DELETE(req: NextRequest) {
     }
 
     const issue = await loadIssueOr404(issueId)
+    const date = normalizeDate(issue.datum)
+
+    if (!date) {
+      return NextResponse.json({ error: 'Neplatny skupinovy vydaj.' }, { status: 400 })
+    }
+
+    assertEditableDate(date)
 
     if (issue.status === 'CANCELLED') {
       return NextResponse.json({ ok: true, message: 'Skupinovy vydaj uz bol zruseny.' })

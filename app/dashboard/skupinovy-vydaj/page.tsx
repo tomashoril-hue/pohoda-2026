@@ -6,19 +6,39 @@ import { fullName, loadUsersByIds } from '@/lib/registrationGroupIssue'
 import { supabaseServer } from '@/lib/supabaseServer'
 import SkupinovyVydajClient from './SkupinovyVydajClient'
 
-function todayIsoDate() {
-  const parts = new Intl.DateTimeFormat('en-CA', {
+function bratislavaDateParts(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Bratislava',
     year: 'numeric',
     month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(new Date())
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date)
+}
+
+function todayIsoDate() {
+  const parts = bratislavaDateParts()
 
   const year = parts.find(part => part.type === 'year')?.value
   const month = parts.find(part => part.type === 'month')?.value
   const day = parts.find(part => part.type === 'day')?.value
 
   return `${year}-${month}-${day}`
+}
+
+function addDaysToIsoDate(value: string, days: number) {
+  const [year, month, day] = value.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day + days))
+
+  return date.toISOString().slice(0, 10)
+}
+
+function defaultIssueDate() {
+  const today = todayIsoDate()
+  const hour = Number(bratislavaDateParts().find(part => part.type === 'hour')?.value || '0')
+
+  return hour >= 21 ? addDaysToIsoDate(today, 1) : today
 }
 
 async function loadGroupIssueAccess(userId: string, access: { isAdmin: boolean, isPersonalista: boolean }) {
@@ -124,7 +144,8 @@ export default async function SkupinovyVydajPage() {
 
   return (
     <SkupinovyVydajClient
-      initialDate={todayIsoDate()}
+      initialDate={defaultIssueDate()}
+      minEditableDate={todayIsoDate()}
       groups={groupIssueAccess.groups}
       delegatesByGroupId={groupIssueAccess.delegatesByGroupId}
     />

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
-import { cleanText, getIssueAccess, loadUsersByIds } from '@/lib/registrationGroupIssue'
+import { cleanText, getIssueAccess, loadUsersByIds, normalizeDate } from '@/lib/registrationGroupIssue'
 
 function normalizeUserIds(value: any) {
   return Array.from(new Set<string>(
@@ -9,6 +9,27 @@ function normalizeUserIds(value: any) {
       ? value.map((id: any) => cleanText(id)).filter(Boolean)
       : []
   ))
+}
+
+function bratislavaTodayIsoDate() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Bratislava',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date())
+
+  const year = parts.find(part => part.type === 'year')?.value
+  const month = parts.find(part => part.type === 'month')?.value
+  const day = parts.find(part => part.type === 'day')?.value
+
+  return `${year}-${month}-${day}`
+}
+
+function assertEditableDate(date: string) {
+  if (date < bratislavaTodayIsoDate()) {
+    throw Object.assign(new Error('Starší skupinový výdaj je možné iba prezerať.'), { status: 400 })
+  }
 }
 
 export async function PUT(req: NextRequest) {
@@ -33,7 +54,7 @@ export async function PUT(req: NextRequest) {
 
     const { data: issue, error: issueError } = await supabaseServer
       .from('registration_group_issues')
-      .select('id, registration_group_id, status')
+      .select('id, registration_group_id, datum, status')
       .eq('id', issueId)
       .maybeSingle()
 
@@ -42,6 +63,12 @@ export async function PUT(req: NextRequest) {
     if (issue.status === 'CANCELLED') {
       return NextResponse.json({ error: 'Zruseny vydaj nie je mozne upravit.' }, { status: 400 })
     }
+
+    const date = normalizeDate(issue.datum)
+    if (!date) {
+      return NextResponse.json({ error: 'Neplatný skupinový výdaj.' }, { status: 400 })
+    }
+    assertEditableDate(date)
 
     const access = await getIssueAccess(actor.id, issue.registration_group_id)
 
