@@ -472,6 +472,12 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   }
 
   function selectRegistrationGroup(nextGroupId: string) {
+    if (nextGroupId === selectedGroupId) {
+      setGroupPickerOpen(false)
+      setGroupQuery('')
+      return
+    }
+
     setSelectedGroupId(nextGroupId)
     setGroupPickerOpen(false)
     setGroupQuery('')
@@ -1313,15 +1319,19 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
 
                 <label style={styles.field}>
                   <span style={styles.label}>Názov skupinového výdaja</span>
-                  <input
-                    type="text"
-                    value={issueTitle}
-                    onChange={event => setIssueTitle(event.target.value)}
-                    placeholder="Zadaj názov výdaja"
-                    style={styles.input}
-                    disabled={issueLoading || issueReadOnly}
-                    required
-                  />
+                  {issueReadOnly ? (
+                    <div style={styles.readOnlyInputValue}>{issueTitle || '-'}</div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={issueTitle}
+                      onChange={event => setIssueTitle(event.target.value)}
+                      placeholder="Zadaj názov výdaja"
+                      style={styles.input}
+                      disabled={issueLoading}
+                      required
+                    />
+                  )}
                 </label>
 
                 {readOnlyDate && (
@@ -2295,6 +2305,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#fff7ed',
     color: '#9a3412',
     padding: '9px 10px',
+    marginTop: 10,
     marginBottom: 10,
     fontSize: 12,
     fontWeight: 900,
@@ -2414,6 +2425,20 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 800,
     background: '#fff',
     color: '#111827'
+  },
+  readOnlyInputValue: {
+    width: '100%',
+    minWidth: 0,
+    minHeight: 38,
+    boxSizing: 'border-box',
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    padding: '9px 10px',
+    fontSize: 13,
+    fontWeight: 900,
+    background: '#f9fafb',
+    color: '#374151',
+    userSelect: 'none'
   },
   mobileDateControl: {
     position: 'relative',
