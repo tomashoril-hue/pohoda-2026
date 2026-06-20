@@ -1538,7 +1538,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                       value={meal}
                       onChange={event => {
                         setMeal(event.target.value as MealSelection)
-                        resetIssueState({ preserveMeal: true })
+                        resetIssueState({ clearExisting: false, preserveMeal: true })
                       }}
                       disabled={issueLoading}
                       style={styles.input}
