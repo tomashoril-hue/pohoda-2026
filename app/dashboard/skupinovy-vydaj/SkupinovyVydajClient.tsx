@@ -202,6 +202,7 @@ function sameIds(a: string[], b: string[]) {
 
 export default function SkupinovyVydajClient({ initialDate, minEditableDate, groups, delegatesByGroupId }: Props) {
   const pageRef = useRef<HTMLElement | null>(null)
+  const stableViewportHeightRef = useRef<number | null>(null)
   const delegateSearchRequestRef = useRef(0)
   const delegateSearchModeRef = useRef<'group' | 'outside'>('group')
   const [date, setDate] = useState(initialDate)
@@ -360,8 +361,22 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     body.style.inset = '0'
     body.style.width = '100%'
 
+    function textControlIsFocused() {
+      const activeElement = document.activeElement
+      return (
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement ||
+        activeElement instanceof HTMLSelectElement
+      )
+    }
+
     function updateViewportHeight() {
-      const height = window.visualViewport?.height || window.innerHeight
+      const viewportHeight = window.visualViewport?.height || window.innerHeight
+      const stableHeight = stableViewportHeightRef.current || window.innerHeight || viewportHeight
+      const inputFocused = textControlIsFocused()
+      const height = inputFocused ? Math.max(stableHeight, viewportHeight) : viewportHeight
+
+      if (!inputFocused) stableViewportHeightRef.current = viewportHeight
       root.style.setProperty('--group-issue-viewport-height', `${height}px`)
       window.requestAnimationFrame(keepPageScrollInside)
     }
@@ -417,10 +432,24 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       }
     }
 
+    function onFocusIn() {
+      root.style.setProperty(
+        '--group-issue-viewport-height',
+        `${stableViewportHeightRef.current || window.innerHeight}px`
+      )
+      window.requestAnimationFrame(keepPageScrollInside)
+    }
+
+    function onFocusOut() {
+      window.setTimeout(updateViewportHeight, 120)
+    }
+
     const page = pageRef.current
 
     document.addEventListener('touchstart', onTouchStart, { passive: true })
     document.addEventListener('touchmove', onTouchMove, { passive: false })
+    document.addEventListener('focusin', onFocusIn)
+    document.addEventListener('focusout', onFocusOut)
     window.addEventListener('touchmove', onTouchMove, { passive: false })
     page?.addEventListener('touchstart', onTouchStart, { passive: true })
     page?.addEventListener('touchmove', onTouchMove, { passive: false })
@@ -434,6 +463,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       root.classList.remove(PWA_DISABLE_PULL_REFRESH_CLASS)
       document.removeEventListener('touchstart', onTouchStart)
       document.removeEventListener('touchmove', onTouchMove)
+      document.removeEventListener('focusin', onFocusIn)
+      document.removeEventListener('focusout', onFocusOut)
       window.removeEventListener('touchmove', onTouchMove)
       page?.removeEventListener('touchstart', onTouchStart)
       page?.removeEventListener('touchmove', onTouchMove)
