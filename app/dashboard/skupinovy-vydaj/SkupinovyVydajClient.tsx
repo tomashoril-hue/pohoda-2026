@@ -1659,6 +1659,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                         const issueWaitingInfo = issue.status === 'WAITING'
                           ? waitingInfo(issue.validAfter, nowMs)
                           : null
+                        const isReadOnlyIssue = readOnlyDate || (issue.summary?.SPOLU || 0) === 0
 
                         return (
                           <div
@@ -1690,11 +1691,11 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                                 onClick={() => editExistingIssue(issue.id)}
                                 disabled={issueLoading}
                                 style={styles.smallEditButton}
-                                title={readOnlyDate ? 'Pozrieť výdaj' : 'Zmeniť výdaj'}
+                                title={isReadOnlyIssue ? 'Pozrieť výdaj' : 'Zmeniť výdaj'}
                               >
-                                Z
+                                {isReadOnlyIssue ? 'i' : 'Z'}
                               </button>
-                              {!readOnlyDate && (
+                              {!isReadOnlyIssue && (
                                 <button
                                   type="button"
                                   onClick={() => cancelExistingIssue(issue)}
@@ -2290,6 +2291,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#fff7ed',
     color: '#9a3412',
     padding: '9px 10px',
+    marginBottom: 10,
     fontSize: 12,
     fontWeight: 900,
     lineHeight: 1.35
