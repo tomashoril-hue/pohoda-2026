@@ -1478,24 +1478,20 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   </label>
                 </div>
 
-                {selectedGroup && (
+                {selectedGroup?.canManageDelegates && (
                   <div style={styles.delegateSummaryCard}>
                     <div style={styles.delegateSummaryText}>
                       <b>Poverene osoby pre tuto skupinu</b>
                       <span>{delegates.length} osob</span>
                     </div>
 
-                    {selectedGroup.canManageDelegates ? (
-                      <button
-                        type="button"
-                        onClick={openDelegateModal}
-                        style={styles.smallButtonWhite}
-                      >
-                        Spravovat
-                      </button>
-                    ) : (
-                      <span style={styles.delegateSummaryMuted}>Spravuje manager skupiny.</span>
-                    )}
+                    <button
+                      type="button"
+                      onClick={openDelegateModal}
+                      style={styles.smallButtonWhite}
+                    >
+                      Spravovat
+                    </button>
                   </div>
                 )}
               </section>
