@@ -139,6 +139,10 @@ function isIssuePersonReady(person: IssuePerson) {
   return person.issuable !== false
 }
 
+function isPlannedIssuePerson(person: IssuePerson) {
+  return !person.itemStatus || person.itemStatus === 'PLANNED'
+}
+
 function displayIssuePersonName(person: IssuePerson) {
   const firstName = String(person.firstName || '').trim()
   const lastName = String(person.lastName || '').trim()
@@ -261,6 +265,11 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const daySelectionReady = Boolean(date && selectedGroupId)
   const readOnlyDate = Boolean(date && minEditableDate && date < minEditableDate)
   const selectedIssuePeople = issuePeople.filter(person => selectedIssueUserIds.includes(person.id))
+  const editableIssuePeople = editingIssueId
+    ? issuePeople.filter(isPlannedIssuePerson)
+    : issuePeople
+  const issueFullyLocked = Boolean(editingIssueId && issuePeople.length > 0 && editableIssuePeople.length === 0)
+  const issueReadOnly = readOnlyDate || issueFullyLocked
   const selectedMovableIssuePeople = selectedIssuePeople.filter(person => person.itemStatus === 'PLANNED')
   const selectedHasUnmovablePeople = selectedIssuePeople.some(person => person.itemStatus !== 'PLANNED')
   const selectedIssuablePeople = selectedIssuePeople.filter(isIssuePersonReady)
@@ -683,7 +692,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       setMeal(issue.meal || '')
       setIssueTitle(issue.title || '')
       setIssuePeople(people)
-      setSelectedIssueUserIds(people.filter(person => person.itemStatus !== 'REMOVED').map(person => person.id))
+      setSelectedIssueUserIds(people.filter(isPlannedIssuePerson).map(person => person.id))
       setIssuePeopleConfirmed(true)
       setPickupUserIds(issue.pickupUserIds || [])
       setPickupUsers(issue.pickupUsers || [])
@@ -692,8 +701,13 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       setPickupResults([])
       setMoveModalOpen(false)
       setMoveTargetIssueId('')
+      const hasEditablePeople = people.some(isPlannedIssuePerson)
       setConfirmed(true)
-      setIssueMessage(readOnlyDate ? 'Skupinový výdaj je načítaný na prezeranie.' : 'Skupinový výdaj je načítaný na úpravu.')
+      setIssueMessage(
+        readOnlyDate || !hasEditablePeople
+          ? 'Skupinový výdaj je načítaný na prezeranie.'
+          : 'Skupinový výdaj je načítaný na úpravu.'
+      )
     } catch (err: any) {
       setIssueMessage(err?.message || 'Skupinový výdaj sa nepodarilo načítať.', 'error')
     } finally {
@@ -734,10 +748,12 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   }
 
   async function addIssuePersonByQr(qrCode: string) {
-    if (readOnlyDate) {
+    if (issueReadOnly) {
       return {
         tone: 'error' as const,
-        message: 'Starší skupinový výdaj je možné iba prezerať.'
+        message: issueFullyLocked
+          ? 'Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.'
+          : 'Starší skupinový výdaj je možné iba prezerať.'
       }
     }
 
@@ -791,7 +807,10 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   }
 
   function toggleIssuePerson(userId: string) {
-    if (readOnlyDate) return
+    if (issueReadOnly) return
+
+    const person = issuePeople.find(item => item.id === userId)
+    if (editingIssueId && person && !isPlannedIssuePerson(person)) return
 
     setSelectedIssueUserIds(current => {
       return current.includes(userId)
@@ -801,15 +820,15 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   }
 
   function handleBulkIssueSelection(action: string) {
-    if (readOnlyDate) return
+    if (issueReadOnly) return
 
     if (action === 'ALL') {
-      setSelectedIssueUserIds(issuePeople.map(person => person.id))
+      setSelectedIssueUserIds(editableIssuePeople.map(person => person.id))
       return
     }
 
     if (action === 'READY') {
-      setSelectedIssueUserIds(issuePeople.filter(isIssuePersonReady).map(person => person.id))
+      setSelectedIssueUserIds(editableIssuePeople.filter(isIssuePersonReady).map(person => person.id))
       return
     }
 
@@ -819,8 +838,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   }
 
   function confirmIssuePeople() {
-    if (readOnlyDate) {
-      setIssueMessage('Starší skupinový výdaj je možné iba prezerať.', 'error')
+    if (issueReadOnly) {
+      setIssueMessage(issueFullyLocked ? 'Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.' : 'Starší skupinový výdaj je možné iba prezerať.', 'error')
       return
     }
 
@@ -835,8 +854,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   }
 
   function openMoveModal() {
-    if (readOnlyDate) {
-      setIssueMessage('Starší skupinový výdaj je možné iba prezerať.', 'error')
+    if (issueReadOnly) {
+      setIssueMessage(issueFullyLocked ? 'Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.' : 'Starší skupinový výdaj je možné iba prezerať.', 'error')
       return
     }
 
@@ -933,8 +952,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   }
 
   async function savePickupSelection() {
-    if (readOnlyDate) {
-      setIssueMessage('Starší skupinový výdaj je možné iba prezerať.', 'error')
+    if (issueReadOnly) {
+      setIssueMessage(issueFullyLocked ? 'Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.' : 'Starší skupinový výdaj je možné iba prezerať.', 'error')
       return
     }
 
@@ -989,8 +1008,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   }
 
   async function saveIssue() {
-    if (readOnlyDate) {
-      setIssueMessage('Starší skupinový výdaj je možné iba prezerať.', 'error')
+    if (issueReadOnly) {
+      setIssueMessage(issueFullyLocked ? 'Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.' : 'Starší skupinový výdaj je možné iba prezerať.', 'error')
       return
     }
 
@@ -1300,7 +1319,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     onChange={event => setIssueTitle(event.target.value)}
                     placeholder="Zadaj názov výdaja"
                     style={styles.input}
-                    disabled={issueLoading || readOnlyDate}
+                    disabled={issueLoading || issueReadOnly}
                     required
                   />
                 </label>
@@ -1308,6 +1327,12 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                 {readOnlyDate && (
                   <div style={styles.readOnlyNotice}>
                     Starší dátum je iba na prezeranie. Vytvoriť alebo upraviť skupinový výdaj môžeš najskôr na dnešný dátum.
+                  </div>
+                )}
+
+                {issueFullyLocked && (
+                  <div style={styles.readOnlyNotice}>
+                    Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu. Výdaj je iba na prezeranie.
                   </div>
                 )}
 
@@ -1328,7 +1353,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   <button
                     type="button"
                     onClick={() => setQrModalOpen(true)}
-                    disabled={issueLoading || readOnlyDate || !selectedGroupId || !date || !meal}
+                    disabled={issueLoading || issueReadOnly || !selectedGroupId || !date || !meal}
                     style={styles.darkButton}
                   >
                     Pridať cez QR
@@ -1340,7 +1365,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                       onClick={openMoveModal}
                       disabled={
                         issueLoading ||
-                        readOnlyDate ||
+                        issueReadOnly ||
                         selectedMovableIssuePeople.length === 0 ||
                         selectedHasUnmovablePeople ||
                         moveTargetIssues.length === 0
@@ -1361,7 +1386,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   <button
                     type="button"
                     onClick={() => handleBulkIssueSelection('ALL')}
-                    disabled={issueLoading || readOnlyDate || issuePeople.length === 0}
+                    disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
                     style={styles.bulkButton}
                   >
                     Všetci
@@ -1369,7 +1394,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   <button
                     type="button"
                     onClick={() => handleBulkIssueSelection('READY')}
-                    disabled={issueLoading || readOnlyDate || issuePeople.length === 0}
+                    disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
                     style={styles.bulkButton}
                   >
                     Vydateľní
@@ -1377,7 +1402,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   <button
                     type="button"
                     onClick={() => handleBulkIssueSelection('NONE')}
-                    disabled={issueLoading || readOnlyDate || issuePeople.length === 0}
+                    disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
                     style={styles.bulkButton}
                   >
                     Žiadni
@@ -1419,7 +1444,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                               checked={selected}
                               onChange={() => toggleIssuePerson(person.id)}
                               style={styles.checkbox}
-                              disabled={readOnlyDate}
+                              disabled={issueReadOnly || (Boolean(editingIssueId) && !isPlannedIssuePerson(person))}
                             />
                             <span>
                               <b>{displayIssuePersonName(person)}</b>
@@ -1454,7 +1479,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     <button
                       type="button"
                       onClick={openPickupModal}
-                      disabled={issueLoading || readOnlyDate}
+                      disabled={issueLoading || issueReadOnly}
                       style={{ ...styles.secondaryButton, width: '100%' }}
                     >
                       Upraviť prevzatie
@@ -1466,7 +1491,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   <button
                     type="button"
                     onClick={confirmIssuePeople}
-                    disabled={issueLoading || readOnlyDate || selectedIssuePeople.length === 0}
+                    disabled={issueLoading || issueReadOnly || selectedIssuePeople.length === 0}
                     style={{ ...styles.primaryButton, marginTop: 14, width: '100%' }}
                   >
                     Potvrdiť osoby a pokračovať
@@ -1475,7 +1500,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   <button
                     type="button"
                     onClick={saveIssue}
-                    disabled={issueLoading || readOnlyDate || selectedIssuePeople.length === 0 || pickupUserIds.length === 0}
+                    disabled={issueLoading || issueReadOnly || selectedIssuePeople.length === 0 || pickupUserIds.length === 0}
                     style={{ ...styles.primaryButton, marginTop: 14, width: '100%' }}
                   >
                     {issueLoading ? 'Ukladám...' : editingIssueId ? 'Uložiť skupinový výdaj' : 'Uložiť skupinový výdaj'}
@@ -2117,7 +2142,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                 <button
                   type="button"
                   onClick={savePickupSelection}
-                  disabled={issueLoading || readOnlyDate || !pickupSelectionChanged}
+                  disabled={issueLoading || issueReadOnly || !pickupSelectionChanged}
                   style={styles.primaryButton}
                 >
                   {issueLoading

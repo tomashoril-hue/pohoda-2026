@@ -32,6 +32,20 @@ function assertEditableDate(date: string) {
   }
 }
 
+async function assertIssueHasEditableItems(issueId: string) {
+  const { count, error } = await supabaseServer
+    .from('registration_group_issue_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('issue_id', issueId)
+    .eq('status', 'PLANNED')
+
+  if (error) throw error
+
+  if ((count || 0) === 0) {
+    throw Object.assign(new Error('Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.'), { status: 400 })
+  }
+}
+
 export async function PUT(req: NextRequest) {
   try {
     const actor = await getCurrentUser()
@@ -69,6 +83,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Neplatný skupinový výdaj.' }, { status: 400 })
     }
     assertEditableDate(date)
+    await assertIssueHasEditableItems(issue.id)
 
     const access = await getIssueAccess(actor.id, issue.registration_group_id)
 

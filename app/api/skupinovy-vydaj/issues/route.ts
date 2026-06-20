@@ -167,6 +167,20 @@ async function ensureUniqueIssueTitle({
   }
 }
 
+async function assertIssueHasEditableItems(issueId: string) {
+  const { count, error } = await supabaseServer
+    .from('registration_group_issue_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('issue_id', issueId)
+    .eq('status', 'PLANNED')
+
+  if (error) throw error
+
+  if ((count || 0) === 0) {
+    throw Object.assign(new Error('Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.'), { status: 400 })
+  }
+}
+
 async function movePeopleFromOtherIssues({
   date,
   meal,
@@ -706,6 +720,15 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: currentItemsError.message }, { status: 500 })
     }
 
+    const hasEditableItems = (currentItems || []).some((item: any) => item.status === 'PLANNED')
+
+    if (!hasEditableItems) {
+      return NextResponse.json(
+        { error: 'Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.' },
+        { status: 400 }
+      )
+    }
+
     const currentByUserId = new Map((currentItems || []).map((item: any) => [item.user_id, item]))
     const newRequestedPeople = requestedPeople.filter(person => !currentByUserId.has(person.userId))
     const existingRequestedUserIds = requestedPeople
@@ -882,6 +905,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     assertEditableDate(date)
+    await assertIssueHasEditableItems(issue.id)
 
     if (issue.status === 'CANCELLED') {
       return NextResponse.json({ ok: true, message: 'Skupinovy vydaj uz bol zruseny.' })
