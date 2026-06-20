@@ -151,6 +151,8 @@ function sameIds(a: string[], b: string[]) {
 
 export default function SkupinovyVydajClient({ initialDate, groups, delegatesByGroupId }: Props) {
   const pageRef = useRef<HTMLElement | null>(null)
+  const delegateSearchRequestRef = useRef(0)
+  const delegateSearchModeRef = useRef<'group' | 'outside'>('group')
   const [date, setDate] = useState(initialDate)
   const [meal, setMeal] = useState<MealSelection>('')
   const [selectionOpen, setSelectionOpen] = useState(true)
@@ -393,6 +395,14 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   function setIssueMessage(message: string, type: 'ok' | 'error' = 'ok') {
     setIssueFeedback(message)
     setIssueFeedbackType(type)
+  }
+
+  function resetDelegateSearchMode(searchAll: boolean) {
+    delegateSearchModeRef.current = searchAll ? 'outside' : 'group'
+    delegateSearchRequestRef.current += 1
+    setSearchQuery('')
+    setSearchResults([])
+    setLoading(false)
   }
 
   function selectRegistrationGroup(nextGroupId: string) {
@@ -962,6 +972,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   }
 
   async function searchUsers(query: string, searchAll = delegateSearchAll) {
+    const searchMode = searchAll ? 'outside' : 'group'
+    const requestId = delegateSearchRequestRef.current + 1
+    delegateSearchRequestRef.current = requestId
+    delegateSearchModeRef.current = searchMode
+
     setSearchQuery(query)
     setSearchResults([])
 
@@ -984,12 +999,16 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       const json = await res.json()
 
       if (!res.ok) throw new Error(json.error || 'Vyhladavanie zlyhalo.')
+      if (delegateSearchRequestRef.current !== requestId || delegateSearchModeRef.current !== searchMode) return
 
       setSearchResults(json.users || [])
     } catch (err: any) {
+      if (delegateSearchRequestRef.current !== requestId || delegateSearchModeRef.current !== searchMode) return
       setMessage(err?.message || 'Vyhladavanie zlyhalo.', 'error')
     } finally {
-      setLoading(false)
+      if (delegateSearchRequestRef.current === requestId && delegateSearchModeRef.current === searchMode) {
+        setLoading(false)
+      }
     }
   }
 
@@ -1767,6 +1786,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                           type="button"
                           onClick={() => {
                             setDelegateSearchAll(false)
+                            resetDelegateSearchMode(false)
                             void searchUsers('', false)
                           }}
                           style={{
@@ -1780,8 +1800,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                           type="button"
                           onClick={() => {
                             setDelegateSearchAll(true)
-                            setSearchQuery('')
-                            setSearchResults([])
+                            resetDelegateSearchMode(true)
                           }}
                           style={{
                             ...styles.segmentButton,
