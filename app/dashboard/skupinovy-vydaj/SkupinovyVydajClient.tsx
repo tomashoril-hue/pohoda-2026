@@ -1659,7 +1659,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                         const issueWaitingInfo = issue.status === 'WAITING'
                           ? waitingInfo(issue.validAfter, nowMs)
                           : null
-                        const isReadOnlyIssue = readOnlyDate || (issue.summary?.SPOLU || 0) === 0
+                        const fullyIssuedIssue = (issue.summary?.SPOLU || 0) === 0
+                        const isReadOnlyIssue = readOnlyDate || fullyIssuedIssue
 
                         return (
                           <div
@@ -1670,7 +1671,10 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                             }}
                           >
                             <div style={styles.existingIssueInfo}>
-                              <b>{issue.title}</b>
+                              <b>
+                                {issue.title}
+                                {fullyIssuedIssue && <span style={styles.issuedInlineStatus}> - vydané</span>}
+                              </b>
                               <small>
                                 <span style={styles.mealBadge}>{mealLabel(issue.meal)}</span>
                                 MASO {issue.summary?.MASO || 0} / VEGE {issue.summary?.VEGE || 0} / DIETA {issue.summary?.DIETA || 0} / SPOLU {issue.summary?.SPOLU || 0}
@@ -2708,6 +2712,10 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 0,
     fontSize: 12,
     fontWeight: 900
+  },
+  issuedInlineStatus: {
+    color: '#dc2626',
+    fontWeight: 950
   },
   waitingInline: {
     display: 'inline-flex',
