@@ -769,11 +769,9 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       if (current.includes(person.id)) return current
       return [...current, person.id]
     })
-    if (!editingIssueId) setIssuePeopleConfirmed(false)
   }
 
   function toggleIssuePerson(userId: string) {
-    if (!editingIssueId) setIssuePeopleConfirmed(false)
     setSelectedIssueUserIds(current => {
       return current.includes(userId)
         ? current.filter(id => id !== userId)
@@ -782,8 +780,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   }
 
   function handleBulkIssueSelection(action: string) {
-    if (!editingIssueId) setIssuePeopleConfirmed(false)
-
     if (action === 'ALL') {
       setSelectedIssueUserIds(issuePeople.map(person => person.id))
       return
