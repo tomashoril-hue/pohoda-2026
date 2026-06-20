@@ -82,6 +82,45 @@ function mealLabel(value: MealSelection) {
   return MEAL_OPTIONS.find(option => option.value === value)?.label || 'Vyberte jedlo'
 }
 
+function dateTimeLabel(value: string | null) {
+  if (!value) return ''
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+
+  return new Intl.DateTimeFormat('sk-SK', {
+    timeZone: 'Europe/Bratislava',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date)
+}
+
+function remainingLabel(ms: number) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function waitingInfo(validAfter: string | null, nowMs: number) {
+  if (!validAfter) return null
+
+  const targetMs = Date.parse(validAfter)
+  if (Number.isNaN(targetMs)) return null
+
+  const diff = targetMs - nowMs
+
+  return {
+    active: diff > 0,
+    countdown: diff > 0 ? remainingLabel(diff) : '0:00',
+    startsAt: dateTimeLabel(validAfter)
+  }
+}
+
 function sourceLabel(value: IssuePerson['source']) {
   if (value === 'REGISTRATION_GROUP') return 'Skupina'
   if (value === 'QR') return 'QR'
@@ -174,6 +213,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [moveTargetIssueId, setMoveTargetIssueId] = useState('')
   const [existingIssues, setExistingIssues] = useState<ExistingIssue[]>([])
   const [editingIssueId, setEditingIssueId] = useState('')
+  const [editingIssueStatus, setEditingIssueStatus] = useState('')
+  const [editingIssueValidAfter, setEditingIssueValidAfter] = useState<string | null>(null)
   const [issueLoading, setIssueLoading] = useState(false)
   const [issueFeedback, setIssueFeedback] = useState('')
   const [issueFeedbackType, setIssueFeedbackType] = useState<'ok' | 'error'>('ok')
@@ -195,6 +236,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState('')
   const [feedbackType, setFeedbackType] = useState<'ok' | 'error'>('ok')
+  const [nowMs, setNowMs] = useState(() => Date.now())
 
   const selectedGroup = useMemo(() => {
     return groups.find(group => group.id === selectedGroupId) || null
@@ -262,6 +304,15 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       return issue.id !== editingIssueId && issue.meal === meal && issue.status !== 'CANCELLED'
     })
   }, [editingIssueId, existingIssues, meal])
+  const editingWaitingInfo = editingIssueStatus === 'WAITING'
+    ? waitingInfo(editingIssueValidAfter, nowMs)
+    : null
+  const editWillResetWaiting = Boolean(editingIssueId && selectedGroup && !selectedGroup.canManageDelegates)
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     if (!window.matchMedia('(pointer: coarse)').matches) return
@@ -499,6 +550,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setExistingIssues([])
     }
     setEditingIssueId('')
+    setEditingIssueStatus('')
+    setEditingIssueValidAfter(null)
     setIssueFeedback('')
     setCreatedIssue(null)
   }
@@ -574,6 +627,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setPendingPickupExternalUsers([])
       setIssuePeopleConfirmed(false)
       setEditingIssueId('')
+      setEditingIssueStatus('')
+      setEditingIssueValidAfter(null)
       await loadExistingIssuesFor(selectedGroupId, date, '')
       setConfirmed(true)
       const excludedCount = Number(json.plannedExcludedCount || 0)
@@ -608,6 +663,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       const people: IssuePerson[] = (issue.people || []).filter((person: IssuePerson) => person.itemStatus !== 'REMOVED')
 
       setEditingIssueId(issue.id)
+      setEditingIssueStatus(issue.status || '')
+      setEditingIssueValidAfter(issue.validAfter || null)
       setMeal(issue.meal || '')
       setIssueTitle(issue.title || '')
       setIssuePeople(people)
@@ -907,6 +964,11 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
     const wasEditing = Boolean(editingIssueId)
 
+    if (editWillResetWaiting) {
+      const ok = window.confirm('Ulozenim uprav sa skupinovy vydaj znova aktivuje az o 15 minut. Pokracovat?')
+      if (!ok) return
+    }
+
     setIssueLoading(true)
     setIssueMessage('')
     setCreatedIssue(null)
@@ -1187,6 +1249,19 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     style={styles.input}
                   />
                 </label>
+
+                {editingWaitingInfo && (
+                  <div style={styles.waitingNotice}>
+                    <b>{editingWaitingInfo.active ? `Zacne platit o ${editingWaitingInfo.countdown}` : 'Platnost by mala byt aktivna'}</b>
+                    <span>Planovana platnost: {editingWaitingInfo.startsAt}</span>
+                  </div>
+                )}
+
+                {editWillResetWaiting && (
+                  <div style={styles.resetWaitingNotice}>
+                    Ulozenim uprav sa tento skupinovy vydaj znova aktivuje az o 15 minut.
+                  </div>
+                )}
 
                 <div className="workflow-steps" style={styles.workflowSteps}>
                   <div style={{ ...styles.workflowStep, ...styles.workflowStepActive }}>
@@ -1513,44 +1588,58 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     <div style={styles.emptyBox}>Pre tento den zatial nie je vytvoreny ziaden vydaj.</div>
                   ) : (
                     <div style={styles.existingIssuesList}>
-                      {existingIssues.map(issue => (
-                        <div
-                          key={issue.id}
-                          style={{
-                            ...styles.existingIssueRow,
-                            ...(editingIssueId === issue.id ? styles.existingIssueRowActive : {})
-                          }}
-                        >
-                          <div style={styles.existingIssueInfo}>
-                            <b>{issue.title}</b>
-                            <small>
-                              <span style={styles.mealBadge}>{mealLabel(issue.meal)}</span>
-                              MASO {issue.summary?.MASO || 0} / VEGE {issue.summary?.VEGE || 0} / DIETA {issue.summary?.DIETA || 0} / SPOLU {issue.summary?.SPOLU || 0}
-                            </small>
-                          </div>
+                      {existingIssues.map(issue => {
+                        const issueWaitingInfo = issue.status === 'WAITING'
+                          ? waitingInfo(issue.validAfter, nowMs)
+                          : null
 
-                          <div style={styles.existingIssueActions}>
-                            <button
-                              type="button"
-                              onClick={() => editExistingIssue(issue.id)}
-                              disabled={issueLoading}
-                              style={styles.smallEditButton}
-                              title="Zmenit vydaj"
-                            >
-                              Z
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => cancelExistingIssue(issue)}
-                              disabled={issueLoading}
-                              style={styles.smallRemoveButton}
-                              title="Zrusit vydaj"
-                            >
-                              x
-                            </button>
+                        return (
+                          <div
+                            key={issue.id}
+                            style={{
+                              ...styles.existingIssueRow,
+                              ...(editingIssueId === issue.id ? styles.existingIssueRowActive : {})
+                            }}
+                          >
+                            <div style={styles.existingIssueInfo}>
+                              <b>{issue.title}</b>
+                              <small>
+                                <span style={styles.mealBadge}>{mealLabel(issue.meal)}</span>
+                                MASO {issue.summary?.MASO || 0} / VEGE {issue.summary?.VEGE || 0} / DIETA {issue.summary?.DIETA || 0} / SPOLU {issue.summary?.SPOLU || 0}
+                              </small>
+                              {issueWaitingInfo && (
+                                <span style={styles.waitingInline}>
+                                  {issueWaitingInfo.active
+                                    ? `Zacne platit o ${issueWaitingInfo.countdown}`
+                                    : 'Platnost by mala byt aktivna'}
+                                  {issueWaitingInfo.startsAt ? ` / ${issueWaitingInfo.startsAt}` : ''}
+                                </span>
+                              )}
+                            </div>
+
+                            <div style={styles.existingIssueActions}>
+                              <button
+                                type="button"
+                                onClick={() => editExistingIssue(issue.id)}
+                                disabled={issueLoading}
+                                style={styles.smallEditButton}
+                                title="Zmenit vydaj"
+                              >
+                                Z
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => cancelExistingIssue(issue)}
+                                disabled={issueLoading}
+                                style={styles.smallRemoveButton}
+                                title="Zrusit vydaj"
+                              >
+                                x
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
 
@@ -2100,7 +2189,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   workflowSteps: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gridTemplateColumns: '1fr',
     gap: 8,
     marginTop: 10
   },
@@ -2110,9 +2199,8 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#f9fafb',
     padding: 9,
     display: 'grid',
-    gridTemplateColumns: '28px minmax(0, 1fr)',
-    gap: 8,
-    alignItems: 'center',
+    gap: 7,
+    alignItems: 'start',
     minWidth: 0
   },
   workflowStepActive: {
@@ -2134,7 +2222,8 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: 12,
-    fontWeight: 950
+    fontWeight: 950,
+    justifySelf: 'start'
   },
   workflowStepText: {
     display: 'grid',
@@ -2142,6 +2231,29 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 0,
     fontSize: 12,
     fontWeight: 900
+  },
+  waitingNotice: {
+    marginTop: 10,
+    border: '1px solid #fed7aa',
+    borderRadius: 8,
+    background: '#fff7ed',
+    color: '#9a3412',
+    padding: 10,
+    display: 'grid',
+    gap: 3,
+    fontSize: 12,
+    fontWeight: 900
+  },
+  resetWaitingNotice: {
+    marginTop: 8,
+    border: '1px solid #fecaca',
+    borderRadius: 8,
+    background: '#fef2f2',
+    color: '#991b1b',
+    padding: 10,
+    fontSize: 12,
+    fontWeight: 900,
+    lineHeight: 1.35
   },
   panelHeaderRow: {
     display: 'flex',
@@ -2566,6 +2678,18 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 0,
     fontSize: 12,
     fontWeight: 900
+  },
+  waitingInline: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    width: 'fit-content',
+    border: '1px solid #fed7aa',
+    borderRadius: 999,
+    background: '#fff7ed',
+    color: '#9a3412',
+    padding: '3px 8px',
+    fontSize: 10,
+    fontWeight: 950
   },
   mealBadge: {
     display: 'inline-flex',
