@@ -1267,7 +1267,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
                 {editingWaitingInfo && (
                   <div style={styles.waitingNotice}>
-                    <b>{editingWaitingInfo.active ? `Zacne platit o ${editingWaitingInfo.countdown}` : 'Platnost by mala byt aktivna'}</b>
+                    <b>{editingWaitingInfo.active ? `Zacne platit o ${editingWaitingInfo.countdown}` : 'Platnost je aktivna'}</b>
                     <span>Planovana platnost: {editingWaitingInfo.startsAt}</span>
                   </div>
                 )}
@@ -1392,7 +1392,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                   )}
                 </div>
 
-                {editingIssueId || issuePeopleConfirmed ? (
+                {(editingIssueId || issuePeopleConfirmed) && (
                   <div style={styles.pickupStepCard}>
                     <div style={styles.pickupStepInfo}>
                       <b>Opravneni prevziat</b>
@@ -1411,10 +1411,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     >
                       Upravit prevzatie
                     </button>
-                  </div>
-                ) : (
-                  <div style={styles.nextStepHint}>
-                    Najprv potvrd osoby vo vydaji. Skupinovy vydaj sa este neulozi.
                   </div>
                 )}
 
@@ -1603,7 +1599,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                                 <span style={styles.waitingInline}>
                                   {issueWaitingInfo.active
                                     ? `Zacne platit o ${issueWaitingInfo.countdown}`
-                                    : 'Platnost by mala byt aktivna'}
+                                    : 'Platnost je aktivna'}
                                   {issueWaitingInfo.startsAt ? ` / ${issueWaitingInfo.startsAt}` : ''}
                                 </span>
                               )}
@@ -2556,17 +2552,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#1e3a8a',
     fontSize: 12,
     fontWeight: 900
-  },
-  nextStepHint: {
-    marginTop: 12,
-    border: '1px dashed #d1d5db',
-    borderRadius: 8,
-    background: '#f9fafb',
-    color: '#6b7280',
-    padding: '9px 10px',
-    fontSize: 12,
-    fontWeight: 850,
-    lineHeight: 1.35
   },
   bulkButtonRow: {
     display: 'flex',
