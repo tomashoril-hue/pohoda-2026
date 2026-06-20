@@ -104,6 +104,48 @@ async function nextIssueSequence(registrationGroupId: string, date: string, meal
   return (count || 0) + 1
 }
 
+function normalizedTitle(value: string) {
+  return cleanText(value).toLowerCase()
+}
+
+async function ensureUniqueIssueTitle({
+  registrationGroupId,
+  date,
+  meal,
+  title,
+  excludedIssueId
+}: {
+  registrationGroupId: string
+  date: string
+  meal: MealType
+  title: string
+  excludedIssueId?: string
+}) {
+  const titleKey = normalizedTitle(title)
+  if (!titleKey) {
+    throw Object.assign(new Error('Zadaj nazov skupinoveho vydaja.'), { status: 400 })
+  }
+
+  let query = supabaseServer
+    .from('registration_group_issues')
+    .select('id, title')
+    .eq('registration_group_id', registrationGroupId)
+    .eq('datum', date)
+    .eq('typ_jedla', meal)
+    .neq('status', 'CANCELLED')
+    .limit(100)
+
+  if (excludedIssueId) query = query.neq('id', excludedIssueId)
+
+  const { data, error } = await query
+  if (error) throw error
+
+  const duplicate = (data || []).some((row: any) => normalizedTitle(row.title) === titleKey)
+  if (duplicate) {
+    throw Object.assign(new Error('Skupinovy vydaj s tymto nazvom uz pre tento den a jedlo existuje.'), { status: 409 })
+  }
+}
+
 async function movePeopleFromOtherIssues({
   date,
   meal,
@@ -508,6 +550,13 @@ export async function POST(req: NextRequest) {
     const sequence = await nextIssueSequence(registrationGroupId, date, meal)
     const title = issueTitle(registrationGroup.name, meal, body.title, sequence)
 
+    await ensureUniqueIssueTitle({
+      registrationGroupId,
+      date,
+      meal,
+      title
+    })
+
     const { data: issue, error: issueError } = await supabaseServer
       .from('registration_group_issues')
       .insert({
@@ -656,6 +705,14 @@ export async function PUT(req: NextRequest) {
     const nextStatus = statusForAccess(access)
     const now = new Date().toISOString()
     const title = cleanText(body.title) || issue.title
+
+    await ensureUniqueIssueTitle({
+      registrationGroupId: issue.registration_group_id,
+      date,
+      meal,
+      title,
+      excludedIssueId: issue.id
+    })
 
     const { error: updateIssueError } = await supabaseServer
       .from('registration_group_issues')

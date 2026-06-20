@@ -82,6 +82,13 @@ function mealLabel(value: MealSelection) {
   return MEAL_OPTIONS.find(option => option.value === value)?.label || 'Vyberte jedlo'
 }
 
+function defaultIssueTitle(groupName: string, meal: MealSelection, sequence: number) {
+  if (!meal) return ''
+
+  const mealText = meal === 'OBED' ? 'obed' : 'vecera'
+  return `${groupName || 'Skupinovy vydaj'} ${mealText} vydaj c. ${Math.max(1, sequence)}`
+}
+
 function dateTimeLabel(value: string | null) {
   if (!value) return ''
 
@@ -580,7 +587,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
 
       if (!res.ok) throw new Error(json.error || 'Existujuce vydaje sa nepodarilo nacitat.')
 
-      const issues = json.issues || []
+      const issues: ExistingIssue[] = json.issues || []
       setExistingIssues(issues)
       return issues
     } finally {
@@ -616,7 +623,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       if (!res.ok) throw new Error(json.error || 'Ludi sa nepodarilo nacitat.')
 
       const people: IssuePerson[] = json.people || []
-      setIssueTitle('')
       setIssuePeople(people)
       setSelectedIssueUserIds([])
       setPickupUserIds([])
@@ -629,7 +635,9 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       setEditingIssueId('')
       setEditingIssueStatus('')
       setEditingIssueValidAfter(null)
-      await loadExistingIssuesFor(selectedGroupId, date, '')
+      const dailyIssues = await loadExistingIssuesFor(selectedGroupId, date, '')
+      const existingForMeal = dailyIssues.filter(issue => issue.meal === nextMeal).length
+      setIssueTitle(defaultIssueTitle(selectedGroup?.name || '', nextMeal, existingForMeal + 1))
       setConfirmed(true)
       const excludedCount = Number(json.plannedExcludedCount || 0)
       setIssueMessage(
@@ -962,6 +970,13 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
       return
     }
 
+    const title = issueTitle.trim()
+
+    if (!title) {
+      setIssueMessage('Zadaj nazov skupinoveho vydaja.', 'error')
+      return
+    }
+
     const wasEditing = Boolean(editingIssueId)
 
     if (editWillResetWaiting) {
@@ -982,7 +997,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           registrationGroupId: selectedGroupId,
           date,
           meal,
-          title: issueTitle,
+          title,
           people: selectedIssuePeople.map(person => ({
             userId: person.id,
             source: person.source
@@ -1191,7 +1206,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
           .issue-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
           .issue-person-row { grid-template-columns: 1fr !important; }
           .issue-person-meta { justify-content: flex-start !important; }
-          .workflow-steps { grid-template-columns: 1fr !important; }
           .group-picker-menu {
             position: fixed !important;
             left: 10px !important;
@@ -1223,8 +1237,8 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                 <div style={styles.prepHeading}>
                   <div style={styles.prepHeadingInfo}>
                     <span style={styles.summaryLabel}>Pripravujes</span>
-                    <b>{mealLabel(meal)}</b>
-                    <small>{selectedGroup?.name || '-'} / {fullDateLabel(date)}</small>
+                    <b>{mealLabel(meal)} · {selectedGroup?.name || '-'}</b>
+                    <small>{fullDateLabel(date)}</small>
                   </div>
 
                   <button
@@ -1245,8 +1259,9 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     type="text"
                     value={issueTitle}
                     onChange={event => setIssueTitle(event.target.value)}
-                    placeholder="Volitelne, inak sa nazov vytvori automaticky"
+                    placeholder="Zadaj nazov vydaja"
                     style={styles.input}
+                    required
                   />
                 </label>
 
@@ -1262,29 +1277,6 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                     Ulozenim uprav sa tento skupinovy vydaj znova aktivuje az o 15 minut.
                   </div>
                 )}
-
-                <div className="workflow-steps" style={styles.workflowSteps}>
-                  <div style={{ ...styles.workflowStep, ...styles.workflowStepActive }}>
-                    <span style={styles.workflowStepNumber}>1</span>
-                    <div style={styles.workflowStepText}>
-                      <b>Osoby vo vydaji</b>
-                      <small>Vyber ludi, pre ktorych sa pripravuje jedlo.</small>
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      ...styles.workflowStep,
-                      ...(editingIssueId || issuePeopleConfirmed ? styles.workflowStepActive : styles.workflowStepLocked)
-                    }}
-                  >
-                    <span style={styles.workflowStepNumber}>2</span>
-                    <div style={styles.workflowStepText}>
-                      <b>Opravneni prevziat</b>
-                      <small>{editingIssueId || issuePeopleConfirmed ? 'Vyber osoby, ktore mozu vydaj prevziat.' : 'Tento krok sa otvori po potvrdeni osob.'}</small>
-                    </div>
-                  </div>
-                </div>
 
                 <div style={styles.issueToolbar}>
                   <button
@@ -1415,7 +1407,7 @@ export default function SkupinovyVydajClient({ initialDate, groups, delegatesByG
                       type="button"
                       onClick={openPickupModal}
                       disabled={issueLoading}
-                      style={styles.secondaryButton}
+                      style={{ ...styles.secondaryButton, width: '100%' }}
                     >
                       Upravit prevzatie
                     </button>
@@ -2168,11 +2160,11 @@ const styles: Record<string, React.CSSProperties> = {
     order: 4
   },
   prepHeading: {
-    border: '1px solid #bbf7d0',
+    border: '1px solid #86efac',
     borderRadius: 8,
-    background: '#f0fdf4',
-    padding: 10,
-    marginBottom: 10,
+    background: '#dcfce7',
+    padding: '10px 12px',
+    marginBottom: 12,
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -2180,57 +2172,13 @@ const styles: Record<string, React.CSSProperties> = {
     flexWrap: 'wrap',
     color: '#14532d',
     fontSize: 13,
-    fontWeight: 900
+    fontWeight: 900,
+    boxShadow: 'inset 4px 0 0 #22c55e'
   },
   prepHeadingInfo: {
     display: 'grid',
     gap: 3,
     minWidth: 0
-  },
-  workflowSteps: {
-    display: 'grid',
-    gridTemplateColumns: '1fr',
-    gap: 8,
-    marginTop: 10
-  },
-  workflowStep: {
-    border: '1px solid #e5e7eb',
-    borderRadius: 8,
-    background: '#f9fafb',
-    padding: 9,
-    display: 'grid',
-    gap: 7,
-    alignItems: 'start',
-    minWidth: 0
-  },
-  workflowStepActive: {
-    borderColor: '#86efac',
-    background: '#f0fdf4',
-    color: '#14532d'
-  },
-  workflowStepLocked: {
-    opacity: 0.72,
-    color: '#6b7280'
-  },
-  workflowStepNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 999,
-    background: '#111827',
-    color: '#fff',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 12,
-    fontWeight: 950,
-    justifySelf: 'start'
-  },
-  workflowStepText: {
-    display: 'grid',
-    gap: 2,
-    minWidth: 0,
-    fontSize: 12,
-    fontWeight: 900
   },
   waitingNotice: {
     marginTop: 10,
