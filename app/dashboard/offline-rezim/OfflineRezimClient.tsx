@@ -96,6 +96,7 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
   const [pinValue, setPinValue] = useState('')
   const [manualQr, setManualQr] = useState('')
   const [scanLoading, setScanLoading] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [successCount, setSuccessCount] = useState(0)
   const [errorCount, setErrorCount] = useState(0)
   const [scanHistory, setScanHistory] = useState<OfflineIssueScanResult[]>([])
@@ -137,7 +138,7 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
 
       setStats({ deviceId, snapshots, pendingEvents, openConflicts, pinEnabled: pinState.enabled })
       setSyncNotice(navigator.onLine && pendingEvents > 0
-        ? 'Po návrate internetu sa čakajúce offline udalosti pripravia na automatickú synchronizáciu.'
+        ? 'Po návrate internetu sa čakajúce offline udalosti automaticky zosynchronizujú.'
         : ''
       )
     } catch (err: any) {
@@ -336,19 +337,22 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
     }
   }
 
-  async function syncOfflineEvents() {
-    if (!online || scanLoading || stats.pendingEvents === 0) return
+  async function syncOfflineEvents(mode: 'manual' | 'auto' = 'manual') {
+    if (!online || syncing || stats.pendingEvents === 0) return
 
-    setScanLoading(true)
+    setSyncing(true)
     setMessage('')
-    setSyncNotice('Synchronizujem offline udalosti.')
+    setSyncNotice(mode === 'auto'
+      ? 'Internet je späť. Automaticky synchronizujem offline udalosti.'
+      : 'Synchronizujem offline udalosti.'
+    )
 
     try {
       const events = await listOfflinePendingEvents()
       if (events.length === 0) {
         await refreshStats()
         setSyncNotice('')
-        setMessage('Nie sú žiadne čakajúce offline udalosti.')
+        if (mode === 'manual') setMessage('Nie sú žiadne čakajúce offline udalosti.')
         return
       }
 
@@ -376,7 +380,7 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
       setMessage(err?.message || 'Synchronizácia sa nepodarila.')
       setSyncNotice('Synchronizácia zlyhala. Čakajúce udalosti ostali uložené v zariadení.')
     } finally {
-      setScanLoading(false)
+      setSyncing(false)
     }
   }
 
@@ -406,13 +410,18 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
   }, [])
 
   useEffect(() => {
-    if (!online || stats.pendingEvents === 0) {
+    if (!online || stats.pendingEvents === 0 || syncing) {
       setSyncNotice('')
       return
     }
 
-    setSyncNotice('Online pripojenie je dostupné. Automatickú synchronizáciu doplníme po serverovom sync API.')
-  }, [online, stats.pendingEvents])
+    setSyncNotice('Internet je dostupný. Spúšťam automatickú synchronizáciu.')
+    const timeoutId = window.setTimeout(() => {
+      void syncOfflineEvents('auto')
+    }, 1200)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [online, stats.pendingEvents, syncing])
 
   return (
     <main style={styles.page}>
@@ -553,8 +562,8 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
           <button
             type="button"
             style={styles.secondaryButton}
-            onClick={syncOfflineEvents}
-            disabled={!online || scanLoading || stats.pendingEvents === 0}
+            onClick={() => syncOfflineEvents('manual')}
+            disabled={!online || syncing || stats.pendingEvents === 0}
           >
             Synchronizovať teraz
           </button>
