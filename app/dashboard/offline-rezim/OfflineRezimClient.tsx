@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import QrCameraScanner from '@/app/dashboard/skupinovy-vydaj/QrCameraScanner'
 import {
+  cancelLastOfflineIssue,
   clearOfflineIssueData,
   clearOfflineOperatorPin,
   countOfflineOpenConflicts,
@@ -229,7 +230,9 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
 
   function addScanHistory(result: OfflineIssueScanResult) {
     setScanHistory(prev => [result, ...prev].slice(0, 8))
-    if (result.ok) {
+    if (result.ok && result.status === 'CANCELLED') {
+      setSuccessCount(prev => Math.max(0, prev - Math.max(1, Number(result.issuedCount || 1))))
+    } else if (result.ok) {
       setSuccessCount(prev => prev + Math.max(1, Number(result.issuedCount || 1)))
     } else if (result.status !== 'ISSUE_DECISION_REQUIRED') {
       setErrorCount(prev => prev + 1)
@@ -292,6 +295,30 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
     const qrCode = issueDecision.qrCode
     setIssueDecision(null)
     await processOfflineQr(qrCode, issueAction, bulkIssueId)
+  }
+
+  async function cancelLastIssue() {
+    if (scanLoading || !latestSnapshot) return
+
+    const ok = window.confirm('Naozaj stornovať posledný offline výdaj na tomto zariadení?')
+    if (!ok) return
+
+    setScanLoading(true)
+
+    try {
+      const result = await cancelLastOfflineIssue()
+      addScanHistory(result)
+      await refreshStats()
+    } catch (err: any) {
+      addScanHistory({
+        ok: false,
+        status: 'ERROR',
+        tone: 'error',
+        message: err?.message || 'Offline storno sa nepodarilo spracovať.'
+      })
+    } finally {
+      setScanLoading(false)
+    }
   }
 
   function choiceSummaryLabel(summary?: { MASO: number; VEGE: number; DIETA: number }) {
@@ -523,11 +550,25 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
               </button>
             </div>
 
+            <div style={styles.offlineIssueActions}>
+              <button
+                type="button"
+                style={styles.warningButton}
+                onClick={cancelLastIssue}
+                disabled={scanLoading || stats.pendingEvents === 0}
+              >
+                Stornovať posledný výdaj
+              </button>
+            </div>
+
             <div style={styles.historyList}>
               {scanHistory.length === 0 ? (
                 <div style={styles.emptyBox}>Čaká sa na prvý offline výdaj.</div>
               ) : scanHistory.map((item, index) => (
-                <div key={`${item.status}-${index}`} style={item.ok ? styles.historyOk : styles.historyError}>
+                <div
+                  key={`${item.status}-${index}`}
+                  style={item.tone === 'warning' ? styles.historyWarning : item.ok ? styles.historyOk : styles.historyError}
+                >
                   <b>{item.message}</b>
                   <span>{item.personName || 'Bez mena'}{item.groupName ? ` · ${item.groupName}` : ''}</span>
                   {item.summary && <small>{choiceSummaryLabel(item.summary)}</small>}
@@ -939,6 +980,13 @@ const styles: Record<string, CSSProperties> = {
     color: '#991b1b',
     fontWeight: 900
   },
+  warningButton: {
+    ...buttonBase,
+    border: '1px solid #fed7aa',
+    background: '#fff7ed',
+    color: '#9a3412',
+    fontWeight: 900
+  },
   scanStats: {
     display: 'flex',
     gap: 8,
@@ -964,6 +1012,12 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     alignItems: 'center'
   },
+  offlineIssueActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 8,
+    flexWrap: 'wrap'
+  },
   historyList: {
     display: 'grid',
     gap: 8
@@ -984,6 +1038,17 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 8,
     background: '#fef2f2',
     color: '#991b1b',
+    padding: 10,
+    display: 'grid',
+    gap: 3,
+    fontSize: 12,
+    fontWeight: 850
+  },
+  historyWarning: {
+    border: '1px solid #fed7aa',
+    borderRadius: 8,
+    background: '#fff7ed',
+    color: '#9a3412',
     padding: 10,
     display: 'grid',
     gap: 3,

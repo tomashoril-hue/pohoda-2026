@@ -553,6 +553,100 @@ export async function processOfflineIssueQr({
   }
 }
 
+export async function cancelLastOfflineIssue(): Promise<OfflineIssueScanResult> {
+  const db = await openOfflineIssueDb()
+  const snapshot = await getLatestSnapshotFromDb(db)
+
+  if (!snapshot) {
+    return { ok: false, status: 'NO_OFFLINE_DATA', tone: 'error', message: 'Offline dáta nie sú stiahnuté.' }
+  }
+
+  const events = await requestToPromise<OfflineIssueEvent[]>(
+    db.transaction(STORES.events, 'readonly').objectStore(STORES.events).getAll()
+  )
+  const snapshotEvents = events.filter(event => event.snapshotId === snapshot.snapshotId)
+  const cancelledEventIds = new Set(
+    snapshotEvents
+      .filter(event => event.operation === 'CANCEL_ISSUE' && event.targetOfflineEventId)
+      .map(event => event.targetOfflineEventId as string)
+  )
+  const targetEvent = snapshotEvents
+    .filter(event => event.operation === 'ISSUE' && !cancelledEventIds.has(event.offlineEventId))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] || null
+
+  if (!targetEvent) {
+    return { ok: false, status: 'NO_OFFLINE_ISSUE_TO_CANCEL', tone: 'error', message: 'Nie je čo stornovať.' }
+  }
+
+  const entitlements = await getEntitlementsBySnapshot(db, snapshot.snapshotId)
+  const issuedPersonIds = targetEvent.issuedPersonIds?.length
+    ? targetEvent.issuedPersonIds
+    : [targetEvent.personId]
+  const rowsToRestore = entitlements.filter(row => {
+    return issuedPersonIds.includes(row.personId) &&
+      row.issuedStatus === 'ISSUED' &&
+      row.localIssuedEventId === targetEvent.offlineEventId
+  })
+
+  if (rowsToRestore.length === 0) {
+    return { ok: false, status: 'NO_OFFLINE_ISSUE_TO_CANCEL', tone: 'error', message: 'Posledný výdaj už nie je možné stornovať.' }
+  }
+
+  const now = new Date().toISOString()
+  const cancelEventId = makeIssueEventId()
+  const summary = choiceSummary(rowsToRestore)
+  const firstRow = rowsToRestore[0]
+  const writeTx = db.transaction([STORES.entitlements, STORES.events], 'readwrite')
+  const entitlementStore = writeTx.objectStore(STORES.entitlements)
+  const eventStore = writeTx.objectStore(STORES.events)
+
+  rowsToRestore.forEach(row => {
+    entitlementStore.put({
+      ...row,
+      issuedStatus: 'NOT_ISSUED',
+      localIssuedEventId: '',
+      updatedAt: now
+    })
+  })
+
+  eventStore.put({
+    offlineEventId: cancelEventId,
+    deviceId: snapshot.deviceId,
+    snapshotId: snapshot.snapshotId,
+    operation: 'CANCEL_ISSUE',
+    issueAction: targetEvent.issueAction,
+    qrCode: targetEvent.qrCode,
+    entitlementId: targetEvent.entitlementId,
+    personId: targetEvent.personId,
+    registrationGroupIssueId: targetEvent.registrationGroupIssueId,
+    issuedPersonIds: Array.from(new Set(rowsToRestore.map(row => row.personId))),
+    issuedCount: rowsToRestore.length,
+    choiceSummary: summary,
+    mealDate: snapshot.mealDate,
+    mealType: snapshot.mealType,
+    issueLocation: snapshot.issueLocation,
+    createdAt: now,
+    preparedByUserId: snapshot.preparedByUserId,
+    syncStatus: 'PENDING',
+    targetOfflineEventId: targetEvent.offlineEventId
+  } satisfies OfflineIssueEvent)
+
+  await txDone(writeTx)
+
+  return {
+    ok: true,
+    status: 'CANCELLED',
+    tone: 'warning',
+    message: `Storno offline výdaja hotové: ${rowsToRestore.length} porcií.`,
+    personName: firstRow?.fullName || 'Bez mena',
+    choice: firstRow?.choice || '',
+    method: targetEvent.issueAction || 'INDIVIDUAL',
+    groupName: firstRow?.issueTitle || firstRow?.registrationGroupName || '',
+    issuedCount: rowsToRestore.length,
+    summary
+  }
+}
+
 export async function listOfflineSnapshots() {
   const store = await readonlyStore(STORES.snapshots)
   return requestToPromise<OfflineSnapshot[]>(store.getAll())
