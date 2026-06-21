@@ -19,6 +19,7 @@ export type OfflineSnapshot = {
 export type OfflineEntitlement = {
   entitlementId: string
   snapshotId: string
+  mode: 'GROUP_ISSUE' | 'INDIVIDUAL'
   issueId: string
   issueTitle: string
   personId: string
@@ -41,6 +42,7 @@ export type OfflineQrCode = {
   snapshotId: string
   entitlementId: string
   personId: string
+  mode: 'GROUP_ISSUE' | 'INDIVIDUAL'
   issueId: string
   active: boolean
   updatedAt: string

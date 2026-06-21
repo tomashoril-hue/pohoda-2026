@@ -173,7 +173,9 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
 
       await refreshStats()
       setDownload({ active: false, percent: 100, label: 'Hotovo.' })
-      setMessage(`Offline dáta sú uložené. Nároky: ${payload.snapshot.entitlementCount}, QR kódy: ${payload.qrCodes.length}.`)
+      setMessage(
+        `Offline dáta sú uložené. Skupinové: ${data.counts?.groupIssueEntitlements ?? 0}, individuálne: ${data.counts?.individualEntitlements ?? 0}, QR kódy: ${payload.qrCodes.length}.`
+      )
     } catch (err: any) {
       setDownload({ active: false, percent: 0, label: '' })
       setMessage(err?.message || 'Offline dáta sa nepodarilo pripraviť.')
