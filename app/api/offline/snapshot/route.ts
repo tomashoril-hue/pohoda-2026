@@ -5,6 +5,7 @@ import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import {
   cleanText,
+  entitlementOk,
   fullName,
   normalizeChoice,
   normalizeDate,
@@ -36,6 +37,10 @@ function isIssueActive(issue: any, now: Date) {
 
 function uniqueClean(values: any[]) {
   return Array.from(new Set(values.map(value => cleanText(value)).filter(Boolean)))
+}
+
+function uniqueValues<T>(values: T[]) {
+  return Array.from(new Set(values.filter(Boolean)))
 }
 
 function chunk<T>(values: T[], size = 500) {
@@ -132,6 +137,23 @@ async function loadSelectionsByUserId(userIds: string[], date: string, meal: str
   return map
 }
 
+async function loadEntitlementsByUserId(userIds: string[], date: string) {
+  const map = new Map<string, any>()
+
+  for (const idChunk of chunk(userIds)) {
+    const { data, error } = await supabaseServer
+      .from('user_food_entitlements')
+      .select('user_id, obed, vecera')
+      .eq('datum', date)
+      .in('user_id', idChunk)
+
+    if (error) throw error
+    ;(data || []).forEach((row: any) => map.set(row.user_id, row))
+  }
+
+  return map
+}
+
 async function loadIssuedUserIds(date: string, meal: string) {
   const rows = await fetchAllRows((from, to) => {
     return supabaseServer
@@ -214,6 +236,59 @@ async function loadRegistrationGroupNamesByUserId(userIds: string[], date: strin
   return result
 }
 
+type QrIndexMode = 'GROUP_ISSUE' | 'INDIVIDUAL' | 'PICKUP_USER'
+
+function addQrIndexRows({
+  qrRowsByCode,
+  qrCodes,
+  snapshotId,
+  entitlementId,
+  personId,
+  mode,
+  issueId,
+  updatedAt
+}: {
+  qrRowsByCode: Map<string, any>
+  qrCodes: string[]
+  snapshotId: string
+  entitlementId?: string
+  personId: string
+  mode: QrIndexMode
+  issueId?: string
+  updatedAt: string
+}) {
+  qrCodes.forEach(qrCode => {
+    const existing = qrRowsByCode.get(qrCode)
+    const entitlementIds = uniqueValues([
+      ...(existing?.entitlementIds || []),
+      entitlementId || ''
+    ])
+    const issueIds = uniqueValues([
+      ...(existing?.issueIds || []),
+      issueId || ''
+    ])
+    const pickupIssueIds = mode === 'PICKUP_USER'
+      ? uniqueValues([...(existing?.pickupIssueIds || []), issueId || ''])
+      : existing?.pickupIssueIds || []
+    const modes = uniqueValues([...(existing?.modes || []), mode])
+
+    qrRowsByCode.set(qrCode, {
+      qrCode,
+      snapshotId,
+      entitlementId: existing?.entitlementId || entitlementId || '',
+      entitlementIds,
+      personId,
+      mode: existing?.mode || mode,
+      modes,
+      issueId: existing?.issueId || issueId || '',
+      issueIds,
+      pickupIssueIds,
+      active: true,
+      updatedAt
+    })
+  })
+}
+
 export async function GET(req: NextRequest) {
   try {
     const actor = await getCurrentUser()
@@ -292,9 +367,8 @@ export async function GET(req: NextRequest) {
       loadIssuedUserIds(date, meal)
     ])
 
-    const plannedGroupUserIds = new Set(itemRows.map((row: any) => row.user_id).filter(Boolean))
     const individualUserIds = individualEntitlementUserIds.filter(userId => {
-      return !plannedGroupUserIds.has(userId) && !issuedUserIds.has(userId)
+      return !issuedUserIds.has(userId)
     })
     const userIds = uniqueClean([
       ...itemRows.map((row: any) => row.user_id),
@@ -302,16 +376,17 @@ export async function GET(req: NextRequest) {
       ...individualUserIds
     ])
 
-    const [users, qrCodesByUserId, selectionByUserId] = await Promise.all([
+    const [users, qrCodesByUserId, selectionByUserId, entitlementByUserId] = await Promise.all([
       loadUsersById(userIds),
       loadQrCodesByUserId(userIds),
-      loadSelectionsByUserId(individualUserIds, date, meal)
+      loadSelectionsByUserId(userIds, date, meal),
+      loadEntitlementsByUserId(userIds, date)
     ])
 
     const usersById = new Map(users.map((user: any) => [user.id, user]))
     const registrationGroupNameByUserId = await loadRegistrationGroupNamesByUserId(individualUserIds, date, usersById)
     const issuesById = new Map(issues.map((issue: any) => [issue.id, issue]))
-    const qrRows: any[] = []
+    const qrRowsByCode = new Map<string, any>()
     const warnings: string[] = []
 
     const groupEntitlements = itemRows
@@ -319,10 +394,14 @@ export async function GET(req: NextRequest) {
         const issue = issuesById.get(item.issue_id)
         const group = relationOne(issue?.registration_groups)
         const user = usersById.get(item.user_id)
-        const choice = normalizeChoice(item.volba || user?.typ_stravy) as FoodChoice | null
+        const selectionChoice = normalizeSelectionChoice(selectionByUserId.get(item.user_id)?.volba)
+        const choice = selectionChoice === 'BEZ_ZAUJMU'
+          ? null
+          : normalizeChoice(selectionChoice || item.volba || user?.typ_stravy) as FoodChoice | null
         const qrCodes = qrCodesByUserId.get(item.user_id) || []
 
         if (issuedUserIds.has(item.user_id)) return null
+        if (!entitlementOk(entitlementByUserId.get(item.user_id), meal)) return null
         if (!issue || !user || String(user.aktivny || '').toUpperCase() !== 'ANO' || !choice) return null
         if (qrCodes.length === 0) warnings.push(`Osoba ${fullName(user)} nema aktivny QR kod pre offline skenovanie.`)
 
@@ -347,17 +426,15 @@ export async function GET(req: NextRequest) {
           updatedAt: item.updated_at || preparedAt
         }
 
-        qrCodes.forEach(qrCode => {
-          qrRows.push({
-            qrCode,
-            snapshotId,
-            entitlementId: item.id,
-            personId: user.id,
-            mode: 'GROUP_ISSUE',
-            issueId: issue.id,
-            active: true,
-            updatedAt: preparedAt
-          })
+        addQrIndexRows({
+          qrRowsByCode,
+          qrCodes,
+          snapshotId,
+          entitlementId: item.id,
+          personId: user.id,
+          mode: 'GROUP_ISSUE',
+          issueId: issue.id,
+          updatedAt: preparedAt
         })
 
         return entitlement
@@ -398,17 +475,15 @@ export async function GET(req: NextRequest) {
           updatedAt: preparedAt
         }
 
-        qrCodes.forEach(qrCode => {
-          qrRows.push({
-            qrCode,
-            snapshotId,
-            entitlementId,
-            personId: user.id,
-            mode: 'INDIVIDUAL',
-            issueId: '',
-            active: true,
-            updatedAt: preparedAt
-          })
+        addQrIndexRows({
+          qrRowsByCode,
+          qrCodes,
+          snapshotId,
+          entitlementId,
+          personId: user.id,
+          mode: 'INDIVIDUAL',
+          issueId: '',
+          updatedAt: preparedAt
         })
 
         return entitlement
@@ -421,15 +496,31 @@ export async function GET(req: NextRequest) {
       .map((row: any) => {
         const user = usersById.get(row.user_id)
         if (!user) return null
+        const qrCodes = qrCodesByUserId.get(user.id) || []
+
+        addQrIndexRows({
+          qrRowsByCode,
+          qrCodes,
+          snapshotId,
+          personId: user.id,
+          mode: 'PICKUP_USER',
+          issueId: row.issue_id,
+          updatedAt: preparedAt
+        })
 
         return {
+          id: `${row.issue_id}:${user.id}`,
+          snapshotId,
           issueId: row.issue_id,
           personId: user.id,
           fullName: fullName(user),
-          qrCodes: qrCodesByUserId.get(user.id) || []
+          qrCodes,
+          updatedAt: preparedAt
         }
       })
       .filter(Boolean)
+
+    const qrRows = Array.from(qrRowsByCode.values())
 
     const snapshot = {
       snapshotId,

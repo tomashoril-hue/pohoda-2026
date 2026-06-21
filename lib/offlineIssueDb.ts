@@ -41,10 +41,24 @@ export type OfflineQrCode = {
   qrCode: string
   snapshotId: string
   entitlementId: string
+  entitlementIds: string[]
   personId: string
-  mode: 'GROUP_ISSUE' | 'INDIVIDUAL'
+  mode: 'GROUP_ISSUE' | 'INDIVIDUAL' | 'PICKUP_USER'
+  modes: Array<'GROUP_ISSUE' | 'INDIVIDUAL' | 'PICKUP_USER'>
   issueId: string
+  issueIds: string[]
+  pickupIssueIds: string[]
   active: boolean
+  updatedAt: string
+}
+
+export type OfflinePickupUser = {
+  id: string
+  snapshotId: string
+  issueId: string
+  personId: string
+  fullName: string
+  qrCodes: string[]
   updatedAt: string
 }
 
@@ -92,15 +106,17 @@ export type OfflineSnapshotPayload = {
   snapshot: OfflineSnapshot
   entitlements: OfflineEntitlement[]
   qrCodes: OfflineQrCode[]
+  pickupUsers?: OfflinePickupUser[]
 }
 
 const DB_NAME = 'pohoda-pass-offline-issue'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 const STORES = {
   snapshots: 'offline_snapshots',
   entitlements: 'offline_entitlements',
   qrCodes: 'offline_qr_codes',
+  pickupUsers: 'offline_pickup_users',
   events: 'offline_issue_events',
   syncResults: 'offline_sync_results',
   conflicts: 'offline_conflicts',
@@ -160,6 +176,13 @@ export function openOfflineIssueDb() {
         store.createIndex('entitlementId', 'entitlementId', { unique: false })
         store.createIndex('personId', 'personId', { unique: false })
         store.createIndex('issueId', 'issueId', { unique: false })
+      }
+
+      if (!db.objectStoreNames.contains(STORES.pickupUsers)) {
+        const store = db.createObjectStore(STORES.pickupUsers, { keyPath: 'id' })
+        store.createIndex('snapshotId', 'snapshotId', { unique: false })
+        store.createIndex('issueId', 'issueId', { unique: false })
+        store.createIndex('personId', 'personId', { unique: false })
       }
 
       if (!db.objectStoreNames.contains(STORES.events)) {
@@ -240,7 +263,8 @@ export async function saveOfflineSnapshotPayload(
   onProgress?: (percent: number, label: string) => void
 ) {
   const db = await openOfflineIssueDb()
-  const total = Math.max(1, payload.entitlements.length + payload.qrCodes.length + 1)
+  const pickupUsers = payload.pickupUsers || []
+  const total = Math.max(1, payload.entitlements.length + payload.qrCodes.length + pickupUsers.length + 1)
   let done = 0
 
   const report = (label: string) => {
@@ -248,10 +272,11 @@ export async function saveOfflineSnapshotPayload(
     onProgress?.(Math.min(99, Math.round((done / total) * 100)), label)
   }
 
-  const transaction = db.transaction([STORES.snapshots, STORES.entitlements, STORES.qrCodes], 'readwrite')
+  const transaction = db.transaction([STORES.snapshots, STORES.entitlements, STORES.qrCodes, STORES.pickupUsers], 'readwrite')
   const snapshotStore = transaction.objectStore(STORES.snapshots)
   const entitlementStore = transaction.objectStore(STORES.entitlements)
   const qrStore = transaction.objectStore(STORES.qrCodes)
+  const pickupStore = transaction.objectStore(STORES.pickupUsers)
 
   await requestToPromise(snapshotStore.put(payload.snapshot))
   report('Ukladám snapshot.')
@@ -264,6 +289,11 @@ export async function saveOfflineSnapshotPayload(
   for (const qrCode of payload.qrCodes) {
     await requestToPromise(qrStore.put(qrCode))
     report('Ukladám QR kódy.')
+  }
+
+  for (const pickupUser of pickupUsers) {
+    await requestToPromise(pickupStore.put(pickupUser))
+    report('Ukladám oprávnenia na prevzatie.')
   }
 
   onProgress?.(100, 'Offline dáta sú uložené.')

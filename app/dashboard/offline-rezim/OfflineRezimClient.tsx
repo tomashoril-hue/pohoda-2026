@@ -159,7 +159,8 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
       const payload: OfflineSnapshotPayload = {
         snapshot: data.snapshot,
         entitlements: data.entitlements || [],
-        qrCodes: data.qrCodes || []
+        qrCodes: data.qrCodes || [],
+        pickupUsers: data.pickupUsers || []
       }
 
       setDownload({ active: true, percent: 45, label: 'Ukladám dáta do zariadenia.' })
