@@ -432,6 +432,7 @@ export default async function DashboardPage({
   const canOpenMenuDeadline = globalAccess.isAdmin
   const canOpenWristbandKiosk = globalAccess.isAdmin
   const canOpenMenuKiosk = globalAccess.canUseMenuKiosk
+  const canOpenOfflineIssue = globalAccess.canUseOfflineIssue
   const canOpenAccessCodesShare = canOpenPersonalista || managedRegistrationGroupIds.length > 0
 
   const getSelection = (typJedla: string) => {
@@ -746,6 +747,12 @@ export default async function DashboardPage({
             <Link className="dashboard-menu-tile" href="/dashboard/skupinovy-vydaj" style={{ ...styles.menuTile, ...styles.menuTileWhite }}>
               <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Strava</span>
               <b className="dashboard-menu-title" style={styles.menuTileTitle}>Skupinový výdaj</b>
+            </Link>
+          )}
+          {canOpenOfflineIssue && (
+            <Link className="dashboard-menu-tile" href="/dashboard/offline-rezim" style={{ ...styles.menuTile, ...styles.menuTileBlack }}>
+              <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Offline</span>
+              <b className="dashboard-menu-title" style={styles.menuTileTitle}>Offline výdaj</b>
             </Link>
           )}
           {canOpenAccessCodesShare && (

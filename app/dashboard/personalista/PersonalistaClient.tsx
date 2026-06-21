@@ -597,7 +597,8 @@ export default function PersonalistaClient({
     vydaj: false,
     groupCreator: false,
     wristbandKiosk: false,
-    menuKiosk: false
+    menuKiosk: false,
+    offlineObsluha: false
   })
   const [accessCodeLoading, setAccessCodeLoading] = useState(false)
   const [accessCodeLoaded, setAccessCodeLoaded] = useState(false)
@@ -1299,7 +1300,8 @@ export default function PersonalistaClient({
       vydaj: selectedPerson.globalRoles.includes('VYDAJ'),
       groupCreator: selectedPerson.globalRoles.includes('GROUP_CREATOR'),
       wristbandKiosk: selectedPerson.globalRoles.includes('WRISTBAND_KIOSK'),
-      menuKiosk: selectedPerson.globalRoles.includes('MENU_KIOSK')
+      menuKiosk: selectedPerson.globalRoles.includes('MENU_KIOSK'),
+      offlineObsluha: selectedPerson.globalRoles.includes('OFFLINE_OBSLUHA')
     })
     const preservedMessage = preservedDetailMessageRef.current
 
@@ -3100,7 +3102,8 @@ export default function PersonalistaClient({
       ...(roleForm.vydaj ? ['VYDAJ'] : []),
       ...(roleForm.groupCreator ? ['GROUP_CREATOR'] : []),
       ...(roleForm.wristbandKiosk ? ['WRISTBAND_KIOSK'] : []),
-      ...(roleForm.menuKiosk ? ['MENU_KIOSK'] : [])
+      ...(roleForm.menuKiosk ? ['MENU_KIOSK'] : []),
+      ...(roleForm.offlineObsluha ? ['OFFLINE_OBSLUHA'] : [])
     ]
 
     postDetailAction(
@@ -6501,6 +6504,20 @@ export default function PersonalistaClient({
                         style={styles.checkbox}
                       />
                       <span>Výber stravy kiosk</span>
+                    </label>
+
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={roleForm.offlineObsluha}
+                        onChange={event => setRoleForm(prev => ({
+                          ...prev,
+                          offlineObsluha: event.target.checked
+                        }))}
+                        disabled={detailLoading}
+                        style={styles.checkbox}
+                      />
+                      <span>OFFLINE_OBSLUHA</span>
                     </label>
                   </div>
 
