@@ -67,9 +67,14 @@ export type OfflineIssueEvent = {
   deviceId: string
   snapshotId: string
   operation: 'ISSUE' | 'CANCEL_ISSUE'
+  issueAction?: 'INDIVIDUAL' | 'REGISTRATION_GROUP_BULK'
   qrCode: string
   entitlementId: string
   personId: string
+  registrationGroupIssueId?: string
+  issuedPersonIds?: string[]
+  issuedCount?: number
+  choiceSummary?: ChoiceSummary
   mealDate: string
   mealType: 'OBED' | 'VECERA'
   issueLocation: string
@@ -77,6 +82,46 @@ export type OfflineIssueEvent = {
   preparedByUserId: string
   syncStatus: 'PENDING' | 'SYNCED' | 'CONFLICT' | 'FAILED_RETRY' | 'IGNORED_DUPLICATE'
   targetOfflineEventId?: string
+}
+
+export type ChoiceSummary = {
+  MASO: number
+  VEGE: number
+  DIETA: number
+}
+
+export type OfflineBulkIssueOption = {
+  id: string
+  groupName: string
+  count: number
+  summary: ChoiceSummary
+  includesScannedPerson: boolean
+}
+
+export type OfflineIssueDecision = {
+  qrCode: string
+  personName: string
+  choice: string
+  individual: {
+    available: boolean
+    alreadyIssued: boolean
+    hasEntitlement: boolean
+  }
+  bulkIssues: OfflineBulkIssueOption[]
+}
+
+export type OfflineIssueScanResult = {
+  ok: boolean
+  status: string
+  tone: 'success' | 'error' | 'warning'
+  message: string
+  personName?: string
+  choice?: string
+  method?: string
+  groupName?: string
+  issuedCount?: number
+  summary?: ChoiceSummary
+  decision?: OfflineIssueDecision
 }
 
 export type OfflineConflict = {
@@ -223,6 +268,289 @@ async function readwriteStore(storeName: StoreName) {
   const db = await openOfflineIssueDb()
   const transaction = db.transaction(storeName, 'readwrite')
   return transaction.objectStore(storeName)
+}
+
+function txDone(transaction: IDBTransaction) {
+  return new Promise<void>((resolve, reject) => {
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => reject(transaction.error || new Error('IndexedDB transaction failed.'))
+    transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction aborted.'))
+  })
+}
+
+function indexGetAll<T>(index: IDBIndex, query?: IDBValidKey | IDBKeyRange | null) {
+  return requestToPromise<T[]>(index.getAll(query ?? null))
+}
+
+function choiceSummary(rows: OfflineEntitlement[]): ChoiceSummary {
+  return rows.reduce<ChoiceSummary>((summary, row) => {
+    summary[row.choice] += 1
+    return summary
+  }, { MASO: 0, VEGE: 0, DIETA: 0 })
+}
+
+function choiceLabel(value: string) {
+  if (value === 'MASO') return 'MÄSO'
+  if (value === 'VEGE') return 'VEGE'
+  if (value === 'DIETA') return 'DIÉTA'
+  return value || ''
+}
+
+function firstExisting<T>(values: Array<T | null | undefined>) {
+  return values.find(Boolean) || null
+}
+
+async function getLatestSnapshotFromDb(db: IDBDatabase) {
+  const snapshots = await requestToPromise<OfflineSnapshot[]>(
+    db.transaction(STORES.snapshots, 'readonly').objectStore(STORES.snapshots).getAll()
+  )
+
+  return snapshots
+    .slice()
+    .sort((a, b) => b.preparedAt.localeCompare(a.preparedAt))[0] || null
+}
+
+async function getEntitlementsBySnapshot(db: IDBDatabase, snapshotId: string) {
+  const transaction = db.transaction(STORES.entitlements, 'readonly')
+  const store = transaction.objectStore(STORES.entitlements)
+  return indexGetAll<OfflineEntitlement>(store.index('snapshotId'), snapshotId)
+}
+
+function isAlreadyIssued(entitlements: OfflineEntitlement[], personId: string) {
+  return entitlements.some(row => row.personId === personId && row.issuedStatus === 'ISSUED')
+}
+
+function buildBulkOptions({
+  entitlements,
+  issueIds,
+  scannedPersonId
+}: {
+  entitlements: OfflineEntitlement[]
+  issueIds: string[]
+  scannedPersonId: string
+}) {
+  return issueIds.flatMap(issueId => {
+    const rows = entitlements.filter(row => {
+      return row.mode === 'GROUP_ISSUE' &&
+        row.issueId === issueId &&
+        row.entitlementStatus === 'VALID' &&
+        row.issuedStatus === 'NOT_ISSUED'
+    })
+
+    if (rows.length === 0) return []
+
+    return [{
+      id: issueId,
+      groupName: rows[0]?.issueTitle || rows[0]?.registrationGroupName || 'Skupinový výdaj',
+      count: rows.length,
+      summary: choiceSummary(rows),
+      includesScannedPerson: rows.some(row => row.personId === scannedPersonId)
+    }]
+  })
+}
+
+function makeIssueEventId() {
+  return `${Date.now()}-${crypto.randomUUID()}`
+}
+
+export async function processOfflineIssueQr({
+  qrCode,
+  issueAction,
+  bulkIssueId
+}: {
+  qrCode: string
+  issueAction?: 'INDIVIDUAL' | 'BULK'
+  bulkIssueId?: string
+}): Promise<OfflineIssueScanResult> {
+  const cleanQr = String(qrCode || '').trim()
+  if (!cleanQr) {
+    return { ok: false, status: 'EMPTY_QR', tone: 'error', message: 'QR kód je prázdny.' }
+  }
+
+  const db = await openOfflineIssueDb()
+  const snapshot = await getLatestSnapshotFromDb(db)
+
+  if (!snapshot) {
+    return { ok: false, status: 'NO_OFFLINE_DATA', tone: 'error', message: 'Offline dáta nie sú stiahnuté.' }
+  }
+
+  const lookupTx = db.transaction([STORES.qrCodes, STORES.entitlements], 'readonly')
+  const qrRow = await requestToPromise<OfflineQrCode | undefined>(
+    lookupTx.objectStore(STORES.qrCodes).get(cleanQr)
+  )
+
+  if (!qrRow || qrRow.snapshotId !== snapshot.snapshotId) {
+    return { ok: false, status: 'UNKNOWN_QR', tone: 'error', message: 'QR kód nie je v offline dátach.' }
+  }
+
+  const entitlements = await getEntitlementsBySnapshot(db, snapshot.snapshotId)
+  const personEntitlements = entitlements.filter(row => row.personId === qrRow.personId)
+  const alreadyIssued = isAlreadyIssued(entitlements, qrRow.personId)
+  const individual = personEntitlements.find(row => row.mode === 'INDIVIDUAL' && row.entitlementStatus === 'VALID') || null
+  const individualAvailable = Boolean(individual && individual.issuedStatus === 'NOT_ISSUED' && !alreadyIssued)
+  const pickupIssueIds = qrRow.pickupIssueIds || []
+  const bulkOptions = buildBulkOptions({
+    entitlements,
+    issueIds: pickupIssueIds,
+    scannedPersonId: qrRow.personId
+  })
+  const scannedName = firstExisting(personEntitlements.map(row => row.fullName)) || 'Bez mena'
+  const scannedChoice = individual?.choice || firstExisting(personEntitlements.map(row => row.choice)) || ''
+
+  if (!issueAction && bulkOptions.length > 0) {
+    return {
+      ok: false,
+      status: 'ISSUE_DECISION_REQUIRED',
+      tone: 'warning',
+      message: 'Vyber spôsob výdaja.',
+      decision: {
+        qrCode: cleanQr,
+        personName: scannedName,
+        choice: scannedChoice,
+        individual: {
+          available: individualAvailable,
+          alreadyIssued,
+          hasEntitlement: Boolean(individual)
+        },
+        bulkIssues: bulkOptions
+      }
+    }
+  }
+
+  if (issueAction === 'BULK') {
+    const issueId = String(bulkIssueId || '').replace(/^registration:/, '')
+    if (!issueId || !pickupIssueIds.includes(issueId)) {
+      return { ok: false, status: 'BULK_NOT_AVAILABLE', tone: 'error', message: 'Tento QR kód nemá oprávnenie prevziať vybraný skupinový výdaj.' }
+    }
+
+    const rowsToIssue = entitlements.filter(row => {
+      return row.mode === 'GROUP_ISSUE' &&
+        row.issueId === issueId &&
+        row.entitlementStatus === 'VALID' &&
+        row.issuedStatus === 'NOT_ISSUED'
+    })
+
+    if (rowsToIssue.length === 0) {
+      return { ok: false, status: 'ALREADY_ISSUED', tone: 'error', message: 'Skupinový výdaj už nemá žiadne vydateľné položky.' }
+    }
+
+    const eventId = makeIssueEventId()
+    const issuedPersonIds = Array.from(new Set(rowsToIssue.map(row => row.personId)))
+    const now = new Date().toISOString()
+    const writeTx = db.transaction([STORES.entitlements, STORES.events], 'readwrite')
+    const entitlementStore = writeTx.objectStore(STORES.entitlements)
+    const eventStore = writeTx.objectStore(STORES.events)
+
+    entitlements
+      .filter(row => issuedPersonIds.includes(row.personId) && row.issuedStatus === 'NOT_ISSUED')
+      .forEach(row => {
+        entitlementStore.put({
+          ...row,
+          issuedStatus: 'ISSUED',
+          localIssuedEventId: eventId,
+          updatedAt: now
+        })
+      })
+
+    const summary = choiceSummary(rowsToIssue)
+    eventStore.put({
+      offlineEventId: eventId,
+      deviceId: snapshot.deviceId,
+      snapshotId: snapshot.snapshotId,
+      operation: 'ISSUE',
+      issueAction: 'REGISTRATION_GROUP_BULK',
+      qrCode: cleanQr,
+      entitlementId: rowsToIssue[0]?.entitlementId || '',
+      personId: qrRow.personId,
+      registrationGroupIssueId: issueId,
+      issuedPersonIds,
+      issuedCount: rowsToIssue.length,
+      choiceSummary: summary,
+      mealDate: snapshot.mealDate,
+      mealType: snapshot.mealType,
+      issueLocation: snapshot.issueLocation,
+      createdAt: now,
+      preparedByUserId: snapshot.preparedByUserId,
+      syncStatus: 'PENDING'
+    } satisfies OfflineIssueEvent)
+
+    await txDone(writeTx)
+
+    return {
+      ok: true,
+      status: 'ISSUED',
+      tone: 'success',
+      message: `Vydané skupinovo: ${rowsToIssue.length} porcií.`,
+      personName: scannedName,
+      method: 'REGISTRATION_GROUP_BULK',
+      groupName: rowsToIssue[0]?.issueTitle || 'Skupinový výdaj',
+      issuedCount: rowsToIssue.length,
+      summary
+    }
+  }
+
+  if (alreadyIssued) {
+    return { ok: false, status: 'ALREADY_ISSUED', tone: 'error', message: 'Už vydané', personName: scannedName, choice: scannedChoice }
+  }
+
+  if (!individual) {
+    return { ok: false, status: 'NO_ENTITLEMENT', tone: 'error', message: 'Bez osobného nároku', personName: scannedName }
+  }
+
+  if (!individualAvailable) {
+    return { ok: false, status: 'ALREADY_ISSUED', tone: 'error', message: 'Už vydané', personName: scannedName, choice: individual.choice }
+  }
+
+  const eventId = makeIssueEventId()
+  const now = new Date().toISOString()
+  const writeTx = db.transaction([STORES.entitlements, STORES.events], 'readwrite')
+  const entitlementStore = writeTx.objectStore(STORES.entitlements)
+  const eventStore = writeTx.objectStore(STORES.events)
+
+  entitlements
+    .filter(row => row.personId === individual.personId && row.issuedStatus === 'NOT_ISSUED')
+    .forEach(row => {
+      entitlementStore.put({
+        ...row,
+        issuedStatus: 'ISSUED',
+        localIssuedEventId: eventId,
+        updatedAt: now
+      })
+    })
+
+  eventStore.put({
+    offlineEventId: eventId,
+    deviceId: snapshot.deviceId,
+    snapshotId: snapshot.snapshotId,
+    operation: 'ISSUE',
+    issueAction: 'INDIVIDUAL',
+    qrCode: cleanQr,
+    entitlementId: individual.entitlementId,
+    personId: individual.personId,
+    issuedPersonIds: [individual.personId],
+    issuedCount: 1,
+    choiceSummary: choiceSummary([individual]),
+    mealDate: snapshot.mealDate,
+    mealType: snapshot.mealType,
+    issueLocation: snapshot.issueLocation,
+    createdAt: now,
+    preparedByUserId: snapshot.preparedByUserId,
+    syncStatus: 'PENDING'
+  } satisfies OfflineIssueEvent)
+
+  await txDone(writeTx)
+
+  return {
+    ok: true,
+    status: 'ISSUED',
+    tone: 'success',
+    message: `Vydané osobne: ${choiceLabel(individual.choice)}.`,
+    personName: individual.fullName,
+    choice: individual.choice,
+    method: 'INDIVIDUAL',
+    issuedCount: 1,
+    summary: choiceSummary([individual])
+  }
 }
 
 export async function listOfflineSnapshots() {

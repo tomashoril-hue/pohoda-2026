@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import QrCameraScanner from '@/app/dashboard/skupinovy-vydaj/QrCameraScanner'
 import {
   clearOfflineIssueData,
   clearOfflineOperatorPin,
@@ -10,8 +11,11 @@ import {
   getOfflinePinState,
   getOrCreateOfflineDeviceId,
   listOfflineSnapshots,
+  processOfflineIssueQr,
   saveOfflineSnapshotPayload,
   setOfflineOperatorPin,
+  type OfflineIssueDecision,
+  type OfflineIssueScanResult,
   type OfflineSnapshot,
   type OfflineSnapshotPayload
 } from '@/lib/offlineIssueDb'
@@ -78,6 +82,12 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
   const [message, setMessage] = useState('')
   const [syncNotice, setSyncNotice] = useState('')
   const [pinValue, setPinValue] = useState('')
+  const [manualQr, setManualQr] = useState('')
+  const [scanLoading, setScanLoading] = useState(false)
+  const [successCount, setSuccessCount] = useState(0)
+  const [errorCount, setErrorCount] = useState(0)
+  const [scanHistory, setScanHistory] = useState<OfflineIssueScanResult[]>([])
+  const [issueDecision, setIssueDecision] = useState<OfflineIssueDecision | null>(null)
   const [snapshotDate, setSnapshotDate] = useState(() => bratislavaTodayIsoDate())
   const [snapshotMeal, setSnapshotMeal] = useState<'OBED' | 'VECERA'>('OBED')
   const [issueLocation, setIssueLocation] = useState('Hlavné výdajné miesto')
@@ -215,6 +225,82 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
     } catch (err: any) {
       setMessage(err?.message || 'PIN sa nepodarilo zrušiť.')
     }
+  }
+
+  function addScanHistory(result: OfflineIssueScanResult) {
+    setScanHistory(prev => [result, ...prev].slice(0, 8))
+    if (result.ok) {
+      setSuccessCount(prev => prev + Math.max(1, Number(result.issuedCount || 1)))
+    } else if (result.status !== 'ISSUE_DECISION_REQUIRED') {
+      setErrorCount(prev => prev + 1)
+    }
+  }
+
+  async function processOfflineQr(
+    value: string,
+    issueAction?: 'INDIVIDUAL' | 'BULK',
+    bulkIssueId?: string
+  ) {
+    setScanLoading(true)
+
+    try {
+      const result = await processOfflineIssueQr({
+        qrCode: value,
+        issueAction,
+        bulkIssueId
+      })
+
+      if (result.decision) {
+        setIssueDecision(result.decision)
+      } else {
+        addScanHistory(result)
+        await refreshStats()
+      }
+
+      return {
+        tone: result.tone,
+        message: result.message
+      }
+    } catch (err: any) {
+      const result: OfflineIssueScanResult = {
+        ok: false,
+        status: 'ERROR',
+        tone: 'error',
+        message: err?.message || 'Offline výdaj sa nepodarilo spracovať.'
+      }
+      addScanHistory(result)
+      return {
+        tone: 'error' as const,
+        message: result.message
+      }
+    } finally {
+      setScanLoading(false)
+    }
+  }
+
+  async function submitManualQr() {
+    const value = manualQr.trim()
+    if (!value || scanLoading) return
+
+    setManualQr('')
+    await processOfflineQr(value)
+  }
+
+  async function confirmIssueDecision(issueAction: 'INDIVIDUAL' | 'BULK', bulkIssueId?: string) {
+    if (!issueDecision || scanLoading) return
+
+    const qrCode = issueDecision.qrCode
+    setIssueDecision(null)
+    await processOfflineQr(qrCode, issueAction, bulkIssueId)
+  }
+
+  function choiceSummaryLabel(summary?: { MASO: number; VEGE: number; DIETA: number }) {
+    if (!summary) return ''
+    return [
+      summary.MASO ? `MÄSO ${summary.MASO}` : '',
+      summary.VEGE ? `VEGE ${summary.VEGE}` : '',
+      summary.DIETA ? `DIÉTA ${summary.DIETA}` : ''
+    ].filter(Boolean).join(' · ')
   }
 
   useEffect(() => {
@@ -392,6 +478,71 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
       <section style={styles.card}>
         <div style={styles.cardHeader}>
           <div>
+            <h2 style={styles.cardTitle}>Offline výdaj</h2>
+            <p style={styles.cardText}>
+              Skenovanie pracuje iba s posledným stiahnutým snapshotom. Individuálny a skupinový výdaj používajú spoločný lokálny stav.
+            </p>
+          </div>
+          <div style={styles.scanStats}>
+            <span>Vydané {successCount}</span>
+            <span>Stop {errorCount}</span>
+          </div>
+        </div>
+
+        {latestSnapshot ? (
+          <>
+            <div style={styles.offlineIssueHeader}>
+              <b>{mealLabel(latestSnapshot.mealType)} · {latestSnapshot.mealDate}</b>
+              <span>{latestSnapshot.issueLocation}</span>
+              <span>Dáta z {dateTimeLabel(latestSnapshot.preparedAt)}</span>
+            </div>
+
+            <QrCameraScanner
+              disabled={scanLoading}
+              autoStopMs={5 * 60 * 1000}
+              showLastMessage
+              onScan={value => processOfflineQr(value)}
+            />
+
+            <div style={styles.manualQrRow}>
+              <input
+                type="password"
+                value={manualQr}
+                onChange={event => setManualQr(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void submitManualQr()
+                  }
+                }}
+                placeholder="Scanner / ručné QR"
+                style={styles.input}
+              />
+              <button type="button" style={styles.primaryButton} onClick={submitManualQr} disabled={scanLoading || !manualQr.trim()}>
+                Spracovať QR
+              </button>
+            </div>
+
+            <div style={styles.historyList}>
+              {scanHistory.length === 0 ? (
+                <div style={styles.emptyBox}>Čaká sa na prvý offline výdaj.</div>
+              ) : scanHistory.map((item, index) => (
+                <div key={`${item.status}-${index}`} style={item.ok ? styles.historyOk : styles.historyError}>
+                  <b>{item.message}</b>
+                  <span>{item.personName || 'Bez mena'}{item.groupName ? ` · ${item.groupName}` : ''}</span>
+                  {item.summary && <small>{choiceSummaryLabel(item.summary)}</small>}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div style={styles.emptyBox}>Najprv stiahni offline dáta pre konkrétny výdaj.</div>
+        )}
+      </section>
+
+      <section style={styles.card}>
+        <div style={styles.cardHeader}>
+          <div>
             <h2 style={styles.cardTitle}>Lokálny PIN obsluhy</h2>
             <p style={styles.cardText}>
               PIN je uložený iba v tomto zariadení. Slúži na odomknutie už pripraveného offline výdaja, nie na stiahnutie dát.
@@ -422,6 +573,70 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
       </section>
 
       {message && <div style={styles.message}>{message}</div>}
+
+      {issueDecision && (
+        <div style={styles.modalBackdrop}>
+          <div style={styles.decisionModal}>
+            <div style={styles.decisionHeader}>
+              <div>
+                <div style={styles.decisionKicker}>OFFLINE VÝDAJ</div>
+                <h2 style={styles.decisionTitle}>Vyber spôsob výdaja</h2>
+                <p style={styles.decisionPerson}>{issueDecision.personName || 'Bez mena'}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIssueDecision(null)}
+                disabled={scanLoading}
+                style={styles.closeButton}
+              >
+                Zavrieť
+              </button>
+            </div>
+
+            <div style={styles.decisionList}>
+              {issueDecision.bulkIssues.map(issue => (
+                <button
+                  key={issue.id}
+                  type="button"
+                  onClick={() => confirmIssueDecision('BULK', issue.id)}
+                  disabled={scanLoading}
+                  style={styles.bulkDecisionButton}
+                >
+                  <span style={styles.decisionAction}>VYDAŤ SKUPINOVO</span>
+                  <b style={styles.decisionGroup}>{issue.groupName || 'Skupinový výdaj'}</b>
+                  <span style={styles.decisionSummary}>
+                    {issue.count} osôb{choiceSummaryLabel(issue.summary) ? ` · ${choiceSummaryLabel(issue.summary)}` : ''}
+                  </span>
+                  <span style={issue.includesScannedPerson ? styles.decisionIncluded : styles.decisionExcluded}>
+                    {issue.includesScannedPerson ? 'Vrátane porcie: ' : 'Bez porcie: '}
+                    {issueDecision.personName || 'Bez mena'}
+                  </span>
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => confirmIssueDecision('INDIVIDUAL')}
+                disabled={scanLoading || !issueDecision.individual.available}
+                style={{
+                  ...styles.individualDecisionButton,
+                  opacity: scanLoading || !issueDecision.individual.available ? 0.5 : 1
+                }}
+              >
+                <span style={styles.decisionAction}>
+                  {issueDecision.individual.available
+                    ? 'VYDAŤ IBA OSOBNE'
+                    : issueDecision.individual.alreadyIssued
+                      ? 'UŽ VYDANÉ'
+                      : 'BEZ OSOBNÉHO NÁROKU'}
+                </span>
+                <b style={styles.decisionGroup}>{issueDecision.personName || 'Bez mena'}</b>
+                {issueDecision.choice && <span style={styles.decisionSummary}>1 x {issueDecision.choice}</span>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
@@ -723,6 +938,158 @@ const styles: Record<string, CSSProperties> = {
     background: '#fef2f2',
     color: '#991b1b',
     fontWeight: 900
+  },
+  scanStats: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end'
+  },
+  offlineIssueHeader: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    background: '#f9fafb',
+    color: '#111827',
+    padding: 10,
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
+    fontSize: 12,
+    fontWeight: 900
+  },
+  manualQrRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 8,
+    alignItems: 'center'
+  },
+  historyList: {
+    display: 'grid',
+    gap: 8
+  },
+  historyOk: {
+    border: '1px solid #bbf7d0',
+    borderRadius: 8,
+    background: '#f0fdf4',
+    color: '#14532d',
+    padding: 10,
+    display: 'grid',
+    gap: 3,
+    fontSize: 12,
+    fontWeight: 850
+  },
+  historyError: {
+    border: '1px solid #fecaca',
+    borderRadius: 8,
+    background: '#fef2f2',
+    color: '#991b1b',
+    padding: 10,
+    display: 'grid',
+    gap: 3,
+    fontSize: 12,
+    fontWeight: 850
+  },
+  modalBackdrop: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 80,
+    background: 'rgba(17, 24, 39, 0.58)',
+    display: 'grid',
+    placeItems: 'center',
+    padding: 12
+  },
+  decisionModal: {
+    width: 'min(560px, 100%)',
+    maxHeight: 'calc(100dvh - 24px)',
+    overflow: 'auto',
+    borderRadius: 8,
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    padding: 14,
+    display: 'grid',
+    gap: 12
+  },
+  decisionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 10,
+    alignItems: 'flex-start'
+  },
+  decisionKicker: {
+    color: '#166534',
+    fontSize: 10,
+    fontWeight: 950
+  },
+  decisionTitle: {
+    margin: 0,
+    color: '#111827',
+    fontSize: 20,
+    fontWeight: 950
+  },
+  decisionPerson: {
+    margin: '3px 0 0 0',
+    color: '#6b7280',
+    fontSize: 13,
+    fontWeight: 900
+  },
+  closeButton: {
+    ...buttonBase,
+    minHeight: 34,
+    border: '1px solid #d1d5db',
+    background: '#fff',
+    color: '#374151',
+    fontSize: 12
+  },
+  decisionList: {
+    display: 'grid',
+    gap: 8
+  },
+  bulkDecisionButton: {
+    border: '1px solid #bbf7d0',
+    borderRadius: 8,
+    background: '#f0fdf4',
+    color: '#14532d',
+    padding: 12,
+    display: 'grid',
+    gap: 4,
+    textAlign: 'left',
+    cursor: 'pointer'
+  },
+  individualDecisionButton: {
+    border: '1px solid #bfdbfe',
+    borderRadius: 8,
+    background: '#eff6ff',
+    color: '#1d4ed8',
+    padding: 12,
+    display: 'grid',
+    gap: 4,
+    textAlign: 'left',
+    cursor: 'pointer'
+  },
+  decisionAction: {
+    fontSize: 10,
+    fontWeight: 950,
+    letterSpacing: 0,
+    textTransform: 'uppercase'
+  },
+  decisionGroup: {
+    fontSize: 15,
+    fontWeight: 950
+  },
+  decisionSummary: {
+    fontSize: 12,
+    fontWeight: 900
+  },
+  decisionIncluded: {
+    color: '#166534',
+    fontSize: 11,
+    fontWeight: 950
+  },
+  decisionExcluded: {
+    color: '#9a3412',
+    fontSize: 11,
+    fontWeight: 950
   },
   message: {
     maxWidth: 1040,
