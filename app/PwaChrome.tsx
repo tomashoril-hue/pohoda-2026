@@ -25,6 +25,43 @@ export default function PwaChrome() {
   const [active, setActive] = useState(false)
   const [pullDistance, setPullDistance] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
+  const [online, setOnline] = useState(true)
+
+  useEffect(() => {
+    setOnline(navigator.onLine)
+
+    const handleOnline = () => setOnline(true)
+    const handleOffline = () => setOnline(false)
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+
+    const registerServiceWorker = () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {
+        // Offline fallback is helpful but must never block the app.
+      })
+    }
+
+    if (document.readyState === 'complete') {
+      registerServiceWorker()
+      return
+    }
+
+    window.addEventListener('load', registerServiceWorker, { once: true })
+
+    return () => {
+      window.removeEventListener('load', registerServiceWorker)
+    }
+  }, [])
 
   useEffect(() => {
     if (!isIosStandalone()) return
@@ -109,26 +146,34 @@ export default function PwaChrome() {
     }
   }, [refreshing])
 
-  if (!active) return null
-
   const ready = pullDistance >= refreshThreshold
   const visible = pullDistance > 0 || refreshing
 
   return (
     <>
-      <div className="pwa-ios-status-bar" aria-hidden="true" />
+      {!online && (
+        <div className="pwa-network-badge" role="status" aria-live="polite">
+          OFFLINE
+        </div>
+      )}
 
-      <div
-        className="pwa-pull-refresh"
-        style={{
-          opacity: visible ? 1 : 0,
-          transform: `translate(-50%, ${visible ? pullDistance : 0}px)`
-        }}
-        role="status"
-        aria-live="polite"
-      >
-        {refreshing ? 'Obnovujem...' : ready ? 'Pusti pre obnovenie' : 'Potiahni pre obnovenie'}
-      </div>
+      {active && (
+        <>
+          <div className="pwa-ios-status-bar" aria-hidden="true" />
+
+          <div
+            className="pwa-pull-refresh"
+            style={{
+              opacity: visible ? 1 : 0,
+              transform: `translate(-50%, ${visible ? pullDistance : 0}px)`
+            }}
+            role="status"
+            aria-live="polite"
+          >
+            {refreshing ? 'Obnovujem...' : ready ? 'Pusti pre obnovenie' : 'Potiahni pre obnovenie'}
+          </div>
+        </>
+      )}
     </>
   )
 }

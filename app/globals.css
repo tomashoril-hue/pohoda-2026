@@ -59,9 +59,28 @@ body {
   white-space: nowrap;
 }
 
+.pwa-network-badge {
+  position: fixed;
+  top: max(10px, calc(env(safe-area-inset-top) + 10px));
+  right: max(10px, calc(env(safe-area-inset-right) + 10px));
+  z-index: 10002;
+  border: 2px solid #000;
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: #fef2f2;
+  color: #991b1b;
+  box-shadow: 3px 3px 0 #000;
+  font-size: 11px;
+  font-weight: 950;
+  line-height: 1;
+  pointer-events: none;
+  letter-spacing: 0;
+}
+
 @media print {
   .pwa-ios-status-bar,
-  .pwa-pull-refresh {
+  .pwa-pull-refresh,
+  .pwa-network-badge {
     display: none !important;
   }
 
