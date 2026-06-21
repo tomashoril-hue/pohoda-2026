@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import {
   clearOfflineIssueData,
   clearOfflineOperatorPin,
@@ -10,8 +10,10 @@ import {
   getOfflinePinState,
   getOrCreateOfflineDeviceId,
   listOfflineSnapshots,
+  saveOfflineSnapshotPayload,
   setOfflineOperatorPin,
-  type OfflineSnapshot
+  type OfflineSnapshot,
+  type OfflineSnapshotPayload
 } from '@/lib/offlineIssueDb'
 
 type Props = {
@@ -25,6 +27,27 @@ type OfflineStats = {
   pendingEvents: number
   openConflicts: number
   pinEnabled: boolean
+}
+
+type DownloadState = {
+  active: boolean
+  percent: number
+  label: string
+}
+
+function bratislavaTodayIsoDate() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Bratislava',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date())
+
+  const year = parts.find(part => part.type === 'year')?.value || ''
+  const month = parts.find(part => part.type === 'month')?.value || ''
+  const day = parts.find(part => part.type === 'day')?.value || ''
+
+  return `${year}-${month}-${day}`
 }
 
 function dateTimeLabel(value: string) {
@@ -55,6 +78,14 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
   const [message, setMessage] = useState('')
   const [syncNotice, setSyncNotice] = useState('')
   const [pinValue, setPinValue] = useState('')
+  const [snapshotDate, setSnapshotDate] = useState(() => bratislavaTodayIsoDate())
+  const [snapshotMeal, setSnapshotMeal] = useState<'OBED' | 'VECERA'>('OBED')
+  const [issueLocation, setIssueLocation] = useState('Hlavné výdajné miesto')
+  const [download, setDownload] = useState<DownloadState>({
+    active: false,
+    percent: 0,
+    label: ''
+  })
   const [stats, setStats] = useState<OfflineStats>({
     deviceId: '',
     snapshots: [],
@@ -63,9 +94,11 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
     pinEnabled: false
   })
 
-  const latestSnapshot = stats.snapshots
-    .slice()
-    .sort((a, b) => b.preparedAt.localeCompare(a.preparedAt))[0]
+  const latestSnapshot = useMemo(() => {
+    return stats.snapshots
+      .slice()
+      .sort((a, b) => b.preparedAt.localeCompare(a.preparedAt))[0]
+  }, [stats.snapshots])
 
   async function refreshStats() {
     setLoading(true)
@@ -89,6 +122,61 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
       setMessage(err?.message || 'Offline úložisko sa nepodarilo načítať.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function downloadSnapshot() {
+    if (!canPrepareOfflineIssue || download.active) return
+
+    if (!online) {
+      setMessage('Offline dáta sa dajú stiahnuť iba pri online pripojení.')
+      return
+    }
+
+    setMessage('')
+    setDownload({ active: true, percent: 5, label: 'Pripravujem stiahnutie.' })
+
+    try {
+      const deviceId = stats.deviceId || await getOrCreateOfflineDeviceId()
+      setDownload({ active: true, percent: 15, label: 'Načítavam dáta zo servera.' })
+
+      const params = new URLSearchParams({
+        date: snapshotDate,
+        meal: snapshotMeal,
+        issueLocation,
+        deviceId
+      })
+      const response = await fetch(`/api/offline/snapshot?${params.toString()}`, {
+        method: 'GET',
+        cache: 'no-store'
+      })
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Offline dáta sa nepodarilo stiahnuť.')
+      }
+
+      const payload: OfflineSnapshotPayload = {
+        snapshot: data.snapshot,
+        entitlements: data.entitlements || [],
+        qrCodes: data.qrCodes || []
+      }
+
+      setDownload({ active: true, percent: 45, label: 'Ukladám dáta do zariadenia.' })
+      await saveOfflineSnapshotPayload(payload, (percent, label) => {
+        setDownload({
+          active: true,
+          percent: Math.min(99, 45 + Math.round(percent * 0.5)),
+          label
+        })
+      })
+
+      await refreshStats()
+      setDownload({ active: false, percent: 100, label: 'Hotovo.' })
+      setMessage(`Offline dáta sú uložené. Nároky: ${payload.snapshot.entitlementCount}, QR kódy: ${payload.qrCodes.length}.`)
+    } catch (err: any) {
+      setDownload({ active: false, percent: 0, label: '' })
+      setMessage(err?.message || 'Offline dáta sa nepodarilo pripraviť.')
     }
   }
 
@@ -207,12 +295,49 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
       <section style={styles.card}>
         <div style={styles.cardHeader}>
           <div>
-            <h2 style={styles.cardTitle}>Offline dáta</h2>
+            <h2 style={styles.cardTitle}>Stiahnuť offline dáta</h2>
             <p style={styles.cardText}>
-              Stiahnutie nárokov doplníme v ďalšom kroku. Pripraviť ho bude môcť Admin alebo OFFLINE_OBSLUHA.
+              Stiahnu sa iba pripravené skupinové výdaje pre zvolený dátum a jedlo vrátane aktívnych QR kódov a náramkov.
             </p>
           </div>
         </div>
+
+        {canPrepareOfflineIssue ? (
+          <div style={styles.formGrid}>
+            <label style={styles.fieldLabel}>
+              Dátum
+              <input
+                type="date"
+                value={snapshotDate}
+                onChange={event => setSnapshotDate(event.target.value)}
+                style={styles.input}
+              />
+            </label>
+            <label style={styles.fieldLabel}>
+              Jedlo
+              <select
+                value={snapshotMeal}
+                onChange={event => setSnapshotMeal(event.target.value as 'OBED' | 'VECERA')}
+                style={styles.input}
+              >
+                <option value="OBED">Obed</option>
+                <option value="VECERA">Večera</option>
+              </select>
+            </label>
+            <label style={styles.fieldLabel}>
+              Zariadenie / miesto
+              <input
+                type="text"
+                value={issueLocation}
+                onChange={event => setIssueLocation(event.target.value)}
+                style={styles.input}
+                maxLength={80}
+              />
+            </label>
+          </div>
+        ) : (
+          <div style={styles.emptyBox}>Tento používateľ nemá oprávnenie pripraviť offline databázu.</div>
+        )}
 
         {latestSnapshot ? (
           <div style={styles.snapshotBox}>
@@ -227,16 +352,33 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
           </div>
         )}
 
+        {download.active && (
+          <div style={styles.progressWrap}>
+            <div style={styles.progressHeader}>
+              <b>{download.percent}%</b>
+              <span>{download.label}</span>
+            </div>
+            <div style={styles.progressTrack}>
+              <div style={{ ...styles.progressBar, width: `${download.percent}%` }} />
+            </div>
+          </div>
+        )}
+
         <div style={styles.actions}>
           {canPrepareOfflineIssue && (
-            <button type="button" style={styles.primaryButton} disabled>
+            <button
+              type="button"
+              style={styles.primaryButton}
+              onClick={downloadSnapshot}
+              disabled={download.active || !online || !snapshotDate}
+            >
               Stiahnuť offline dáta
             </button>
           )}
           <button type="button" style={styles.secondaryButton} disabled={stats.pendingEvents === 0}>
             Synchronizovať teraz
           </button>
-          <button type="button" style={styles.dangerButton} onClick={clearData} disabled={loading}>
+          <button type="button" style={styles.dangerButton} onClick={clearData} disabled={loading || download.active}>
             Vymazať offline dáta
           </button>
         </div>
@@ -279,6 +421,15 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
       {message && <div style={styles.message}>{message}</div>}
     </main>
   )
+}
+
+const buttonBase: CSSProperties = {
+  minHeight: 40,
+  borderRadius: 6,
+  padding: '0 12px',
+  fontSize: 13,
+  fontWeight: 950,
+  cursor: 'pointer'
 }
 
 const styles: Record<string, CSSProperties> = {
@@ -422,20 +573,31 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.35
   },
   lightButton: {
+    ...buttonBase,
     minHeight: 36,
     border: '1px solid #d1d5db',
-    borderRadius: 6,
     background: '#fff',
     color: '#374151',
-    padding: '0 12px',
-    fontSize: 12,
-    fontWeight: 900
+    fontSize: 12
   },
   metaGrid: {
     margin: 0,
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
     gap: 8
+  },
+  formGrid: {
+    display: 'grid',
+    gridTemplateColumns: '160px 160px minmax(220px, 1fr)',
+    gap: 8,
+    alignItems: 'end'
+  },
+  fieldLabel: {
+    display: 'grid',
+    gap: 4,
+    color: '#374151',
+    fontSize: 11,
+    fontWeight: 950
   },
   snapshotBox: {
     border: '1px solid #bbf7d0',
@@ -447,6 +609,34 @@ const styles: Record<string, CSSProperties> = {
     gap: 4,
     fontSize: 12,
     fontWeight: 850
+  },
+  progressWrap: {
+    border: '1px solid #bfdbfe',
+    borderRadius: 8,
+    background: '#eff6ff',
+    padding: 10,
+    display: 'grid',
+    gap: 8
+  },
+  progressHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 10,
+    color: '#1d4ed8',
+    fontSize: 12,
+    fontWeight: 900
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: 999,
+    background: '#dbeafe',
+    overflow: 'hidden'
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 999,
+    background: '#2563eb',
+    transition: 'width 160ms ease'
   },
   syncNotice: {
     border: '1px solid #bfdbfe',
@@ -512,33 +702,23 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: 'nowrap'
   },
   primaryButton: {
-    minHeight: 40,
+    ...buttonBase,
     border: '1px solid #16a34a',
-    borderRadius: 6,
     background: '#22c55e',
-    color: '#052e16',
-    padding: '0 12px',
-    fontSize: 13,
-    fontWeight: 950
+    color: '#052e16'
   },
   secondaryButton: {
-    minHeight: 40,
+    ...buttonBase,
     border: '1px solid #d1d5db',
-    borderRadius: 6,
     background: '#fff',
     color: '#374151',
-    padding: '0 12px',
-    fontSize: 13,
     fontWeight: 900
   },
   dangerButton: {
-    minHeight: 40,
+    ...buttonBase,
     border: '1px solid #fecaca',
-    borderRadius: 6,
     background: '#fef2f2',
     color: '#991b1b',
-    padding: '0 12px',
-    fontSize: 13,
     fontWeight: 900
   },
   message: {

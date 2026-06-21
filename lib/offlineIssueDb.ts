@@ -19,8 +19,11 @@ export type OfflineSnapshot = {
 export type OfflineEntitlement = {
   entitlementId: string
   snapshotId: string
+  issueId: string
+  issueTitle: string
   personId: string
   qrCode: string
+  qrCodes: string[]
   fullName: string
   registrationGroupName: string
   choice: 'MASO' | 'VEGE' | 'DIETA'
@@ -30,6 +33,16 @@ export type OfflineEntitlement = {
   entitlementStatus: 'VALID' | 'BLOCKED'
   issuedStatus: 'NOT_ISSUED' | 'ISSUED' | 'CANCELLED'
   localIssuedEventId: string
+  updatedAt: string
+}
+
+export type OfflineQrCode = {
+  qrCode: string
+  snapshotId: string
+  entitlementId: string
+  personId: string
+  issueId: string
+  active: boolean
   updatedAt: string
 }
 
@@ -73,12 +86,19 @@ export type OfflinePinState = {
   updatedAt: string
 }
 
+export type OfflineSnapshotPayload = {
+  snapshot: OfflineSnapshot
+  entitlements: OfflineEntitlement[]
+  qrCodes: OfflineQrCode[]
+}
+
 const DB_NAME = 'pohoda-pass-offline-issue'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 const STORES = {
   snapshots: 'offline_snapshots',
   entitlements: 'offline_entitlements',
+  qrCodes: 'offline_qr_codes',
   events: 'offline_issue_events',
   syncResults: 'offline_sync_results',
   conflicts: 'offline_conflicts',
@@ -103,7 +123,7 @@ export function openOfflineIssueDb() {
   const indexedDb = getIndexedDb()
 
   if (!indexedDb) {
-    return Promise.reject(new Error('IndexedDB nie je v tomto prehliadaci dostupna.'))
+    return Promise.reject(new Error('IndexedDB nie je v tomto prehliadači dostupná.'))
   }
 
   return new Promise<IDBDatabase>((resolve, reject) => {
@@ -122,8 +142,22 @@ export function openOfflineIssueDb() {
       if (!db.objectStoreNames.contains(STORES.entitlements)) {
         const store = db.createObjectStore(STORES.entitlements, { keyPath: 'entitlementId' })
         store.createIndex('snapshotId', 'snapshotId', { unique: false })
+        store.createIndex('issueId', 'issueId', { unique: false })
         store.createIndex('qrCode', 'qrCode', { unique: false })
         store.createIndex('issuedStatus', 'issuedStatus', { unique: false })
+      } else {
+        const store = request.transaction?.objectStore(STORES.entitlements)
+        if (store && !store.indexNames.contains('issueId')) {
+          store.createIndex('issueId', 'issueId', { unique: false })
+        }
+      }
+
+      if (!db.objectStoreNames.contains(STORES.qrCodes)) {
+        const store = db.createObjectStore(STORES.qrCodes, { keyPath: 'qrCode' })
+        store.createIndex('snapshotId', 'snapshotId', { unique: false })
+        store.createIndex('entitlementId', 'entitlementId', { unique: false })
+        store.createIndex('personId', 'personId', { unique: false })
+        store.createIndex('issueId', 'issueId', { unique: false })
       }
 
       if (!db.objectStoreNames.contains(STORES.events)) {
@@ -150,7 +184,7 @@ export function openOfflineIssueDb() {
     }
 
     request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error || new Error('IndexedDB sa nepodarilo otvorit.'))
+    request.onerror = () => reject(request.error || new Error('IndexedDB sa nepodarilo otvoriť.'))
   })
 }
 
@@ -197,6 +231,40 @@ export async function getOrCreateOfflineDeviceId() {
   }))
 
   return value
+}
+
+export async function saveOfflineSnapshotPayload(
+  payload: OfflineSnapshotPayload,
+  onProgress?: (percent: number, label: string) => void
+) {
+  const db = await openOfflineIssueDb()
+  const total = Math.max(1, payload.entitlements.length + payload.qrCodes.length + 1)
+  let done = 0
+
+  const report = (label: string) => {
+    done += 1
+    onProgress?.(Math.min(99, Math.round((done / total) * 100)), label)
+  }
+
+  const transaction = db.transaction([STORES.snapshots, STORES.entitlements, STORES.qrCodes], 'readwrite')
+  const snapshotStore = transaction.objectStore(STORES.snapshots)
+  const entitlementStore = transaction.objectStore(STORES.entitlements)
+  const qrStore = transaction.objectStore(STORES.qrCodes)
+
+  await requestToPromise(snapshotStore.put(payload.snapshot))
+  report('Ukladám snapshot.')
+
+  for (const entitlement of payload.entitlements) {
+    await requestToPromise(entitlementStore.put(entitlement))
+    report('Ukladám nároky.')
+  }
+
+  for (const qrCode of payload.qrCodes) {
+    await requestToPromise(qrStore.put(qrCode))
+    report('Ukladám QR kódy.')
+  }
+
+  onProgress?.(100, 'Offline dáta sú uložené.')
 }
 
 export async function getOfflinePinState(): Promise<OfflinePinState> {
