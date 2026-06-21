@@ -491,6 +491,10 @@ export async function GET(req: NextRequest) {
       .filter(Boolean)
 
     const entitlements = [...groupEntitlements, ...individualEntitlements]
+    const groupPersonIds = uniqueClean(groupEntitlements.map((row: any) => row.personId))
+    const individualPersonIds = uniqueClean(individualEntitlements.map((row: any) => row.personId))
+    const uniqueEntitlementPersonIds = uniqueClean(entitlements.map((row: any) => row.personId))
+    const overlappingPersonIds = individualPersonIds.filter(userId => groupPersonIds.includes(userId))
 
     const pickupUsers = pickupRows
       .map((row: any) => {
@@ -532,7 +536,7 @@ export async function GET(req: NextRequest) {
       mealDate: date,
       mealType: meal,
       issueLocation,
-      entitlementCount: entitlements.length,
+      entitlementCount: uniqueEntitlementPersonIds.length,
       validUntil: validUntilIso(),
       schemaVersion: 1,
       syncStatus: 'READY'
@@ -558,8 +562,11 @@ export async function GET(req: NextRequest) {
       qrCodes: qrRows,
       pickupUsers,
       counts: {
+        totalPeople: uniqueEntitlementPersonIds.length,
+        entitlementRows: entitlements.length,
         groupIssueEntitlements: groupEntitlements.length,
         individualEntitlements: individualEntitlements.length,
+        overlappingPeople: overlappingPersonIds.length,
         qrCodes: qrRows.length
       },
       warnings

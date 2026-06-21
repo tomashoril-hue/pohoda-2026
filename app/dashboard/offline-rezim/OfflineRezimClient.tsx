@@ -188,7 +188,7 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
       await refreshStats()
       setDownload({ active: false, percent: 100, label: 'Hotovo.' })
       setMessage(
-        `Offline dáta sú uložené. Skupinové: ${data.counts?.groupIssueEntitlements ?? 0}, individuálne: ${data.counts?.individualEntitlements ?? 0}, QR kódy: ${payload.qrCodes.length}.`
+        `Offline dáta sú uložené. Osoby: ${data.counts?.totalPeople ?? payload.snapshot.entitlementCount}, technické záznamy: ${data.counts?.entitlementRows ?? payload.entitlements.length}, QR kódy: ${payload.qrCodes.length}.`
       )
     } catch (err: any) {
       setDownload({ active: false, percent: 0, label: '' })
@@ -506,7 +506,7 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
             <b>{mealLabel(latestSnapshot.mealType)} · {latestSnapshot.mealDate}</b>
             <span>{latestSnapshot.issueLocation || 'Bez názvu výdajného miesta'}</span>
             <span>Stiahnuté: {dateTimeLabel(latestSnapshot.preparedAt)}</span>
-            <span>Počet nárokov: {latestSnapshot.entitlementCount}</span>
+            <span>Počet osôb: {latestSnapshot.entitlementCount}</span>
           </div>
         ) : (
           <div style={styles.emptyBox}>
