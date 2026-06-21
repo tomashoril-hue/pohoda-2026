@@ -136,6 +136,14 @@ export type OfflineConflict = {
   createdAt: string
 }
 
+export type OfflineSyncEventResult = {
+  offlineEventId: string
+  resultStatus: 'SYNCED' | 'CONFLICT' | 'FAILED_RETRY' | 'IGNORED_DUPLICATE'
+  conflictType?: string
+  message?: string
+  createdIssueIds?: string[]
+}
+
 export type OfflineDeviceMeta = {
   key: string
   value: string
@@ -503,6 +511,9 @@ export async function processOfflineIssueQr({
 
   const eventId = makeIssueEventId()
   const now = new Date().toISOString()
+  const registrationGroupEntitlement = personEntitlements.find(row => {
+    return row.mode === 'GROUP_ISSUE' && row.entitlementStatus === 'VALID' && row.issueId
+  }) || null
   const writeTx = db.transaction([STORES.entitlements, STORES.events], 'readwrite')
   const entitlementStore = writeTx.objectStore(STORES.entitlements)
   const eventStore = writeTx.objectStore(STORES.events)
@@ -527,6 +538,7 @@ export async function processOfflineIssueQr({
     qrCode: cleanQr,
     entitlementId: individual.entitlementId,
     personId: individual.personId,
+    registrationGroupIssueId: registrationGroupEntitlement?.issueId || undefined,
     issuedPersonIds: [individual.personId],
     issuedCount: 1,
     choiceSummary: choiceSummary([individual]),
@@ -655,7 +667,77 @@ export async function listOfflineSnapshots() {
 export async function countOfflinePendingEvents() {
   const store = await readonlyStore(STORES.events)
   const index = store.index('syncStatus')
-  return requestToPromise<number>(index.count('PENDING'))
+  const [pending, retry] = await Promise.all([
+    requestToPromise<number>(index.count('PENDING')),
+    requestToPromise<number>(index.count('FAILED_RETRY'))
+  ])
+
+  return pending + retry
+}
+
+export async function listOfflinePendingEvents() {
+  const store = await readonlyStore(STORES.events)
+  const index = store.index('syncStatus')
+  const [pendingRows, retryRows] = await Promise.all([
+    requestToPromise<OfflineIssueEvent[]>(index.getAll('PENDING')),
+    requestToPromise<OfflineIssueEvent[]>(index.getAll('FAILED_RETRY'))
+  ])
+  const rows = [...pendingRows, ...retryRows]
+
+  return rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+}
+
+export async function applyOfflineSyncResults(results: OfflineSyncEventResult[]) {
+  if (results.length === 0) return
+
+  const db = await openOfflineIssueDb()
+  const now = new Date().toISOString()
+  const transaction = db.transaction([STORES.events, STORES.syncResults, STORES.conflicts], 'readwrite')
+  const eventStore = transaction.objectStore(STORES.events)
+  const syncStore = transaction.objectStore(STORES.syncResults)
+  const conflictStore = transaction.objectStore(STORES.conflicts)
+
+  for (const result of results) {
+    const event = await requestToPromise<OfflineIssueEvent | undefined>(eventStore.get(result.offlineEventId))
+    if (!event) continue
+
+    const syncStatus = result.resultStatus === 'SYNCED' || result.resultStatus === 'IGNORED_DUPLICATE'
+      ? 'SYNCED'
+      : result.resultStatus === 'CONFLICT'
+        ? 'CONFLICT'
+        : 'FAILED_RETRY'
+
+    eventStore.put({
+      ...event,
+      syncStatus
+    })
+
+    syncStore.put({
+      offlineEventId: result.offlineEventId,
+      snapshotId: event.snapshotId,
+      resultStatus: result.resultStatus,
+      conflictType: result.conflictType || '',
+      message: result.message || '',
+      createdIssueIds: result.createdIssueIds || [],
+      updatedAt: now
+    })
+
+    if (result.resultStatus === 'CONFLICT') {
+      conflictStore.put({
+        id: result.offlineEventId,
+        offlineEventId: result.offlineEventId,
+        deviceId: event.deviceId,
+        snapshotId: event.snapshotId,
+        conflictType: result.conflictType || 'CONFLICT',
+        message: result.message || 'Offline udalosť skončila konfliktom.',
+        payload: result,
+        status: 'OPEN',
+        createdAt: now
+      } satisfies OfflineConflict)
+    }
+  }
+
+  await txDone(transaction)
 }
 
 export async function countOfflineOpenConflicts() {

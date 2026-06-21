@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import QrCameraScanner from '@/app/dashboard/skupinovy-vydaj/QrCameraScanner'
 import {
+  applyOfflineSyncResults,
   cancelLastOfflineIssue,
   clearOfflineIssueData,
   clearOfflineOperatorPin,
@@ -11,6 +12,7 @@ import {
   countOfflinePendingEvents,
   getOfflinePinState,
   getOrCreateOfflineDeviceId,
+  listOfflinePendingEvents,
   listOfflineSnapshots,
   processOfflineIssueQr,
   saveOfflineSnapshotPayload,
@@ -321,6 +323,50 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
     }
   }
 
+  async function syncOfflineEvents() {
+    if (!online || scanLoading || stats.pendingEvents === 0) return
+
+    setScanLoading(true)
+    setMessage('')
+    setSyncNotice('Synchronizujem offline udalosti.')
+
+    try {
+      const events = await listOfflinePendingEvents()
+      if (events.length === 0) {
+        await refreshStats()
+        setSyncNotice('')
+        setMessage('Nie sú žiadne čakajúce offline udalosti.')
+        return
+      }
+
+      const response = await fetch('/api/offline/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ events })
+      })
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Synchronizácia sa nepodarila.')
+      }
+
+      await applyOfflineSyncResults(data.results || [])
+      await refreshStats()
+
+      setMessage(
+        `Synchronizácia hotová. Úspešné: ${data.syncedCount || 0}, konflikty: ${data.conflictCount || 0}, na opakovanie: ${data.retryCount || 0}.`
+      )
+      setSyncNotice('')
+    } catch (err: any) {
+      setMessage(err?.message || 'Synchronizácia sa nepodarila.')
+      setSyncNotice('Synchronizácia zlyhala. Čakajúce udalosti ostali uložené v zariadení.')
+    } finally {
+      setScanLoading(false)
+    }
+  }
+
   function choiceSummaryLabel(summary?: { MASO: number; VEGE: number; DIETA: number }) {
     if (!summary) return ''
     return [
@@ -491,7 +537,12 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
               Stiahnuť offline dáta
             </button>
           )}
-          <button type="button" style={styles.secondaryButton} disabled={stats.pendingEvents === 0}>
+          <button
+            type="button"
+            style={styles.secondaryButton}
+            onClick={syncOfflineEvents}
+            disabled={!online || scanLoading || stats.pendingEvents === 0}
+          >
             Synchronizovať teraz
           </button>
           <button type="button" style={styles.dangerButton} onClick={clearData} disabled={loading || download.active}>
