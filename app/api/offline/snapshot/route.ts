@@ -367,9 +367,7 @@ export async function GET(req: NextRequest) {
       loadIssuedUserIds(date, meal)
     ])
 
-    const individualUserIds = individualEntitlementUserIds.filter(userId => {
-      return !issuedUserIds.has(userId)
-    })
+    const individualUserIds = individualEntitlementUserIds
     const userIds = uniqueClean([
       ...itemRows.map((row: any) => row.user_id),
       ...pickupRows.map((row: any) => row.user_id),
@@ -400,7 +398,6 @@ export async function GET(req: NextRequest) {
           : normalizeChoice(selectionChoice || item.volba || user?.typ_stravy) as FoodChoice | null
         const qrCodes = qrCodesByUserId.get(item.user_id) || []
 
-        if (issuedUserIds.has(item.user_id)) return null
         if (!entitlementOk(entitlementByUserId.get(item.user_id), meal)) return null
         if (!issue || !user || String(user.aktivny || '').toUpperCase() !== 'ANO' || !choice) return null
         if (qrCodes.length === 0) warnings.push(`Osoba ${fullName(user)} nema aktivny QR kod pre offline skenovanie.`)
@@ -421,8 +418,8 @@ export async function GET(req: NextRequest) {
           mealType: meal,
           issueLocation,
           entitlementStatus: qrCodes.length > 0 ? 'VALID' : 'BLOCKED',
-          issuedStatus: 'NOT_ISSUED',
-          localIssuedEventId: '',
+          issuedStatus: issuedUserIds.has(user.id) ? 'ISSUED' : 'NOT_ISSUED',
+          localIssuedEventId: issuedUserIds.has(user.id) ? 'server-issued' : '',
           updatedAt: item.updated_at || preparedAt
         }
 
@@ -470,8 +467,8 @@ export async function GET(req: NextRequest) {
           mealType: meal,
           issueLocation,
           entitlementStatus: qrCodes.length > 0 ? 'VALID' : 'BLOCKED',
-          issuedStatus: 'NOT_ISSUED',
-          localIssuedEventId: '',
+          issuedStatus: issuedUserIds.has(user.id) ? 'ISSUED' : 'NOT_ISSUED',
+          localIssuedEventId: issuedUserIds.has(user.id) ? 'server-issued' : '',
           updatedAt: preparedAt
         }
 
@@ -495,6 +492,22 @@ export async function GET(req: NextRequest) {
     const individualPersonIds = uniqueClean(individualEntitlements.map((row: any) => row.personId))
     const uniqueEntitlementPersonIds = uniqueClean(entitlements.map((row: any) => row.personId))
     const overlappingPersonIds = individualPersonIds.filter(userId => groupPersonIds.includes(userId))
+    const peopleChoiceById = new Map<string, { choice: FoodChoice; issued: boolean }>()
+    entitlements.forEach((row: any) => {
+      const existing = peopleChoiceById.get(row.personId)
+      peopleChoiceById.set(row.personId, {
+        choice: existing?.choice || row.choice,
+        issued: Boolean(existing?.issued) || row.issuedStatus === 'ISSUED'
+      })
+    })
+    const peopleByChoice = Array.from(peopleChoiceById.values()).reduce((summary, row) => {
+      summary[row.choice] += 1
+      return summary
+    }, { MASO: 0, VEGE: 0, DIETA: 0 })
+    const issuedPeopleByChoice = Array.from(peopleChoiceById.values()).reduce((summary, row) => {
+      if (row.issued) summary[row.choice] += 1
+      return summary
+    }, { MASO: 0, VEGE: 0, DIETA: 0 })
 
     const pickupUsers = pickupRows
       .map((row: any) => {
@@ -564,6 +577,9 @@ export async function GET(req: NextRequest) {
       counts: {
         totalPeople: uniqueEntitlementPersonIds.length,
         entitlementRows: entitlements.length,
+        peopleByChoice,
+        issuedPeopleByChoice,
+        issuedPeople: Array.from(peopleChoiceById.values()).filter(row => row.issued).length,
         groupIssueEntitlements: groupEntitlements.length,
         individualEntitlements: individualEntitlements.length,
         overlappingPeople: overlappingPersonIds.length,

@@ -79,6 +79,15 @@ function mealLabel(value: string) {
   return value || '-'
 }
 
+function foodCountLabel(summary?: { MASO?: number; VEGE?: number; DIETA?: number }) {
+  if (!summary) return ''
+  return [
+    `MASO ${summary.MASO || 0}`,
+    `VEGE ${summary.VEGE || 0}`,
+    `DIÉTA ${summary.DIETA || 0}`
+  ].join(' / ')
+}
+
 export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByName }: Props) {
   const [online, setOnline] = useState(true)
   const [loading, setLoading] = useState(true)
@@ -187,8 +196,12 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
 
       await refreshStats()
       setDownload({ active: false, percent: 100, label: 'Hotovo.' })
+      const byChoiceText = foodCountLabel(data.counts?.peopleByChoice)
+      const issuedText = data.counts?.issuedPeople
+        ? ` Už vydané v čase stiahnutia: ${data.counts.issuedPeople}.`
+        : ''
       setMessage(
-        `Offline dáta sú uložené. Osoby: ${data.counts?.totalPeople ?? payload.snapshot.entitlementCount}, technické záznamy: ${data.counts?.entitlementRows ?? payload.entitlements.length}, QR kódy: ${payload.qrCodes.length}.`
+        `Offline dáta sú uložené. Osoby: ${data.counts?.totalPeople ?? payload.snapshot.entitlementCount}${byChoiceText ? ` (${byChoiceText})` : ''}, technické záznamy: ${data.counts?.entitlementRows ?? payload.entitlements.length}, QR kódy: ${payload.qrCodes.length}.${issuedText}`
       )
     } catch (err: any) {
       setDownload({ active: false, percent: 0, label: '' })
