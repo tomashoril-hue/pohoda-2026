@@ -59,7 +59,7 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
     canUseWristbandKiosk: isAdmin || isWristbandKiosk,
     canUseMenuKiosk: isAdmin || isMenuKiosk,
     canUseOfflineIssue: isAdmin || isOfflineObsluha,
-    canPrepareOfflineIssue: isAdmin
+    canPrepareOfflineIssue: isAdmin || isOfflineObsluha
   }
 }
 

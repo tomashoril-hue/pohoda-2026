@@ -68,6 +68,11 @@ export type OfflineDeviceMeta = {
   updatedAt: string
 }
 
+export type OfflinePinState = {
+  enabled: boolean
+  updatedAt: string
+}
+
 const DB_NAME = 'pohoda-pass-offline-issue'
 const DB_VERSION = 1
 
@@ -192,6 +197,36 @@ export async function getOrCreateOfflineDeviceId() {
   }))
 
   return value
+}
+
+export async function getOfflinePinState(): Promise<OfflinePinState> {
+  const store = await readonlyStore(STORES.deviceMeta)
+  const existing = await requestToPromise<OfflineDeviceMeta | undefined>(store.get('operator_pin'))
+
+  return {
+    enabled: Boolean(existing?.value),
+    updatedAt: existing?.updatedAt || ''
+  }
+}
+
+export async function setOfflineOperatorPin(pin: string) {
+  const cleanPin = String(pin || '').trim()
+
+  if (!/^\d{4,8}$/.test(cleanPin)) {
+    throw new Error('PIN musí mať 4 až 8 číslic.')
+  }
+
+  const store = await readwriteStore(STORES.deviceMeta)
+  await requestToPromise(store.put({
+    key: 'operator_pin',
+    value: cleanPin,
+    updatedAt: new Date().toISOString()
+  }))
+}
+
+export async function clearOfflineOperatorPin() {
+  const store = await readwriteStore(STORES.deviceMeta)
+  await requestToPromise(store.delete('operator_pin'))
 }
 
 export async function clearOfflineIssueData() {
