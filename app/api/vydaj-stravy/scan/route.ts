@@ -1102,11 +1102,6 @@ export async function POST(req: NextRequest) {
         if (!issue?.id) return
         registrationIssueMap.set(issue.id, issue)
       })
-      matchingRegistrationPlannedItems.forEach((item: any) => {
-        const issue = registrationIssueOf(item)
-        if (!issue?.id) return
-        registrationIssueMap.set(issue.id, issue)
-      })
 
       const activeRegistrationIssues = Array.from(registrationIssueMap.values()).filter((issue: any) => {
         if (issue.datum !== datum || issue.typ_jedla !== typJedla) return false
@@ -1271,8 +1266,7 @@ export async function POST(req: NextRequest) {
 
     if (issueAction === 'BULK' && !selectedBulkOption && selectedRegistrationIssueId) {
       const selectedRegistrationIssue = [
-        ...(registrationPickupIssues || []).map((row: any) => registrationIssueOf(row)),
-        ...matchingRegistrationPlannedItems.map((item: any) => registrationIssueOf(item))
+        ...(registrationPickupIssues || []).map((row: any) => registrationIssueOf(row))
       ].find((issue: any) => {
         return issue?.id === selectedRegistrationIssueId &&
           issue.datum === datum &&
