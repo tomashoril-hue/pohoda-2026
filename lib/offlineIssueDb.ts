@@ -565,6 +565,79 @@ export async function processOfflineIssueQr({
   }
 }
 
+export async function recordServerIssuedInOfflineSnapshot({
+  qrCode,
+  mealDate,
+  mealType,
+  issueAction,
+  bulkIssueId,
+  issuedId
+}: {
+  qrCode: string
+  mealDate: string
+  mealType: 'OBED' | 'VECERA'
+  issueAction?: 'INDIVIDUAL' | 'BULK'
+  bulkIssueId?: string
+  issuedId?: string
+}) {
+  const cleanQr = String(qrCode || '').trim()
+  if (!cleanQr || !mealDate || !mealType) return false
+
+  const db = await openOfflineIssueDb()
+  const snapshots = await requestToPromise<OfflineSnapshot[]>(
+    db.transaction(STORES.snapshots, 'readonly').objectStore(STORES.snapshots).getAll()
+  )
+  const snapshot = snapshots
+    .filter(row => row.mealDate === mealDate && row.mealType === mealType)
+    .sort((a, b) => b.preparedAt.localeCompare(a.preparedAt))[0] || null
+
+  if (!snapshot) return false
+
+  const lookupTx = db.transaction([STORES.qrCodes, STORES.entitlements], 'readonly')
+  const qrRow = await requestToPromise<OfflineQrCode | undefined>(
+    lookupTx.objectStore(STORES.qrCodes).get(cleanQr)
+  )
+
+  if (!qrRow || qrRow.snapshotId !== snapshot.snapshotId) return false
+
+  const entitlements = await getEntitlementsBySnapshot(db, snapshot.snapshotId)
+  const normalizedBulkIssueId = String(bulkIssueId || '').replace(/^registration:/, '')
+  const rowsToIssue = issueAction === 'BULK' && normalizedBulkIssueId
+    ? entitlements.filter(row => {
+        return row.mode === 'GROUP_ISSUE' &&
+          row.issueId === normalizedBulkIssueId &&
+          row.entitlementStatus === 'VALID' &&
+          row.issuedStatus === 'NOT_ISSUED'
+      })
+    : entitlements.filter(row => {
+        return row.personId === qrRow.personId &&
+          row.entitlementStatus === 'VALID' &&
+          row.issuedStatus === 'NOT_ISSUED'
+      })
+
+  if (rowsToIssue.length === 0) return false
+
+  const issuedPersonIds = Array.from(new Set(rowsToIssue.map(row => row.personId)))
+  const marker = `server-issued:${issuedId || Date.now()}`
+  const now = new Date().toISOString()
+  const writeTx = db.transaction(STORES.entitlements, 'readwrite')
+  const entitlementStore = writeTx.objectStore(STORES.entitlements)
+
+  entitlements
+    .filter(row => issuedPersonIds.includes(row.personId) && row.issuedStatus === 'NOT_ISSUED')
+    .forEach(row => {
+      entitlementStore.put({
+        ...row,
+        issuedStatus: 'ISSUED',
+        localIssuedEventId: marker,
+        updatedAt: now
+      })
+    })
+
+  await txDone(writeTx)
+  return true
+}
+
 export async function cancelLastOfflineIssue(): Promise<OfflineIssueScanResult> {
   const db = await openOfflineIssueDb()
   const snapshot = await getLatestSnapshotFromDb(db)

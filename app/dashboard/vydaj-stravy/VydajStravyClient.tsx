@@ -4,6 +4,14 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } f
 import Link from 'next/link'
 import { BrowserQRCodeReader } from '@zxing/browser'
 import jsQR from 'jsqr'
+import {
+  applyOfflineSyncResults,
+  cancelLastOfflineIssue,
+  listOfflinePendingEvents,
+  processOfflineIssueQr,
+  recordServerIssuedInOfflineSnapshot,
+  type OfflineIssueScanResult
+} from '@/lib/offlineIssueDb'
 
 type Meal = 'OBED' | 'VECERA'
 type Tone = 'success' | 'error' | 'warning'
@@ -291,6 +299,30 @@ function makeScanId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+function offlineMethodLabel(value?: string) {
+  if (value === 'REGISTRATION_GROUP_BULK') return 'HROMADNE'
+  if (value === 'INDIVIDUAL') return 'INDIVIDUALNE'
+  return String(value || '')
+}
+
+function offlineResultToScanItem(result: OfflineIssueScanResult, typJedla: Meal): ScanItem {
+  return {
+    id: makeScanId(),
+    typJedla,
+    status: result.status || (result.ok ? 'ISSUED' : 'ERROR'),
+    tone: result.tone || (result.ok ? 'success' : 'error'),
+    message: result.message || 'Offline výdaj sa nepodarilo spracovať.',
+    personName: result.personName || '',
+    email: '',
+    choice: result.choice || '',
+    method: offlineMethodLabel(result.method),
+    groupName: result.groupName || '',
+    issuedId: '',
+    issuedAt: new Date().toISOString(),
+    summary: result.summary ? { ...result.summary, NEZADANE: 0 } : undefined
+  }
+}
+
 export default function VydajStravyClient({
   actorName,
   initialDate,
@@ -348,6 +380,9 @@ export default function VydajStravyClient({
   const [editLoading, setEditLoading] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [issueDecision, setIssueDecision] = useState<IssueDecision | null>(null)
+  const [online, setOnline] = useState(true)
+  const [offlineNotice, setOfflineNotice] = useState('')
+  const [offlineSyncing, setOfflineSyncing] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const flashTimerRef = useRef<number | null>(null)
@@ -711,6 +746,71 @@ export default function VydajStravyClient({
     setSelectedCancelIds(prev => prev.filter(id => items.some(item => item.issuedId === id)))
   }
 
+  const syncPendingOfflineEventsInBackground = async () => {
+    if (offlineSyncing || typeof navigator === 'undefined' || !navigator.onLine) return
+
+    setOfflineSyncing(true)
+
+    try {
+      const events = await listOfflinePendingEvents()
+      if (events.length === 0) {
+        setOfflineNotice('')
+        return
+      }
+
+      setOfflineNotice('Synchronizujem offline výdaje.')
+
+      const response = await fetch('/api/offline/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ events })
+      })
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Synchronizácia offline výdajov zlyhala.')
+      }
+
+      await applyOfflineSyncResults(data.results || [])
+      const conflictCount = Number(data.conflictCount || 0)
+      setOfflineNotice(conflictCount > 0
+        ? `Offline synchronizácia hotová, konflikty: ${conflictCount}.`
+        : ''
+      )
+      refreshRecentIssuedInBackground()
+    } catch {
+      setOfflineNotice('Offline výdaje ostali uložené v zariadení. Synchronizácia sa zopakuje po pripojení.')
+    } finally {
+      setOfflineSyncing(false)
+    }
+  }
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined') return
+
+    const handleOnline = () => {
+      setOnline(true)
+      void syncPendingOfflineEventsInBackground()
+    }
+    const handleOffline = () => {
+      setOnline(false)
+      setOfflineNotice('Offline režim. Výdaj používa dáta uložené v tomto zariadení.')
+    }
+
+    setOnline(navigator.onLine)
+    if (navigator.onLine) {
+      void syncPendingOfflineEventsInBackground()
+    }
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
   const refreshStats = async () => {
     setStatsLoading(true)
     setStatsError('')
@@ -762,6 +862,61 @@ export default function VydajStravyClient({
     setLoading(true)
 
     try {
+      const shouldUseOffline = typeof navigator !== 'undefined' && (!navigator.onLine || !online)
+
+      if (shouldUseOffline) {
+        const offlineResult = await processOfflineIssueQr({
+          qrCode: cleanQr,
+          issueAction,
+          bulkIssueId
+        })
+
+        if (offlineResult.decision) {
+          decisionOpenRef.current = true
+          triggerScanFlash('warning')
+          setIssueDecision({
+            qrCode: offlineResult.decision.qrCode,
+            personName: offlineResult.decision.personName,
+            email: '',
+            choice: offlineResult.decision.choice,
+            individual: offlineResult.decision.individual,
+            bulkIssues: offlineResult.decision.bulkIssues.map(issue => ({
+              id: issue.id,
+              groupId: '',
+              groupName: issue.groupName,
+              count: issue.count,
+              summary: { ...issue.summary, NEZADANE: 0 },
+              includesScannedPerson: issue.includesScannedPerson
+            }))
+          })
+          setQrValue('')
+          setOfflineNotice('Offline režim. Výdaj sa ukladá lokálne v zariadení.')
+          return
+        }
+
+        const item = offlineResultToScanItem(offlineResult, currentTypJedla)
+        addHistory(item)
+
+        if (offlineResult.ok) {
+          const issuedCount = Math.max(1, Number(offlineResult.issuedCount || 1))
+          triggerScanFlash('success')
+          playBeep('ok')
+          setSuccessCount(prev => prev + issuedCount)
+          setOfflineNotice('Offline výdaj uložený v zariadení. Po návrate internetu sa zosynchronizuje.')
+        } else {
+          triggerScanFlash('error')
+          playBeep('error')
+          setErrorCount(prev => prev + 1)
+          setOfflineNotice(offlineResult.status === 'NO_OFFLINE_DATA'
+            ? 'Offline dáta pre výdaj nie sú pripravené. Najprv ich stiahni v Offline režime.'
+            : 'Offline režim. Výdaj používa dáta uložené v tomto zariadení.'
+          )
+        }
+
+        setQrValue('')
+        return
+      }
+
       const res = await fetch('/api/vydaj-stravy/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -832,6 +987,16 @@ export default function VydajStravyClient({
         triggerScanFlash('success')
         playBeep('ok')
         setSuccessCount(prev => prev + issuedCount)
+        recordServerIssuedInOfflineSnapshot({
+          qrCode: cleanQr,
+          mealDate: currentDatum,
+          mealType: currentTypJedla,
+          issueAction,
+          bulkIssueId,
+          issuedId: item.issuedId
+        }).catch(() => {
+          // Lokálna offline databáza je iba záloha; online výdaj nesmie blokovať.
+        })
         if (item.issuedId) {
           setSelectedCancelIds([item.issuedId])
         }
@@ -1065,6 +1230,45 @@ export default function VydajStravyClient({
     }
   }
 
+  const cancelLastOfflineIssued = async () => {
+    if (cancelLoading) return
+
+    setCancelLoading(true)
+
+    try {
+      const result = await cancelLastOfflineIssue()
+      const item = offlineResultToScanItem(result, typJedlaRef.current)
+      addHistory(item)
+
+      if (result.ok) {
+        playBeep('ok')
+        setOfflineNotice('Offline storno uložené v zariadení. Po návrate internetu sa zosynchronizuje.')
+      } else {
+        playBeep('error')
+        setOfflineNotice(result.message || 'Offline storno sa nepodarilo.')
+      }
+    } catch (err: any) {
+      playBeep('error')
+      addHistory({
+        id: `${Date.now()}-offline-cancel-error`,
+        typJedla: typJedlaRef.current,
+        status: 'CANCEL_ERROR',
+        tone: 'error',
+        message: err?.message || 'Offline storno sa nepodarilo.',
+        personName: '',
+        email: '',
+        choice: '',
+        method: '',
+        groupName: '',
+        issuedId: '',
+        issuedAt: new Date().toISOString()
+      })
+    } finally {
+      setCancelLoading(false)
+      setTimeout(() => inputRef.current?.focus(), 70)
+    }
+  }
+
   const onInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter') return
     event.preventDefault()
@@ -1123,7 +1327,9 @@ export default function VydajStravyClient({
               </h2>
             </div>
 
-            <div style={{ ...styles.liveBadge, ...(isMobile ? styles.liveBadgeMobile : {}) }}>{loading ? 'Spracúvam' : 'Pripravené'}</div>
+            <div style={{ ...styles.liveBadge, ...(isMobile ? styles.liveBadgeMobile : {}) }}>
+              {loading ? 'Spracúvam' : online ? 'Pripravené' : 'Offline'}
+            </div>
           </div>
 
           {showManualQrControls && (
@@ -1175,6 +1381,10 @@ export default function VydajStravyClient({
               {cameraStatus}
             </span>
           </div>
+
+          {offlineNotice && (
+            <div style={styles.offlineNotice}>{offlineNotice}</div>
+          )}
 
           {cameraOpen && (
             <div style={{ ...styles.cameraBox, ...(isMobile ? styles.cameraBoxMobile : {}) }}>
@@ -1419,6 +1629,19 @@ export default function VydajStravyClient({
               <p style={styles.cancelHint}>Vyber jeden alebo viac z posledných 10 výdajov.</p>
             </div>
 
+            {!online && (
+              <button
+                type="button"
+                onClick={cancelLastOfflineIssued}
+                disabled={cancelLoading}
+                style={{
+                  ...styles.cancelButton,
+                  opacity: cancelLoading ? 0.45 : 1
+                }}
+              >
+                {cancelLoading ? 'Stornujem...' : 'Stornovať posledný offline'}
+              </button>
+            )}
             <button
               type="button"
               onClick={cancelSelectedIssued}
@@ -1916,6 +2139,16 @@ const styles: Record<string, CSSProperties> = {
   },
   cameraStatusMobile: {
     fontSize: 11
+  },
+  offlineNotice: {
+    borderRadius: 8,
+    border: '1px solid #fed7aa',
+    background: '#fff7ed',
+    color: '#9a3412',
+    padding: '8px 10px',
+    fontSize: 12,
+    fontWeight: 850,
+    lineHeight: 1.25
   },
   cameraBox: {
     position: 'relative',
