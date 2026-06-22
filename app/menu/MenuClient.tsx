@@ -98,13 +98,16 @@ export default function MenuClient({
   const [selectedDate, setSelectedDate] = useState(today)
   const [localSelections, setLocalSelections] = useState<Selection[]>(selections)
   const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [pressedKey, setPressedKey] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [now, setNow] = useState<number | null>(null)
   const [mounted, setMounted] = useState(false)
+  const [online, setOnline] = useState(true)
 
   useEffect(() => {
     setMounted(true)
     setNow(Date.now())
+    setOnline(typeof navigator === 'undefined' ? true : navigator.onLine)
 
     const timer = setInterval(() => {
       setNow(Date.now())
@@ -112,6 +115,32 @@ export default function MenuClient({
 
     return () => clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return
+
+    const handleOnline = () => {
+      setOnline(true)
+      setSavingKey(null)
+      setPressedKey(null)
+      setMessage('')
+      onActivity?.()
+    }
+    const handleOffline = () => {
+      setOnline(false)
+      setSavingKey(null)
+      setPressedKey(null)
+      setMessage('Telefón je offline. Výber stravy bude možné meniť po obnovení internetu.')
+    }
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [onActivity])
 
   const dates = useMemo(() => {
     return Array.from(new Set(menu.map((m) => m.datum)))
@@ -262,20 +291,34 @@ export default function MenuClient({
     onActivity?.()
     const state = getDeadlineState(datum, typ)
 
+    if (!online) {
+      setMessage('Telefón je offline. Výber stravy bude možné meniť po obnovení internetu.')
+      return
+    }
+
     if (state.locked) {
       setMessage(state.label)
       return
     }
 
     const key = `${datum}-${typ}`
+    const optionKey = `${key}-${volba}`
     setSavingKey(key)
+    setPressedKey(optionKey)
     setMessage('')
 
     const res = await fetch(submitUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ datum, typ_jedla: typ, volba, ...(submitExtraBody || {}) }),
-    })
+    }).catch(() => null)
+
+    if (!res) {
+      setMessage('Telefón je offline alebo spojenie vypadlo. Skús to znova po obnovení internetu.')
+      setSavingKey(null)
+      setPressedKey(null)
+      return
+    }
 
     let result: any = {}
 
@@ -284,12 +327,14 @@ export default function MenuClient({
     } catch {
       setMessage('Server nevrátil platnú odpoveď.')
       setSavingKey(null)
+      setPressedKey(null)
       return
     }
 
     if (!res.ok) {
       setMessage(result.error || 'Nepodarilo sa uložiť výber.')
       setSavingKey(null)
+      setPressedKey(null)
       return
     }
 
@@ -315,6 +360,7 @@ export default function MenuClient({
     }
 
     setSavingKey(null)
+    setPressedKey(null)
     onActivity?.()
   }
 
@@ -421,24 +467,28 @@ export default function MenuClient({
         >
           {items.map((item) => {
             const active = normalizeVariant(selected) === normalizeVariant(item.varianta)
+            const optionKey = `${selectedDate}-${typ}-${item.varianta}`
+            const isPressed = pressedKey === optionKey
 
             return (
               <button
                 key={item.id}
                 onClick={() => handleSelect(selectedDate, typ, item.varianta)}
-                disabled={isSaving || state.locked}
+                disabled={isSaving || state.locked || !online}
                 style={{
                   textAlign: 'left',
                   minHeight: 150,
                   padding: 18,
                   border: '3px solid #000',
                   borderRadius: 22,
-                  background: active ? '#56db3f' : '#fff',
-                  boxShadow: active && !state.locked ? '6px 6px 0 #000' : 'none',
-                  cursor: state.locked ? 'not-allowed' : isSaving ? 'wait' : 'pointer',
-                  opacity: state.locked && !active ? 0.45 : 1,
+                  background: isPressed ? '#fff176' : active ? '#56db3f' : '#fff',
+                  boxShadow: isPressed ? '2px 2px 0 #000' : active && !state.locked ? '6px 6px 0 #000' : 'none',
+                  cursor: state.locked || !online ? 'not-allowed' : isSaving ? 'wait' : 'pointer',
+                  opacity: (state.locked || !online) && !active ? 0.45 : 1,
                   fontFamily: 'Arial, Helvetica, sans-serif',
-                  filter: state.locked && !active ? 'grayscale(1)' : 'none',
+                  filter: (state.locked || !online) && !active ? 'grayscale(1)' : 'none',
+                  transform: isPressed ? 'translate(4px, 4px)' : 'translate(0, 0)',
+                  transition: 'transform 120ms ease, box-shadow 120ms ease, background 120ms ease',
                 }}
               >
                 <div
@@ -479,7 +529,7 @@ export default function MenuClient({
                   {item.popis || 'Bez popisu'}
                 </div>
 
-                {active && (
+                {(active || isPressed) && (
                   <div
                     style={{
                       marginTop: 14,
@@ -496,24 +546,28 @@ export default function MenuClient({
 
           {(() => {
             const active = normalizeVariant(selected) === 'BEZ_ZAUJMU'
+            const optionKey = `${selectedDate}-${typ}-BEZ_ZAUJMU`
+            const isPressed = pressedKey === optionKey
 
             return (
               <button
                 key={`${typ}-bez-zaujmu`}
                 onClick={() => handleSelect(selectedDate, typ, 'BEZ_ZAUJMU')}
-                disabled={isSaving || state.locked}
+                disabled={isSaving || state.locked || !online}
                 style={{
                   textAlign: 'left',
                   minHeight: 150,
                   padding: 18,
                   border: '3px solid #000',
                   borderRadius: 22,
-                  background: active ? '#ff8a8a' : '#fff7ed',
-                  boxShadow: active && !state.locked ? '6px 6px 0 #000' : 'none',
-                  cursor: state.locked ? 'not-allowed' : isSaving ? 'wait' : 'pointer',
-                  opacity: state.locked && !active ? 0.45 : 1,
+                  background: isPressed ? '#fff176' : active ? '#ff8a8a' : '#fff7ed',
+                  boxShadow: isPressed ? '2px 2px 0 #000' : active && !state.locked ? '6px 6px 0 #000' : 'none',
+                  cursor: state.locked || !online ? 'not-allowed' : isSaving ? 'wait' : 'pointer',
+                  opacity: (state.locked || !online) && !active ? 0.45 : 1,
                   fontFamily: 'Arial, Helvetica, sans-serif',
-                  filter: state.locked && !active ? 'grayscale(1)' : 'none',
+                  filter: (state.locked || !online) && !active ? 'grayscale(1)' : 'none',
+                  transform: isPressed ? 'translate(4px, 4px)' : 'translate(0, 0)',
+                  transition: 'transform 120ms ease, box-shadow 120ms ease, background 120ms ease',
                 }}
               >
                 <div
@@ -554,7 +608,7 @@ export default function MenuClient({
                   Toto jedlo sa nezapočíta do gastro tabuľky ani do výdaja.
                 </div>
 
-                {active && (
+                {(active || isPressed) && (
                   <div
                     style={{
                       marginTop: 14,
@@ -680,6 +734,24 @@ export default function MenuClient({
         >
           {description}
         </p>
+
+        {!online && (
+          <div
+            style={{
+              margin: '0 0 14px 0',
+              border: '3px solid #000',
+              borderRadius: 18,
+              padding: 12,
+              background: '#fff176',
+              color: '#000',
+              fontSize: 14,
+              fontWeight: 900,
+              boxShadow: '4px 4px 0 #000',
+            }}
+          >
+            Telefón je offline. Výber bude možné meniť po obnovení internetu.
+          </div>
+        )}
 
         <div
           style={{
