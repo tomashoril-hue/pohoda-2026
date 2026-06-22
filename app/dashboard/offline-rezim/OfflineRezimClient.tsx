@@ -86,6 +86,17 @@ function dateTimeLabel(value: string) {
   }
 }
 
+function sizeKbLabel(bytes?: number) {
+  if (!bytes || bytes <= 0) return ''
+
+  return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString('sk-SK')} kB`
+}
+
+function snapshotMetaLabel(snapshot: OfflineSnapshot) {
+  const size = sizeKbLabel(snapshot.storageSizeBytes)
+  return `${snapshot.entitlementCount} osôb · Aktualizované ${dateTimeLabel(snapshot.preparedAt)}${size ? ` · ${size}` : ''}`
+}
+
 function mealLabel(value: string) {
   if (value === 'OBED') return 'Obed'
   if (value === 'VECERA') return 'Večera'
@@ -592,7 +603,7 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
                 <div key={snapshot.snapshotId} style={styles.snapshotRow}>
                   <b>{mealLabel(snapshot.mealType)} · {snapshot.mealDate}</b>
                   <span>{snapshot.issueLocation || 'Bez miesta'}</span>
-                  <span>{snapshot.entitlementCount} osôb · Aktualizované {dateTimeLabel(snapshot.preparedAt)}</span>
+                  <span>{snapshotMetaLabel(snapshot)}</span>
                 </div>
               ))}
           </div>

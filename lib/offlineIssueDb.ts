@@ -11,6 +11,7 @@ export type OfflineSnapshot = {
   mealType: 'OBED' | 'VECERA'
   issueLocation: string
   entitlementCount: number
+  storageSizeBytes?: number
   validUntil: string
   schemaVersion: number
   syncStatus: 'READY' | 'SYNCING' | 'SYNCED' | 'CONFLICTS'
@@ -317,6 +318,10 @@ function choiceLabel(value: string) {
 
 function firstExisting<T>(values: Array<T | null | undefined>) {
   return values.find(Boolean) || null
+}
+
+function estimateJsonSizeBytes(value: unknown) {
+  return new TextEncoder().encode(JSON.stringify(value)).length
 }
 
 async function getLatestSnapshotFromDb(db: IDBDatabase) {
@@ -852,9 +857,18 @@ export async function saveOfflineSnapshotPayload(
 ) {
   const db = await openOfflineIssueDb()
   const pickupUsers = payload.pickupUsers || []
+  const snapshotWithSize = {
+    ...payload.snapshot,
+    storageSizeBytes: estimateJsonSizeBytes({
+      snapshot: payload.snapshot,
+      entitlements: payload.entitlements,
+      qrCodes: payload.qrCodes,
+      pickupUsers
+    })
+  } satisfies OfflineSnapshot
   const existingSnapshotsForMeal = await indexGetAll<OfflineSnapshot>(
     db.transaction(STORES.snapshots, 'readonly').objectStore(STORES.snapshots).index('meal'),
-    [payload.snapshot.mealDate, payload.snapshot.mealType]
+    [snapshotWithSize.mealDate, snapshotWithSize.mealType]
   )
   const snapshotsToReplace = existingSnapshotsForMeal.filter(snapshot => {
     return snapshot.snapshotId !== payload.snapshot.snapshotId
@@ -890,7 +904,7 @@ export async function saveOfflineSnapshotPayload(
     report('Cistim starsi snapshot.')
   }
 
-  await requestToPromise(snapshotStore.put(payload.snapshot))
+  await requestToPromise(snapshotStore.put(snapshotWithSize))
   report('Ukladám snapshot.')
 
   for (const entitlement of payload.entitlements) {
@@ -979,17 +993,30 @@ export async function applyOfflineSnapshotDelta(payload: OfflineSnapshotDeltaPay
   pickupUsers.forEach(row => pickupStore.put(row))
 
   const keptEntitlements = existingEntitlements.filter(row => !shouldReplaceEntitlement(row))
+  const keptQrCodes = existingQrCodes.filter(row => !shouldReplaceQr(row))
+  const keptPickupUsers = existingPickupUsers.filter(row => !shouldReplacePickupUser(row))
+  const nextEntitlements = [...keptEntitlements, ...payload.entitlements]
+  const nextQrCodes = [...keptQrCodes, ...payload.qrCodes]
+  const nextPickupUsers = [...keptPickupUsers, ...pickupUsers]
   const uniquePeople = new Set([
-    ...keptEntitlements.map(row => row.personId),
-    ...payload.entitlements.map(row => row.personId)
+    ...nextEntitlements.map(row => row.personId)
   ].filter(Boolean))
-
-  snapshotStore.put({
+  const nextSnapshot = {
     ...snapshot,
     preparedAt: payload.preparedAt || new Date().toISOString(),
     validUntil: payload.validUntil || snapshot.validUntil,
     entitlementCount: uniquePeople.size,
     syncStatus: 'READY'
+  } satisfies OfflineSnapshot
+
+  snapshotStore.put({
+    ...nextSnapshot,
+    storageSizeBytes: estimateJsonSizeBytes({
+      snapshot: nextSnapshot,
+      entitlements: nextEntitlements,
+      qrCodes: nextQrCodes,
+      pickupUsers: nextPickupUsers
+    })
   } satisfies OfflineSnapshot)
 
   await txDone(transaction)
