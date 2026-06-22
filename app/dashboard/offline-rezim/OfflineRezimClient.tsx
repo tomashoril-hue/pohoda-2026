@@ -92,6 +92,22 @@ function mealLabel(value: string) {
   return value || '-'
 }
 
+function latestSnapshotsByMeal(snapshots: OfflineSnapshot[]) {
+  const latestByKey = new Map<string, OfflineSnapshot>()
+
+  snapshots.forEach(snapshot => {
+    const key = `${snapshot.mealDate}|${snapshot.mealType}`
+    const existing = latestByKey.get(key)
+
+    if (!existing || snapshot.preparedAt.localeCompare(existing.preparedAt) > 0) {
+      latestByKey.set(key, snapshot)
+    }
+  })
+
+  return Array.from(latestByKey.values())
+    .sort((a, b) => b.preparedAt.localeCompare(a.preparedAt))
+}
+
 function foodCountLabel(summary?: { MASO?: number; VEGE?: number; DIETA?: number }) {
   if (!summary) return ''
   return [
@@ -140,6 +156,9 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
     return stats.snapshots
       .slice()
       .sort((a, b) => b.preparedAt.localeCompare(a.preparedAt))[0]
+  }, [stats.snapshots])
+  const visibleSnapshots = useMemo(() => {
+    return latestSnapshotsByMeal(stats.snapshots)
   }, [stats.snapshots])
 
   async function refreshStats() {
@@ -232,6 +251,14 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
     setDownload({ active: true, percent: 5, label: 'Pripravujem stiahnutie.' })
 
     try {
+      const pendingEvents = await listOfflinePendingEvents()
+
+      if (pendingEvents.length > 0) {
+        setDownload({ active: false, percent: 0, label: '' })
+        setMessage('Najprv zosynchronizuj čakajúce offline výdaje. Potom stiahni novú offline zálohu.')
+        return
+      }
+
       const deviceId = stats.deviceId || await getOrCreateOfflineDeviceId()
       setDownload({ active: true, percent: 15, label: 'Načítavam dáta zo servera.' })
 
@@ -419,7 +446,7 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
         </article>
         <article style={styles.statusCard}>
           <span style={styles.statLabel}>Snapshoty</span>
-          <b>{loading ? '-' : stats.snapshots.length}</b>
+          <b>{loading ? '-' : visibleSnapshots.length}</b>
         </article>
         <article style={styles.statusCard}>
           <span style={styles.statLabel}>Čaká na sync</span>
@@ -557,18 +584,15 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
           </div>
         </div>
 
-        {stats.snapshots.length === 0 ? (
+        {visibleSnapshots.length === 0 ? (
           <div style={styles.emptyBox}>V zariadení nie je uložený žiadny snapshot.</div>
         ) : (
           <div style={styles.snapshotList}>
-            {stats.snapshots
-              .slice()
-              .sort((a, b) => b.preparedAt.localeCompare(a.preparedAt))
-              .map(snapshot => (
+            {visibleSnapshots.map(snapshot => (
                 <div key={snapshot.snapshotId} style={styles.snapshotRow}>
                   <b>{mealLabel(snapshot.mealType)} · {snapshot.mealDate}</b>
                   <span>{snapshot.issueLocation || 'Bez miesta'}</span>
-                  <span>{snapshot.entitlementCount} osôb · {dateTimeLabel(snapshot.preparedAt)}</span>
+                  <span>{snapshot.entitlementCount} osôb · Aktualizované {dateTimeLabel(snapshot.preparedAt)}</span>
                 </div>
               ))}
           </div>
@@ -881,7 +905,12 @@ const styles: Record<string, CSSProperties> = {
   },
   snapshotList: {
     display: 'grid',
-    gap: 7
+    gap: 7,
+    maxHeight: 284,
+    overflowY: 'auto',
+    overscrollBehavior: 'contain',
+    WebkitOverflowScrolling: 'touch',
+    paddingRight: 4
   },
   snapshotRow: {
     border: '1px solid #e5e7eb',

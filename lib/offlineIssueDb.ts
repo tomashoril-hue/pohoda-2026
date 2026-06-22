@@ -852,7 +852,17 @@ export async function saveOfflineSnapshotPayload(
 ) {
   const db = await openOfflineIssueDb()
   const pickupUsers = payload.pickupUsers || []
-  const total = Math.max(1, payload.entitlements.length + payload.qrCodes.length + pickupUsers.length + 1)
+  const existingSnapshotsForMeal = await indexGetAll<OfflineSnapshot>(
+    db.transaction(STORES.snapshots, 'readonly').objectStore(STORES.snapshots).index('meal'),
+    [payload.snapshot.mealDate, payload.snapshot.mealType]
+  )
+  const snapshotsToReplace = existingSnapshotsForMeal.filter(snapshot => {
+    return snapshot.snapshotId !== payload.snapshot.snapshotId
+  })
+  const total = Math.max(
+    1,
+    payload.entitlements.length + payload.qrCodes.length + pickupUsers.length + snapshotsToReplace.length + 1
+  )
   let done = 0
 
   const report = (label: string) => {
@@ -865,6 +875,20 @@ export async function saveOfflineSnapshotPayload(
   const entitlementStore = transaction.objectStore(STORES.entitlements)
   const qrStore = transaction.objectStore(STORES.qrCodes)
   const pickupStore = transaction.objectStore(STORES.pickupUsers)
+
+  for (const oldSnapshot of snapshotsToReplace) {
+    const [oldEntitlements, oldQrCodes, oldPickupUsers] = await Promise.all([
+      indexGetAll<OfflineEntitlement>(entitlementStore.index('snapshotId'), oldSnapshot.snapshotId),
+      indexGetAll<OfflineQrCode>(qrStore.index('snapshotId'), oldSnapshot.snapshotId),
+      indexGetAll<OfflinePickupUser>(pickupStore.index('snapshotId'), oldSnapshot.snapshotId)
+    ])
+
+    oldEntitlements.forEach(row => entitlementStore.delete(row.entitlementId))
+    oldQrCodes.forEach(row => qrStore.delete(row.qrCode))
+    oldPickupUsers.forEach(row => pickupStore.delete(row.id))
+    snapshotStore.delete(oldSnapshot.snapshotId)
+    report('Cistim starsi snapshot.')
+  }
 
   await requestToPromise(snapshotStore.put(payload.snapshot))
   report('Ukladám snapshot.')
@@ -884,6 +908,7 @@ export async function saveOfflineSnapshotPayload(
     report('Ukladám oprávnenia na prevzatie.')
   }
 
+  await txDone(transaction)
   onProgress?.(100, 'Offline dáta sú uložené.')
 }
 
