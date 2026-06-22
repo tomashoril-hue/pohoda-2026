@@ -162,6 +162,17 @@ export type OfflineSnapshotPayload = {
   pickupUsers?: OfflinePickupUser[]
 }
 
+export type OfflineSnapshotDeltaPayload = {
+  snapshotId: string
+  preparedAt: string
+  validUntil: string
+  affectedPersonIds: string[]
+  affectedIssueIds: string[]
+  entitlements: OfflineEntitlement[]
+  qrCodes: OfflineQrCode[]
+  pickupUsers?: OfflinePickupUser[]
+}
+
 const DB_NAME = 'pohoda-pass-offline-issue'
 const DB_VERSION = 3
 
@@ -874,6 +885,90 @@ export async function saveOfflineSnapshotPayload(
   }
 
   onProgress?.(100, 'Offline dáta sú uložené.')
+}
+
+export async function applyOfflineSnapshotDelta(payload: OfflineSnapshotDeltaPayload) {
+  const db = await openOfflineIssueDb()
+  const affectedPersonIds = new Set((payload.affectedPersonIds || []).filter(Boolean))
+  const affectedIssueIds = new Set((payload.affectedIssueIds || []).filter(Boolean))
+  const pickupUsers = payload.pickupUsers || []
+
+  if (!payload.snapshotId || (affectedPersonIds.size === 0 && affectedIssueIds.size === 0)) {
+    return false
+  }
+
+  const snapshot = await requestToPromise<OfflineSnapshot | undefined>(
+    db.transaction(STORES.snapshots, 'readonly').objectStore(STORES.snapshots).get(payload.snapshotId)
+  )
+
+  if (!snapshot) return false
+
+  const [existingEntitlements, existingQrCodes, existingPickupUsers] = await Promise.all([
+    indexGetAll<OfflineEntitlement>(
+      db.transaction(STORES.entitlements, 'readonly').objectStore(STORES.entitlements).index('snapshotId'),
+      payload.snapshotId
+    ),
+    indexGetAll<OfflineQrCode>(
+      db.transaction(STORES.qrCodes, 'readonly').objectStore(STORES.qrCodes).index('snapshotId'),
+      payload.snapshotId
+    ),
+    indexGetAll<OfflinePickupUser>(
+      db.transaction(STORES.pickupUsers, 'readonly').objectStore(STORES.pickupUsers).index('snapshotId'),
+      payload.snapshotId
+    )
+  ])
+
+  const shouldReplaceEntitlement = (row: OfflineEntitlement) => {
+    return affectedPersonIds.has(row.personId) || affectedIssueIds.has(row.issueId)
+  }
+  const shouldReplaceQr = (row: OfflineQrCode) => {
+    return affectedPersonIds.has(row.personId) ||
+      affectedIssueIds.has(row.issueId) ||
+      (row.issueIds || []).some(issueId => affectedIssueIds.has(issueId)) ||
+      (row.pickupIssueIds || []).some(issueId => affectedIssueIds.has(issueId))
+  }
+  const shouldReplacePickupUser = (row: OfflinePickupUser) => {
+    return affectedPersonIds.has(row.personId) || affectedIssueIds.has(row.issueId)
+  }
+
+  const transaction = db.transaction([STORES.snapshots, STORES.entitlements, STORES.qrCodes, STORES.pickupUsers], 'readwrite')
+  const snapshotStore = transaction.objectStore(STORES.snapshots)
+  const entitlementStore = transaction.objectStore(STORES.entitlements)
+  const qrStore = transaction.objectStore(STORES.qrCodes)
+  const pickupStore = transaction.objectStore(STORES.pickupUsers)
+
+  existingEntitlements
+    .filter(shouldReplaceEntitlement)
+    .forEach(row => entitlementStore.delete(row.entitlementId))
+
+  existingQrCodes
+    .filter(shouldReplaceQr)
+    .forEach(row => qrStore.delete(row.qrCode))
+
+  existingPickupUsers
+    .filter(shouldReplacePickupUser)
+    .forEach(row => pickupStore.delete(row.id))
+
+  payload.entitlements.forEach(row => entitlementStore.put(row))
+  payload.qrCodes.forEach(row => qrStore.put(row))
+  pickupUsers.forEach(row => pickupStore.put(row))
+
+  const keptEntitlements = existingEntitlements.filter(row => !shouldReplaceEntitlement(row))
+  const uniquePeople = new Set([
+    ...keptEntitlements.map(row => row.personId),
+    ...payload.entitlements.map(row => row.personId)
+  ].filter(Boolean))
+
+  snapshotStore.put({
+    ...snapshot,
+    preparedAt: payload.preparedAt || new Date().toISOString(),
+    validUntil: payload.validUntil || snapshot.validUntil,
+    entitlementCount: uniquePeople.size,
+    syncStatus: 'READY'
+  } satisfies OfflineSnapshot)
+
+  await txDone(transaction)
+  return true
 }
 
 export async function getOfflinePinState(): Promise<OfflinePinState> {

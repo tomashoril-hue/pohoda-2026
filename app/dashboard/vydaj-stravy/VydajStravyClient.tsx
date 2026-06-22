@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { BrowserQRCodeReader } from '@zxing/browser'
 import jsQR from 'jsqr'
 import {
+  applyOfflineSnapshotDelta,
   applyOfflineSyncResults,
   cancelLastOfflineIssue,
   getOrCreateOfflineDeviceId,
@@ -825,24 +826,51 @@ export default function VydajStravyClient({
           .sort((a, b) => b.preparedAt.localeCompare(a.preparedAt))[0] || null
 
         if (latestMatchingSnapshot) {
-          const checkParams = new URLSearchParams({
+          const deltaParams = new URLSearchParams({
             date: currentDate,
             meal: currentMeal,
-            since: latestMatchingSnapshot.preparedAt
+            since: latestMatchingSnapshot.preparedAt,
+            snapshotId: latestMatchingSnapshot.snapshotId
           })
-          const checkResponse = await fetch(`/api/offline/snapshot/check?${checkParams.toString()}`, {
+          const deltaResponse = await fetch(`/api/offline/snapshot/delta?${deltaParams.toString()}`, {
             method: 'GET',
             cache: 'no-store'
           })
-          const checkData = await checkResponse.json().catch(() => null)
+          const deltaData = await deltaResponse.json().catch(() => null)
 
-          if (checkResponse.ok && checkData?.ok && !checkData.changed) {
+          if (deltaResponse.ok && deltaData?.ok && deltaData.mode === 'no_changes') {
             const time = new Intl.DateTimeFormat('sk-SK', {
               hour: '2-digit',
               minute: '2-digit'
             }).format(new Date())
             setOfflineNotice(`Offline záloha bez zmien ${time}.`)
             return
+          }
+
+          if (deltaResponse.ok && deltaData?.ok && deltaData.mode === 'patch') {
+            const applied = await applyOfflineSnapshotDelta({
+              snapshotId: deltaData.snapshotId,
+              preparedAt: deltaData.preparedAt,
+              validUntil: deltaData.validUntil,
+              affectedPersonIds: deltaData.affectedPersonIds || [],
+              affectedIssueIds: deltaData.affectedIssueIds || [],
+              entitlements: deltaData.entitlements || [],
+              qrCodes: deltaData.qrCodes || [],
+              pickupUsers: deltaData.pickupUsers || []
+            })
+
+            if (applied) {
+              const time = new Intl.DateTimeFormat('sk-SK', {
+                hour: '2-digit',
+                minute: '2-digit'
+              }).format(new Date())
+              const changedCount = Number(deltaData.counts?.affectedPeople || 0)
+              setOfflineNotice(changedCount > 0
+                ? `Offline zmeny doplnené ${time} · ${changedCount} osôb.`
+                : `Offline zmeny doplnené ${time}.`
+              )
+              return
+            }
           }
         }
       }
