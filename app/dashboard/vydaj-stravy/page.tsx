@@ -72,6 +72,7 @@ export default async function VydajStravyPage() {
       initialDate={today}
       initialMeal={defaultMeal()}
       issueMode={access.canAdminFoodIssue ? 'FULL' : 'BASIC'}
+      canPrepareOfflineIssue={access.canPrepareOfflineIssue}
       activeIssues={(activeIssues || []).map((issue: any) => {
         const group = Array.isArray(issue.groups) ? issue.groups[0] : issue.groups
 

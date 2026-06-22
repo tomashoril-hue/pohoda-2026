@@ -7,9 +7,11 @@ import jsQR from 'jsqr'
 import {
   applyOfflineSyncResults,
   cancelLastOfflineIssue,
+  getOrCreateOfflineDeviceId,
   listOfflinePendingEvents,
   processOfflineIssueQr,
   recordServerIssuedInOfflineSnapshot,
+  saveOfflineSnapshotPayload,
   type OfflineIssueScanResult
 } from '@/lib/offlineIssueDb'
 
@@ -328,12 +330,14 @@ export default function VydajStravyClient({
   initialDate,
   initialMeal,
   issueMode,
+  canPrepareOfflineIssue,
   activeIssues
 }: {
   actorName: string
   initialDate: string
   initialMeal: string
   issueMode: 'FULL' | 'BASIC'
+  canPrepareOfflineIssue: boolean
   activeIssues: ActiveIssue[]
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -351,6 +355,8 @@ export default function VydajStravyClient({
   const decisionOpenRef = useRef(false)
   const datumRef = useRef(initialDate)
   const typJedlaRef = useRef<Meal>(initialMeal === 'VECERA' ? 'VECERA' : 'OBED')
+  const offlineSyncingRef = useRef(false)
+  const offlineSnapshotDownloadRef = useRef(false)
 
   const [datum, setDatum] = useState(initialDate)
   const [typJedla, setTypJedla] = useState<Meal>(initialMeal === 'VECERA' ? 'VECERA' : 'OBED')
@@ -383,6 +389,7 @@ export default function VydajStravyClient({
   const [online, setOnline] = useState(true)
   const [offlineNotice, setOfflineNotice] = useState('')
   const [offlineSyncing, setOfflineSyncing] = useState(false)
+  const [offlineSnapshotLoading, setOfflineSnapshotLoading] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const flashTimerRef = useRef<number | null>(null)
@@ -747,8 +754,9 @@ export default function VydajStravyClient({
   }
 
   const syncPendingOfflineEventsInBackground = async () => {
-    if (offlineSyncing || typeof navigator === 'undefined' || !navigator.onLine) return
+    if (offlineSyncingRef.current || typeof navigator === 'undefined' || !navigator.onLine) return
 
+    offlineSyncingRef.current = true
     setOfflineSyncing(true)
 
     try {
@@ -781,7 +789,67 @@ export default function VydajStravyClient({
     } catch {
       setOfflineNotice('Offline výdaje ostali uložené v zariadení. Synchronizácia sa zopakuje po pripojení.')
     } finally {
+      offlineSyncingRef.current = false
       setOfflineSyncing(false)
+    }
+  }
+
+  const downloadOfflineSnapshotInBackground = async (mode: 'auto' | 'manual' = 'auto') => {
+    if (!canPrepareOfflineIssue) return
+    if (offlineSnapshotDownloadRef.current || busyRef.current || decisionOpenRef.current) return
+    if (typeof navigator === 'undefined' || !navigator.onLine) return
+
+    offlineSnapshotDownloadRef.current = true
+    setOfflineSnapshotLoading(true)
+
+    try {
+      const pendingEvents = await listOfflinePendingEvents()
+      if (pendingEvents.length > 0) {
+        await syncPendingOfflineEventsInBackground()
+        const remainingEvents = await listOfflinePendingEvents()
+        if (remainingEvents.length > 0) {
+          setOfflineNotice('Offline dáta sa neobnovili, lebo v zariadení čakajú neodoslané výdaje.')
+          return
+        }
+      }
+
+      const deviceId = await getOrCreateOfflineDeviceId()
+      const params = new URLSearchParams({
+        date: datumRef.current,
+        meal: typJedlaRef.current,
+        issueLocation: 'Hlavné výdajné miesto',
+        deviceId
+      })
+      const response = await fetch(`/api/offline/snapshot?${params.toString()}`, {
+        method: 'GET',
+        cache: 'no-store'
+      })
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Offline dáta sa nepodarilo obnoviť.')
+      }
+
+      await saveOfflineSnapshotPayload({
+        snapshot: data.snapshot,
+        entitlements: data.entitlements || [],
+        qrCodes: data.qrCodes || [],
+        pickupUsers: data.pickupUsers || []
+      })
+
+      const time = new Intl.DateTimeFormat('sk-SK', {
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(new Date())
+      setOfflineNotice(mode === 'manual'
+        ? `Offline dáta obnovené ${time}.`
+        : `Offline záloha aktuálna ${time}.`
+      )
+    } catch (err: any) {
+      setOfflineNotice(err?.message || 'Offline dáta sa nepodarilo obnoviť.')
+    } finally {
+      offlineSnapshotDownloadRef.current = false
+      setOfflineSnapshotLoading(false)
     }
   }
 
@@ -810,6 +878,26 @@ export default function VydajStravyClient({
       window.removeEventListener('offline', handleOffline)
     }
   }, [])
+
+  useEffect(() => {
+    if (!canPrepareOfflineIssue || !online) return
+
+    const timeoutId = window.setTimeout(() => {
+      void downloadOfflineSnapshotInBackground('auto')
+    }, 1200)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [canPrepareOfflineIssue, datum, typJedla, online])
+
+  useEffect(() => {
+    if (!canPrepareOfflineIssue) return
+
+    const intervalId = window.setInterval(() => {
+      void downloadOfflineSnapshotInBackground('auto')
+    }, 5 * 60 * 1000)
+
+    return () => window.clearInterval(intervalId)
+  }, [canPrepareOfflineIssue])
 
   const refreshStats = async () => {
     setStatsLoading(true)
@@ -1328,7 +1416,7 @@ export default function VydajStravyClient({
             </div>
 
             <div style={{ ...styles.liveBadge, ...(isMobile ? styles.liveBadgeMobile : {}) }}>
-              {loading ? 'Spracúvam' : online ? 'Pripravené' : 'Offline'}
+              {loading ? 'Spracúvam' : offlineSnapshotLoading ? 'Offline záloha' : online ? 'Pripravené' : 'Offline'}
             </div>
           </div>
 
