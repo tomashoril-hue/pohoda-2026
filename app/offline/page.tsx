@@ -8,15 +8,20 @@ export default function OfflinePage() {
         <div style={styles.kicker}>OFFLINE REŽIM</div>
         <h1 style={styles.title}>Aplikácia je bez internetu</h1>
         <p style={styles.text}>
-          POHODA PASS sa otvoril v offline režime. Plnohodnotný offline výdaj bude dostupný po stiahnutí
-          offline dát pre konkrétny skupinový výdaj.
+          Ak bolo toto zariadenie predtým pripravené, otvor hlavný Výdaj stravy. Výdaj bude používať posledné uložené
+          offline dáta a po návrate internetu sa udalosti zosynchronizujú.
         </p>
         <div style={styles.notice}>
-          Offline režim ešte nie je pripravený pre výdaj. Najprv sa pripojte na internet a pripravte offline dáta.
+          Ak sa stránka výdaja ešte nikdy nenačítala online alebo v zariadení nie sú offline dáta, najprv sa pripoj na internet.
         </div>
-        <Link href="/dashboard" style={styles.button}>
-          Skúsiť otvoriť aplikáciu
-        </Link>
+        <div style={styles.actions}>
+          <Link href="/dashboard/vydaj-stravy" style={styles.button}>
+            Otvoriť výdaj stravy
+          </Link>
+          <Link href="/dashboard" style={styles.secondaryButton}>
+            Dashboard
+          </Link>
+        </div>
       </section>
     </main>
   )
@@ -78,12 +83,32 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 900,
     lineHeight: 1.35
   },
+  actions: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap'
+  },
   button: {
     minHeight: 44,
     border: '2px solid #000',
     borderRadius: 10,
     background: '#22c55e',
     color: '#052e16',
+    boxShadow: '4px 4px 0 #000',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0 14px',
+    textDecoration: 'none',
+    fontSize: 14,
+    fontWeight: 950
+  },
+  secondaryButton: {
+    minHeight: 44,
+    border: '2px solid #000',
+    borderRadius: 10,
+    background: '#fff',
+    color: '#111827',
     boxShadow: '4px 4px 0 #000',
     display: 'inline-flex',
     alignItems: 'center',

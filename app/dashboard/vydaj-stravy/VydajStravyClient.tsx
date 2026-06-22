@@ -9,6 +9,7 @@ import {
   cancelLastOfflineIssue,
   getOrCreateOfflineDeviceId,
   listOfflinePendingEvents,
+  listOfflineSnapshots,
   processOfflineIssueQr,
   recordServerIssuedInOfflineSnapshot,
   saveOfflineSnapshotPayload,
@@ -814,9 +815,41 @@ export default function VydajStravyClient({
       }
 
       const deviceId = await getOrCreateOfflineDeviceId()
+      const currentDate = datumRef.current
+      const currentMeal = typJedlaRef.current
+
+      if (mode === 'auto') {
+        const snapshots = await listOfflineSnapshots()
+        const latestMatchingSnapshot = snapshots
+          .filter(snapshot => snapshot.mealDate === currentDate && snapshot.mealType === currentMeal)
+          .sort((a, b) => b.preparedAt.localeCompare(a.preparedAt))[0] || null
+
+        if (latestMatchingSnapshot) {
+          const checkParams = new URLSearchParams({
+            date: currentDate,
+            meal: currentMeal,
+            since: latestMatchingSnapshot.preparedAt
+          })
+          const checkResponse = await fetch(`/api/offline/snapshot/check?${checkParams.toString()}`, {
+            method: 'GET',
+            cache: 'no-store'
+          })
+          const checkData = await checkResponse.json().catch(() => null)
+
+          if (checkResponse.ok && checkData?.ok && !checkData.changed) {
+            const time = new Intl.DateTimeFormat('sk-SK', {
+              hour: '2-digit',
+              minute: '2-digit'
+            }).format(new Date())
+            setOfflineNotice(`Offline záloha bez zmien ${time}.`)
+            return
+          }
+        }
+      }
+
       const params = new URLSearchParams({
-        date: datumRef.current,
-        meal: typJedlaRef.current,
+        date: currentDate,
+        meal: currentMeal,
         issueLocation: 'Hlavné výdajné miesto',
         deviceId
       })

@@ -2,10 +2,8 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import QrCameraScanner from '@/app/dashboard/skupinovy-vydaj/QrCameraScanner'
 import {
   applyOfflineSyncResults,
-  cancelLastOfflineIssue,
   clearOfflineIssueData,
   clearOfflineOperatorPin,
   countOfflineOpenConflicts,
@@ -14,11 +12,8 @@ import {
   getOrCreateOfflineDeviceId,
   listOfflinePendingEvents,
   listOfflineSnapshots,
-  processOfflineIssueQr,
   saveOfflineSnapshotPayload,
   setOfflineOperatorPin,
-  type OfflineIssueDecision,
-  type OfflineIssueScanResult,
   type OfflineSnapshot,
   type OfflineSnapshotPayload
 } from '@/lib/offlineIssueDb'
@@ -32,7 +27,7 @@ type OfflineStats = {
   deviceId: string
   snapshots: OfflineSnapshot[]
   pendingEvents: number
-  openConflicts: number
+  localOpenConflicts: number
   pinEnabled: boolean
 }
 
@@ -40,6 +35,24 @@ type DownloadState = {
   active: boolean
   percent: number
   label: string
+}
+
+type ServerConflict = {
+  id: string
+  offlineEventId: string
+  deviceId: string
+  qrCode: string
+  personName: string
+  mealDate: string
+  mealType: string
+  issueLocation: string
+  conflictType: string
+  message: string
+  status: 'OPEN' | 'RESOLVED'
+  createdAt: string
+  resolvedAt: string
+  resolvedByName: string
+  resolutionNote: string
 }
 
 function bratislavaTodayIsoDate() {
@@ -88,19 +101,22 @@ function foodCountLabel(summary?: { MASO?: number; VEGE?: number; DIETA?: number
   ].join(' / ')
 }
 
+function conflictTypeLabel(value: string) {
+  if (value === 'CONFLICT_DUPLICATE_ISSUE') return 'Duplicitný výdaj'
+  if (value === 'CONFLICT_CANCEL_WITHOUT_ACTIVE_ISSUE') return 'Storno bez aktívneho výdaja'
+  if (value === 'CONFLICT_INVALID_ENTITLEMENT') return 'Neplatný nárok'
+  if (value === 'CONFLICT_INVALID_EVENT') return 'Neplatná offline udalosť'
+  if (value === 'CONFLICT_ALREADY_CANCELLED') return 'Už stornované'
+  return value || 'Konflikt'
+}
+
 export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByName }: Props) {
   const [online, setOnline] = useState(true)
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [syncNotice, setSyncNotice] = useState('')
   const [pinValue, setPinValue] = useState('')
-  const [manualQr, setManualQr] = useState('')
-  const [scanLoading, setScanLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
-  const [successCount, setSuccessCount] = useState(0)
-  const [errorCount, setErrorCount] = useState(0)
-  const [scanHistory, setScanHistory] = useState<OfflineIssueScanResult[]>([])
-  const [issueDecision, setIssueDecision] = useState<OfflineIssueDecision | null>(null)
   const [snapshotDate, setSnapshotDate] = useState(() => bratislavaTodayIsoDate())
   const [snapshotMeal, setSnapshotMeal] = useState<'OBED' | 'VECERA'>('OBED')
   const [issueLocation, setIssueLocation] = useState('Hlavné výdajné miesto')
@@ -113,9 +129,12 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
     deviceId: '',
     snapshots: [],
     pendingEvents: 0,
-    openConflicts: 0,
+    localOpenConflicts: 0,
     pinEnabled: false
   })
+  const [serverConflicts, setServerConflicts] = useState<ServerConflict[]>([])
+  const [conflictsLoading, setConflictsLoading] = useState(false)
+  const [resolvingId, setResolvingId] = useState('')
 
   const latestSnapshot = useMemo(() => {
     return stats.snapshots
@@ -128,7 +147,7 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
     setMessage('')
 
     try {
-      const [deviceId, snapshots, pendingEvents, openConflicts, pinState] = await Promise.all([
+      const [deviceId, snapshots, pendingEvents, localOpenConflicts, pinState] = await Promise.all([
         getOrCreateOfflineDeviceId(),
         listOfflineSnapshots(),
         countOfflinePendingEvents(),
@@ -136,7 +155,7 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
         getOfflinePinState()
       ])
 
-      setStats({ deviceId, snapshots, pendingEvents, openConflicts, pinEnabled: pinState.enabled })
+      setStats({ deviceId, snapshots, pendingEvents, localOpenConflicts, pinEnabled: pinState.enabled })
       setSyncNotice(navigator.onLine && pendingEvents > 0
         ? 'Po návrate internetu sa čakajúce offline udalosti automaticky zosynchronizujú.'
         : ''
@@ -145,6 +164,59 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
       setMessage(err?.message || 'Offline úložisko sa nepodarilo načítať.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadServerConflicts() {
+    if (!online) return
+
+    setConflictsLoading(true)
+
+    try {
+      const response = await fetch('/api/offline/conflicts?status=OPEN&limit=80', {
+        method: 'GET',
+        cache: 'no-store'
+      })
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Konflikty sa nepodarilo načítať.')
+      }
+
+      setServerConflicts(data.items || [])
+    } catch (err: any) {
+      setMessage(err?.message || 'Konflikty sa nepodarilo načítať.')
+    } finally {
+      setConflictsLoading(false)
+    }
+  }
+
+  async function resolveConflict(conflictId: string) {
+    if (!conflictId || resolvingId) return
+
+    const note = window.prompt('Poznámka k vyriešeniu konfliktu:', 'Skontrolované manažérom.')
+    if (note === null) return
+
+    setResolvingId(conflictId)
+
+    try {
+      const response = await fetch('/api/offline/conflicts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conflictId, note })
+      })
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Konflikt sa nepodarilo označiť ako vyriešený.')
+      }
+
+      setServerConflicts(prev => prev.filter(item => item.id !== conflictId))
+      setMessage('Konflikt bol označený ako vyriešený.')
+    } catch (err: any) {
+      setMessage(err?.message || 'Konflikt sa nepodarilo vyriešiť.')
+    } finally {
+      setResolvingId('')
     }
   }
 
@@ -244,99 +316,6 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
     }
   }
 
-  function addScanHistory(result: OfflineIssueScanResult) {
-    setScanHistory(prev => [result, ...prev].slice(0, 8))
-    if (result.ok && result.status === 'CANCELLED') {
-      setSuccessCount(prev => Math.max(0, prev - Math.max(1, Number(result.issuedCount || 1))))
-    } else if (result.ok) {
-      setSuccessCount(prev => prev + Math.max(1, Number(result.issuedCount || 1)))
-    } else if (result.status !== 'ISSUE_DECISION_REQUIRED') {
-      setErrorCount(prev => prev + 1)
-    }
-  }
-
-  async function processOfflineQr(
-    value: string,
-    issueAction?: 'INDIVIDUAL' | 'BULK',
-    bulkIssueId?: string
-  ) {
-    setScanLoading(true)
-
-    try {
-      const result = await processOfflineIssueQr({
-        qrCode: value,
-        issueAction,
-        bulkIssueId
-      })
-
-      if (result.decision) {
-        setIssueDecision(result.decision)
-      } else {
-        addScanHistory(result)
-        await refreshStats()
-      }
-
-      return {
-        tone: result.tone,
-        message: result.message
-      }
-    } catch (err: any) {
-      const result: OfflineIssueScanResult = {
-        ok: false,
-        status: 'ERROR',
-        tone: 'error',
-        message: err?.message || 'Offline výdaj sa nepodarilo spracovať.'
-      }
-      addScanHistory(result)
-      return {
-        tone: 'error' as const,
-        message: result.message
-      }
-    } finally {
-      setScanLoading(false)
-    }
-  }
-
-  async function submitManualQr() {
-    const value = manualQr.trim()
-    if (!value || scanLoading) return
-
-    setManualQr('')
-    await processOfflineQr(value)
-  }
-
-  async function confirmIssueDecision(issueAction: 'INDIVIDUAL' | 'BULK', bulkIssueId?: string) {
-    if (!issueDecision || scanLoading) return
-
-    const qrCode = issueDecision.qrCode
-    setIssueDecision(null)
-    await processOfflineQr(qrCode, issueAction, bulkIssueId)
-  }
-
-  async function cancelLastIssue() {
-    if (scanLoading || !latestSnapshot) return
-
-    const ok = window.confirm('Naozaj stornovať posledný offline výdaj na tomto zariadení?')
-    if (!ok) return
-
-    setScanLoading(true)
-
-    try {
-      const result = await cancelLastOfflineIssue()
-      addScanHistory(result)
-      await refreshStats()
-    } catch (err: any) {
-      addScanHistory({
-        ok: false,
-        status: 'ERROR',
-        tone: 'error',
-        message: err?.message || 'Offline storno sa nepodarilo spracovať.'
-      })
-    } finally {
-      setScanLoading(false)
-    }
-  }
-
   async function syncOfflineEvents(mode: 'manual' | 'auto' = 'manual') {
     if (!online || syncing || stats.pendingEvents === 0) return
 
@@ -358,9 +337,7 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
 
       const response = await fetch('/api/offline/sync', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ events })
       })
       const data = await response.json().catch(() => null)
@@ -371,6 +348,7 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
 
       await applyOfflineSyncResults(data.results || [])
       await refreshStats()
+      await loadServerConflicts()
 
       setMessage(
         `Synchronizácia hotová. Úspešné: ${data.syncedCount || 0}, konflikty: ${data.conflictCount || 0}, na opakovanie: ${data.retryCount || 0}.`
@@ -382,15 +360,6 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
     } finally {
       setSyncing(false)
     }
-  }
-
-  function choiceSummaryLabel(summary?: { MASO: number; VEGE: number; DIETA: number }) {
-    if (!summary) return ''
-    return [
-      summary.MASO ? `MÄSO ${summary.MASO}` : '',
-      summary.VEGE ? `VEGE ${summary.VEGE}` : '',
-      summary.DIETA ? `DIÉTA ${summary.DIETA}` : ''
-    ].filter(Boolean).join(' · ')
   }
 
   useEffect(() => {
@@ -408,6 +377,12 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
       window.removeEventListener('offline', handleOffline)
     }
   }, [])
+
+  useEffect(() => {
+    if (online) {
+      void loadServerConflicts()
+    }
+  }, [online])
 
   useEffect(() => {
     if (!online || stats.pendingEvents === 0 || syncing) {
@@ -428,10 +403,13 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
       <section style={styles.header}>
         <div>
           <div style={styles.kicker}>Offline režim</div>
-          <h1 style={styles.title}>Skupinový výdaj offline</h1>
-          <p style={styles.subtitle}>Príprava zariadenia, lokálne výdaje a neskoršia synchronizácia.</p>
+          <h1 style={styles.title}>Správa offline dát</h1>
+          <p style={styles.subtitle}>Stiahnutie databázy, synchronizácia, konflikty a lokálny PIN. Výdaj prebieha cez hlavnú obrazovku Výdaj stravy.</p>
         </div>
-        <Link href="/dashboard" style={styles.backButton}>Späť</Link>
+        <div style={styles.headerActions}>
+          <Link href="/dashboard/vydaj-stravy" style={styles.primaryLink}>Výdaj stravy</Link>
+          <Link href="/dashboard" style={styles.backButton}>Späť</Link>
+        </div>
       </section>
 
       <section style={styles.statusGrid}>
@@ -447,9 +425,9 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
           <span style={styles.statLabel}>Čaká na sync</span>
           <b>{loading ? '-' : stats.pendingEvents}</b>
         </article>
-        <article style={stats.openConflicts > 0 ? styles.statusWarning : styles.statusCard}>
+        <article style={stats.localOpenConflicts + serverConflicts.length > 0 ? styles.statusWarning : styles.statusCard}>
           <span style={styles.statLabel}>Konflikty</span>
-          <b>{loading ? '-' : stats.openConflicts}</b>
+          <b>{loading ? '-' : stats.localOpenConflicts + serverConflicts.length}</b>
         </article>
       </section>
 
@@ -480,9 +458,7 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
         <div style={styles.cardHeader}>
           <div>
             <h2 style={styles.cardTitle}>Stiahnuť offline dáta</h2>
-            <p style={styles.cardText}>
-              Stiahnu sa iba pripravené skupinové výdaje pre zvolený dátum a jedlo vrátane aktívnych QR kódov a náramkov.
-            </p>
+            <p style={styles.cardText}>Stiahne sa snapshot pre zvolený dátum a jedlo vrátane individuálnych nárokov, pripravených skupinových výdajov, aktívnych QR kódov a náramkov.</p>
           </div>
         </div>
 
@@ -531,9 +507,7 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
             <span>Počet osôb: {latestSnapshot.entitlementCount}</span>
           </div>
         ) : (
-          <div style={styles.emptyBox}>
-            Offline dáta zatiaľ nie sú stiahnuté.
-          </div>
+          <div style={styles.emptyBox}>Offline dáta zatiaľ nie sú stiahnuté.</div>
         )}
 
         {download.active && (
@@ -578,79 +552,67 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
       <section style={styles.card}>
         <div style={styles.cardHeader}>
           <div>
-            <h2 style={styles.cardTitle}>Offline výdaj</h2>
-            <p style={styles.cardText}>
-              Skenovanie pracuje iba s posledným stiahnutým snapshotom. Individuálny a skupinový výdaj používajú spoločný lokálny stav.
-            </p>
-          </div>
-          <div style={styles.scanStats}>
-            <span>Vydané {successCount}</span>
-            <span>Stop {errorCount}</span>
+            <h2 style={styles.cardTitle}>Snapshoty v zariadení</h2>
+            <p style={styles.cardText}>Výdaj stravy používa najnovší snapshot pre zvolený dátum a jedlo.</p>
           </div>
         </div>
 
-        {latestSnapshot ? (
-          <>
-            <div style={styles.offlineIssueHeader}>
-              <b>{mealLabel(latestSnapshot.mealType)} · {latestSnapshot.mealDate}</b>
-              <span>{latestSnapshot.issueLocation}</span>
-              <span>Dáta z {dateTimeLabel(latestSnapshot.preparedAt)}</span>
-            </div>
-
-            <QrCameraScanner
-              disabled={scanLoading}
-              autoStopMs={5 * 60 * 1000}
-              showLastMessage
-              onScan={value => processOfflineQr(value)}
-            />
-
-            <div style={styles.manualQrRow}>
-              <input
-                type="password"
-                value={manualQr}
-                onChange={event => setManualQr(event.target.value)}
-                onKeyDown={event => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    void submitManualQr()
-                  }
-                }}
-                placeholder="Scanner / ručné QR"
-                style={styles.input}
-              />
-              <button type="button" style={styles.primaryButton} onClick={submitManualQr} disabled={scanLoading || !manualQr.trim()}>
-                Spracovať QR
-              </button>
-            </div>
-
-            <div style={styles.offlineIssueActions}>
-              <button
-                type="button"
-                style={styles.warningButton}
-                onClick={cancelLastIssue}
-                disabled={scanLoading || stats.pendingEvents === 0}
-              >
-                Stornovať posledný výdaj
-              </button>
-            </div>
-
-            <div style={styles.historyList}>
-              {scanHistory.length === 0 ? (
-                <div style={styles.emptyBox}>Čaká sa na prvý offline výdaj.</div>
-              ) : scanHistory.map((item, index) => (
-                <div
-                  key={`${item.status}-${index}`}
-                  style={item.tone === 'warning' ? styles.historyWarning : item.ok ? styles.historyOk : styles.historyError}
-                >
-                  <b>{item.message}</b>
-                  <span>{item.personName || 'Bez mena'}{item.groupName ? ` · ${item.groupName}` : ''}</span>
-                  {item.summary && <small>{choiceSummaryLabel(item.summary)}</small>}
+        {stats.snapshots.length === 0 ? (
+          <div style={styles.emptyBox}>V zariadení nie je uložený žiadny snapshot.</div>
+        ) : (
+          <div style={styles.snapshotList}>
+            {stats.snapshots
+              .slice()
+              .sort((a, b) => b.preparedAt.localeCompare(a.preparedAt))
+              .map(snapshot => (
+                <div key={snapshot.snapshotId} style={styles.snapshotRow}>
+                  <b>{mealLabel(snapshot.mealType)} · {snapshot.mealDate}</b>
+                  <span>{snapshot.issueLocation || 'Bez miesta'}</span>
+                  <span>{snapshot.entitlementCount} osôb · {dateTimeLabel(snapshot.preparedAt)}</span>
                 </div>
               ))}
-            </div>
-          </>
+          </div>
+        )}
+      </section>
+
+      <section style={styles.card}>
+        <div style={styles.cardHeader}>
+          <div>
+            <h2 style={styles.cardTitle}>Konflikty synchronizácie</h2>
+            <p style={styles.cardText}>Konflikt nezastaví synchronizáciu. Manažér ho po kontrole označí ako vyriešený.</p>
+          </div>
+          <button type="button" style={styles.lightButton} onClick={loadServerConflicts} disabled={!online || conflictsLoading}>
+            {conflictsLoading ? 'Načítavam...' : 'Obnoviť konflikty'}
+          </button>
+        </div>
+
+        {serverConflicts.length === 0 ? (
+          <div style={styles.emptyBox}>{online ? 'Nie sú otvorené serverové konflikty.' : 'Konflikty servera sa dajú načítať iba online.'}</div>
         ) : (
-          <div style={styles.emptyBox}>Najprv stiahni offline dáta pre konkrétny výdaj.</div>
+          <div style={styles.conflictList}>
+            {serverConflicts.map(conflict => (
+              <article key={conflict.id} style={styles.conflictItem}>
+                <div>
+                  <b>{conflictTypeLabel(conflict.conflictType)}</b>
+                  <span>{conflict.message || 'Bez detailu'}</span>
+                </div>
+                <div style={styles.conflictMeta}>
+                  <span>{conflict.personName || conflict.qrCode || 'Bez osoby'}</span>
+                  <span>{mealLabel(conflict.mealType)} · {conflict.mealDate}</span>
+                  <span>{conflict.issueLocation || conflict.deviceId}</span>
+                  <span>{dateTimeLabel(conflict.createdAt)}</span>
+                </div>
+                <button
+                  type="button"
+                  style={styles.warningButton}
+                  onClick={() => resolveConflict(conflict.id)}
+                  disabled={resolvingId === conflict.id}
+                >
+                  {resolvingId === conflict.id ? 'Ukladám...' : 'Označiť vyriešené'}
+                </button>
+              </article>
+            ))}
+          </div>
         )}
       </section>
 
@@ -658,9 +620,7 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
         <div style={styles.cardHeader}>
           <div>
             <h2 style={styles.cardTitle}>Lokálny PIN obsluhy</h2>
-            <p style={styles.cardText}>
-              PIN je uložený iba v tomto zariadení. Slúži na odomknutie už pripraveného offline výdaja, nie na stiahnutie dát.
-            </p>
+            <p style={styles.cardText}>PIN je uložený iba v tomto zariadení. Slúži na odomknutie už pripraveného offline režimu.</p>
           </div>
           <span style={stats.pinEnabled ? styles.pinEnabled : styles.pinDisabled}>
             {stats.pinEnabled ? 'PIN nastavený' : 'PIN nie je nastavený'}
@@ -687,70 +647,6 @@ export default function OfflineRezimClient({ canPrepareOfflineIssue, preparedByN
       </section>
 
       {message && <div style={styles.message}>{message}</div>}
-
-      {issueDecision && (
-        <div style={styles.modalBackdrop}>
-          <div style={styles.decisionModal}>
-            <div style={styles.decisionHeader}>
-              <div>
-                <div style={styles.decisionKicker}>OFFLINE VÝDAJ</div>
-                <h2 style={styles.decisionTitle}>Vyber spôsob výdaja</h2>
-                <p style={styles.decisionPerson}>{issueDecision.personName || 'Bez mena'}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIssueDecision(null)}
-                disabled={scanLoading}
-                style={styles.closeButton}
-              >
-                Zavrieť
-              </button>
-            </div>
-
-            <div style={styles.decisionList}>
-              {issueDecision.bulkIssues.map(issue => (
-                <button
-                  key={issue.id}
-                  type="button"
-                  onClick={() => confirmIssueDecision('BULK', issue.id)}
-                  disabled={scanLoading}
-                  style={styles.bulkDecisionButton}
-                >
-                  <span style={styles.decisionAction}>VYDAŤ SKUPINOVO</span>
-                  <b style={styles.decisionGroup}>{issue.groupName || 'Skupinový výdaj'}</b>
-                  <span style={styles.decisionSummary}>
-                    {issue.count} osôb{choiceSummaryLabel(issue.summary) ? ` · ${choiceSummaryLabel(issue.summary)}` : ''}
-                  </span>
-                  <span style={issue.includesScannedPerson ? styles.decisionIncluded : styles.decisionExcluded}>
-                    {issue.includesScannedPerson ? 'Vrátane porcie: ' : 'Bez porcie: '}
-                    {issueDecision.personName || 'Bez mena'}
-                  </span>
-                </button>
-              ))}
-
-              <button
-                type="button"
-                onClick={() => confirmIssueDecision('INDIVIDUAL')}
-                disabled={scanLoading || !issueDecision.individual.available}
-                style={{
-                  ...styles.individualDecisionButton,
-                  opacity: scanLoading || !issueDecision.individual.available ? 0.5 : 1
-                }}
-              >
-                <span style={styles.decisionAction}>
-                  {issueDecision.individual.available
-                    ? 'VYDAŤ IBA OSOBNE'
-                    : issueDecision.individual.alreadyIssued
-                      ? 'UŽ VYDANÉ'
-                      : 'BEZ OSOBNÉHO NÁROKU'}
-                </span>
-                <b style={styles.decisionGroup}>{issueDecision.personName || 'Bez mena'}</b>
-                {issueDecision.choice && <span style={styles.decisionSummary}>1 x {issueDecision.choice}</span>}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   )
 }
@@ -779,466 +675,311 @@ const styles: Record<string, CSSProperties> = {
     maxWidth: 1040,
     width: '100%',
     margin: '0 auto',
-    background: '#fff',
-    border: '1px solid #e5e7eb',
+    background: '#111827',
+    color: '#fff',
     borderRadius: 8,
-    padding: '12px 14px',
+    padding: 16,
     display: 'flex',
     justifyContent: 'space-between',
+    gap: 14,
     alignItems: 'center',
-    gap: 12
+    flexWrap: 'wrap'
+  },
+  headerActions: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap'
   },
   kicker: {
-    color: '#166534',
-    fontSize: 11,
-    fontWeight: 950,
-    textTransform: 'uppercase'
+    color: '#86efac',
+    fontSize: 12,
+    fontWeight: 950
   },
   title: {
     margin: 0,
-    color: '#111827',
-    fontSize: 26,
+    fontSize: 30,
     lineHeight: 1.05,
-    fontWeight: 950,
-    letterSpacing: 0
+    fontWeight: 950
   },
   subtitle: {
-    margin: '4px 0 0 0',
-    color: '#6b7280',
-    fontSize: 12,
-    fontWeight: 800
+    margin: '6px 0 0',
+    color: '#d1d5db',
+    fontSize: 14,
+    fontWeight: 750,
+    maxWidth: 720
   },
   backButton: {
-    minHeight: 36,
-    border: '1px solid #111827',
-    borderRadius: 6,
-    background: '#111827',
-    color: '#fff',
-    padding: '0 12px',
-    display: 'inline-flex',
-    alignItems: 'center',
+    ...buttonBase,
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    color: '#111827',
     textDecoration: 'none',
-    fontSize: 12,
-    fontWeight: 900
+    display: 'inline-flex',
+    alignItems: 'center'
+  },
+  primaryLink: {
+    ...buttonBase,
+    background: '#22c55e',
+    border: '1px solid #16a34a',
+    color: '#052e16',
+    textDecoration: 'none',
+    display: 'inline-flex',
+    alignItems: 'center'
   },
   statusGrid: {
     maxWidth: 1040,
     width: '100%',
     margin: '0 auto',
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
     gap: 8
   },
   statusCard: {
+    background: '#fff',
     border: '1px solid #e5e7eb',
     borderRadius: 8,
-    background: '#fff',
     padding: 12,
     display: 'grid',
-    gap: 4,
-    minHeight: 66
+    gap: 4
   },
   statusOnline: {
+    background: '#dcfce7',
     border: '1px solid #86efac',
     borderRadius: 8,
-    background: '#f0fdf4',
-    color: '#14532d',
     padding: 12,
     display: 'grid',
     gap: 4,
-    minHeight: 66
+    color: '#14532d'
   },
   statusOffline: {
+    background: '#fee2e2',
     border: '1px solid #fecaca',
     borderRadius: 8,
-    background: '#fef2f2',
-    color: '#991b1b',
     padding: 12,
     display: 'grid',
     gap: 4,
-    minHeight: 66
+    color: '#991b1b'
   },
   statusWarning: {
+    background: '#fff7ed',
     border: '1px solid #fed7aa',
     borderRadius: 8,
-    background: '#fff7ed',
-    color: '#9a3412',
     padding: 12,
     display: 'grid',
     gap: 4,
-    minHeight: 66
+    color: '#9a3412'
   },
   statLabel: {
-    color: '#6b7280',
-    fontSize: 10,
-    fontWeight: 950,
-    textTransform: 'uppercase'
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: 850
   },
   card: {
     maxWidth: 1040,
     width: '100%',
     margin: '0 auto',
+    background: '#fff',
     border: '1px solid #e5e7eb',
     borderRadius: 8,
-    background: '#fff',
     padding: 14,
     display: 'grid',
-    gap: 12
+    gap: 12,
+    boxSizing: 'border-box'
   },
   cardHeader: {
     display: 'flex',
     justifyContent: 'space-between',
+    gap: 10,
     alignItems: 'flex-start',
-    gap: 10
+    flexWrap: 'wrap'
   },
   cardTitle: {
     margin: 0,
-    color: '#111827',
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: 950
   },
   cardText: {
-    margin: '3px 0 0 0',
-    color: '#6b7280',
-    fontSize: 12,
-    fontWeight: 800,
+    margin: '4px 0 0',
+    color: '#64748b',
+    fontSize: 13,
+    fontWeight: 750,
     lineHeight: 1.35
   },
-  lightButton: {
-    ...buttonBase,
-    minHeight: 36,
-    border: '1px solid #d1d5db',
-    background: '#fff',
-    color: '#374151',
-    fontSize: 12
-  },
   metaGrid: {
-    margin: 0,
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 8
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: 8,
+    margin: 0
   },
   formGrid: {
     display: 'grid',
-    gridTemplateColumns: '160px 160px minmax(220px, 1fr)',
-    gap: 8,
-    alignItems: 'end'
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: 8
   },
   fieldLabel: {
     display: 'grid',
-    gap: 4,
-    color: '#374151',
-    fontSize: 11,
-    fontWeight: 950
+    gap: 5,
+    color: '#334155',
+    fontSize: 12,
+    fontWeight: 900
+  },
+  input: {
+    width: '100%',
+    minHeight: 40,
+    borderRadius: 6,
+    border: '1px solid #cbd5e1',
+    padding: '0 10px',
+    fontSize: 14,
+    fontWeight: 800,
+    boxSizing: 'border-box'
+  },
+  actions: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap'
+  },
+  primaryButton: {
+    ...buttonBase,
+    background: '#16a34a',
+    border: '1px solid #15803d',
+    color: '#fff'
+  },
+  secondaryButton: {
+    ...buttonBase,
+    background: '#111827',
+    border: '1px solid #111827',
+    color: '#fff'
+  },
+  lightButton: {
+    ...buttonBase,
+    background: '#f8fafc',
+    border: '1px solid #cbd5e1',
+    color: '#111827'
+  },
+  dangerButton: {
+    ...buttonBase,
+    background: '#fee2e2',
+    border: '1px solid #fecaca',
+    color: '#991b1b'
+  },
+  warningButton: {
+    ...buttonBase,
+    background: '#f59e0b',
+    border: '1px solid #d97706',
+    color: '#111827'
   },
   snapshotBox: {
     border: '1px solid #bbf7d0',
-    borderRadius: 8,
     background: '#f0fdf4',
-    color: '#14532d',
-    padding: 12,
+    borderRadius: 8,
+    padding: 10,
     display: 'grid',
-    gap: 4,
-    fontSize: 12,
+    gap: 3,
+    color: '#14532d',
+    fontSize: 13,
+    fontWeight: 800
+  },
+  snapshotList: {
+    display: 'grid',
+    gap: 7
+  },
+  snapshotRow: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 10,
+    display: 'grid',
+    gap: 3,
+    fontSize: 13,
+    fontWeight: 800
+  },
+  emptyBox: {
+    border: '1px dashed #cbd5e1',
+    borderRadius: 8,
+    background: '#f8fafc',
+    padding: 12,
+    color: '#64748b',
+    fontSize: 13,
     fontWeight: 850
   },
   progressWrap: {
-    border: '1px solid #bfdbfe',
-    borderRadius: 8,
-    background: '#eff6ff',
-    padding: 10,
     display: 'grid',
-    gap: 8
+    gap: 6
   },
   progressHeader: {
     display: 'flex',
     justifyContent: 'space-between',
-    gap: 10,
-    color: '#1d4ed8',
+    gap: 8,
+    color: '#334155',
     fontSize: 12,
-    fontWeight: 900
+    fontWeight: 850
   },
   progressTrack: {
-    height: 8,
+    height: 10,
     borderRadius: 999,
-    background: '#dbeafe',
+    background: '#e5e7eb',
     overflow: 'hidden'
   },
   progressBar: {
     height: '100%',
     borderRadius: 999,
-    background: '#2563eb',
+    background: '#22c55e',
     transition: 'width 160ms ease'
   },
   syncNotice: {
-    border: '1px solid #bfdbfe',
+    border: '1px solid #bae6fd',
+    background: '#f0f9ff',
+    color: '#075985',
     borderRadius: 8,
-    background: '#eff6ff',
-    color: '#1d4ed8',
     padding: 10,
-    fontSize: 12,
-    fontWeight: 900,
-    lineHeight: 1.35
-  },
-  emptyBox: {
-    border: '1px dashed #d1d5db',
-    borderRadius: 8,
-    background: '#f9fafb',
-    color: '#6b7280',
-    padding: 14,
     fontSize: 13,
-    fontWeight: 900,
-    textAlign: 'center'
+    fontWeight: 850
   },
-  actions: {
-    display: 'flex',
-    flexWrap: 'wrap',
+  conflictList: {
+    display: 'grid',
     gap: 8
+  },
+  conflictItem: {
+    border: '1px solid #fed7aa',
+    background: '#fff7ed',
+    borderRadius: 8,
+    padding: 10,
+    display: 'grid',
+    gap: 8
+  },
+  conflictMeta: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+    gap: 5,
+    color: '#7c2d12',
+    fontSize: 12,
+    fontWeight: 850
   },
   pinRow: {
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 180px) auto auto',
-    gap: 8,
-    alignItems: 'center'
-  },
-  input: {
-    width: '100%',
-    minHeight: 40,
-    border: '1px solid #d1d5db',
-    borderRadius: 6,
-    background: '#fff',
-    color: '#111827',
-    padding: '0 10px',
-    fontSize: 14,
-    fontWeight: 900,
-    boxSizing: 'border-box'
+    gridTemplateColumns: 'minmax(160px, 1fr) auto auto',
+    gap: 8
   },
   pinEnabled: {
-    border: '1px solid #86efac',
-    borderRadius: 999,
-    background: '#f0fdf4',
-    color: '#14532d',
-    padding: '6px 10px',
-    fontSize: 11,
-    fontWeight: 950,
-    whiteSpace: 'nowrap'
+    color: '#166534',
+    fontSize: 12,
+    fontWeight: 950
   },
   pinDisabled: {
-    border: '1px solid #d1d5db',
-    borderRadius: 999,
-    background: '#f9fafb',
-    color: '#6b7280',
-    padding: '6px 10px',
-    fontSize: 11,
-    fontWeight: 950,
-    whiteSpace: 'nowrap'
-  },
-  primaryButton: {
-    ...buttonBase,
-    border: '1px solid #16a34a',
-    background: '#22c55e',
-    color: '#052e16'
-  },
-  secondaryButton: {
-    ...buttonBase,
-    border: '1px solid #d1d5db',
-    background: '#fff',
-    color: '#374151',
-    fontWeight: 900
-  },
-  dangerButton: {
-    ...buttonBase,
-    border: '1px solid #fecaca',
-    background: '#fef2f2',
-    color: '#991b1b',
-    fontWeight: 900
-  },
-  warningButton: {
-    ...buttonBase,
-    border: '1px solid #fed7aa',
-    background: '#fff7ed',
-    color: '#9a3412',
-    fontWeight: 900
-  },
-  scanStats: {
-    display: 'flex',
-    gap: 8,
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end'
-  },
-  offlineIssueHeader: {
-    border: '1px solid #e5e7eb',
-    borderRadius: 8,
-    background: '#f9fafb',
-    color: '#111827',
-    padding: 10,
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 8,
-    alignItems: 'center',
+    color: '#64748b',
     fontSize: 12,
-    fontWeight: 900
-  },
-  manualQrRow: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) auto',
-    gap: 8,
-    alignItems: 'center'
-  },
-  offlineIssueActions: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: 8,
-    flexWrap: 'wrap'
-  },
-  historyList: {
-    display: 'grid',
-    gap: 8
-  },
-  historyOk: {
-    border: '1px solid #bbf7d0',
-    borderRadius: 8,
-    background: '#f0fdf4',
-    color: '#14532d',
-    padding: 10,
-    display: 'grid',
-    gap: 3,
-    fontSize: 12,
-    fontWeight: 850
-  },
-  historyError: {
-    border: '1px solid #fecaca',
-    borderRadius: 8,
-    background: '#fef2f2',
-    color: '#991b1b',
-    padding: 10,
-    display: 'grid',
-    gap: 3,
-    fontSize: 12,
-    fontWeight: 850
-  },
-  historyWarning: {
-    border: '1px solid #fed7aa',
-    borderRadius: 8,
-    background: '#fff7ed',
-    color: '#9a3412',
-    padding: 10,
-    display: 'grid',
-    gap: 3,
-    fontSize: 12,
-    fontWeight: 850
-  },
-  modalBackdrop: {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 80,
-    background: 'rgba(17, 24, 39, 0.58)',
-    display: 'grid',
-    placeItems: 'center',
-    padding: 12
-  },
-  decisionModal: {
-    width: 'min(560px, 100%)',
-    maxHeight: 'calc(100dvh - 24px)',
-    overflow: 'auto',
-    borderRadius: 8,
-    background: '#fff',
-    border: '1px solid #e5e7eb',
-    padding: 14,
-    display: 'grid',
-    gap: 12
-  },
-  decisionHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: 10,
-    alignItems: 'flex-start'
-  },
-  decisionKicker: {
-    color: '#166534',
-    fontSize: 10,
-    fontWeight: 950
-  },
-  decisionTitle: {
-    margin: 0,
-    color: '#111827',
-    fontSize: 20,
-    fontWeight: 950
-  },
-  decisionPerson: {
-    margin: '3px 0 0 0',
-    color: '#6b7280',
-    fontSize: 13,
-    fontWeight: 900
-  },
-  closeButton: {
-    ...buttonBase,
-    minHeight: 34,
-    border: '1px solid #d1d5db',
-    background: '#fff',
-    color: '#374151',
-    fontSize: 12
-  },
-  decisionList: {
-    display: 'grid',
-    gap: 8
-  },
-  bulkDecisionButton: {
-    border: '1px solid #bbf7d0',
-    borderRadius: 8,
-    background: '#f0fdf4',
-    color: '#14532d',
-    padding: 12,
-    display: 'grid',
-    gap: 4,
-    textAlign: 'left',
-    cursor: 'pointer'
-  },
-  individualDecisionButton: {
-    border: '1px solid #bfdbfe',
-    borderRadius: 8,
-    background: '#eff6ff',
-    color: '#1d4ed8',
-    padding: 12,
-    display: 'grid',
-    gap: 4,
-    textAlign: 'left',
-    cursor: 'pointer'
-  },
-  decisionAction: {
-    fontSize: 10,
-    fontWeight: 950,
-    letterSpacing: 0,
-    textTransform: 'uppercase'
-  },
-  decisionGroup: {
-    fontSize: 15,
-    fontWeight: 950
-  },
-  decisionSummary: {
-    fontSize: 12,
-    fontWeight: 900
-  },
-  decisionIncluded: {
-    color: '#166534',
-    fontSize: 11,
-    fontWeight: 950
-  },
-  decisionExcluded: {
-    color: '#9a3412',
-    fontSize: 11,
     fontWeight: 950
   },
   message: {
     maxWidth: 1040,
     width: '100%',
     margin: '0 auto',
-    border: '1px solid #bbf7d0',
+    border: '1px solid #bae6fd',
+    background: '#f0f9ff',
+    color: '#075985',
     borderRadius: 8,
-    background: '#f0fdf4',
-    color: '#14532d',
     padding: 12,
     fontSize: 13,
-    fontWeight: 900
+    fontWeight: 850,
+    boxSizing: 'border-box'
   }
 }
