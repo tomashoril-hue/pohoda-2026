@@ -826,6 +826,7 @@ export async function POST(req: NextRequest) {
             )
           `)
           .eq('user_id', targetUserId)
+          .eq('active', true)
         : emptyRowsResult
     ])
     markPhase('baseQueriesMs')

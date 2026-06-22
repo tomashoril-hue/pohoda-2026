@@ -378,6 +378,7 @@ async function loadPickupUsers(issueId: string) {
     .from('registration_group_issue_pickup_users')
     .select('user_id')
     .eq('issue_id', issueId)
+    .eq('active', true)
 
   if (error) throw error
 
@@ -396,24 +397,39 @@ async function loadPickupUsers(issueId: string) {
 }
 
 async function replacePickupUsers(issueId: string, userIds: string[], actorId: string) {
-  const { error: deleteError } = await supabaseServer
+  let deactivateQuery = supabaseServer
     .from('registration_group_issue_pickup_users')
-    .delete()
+    .update({
+      active: false,
+      removed_at: new Date().toISOString(),
+      removed_by: actorId
+    })
     .eq('issue_id', issueId)
 
-  if (deleteError) throw deleteError
+  if (userIds.length > 0) {
+    deactivateQuery = deactivateQuery.not('user_id', 'in', `(${userIds.join(',')})`)
+  }
+
+  const { error: deactivateError } = await deactivateQuery
+
+  if (deactivateError) throw deactivateError
 
   if (userIds.length === 0) return
 
-  const { error: insertError } = await supabaseServer
+  const { error: upsertError } = await supabaseServer
     .from('registration_group_issue_pickup_users')
-    .insert(userIds.map(userId => ({
+    .upsert(userIds.map(userId => ({
       issue_id: issueId,
       user_id: userId,
-      created_by: actorId
-    })))
+      created_by: actorId,
+      active: true,
+      removed_at: null,
+      removed_by: null
+    })), {
+      onConflict: 'issue_id,user_id'
+    })
 
-  if (insertError) throw insertError
+  if (upsertError) throw upsertError
 }
 
 async function validateIssueAccess(actorId: string, registrationGroupId: string) {

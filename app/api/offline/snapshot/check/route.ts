@@ -124,6 +124,14 @@ export async function GET(req: NextRequest) {
           .from('registration_group_issue_pickup_users')
           .select('id', { count: 'exact', head: true })
           .in('issue_id', issueIds)
+          .gt('updated_at', since)
+      }),
+      changedCount('offline_delta_events', () => {
+        return supabaseServer
+          .from('offline_delta_events')
+          .select('id', { count: 'exact', head: true })
+          .eq('datum', date)
+          .or(`typ_jedla.is.null,typ_jedla.eq.${meal}`)
           .gt('created_at', since)
       }),
       changedCount('user_profiles', () => {

@@ -91,22 +91,32 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Nemas opravnenie pre tuto registracnu skupinu.' }, { status: 403 })
     }
 
-    const { error: deleteError } = await supabaseServer
+    const { error: deactivateError } = await supabaseServer
       .from('registration_group_issue_pickup_users')
-      .delete()
+      .update({
+        active: false,
+        removed_at: new Date().toISOString(),
+        removed_by: actor.id
+      })
       .eq('issue_id', issue.id)
+      .not('user_id', 'in', `(${userIds.join(',')})`)
 
-    if (deleteError) throw deleteError
+    if (deactivateError) throw deactivateError
 
-    const { error: insertError } = await supabaseServer
+    const { error: upsertError } = await supabaseServer
       .from('registration_group_issue_pickup_users')
-      .insert(userIds.map(userId => ({
+      .upsert(userIds.map(userId => ({
         issue_id: issue.id,
         user_id: userId,
-        created_by: actor.id
-      })))
+        created_by: actor.id,
+        active: true,
+        removed_at: null,
+        removed_by: null
+      })), {
+        onConflict: 'issue_id,user_id'
+      })
 
-    if (insertError) throw insertError
+    if (upsertError) throw upsertError
 
     const users = await loadUsersByIds(userIds)
     const userById = new Map(users.map((user: any) => [user.id, user]))

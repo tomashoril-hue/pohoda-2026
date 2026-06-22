@@ -360,6 +360,7 @@ export async function GET(req: NextRequest) {
             .from('registration_group_issue_pickup_users')
             .select('id, issue_id, user_id')
             .in('issue_id', issueIds)
+            .eq('active', true)
             .range(from, to)
         })
         : Promise.resolve([]),

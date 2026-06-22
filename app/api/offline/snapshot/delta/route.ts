@@ -319,7 +319,15 @@ export async function GET(req: NextRequest) {
     if (allIssuesError) throw allIssuesError
 
     const allIssueIds = (allIssues || []).map((issue: any) => issue.id).filter(Boolean)
-    const [changedIssuedRows, changedEntitlementRows, changedSelectionRows, changedIssueRows, changedItemRows, changedPickupRows] = await Promise.all([
+    const [
+      changedIssuedRows,
+      changedEntitlementRows,
+      changedSelectionRows,
+      changedIssueRows,
+      changedItemRows,
+      changedPickupRows,
+      changedDeleteEvents
+    ] = await Promise.all([
       fetchAllRows((from, to) => supabaseServer
         .from('vydaj_jedal')
         .select('user_id, registration_group_issue_id')
@@ -358,25 +366,34 @@ export async function GET(req: NextRequest) {
       allIssueIds.length
         ? fetchAllRows((from, to) => supabaseServer
           .from('registration_group_issue_pickup_users')
-          .select('id, issue_id, user_id')
+          .select('id, issue_id, user_id, active, updated_at')
           .in('issue_id', allIssueIds)
-          .gt('created_at', since)
+          .gt('updated_at', since)
           .range(from, to))
-        : Promise.resolve([])
+        : Promise.resolve([]),
+      fetchAllRows((from, to) => supabaseServer
+        .from('offline_delta_events')
+        .select('user_id, issue_id')
+        .eq('datum', date)
+        .or(`typ_jedla.is.null,typ_jedla.eq.${meal}`)
+        .gt('created_at', since)
+        .range(from, to))
     ])
 
     let affectedIssueIds = uniqueClean([
       ...changedIssuedRows.map((row: any) => row.registration_group_issue_id),
       ...changedIssueRows.map((row: any) => row.id),
       ...changedItemRows.map((row: any) => row.issue_id),
-      ...changedPickupRows.map((row: any) => row.issue_id)
+      ...changedPickupRows.map((row: any) => row.issue_id),
+      ...changedDeleteEvents.map((row: any) => row.issue_id)
     ])
     let affectedPersonIds = uniqueClean([
       ...changedIssuedRows.map((row: any) => row.user_id),
       ...changedEntitlementRows.map((row: any) => row.user_id),
       ...changedSelectionRows.map((row: any) => row.user_id),
       ...changedItemRows.map((row: any) => row.user_id),
-      ...changedPickupRows.map((row: any) => row.user_id)
+      ...changedPickupRows.map((row: any) => row.user_id),
+      ...changedDeleteEvents.map((row: any) => row.user_id)
     ])
 
     const userOrQrChanged = await Promise.all([
@@ -416,6 +433,7 @@ export async function GET(req: NextRequest) {
           .from('registration_group_issue_pickup_users')
           .select('user_id, issue_id')
           .in('issue_id', allIssueIds)
+          .eq('active', true)
           .in('user_id', idChunk))
         : []
 
@@ -452,13 +470,13 @@ export async function GET(req: NextRequest) {
     const pickupRowsByIssue = affectedIssueIds.length
       ? await fetchRowsByChunks(affectedIssueIds, idChunk => supabaseServer
         .from('registration_group_issue_pickup_users')
-        .select('id, issue_id, user_id')
+        .select('id, issue_id, user_id, active, updated_at')
         .in('issue_id', idChunk))
       : []
     const pickupRowsByUser = affectedPersonIds.length && allIssueIds.length
       ? await fetchRowsByChunks(affectedPersonIds, idChunk => supabaseServer
         .from('registration_group_issue_pickup_users')
-        .select('id, issue_id, user_id')
+        .select('id, issue_id, user_id, active, updated_at')
         .in('issue_id', allIssueIds)
         .in('user_id', idChunk))
       : []
@@ -483,7 +501,7 @@ export async function GET(req: NextRequest) {
       affectedIssueIds.filter(issueId => isIssueActive(issueMap.get(issueId), now))
     )
     const activeItemRows = itemRows.filter((row: any) => activeIssueIds.has(row.issue_id))
-    const activePickupRows = pickupRows.filter((row: any) => activeIssueIds.has(row.issue_id))
+    const activePickupRows = pickupRows.filter((row: any) => activeIssueIds.has(row.issue_id) && row.active !== false)
     const userIds = uniqueClean([
       ...affectedPersonIds,
       ...activeItemRows.map((row: any) => row.user_id),
