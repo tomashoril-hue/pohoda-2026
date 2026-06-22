@@ -8,16 +8,15 @@ export default function OfflinePage() {
         <div style={styles.kicker}>OFFLINE REŽIM</div>
         <h1 style={styles.title}>Aplikácia je bez internetu</h1>
         <p style={styles.text}>
-          Ak bolo toto zariadenie predtým pripravené, otvor hlavný Výdaj stravy. Výdaj bude používať posledné uložené
-          offline dáta a po návrate internetu sa udalosti zosynchronizujú.
+          Momentálne nie je dostupné internetové pripojenie. Skontroluj sieť a skús stránku obnoviť.
         </p>
         <div style={styles.notice}>
-          Ak sa stránka výdaja ešte nikdy nenačítala online alebo v zariadení nie sú offline dáta, najprv sa pripoj na internet.
+          Niektoré časti aplikácie nemusia fungovať, kým sa zariadenie znova nepripojí na internet.
         </div>
         <div style={styles.actions}>
-          <Link href="/dashboard/vydaj-stravy" style={styles.button}>
-            Otvoriť výdaj stravy
-          </Link>
+          <a href="" style={styles.button}>
+            Obnoviť
+          </a>
           <Link href="/dashboard" style={styles.secondaryButton}>
             Dashboard
           </Link>
