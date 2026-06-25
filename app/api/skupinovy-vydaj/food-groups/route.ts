@@ -76,6 +76,12 @@ function normalizeUserIds(value: any) {
   ))
 }
 
+function displayName(user: any) {
+  const firstName = cleanText(user?.meno)
+  const lastName = cleanText(user?.priezvisko)
+  return `${lastName} ${firstName}`.trim() || user?.email || user?.id || 'Bez mena'
+}
+
 async function loadFoodGroups(registrationGroupId: string) {
   const { data, error } = await supabaseServer
     .from('groups')
@@ -185,7 +191,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         user: {
           id: user.id,
-          name: fullName(user) || user.email || user.id,
+          name: displayName(user),
           email: user.email || ''
         }
       })

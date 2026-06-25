@@ -4,12 +4,17 @@ import { supabaseServer } from '@/lib/supabaseServer'
 import {
   cleanText,
   filterIssuablePeople,
-  fullName,
   getIssueAccess,
   loadRegistrationGroupPeople,
   normalizeDate,
   normalizeMeal
 } from '@/lib/registrationGroupIssue'
+
+function displayName(user: any) {
+  const firstName = cleanText(user?.meno)
+  const lastName = cleanText(user?.priezvisko)
+  return `${lastName} ${firstName}`.trim() || user?.email || user?.id || 'Bez mena'
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -71,7 +76,7 @@ export async function GET(req: NextRequest) {
         .slice(0, 16)
         .map((user: any) => ({
           id: user.id,
-          name: fullName(user),
+          name: displayName(user),
           email: user.email || ''
         }))
 
@@ -103,7 +108,7 @@ export async function GET(req: NextRequest) {
           .slice(0, 16)
           .map((user: any) => ({
             id: user.id,
-            name: fullName(user),
+            name: displayName(user),
             email: user.email || ''
           }))
       })
