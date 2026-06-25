@@ -23,7 +23,7 @@ import {
 
 type RequestedPerson = {
   userId: string
-  source: 'REGISTRATION_GROUP' | 'SEARCH' | 'QR'
+  source: 'REGISTRATION_GROUP' | 'FOOD_GROUP' | 'SEARCH' | 'QR'
 }
 
 type IssuePersonView = IssuablePerson & {
@@ -42,7 +42,7 @@ function normalizeRequestedPeople(value: any): RequestedPerson[] {
   value.forEach((item: any) => {
     const userId = cleanText(item?.userId || item?.id)
     const sourceText = cleanText(item?.source).toUpperCase()
-    const source = sourceText === 'SEARCH' || sourceText === 'QR'
+    const source = sourceText === 'FOOD_GROUP' || sourceText === 'SEARCH' || sourceText === 'QR'
       ? sourceText
       : 'REGISTRATION_GROUP'
 
@@ -305,7 +305,9 @@ async function loadIssuePeople(issueId: string, date: string, meal: MealType) {
     const selectionChoice = normalizeSelectionChoice(selectionByUserId.get(item.user_id)?.volba)
     const storedChoice = normalizeChoice(item.volba)
     const choice = normalizeChoice(selectionChoice || user?.typ_stravy || item.volba) || storedChoice || 'MASO'
-    const source = item.source === 'REGISTRATION_GROUP' || item.source === 'QR' ? item.source : 'SEARCH'
+    const source = item.source === 'REGISTRATION_GROUP' || item.source === 'FOOD_GROUP' || item.source === 'QR'
+      ? item.source
+      : 'SEARCH'
     const base = {
       id: item.user_id,
       name: fullName(user) || item.user_id,

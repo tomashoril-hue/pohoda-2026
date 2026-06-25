@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getCurrentUser } from '@/lib/auth'
-import { getLegacyFoodGroupsEnabled } from '@/lib/appSettings'
+import { getLegacyBulkIssueEnabled } from '@/lib/appSettings'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { PRIVACY_POLICY_URL } from '@/lib/privacyConsentConfig'
 import { canUseGroupIssue, getManagedRegistrationGroupIds } from '@/lib/registrationGroupManagers'
@@ -210,7 +210,7 @@ export default async function DashboardPage({
   const selectedDate = normalizeDateParam(resolvedSearchParams.datum, today)
   const isTodaySelected = selectedDate === today
   const globalAccess = await getGlobalAccess(user.id)
-  const legacyFoodGroupsEnabled = await getLegacyFoodGroupsEnabled()
+  const legacyBulkIssueEnabled = await getLegacyBulkIssueEnabled()
   const isOnlyWristbandKiosk =
     globalAccess.isWristbandKiosk &&
     globalAccess.roles.length > 0 &&
@@ -240,7 +240,7 @@ export default async function DashboardPage({
     bulkItemsResult,
     registrationBulkItemsResult
   ] = await Promise.all([
-    legacyFoodGroupsEnabled
+    legacyBulkIssueEnabled
       ? supabaseServer
       .from('group_members')
       .select(`
@@ -253,7 +253,7 @@ export default async function DashboardPage({
       `)
       .eq('user_id', user.id)
       : Promise.resolve({ data: [] }),
-    legacyFoodGroupsEnabled
+    legacyBulkIssueEnabled
       ? supabaseServer
       .from('group_invites')
       .select(`
@@ -317,7 +317,7 @@ export default async function DashboardPage({
       .eq('user_id', user.id)
       .eq('datum', selectedDate)
       .order('issued_at', { ascending: false }),
-    legacyFoodGroupsEnabled
+    legacyBulkIssueEnabled
       ? supabaseServer
       .from('hromadny_vydaj_polozky')
       .select(`
@@ -401,7 +401,7 @@ export default async function DashboardPage({
         .select('id, meno, priezvisko')
         .in('id', issuedByIds)
       : Promise.resolve({ data: [] }),
-    legacyFoodGroupsEnabled && issuedGroupIds.length > 0
+    legacyBulkIssueEnabled && issuedGroupIds.length > 0
       ? supabaseServer
         .from('groups')
         .select('id, name')
@@ -747,7 +747,7 @@ export default async function DashboardPage({
             <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Prehľad</span>
             <b className="dashboard-menu-title" style={styles.menuTileTitle}>Nároky na stravu</b>
           </Link>
-          {legacyFoodGroupsEnabled && (
+          {legacyBulkIssueEnabled && (
             <Link className="dashboard-menu-tile" href="/dashboard/groups" style={{ ...styles.menuTile, ...styles.menuTilePink }}>
               <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Strava</span>
               <b className="dashboard-menu-title" style={styles.menuTileTitle}>Stravovacie skupiny</b>
@@ -803,7 +803,7 @@ export default async function DashboardPage({
           )}
         </div>
 
-        {legacyFoodGroupsEnabled && (
+        {legacyBulkIssueEnabled && (
         <div style={styles.groupsBox}>
           <h2 style={styles.groupsTitle}>Moje stravovacie skupiny</h2>
 

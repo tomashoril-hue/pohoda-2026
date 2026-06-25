@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
-import { getLegacyFoodGroupsEnabled } from '@/lib/appSettings'
+import { getLegacyBulkIssueEnabled } from '@/lib/appSettings'
 import { canIssueForGroupByRole, canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import GroupDetailClient from './GroupDetailClient'
@@ -21,10 +21,6 @@ export default async function GroupDetailPage({
 
   if (!user) {
     redirect('/')
-  }
-
-  if (!await getLegacyFoodGroupsEnabled()) {
-    redirect('/dashboard')
   }
 
   const { groupId } = await params
@@ -75,9 +71,10 @@ export default async function GroupDetailPage({
     ? String(myMembership?.role || 'ADMIN').toUpperCase()
     : String(myMembership?.role || '').toUpperCase()
 
+  const legacyBulkIssueEnabled = await getLegacyBulkIssueEnabled()
   const canManage = canManageGroupByRole(myRole, globalAccess)
   const canInvite = canManage
-  const canIssue = canIssueForGroupByRole(myRole, globalAccess)
+  const canIssue = legacyBulkIssueEnabled && canIssueForGroupByRole(myRole, globalAccess)
 
   const { data: membersData } = await supabaseServer
     .from('group_members')

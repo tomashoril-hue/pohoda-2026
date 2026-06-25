@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
-import { getLegacyFoodGroupsEnabled } from '@/lib/appSettings'
+import { getLegacyBulkIssueEnabled } from '@/lib/appSettings'
 import { canCreateGroup, canIssueForGroupByRole, canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import GroupsClient from './GroupsClient'
@@ -10,10 +10,6 @@ export default async function GroupsPage() {
 
   if (!user) {
     redirect('/')
-  }
-
-  if (!await getLegacyFoodGroupsEnabled()) {
-    redirect('/dashboard')
   }
 
   const { data: memberships, error } = await supabaseServer
@@ -51,6 +47,7 @@ export default async function GroupsPage() {
 
   const globalAccess = await getGlobalAccess(user.id)
   const isAdmin = globalAccess.isAdmin
+  const legacyBulkIssueEnabled = await getLegacyBulkIssueEnabled()
 
   const myMemberships = (memberships || []).filter((membership: any) => {
     return membership.user_id === user.id
@@ -126,7 +123,7 @@ export default async function GroupsPage() {
       role,
       membersCount: groupCounts.get(membership.group_id) || 0,
       canManage: canManageGroupByRole(role, globalAccess),
-      canIssue: canIssueForGroupByRole(role, globalAccess)
+      canIssue: legacyBulkIssueEnabled && canIssueForGroupByRole(role, globalAccess)
     }
   })
 

@@ -1,6 +1,7 @@
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export const LEGACY_FOOD_GROUPS_SETTING_KEY = 'legacy_food_groups_enabled'
+export const LEGACY_BULK_ISSUE_SETTING_KEY = 'legacy_bulk_issue_enabled'
 
 export async function getBooleanAppSetting(key: string, fallback: boolean) {
   const { data, error } = await supabaseServer
@@ -29,6 +30,23 @@ export async function setLegacyFoodGroupsEnabled(enabled: boolean, updatedBy: st
     .from('app_settings')
     .upsert({
       key: LEGACY_FOOD_GROUPS_SETTING_KEY,
+      value: enabled,
+      updated_by: updatedBy || null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'key' })
+
+  if (error) throw error
+}
+
+export async function getLegacyBulkIssueEnabled() {
+  return getBooleanAppSetting(LEGACY_BULK_ISSUE_SETTING_KEY, false)
+}
+
+export async function setLegacyBulkIssueEnabled(enabled: boolean, updatedBy: string) {
+  const { error } = await supabaseServer
+    .from('app_settings')
+    .upsert({
+      key: LEGACY_BULK_ISSUE_SETTING_KEY,
       value: enabled,
       updated_by: updatedBy || null,
       updated_at: new Date().toISOString()

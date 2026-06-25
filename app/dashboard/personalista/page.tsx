@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
-import { getLegacyFoodGroupsEnabled } from '@/lib/appSettings'
+import { getLegacyBulkIssueEnabled } from '@/lib/appSettings'
 import { slovakiaDateIso } from '@/lib/date'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
@@ -323,7 +323,7 @@ export default async function PersonalistaPage({
 
   const globalAccess = await getGlobalAccess(user.id)
   const isGlobalPersonalista = globalAccess.canUsePersonalista
-  const legacyFoodGroupsEnabled = await getLegacyFoodGroupsEnabled()
+  const legacyBulkIssueEnabled = await getLegacyBulkIssueEnabled()
 
   if (!isGlobalPersonalista) {
     redirect('/dashboard')
@@ -725,7 +725,7 @@ export default async function PersonalistaPage({
       currentUserId={user.id}
       currentUserName={fullName(user) || user.email || 'Pouzivatel'}
       currentUserRoleLabel={globalAccess.isAdmin ? 'ADMIN' : 'PERSONALISTA'}
-      legacyFoodGroupsEnabled={legacyFoodGroupsEnabled}
+      legacyFoodGroupsEnabled={legacyBulkIssueEnabled}
     />
   )
 }

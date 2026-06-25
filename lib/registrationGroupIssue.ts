@@ -13,7 +13,7 @@ export type IssuablePerson = {
   lastName?: string
   email: string
   choice: FoodChoice
-  source: 'REGISTRATION_GROUP' | 'SEARCH' | 'QR'
+  source: 'REGISTRATION_GROUP' | 'FOOD_GROUP' | 'SEARCH' | 'QR'
 }
 
 export function cleanText(value: any) {
@@ -209,7 +209,7 @@ export async function filterIssuablePeople({
   users: any[]
   date: string
   meal: MealType
-  source: 'REGISTRATION_GROUP' | 'SEARCH' | 'QR'
+  source: 'REGISTRATION_GROUP' | 'FOOD_GROUP' | 'SEARCH' | 'QR'
 }) {
   const userIds = Array.from(new Set(users.map((user: any) => user.id).filter(Boolean)))
   if (userIds.length === 0) return []

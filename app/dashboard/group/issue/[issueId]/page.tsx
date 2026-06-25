@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
-import { getLegacyFoodGroupsEnabled } from '@/lib/appSettings'
+import { getLegacyBulkIssueEnabled } from '@/lib/appSettings'
 import { supabaseServer } from '@/lib/supabaseServer'
 import IssueDetailClient from './IssueDetailClient'
 
@@ -24,7 +24,7 @@ export default async function IssueDetailPage({
     redirect('/')
   }
 
-  if (!await getLegacyFoodGroupsEnabled()) {
+  if (!await getLegacyBulkIssueEnabled()) {
     redirect('/dashboard')
   }
 

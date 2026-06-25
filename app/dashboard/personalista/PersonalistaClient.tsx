@@ -1106,18 +1106,19 @@ export default function PersonalistaClient({
   const selectedRegistrationPeriodCount = selectedRegistrationPeriodKeys.length
   const isBulkRegistrationPeriodEdit = selectedRegistrationPeriodCount > 1
   const showMobilePersonDetail = isMobile && !!selectedPerson
+  const foodGroupsVisible = true
   const shouldShowDetailMessage = Boolean(detailMessage && detailMessageMode === detailMode)
   const printPersonHref = selectedPerson
     ? `/dashboard/personalista/print-qr?personId=${encodeURIComponent(selectedPerson.id)}`
     : ''
   const tableColumns = isMobile
-    ? legacyFoodGroupsEnabledState
+    ? foodGroupsVisible
       ? 'minmax(155px, 1.25fr) 64px minmax(120px, 0.9fr) minmax(120px, 1fr) 56px 52px 62px'
       : 'minmax(155px, 1.25fr) 64px minmax(135px, 1fr) 56px 52px 62px'
-    : legacyFoodGroupsEnabledState
+    : foodGroupsVisible
       ? 'minmax(180px, 1.3fr) 70px minmax(135px, 0.9fr) minmax(135px, 1fr) 62px 58px 68px'
       : 'minmax(180px, 1.3fr) 70px minmax(160px, 1fr) 62px 58px 68px'
-  const tableMinWidth = legacyFoodGroupsEnabledState
+  const tableMinWidth = foodGroupsVisible
     ? (isMobile ? 760 : 920)
     : (isMobile ? 640 : 760)
   const peopleSearchHintStyle = peopleSearchLoading
@@ -1347,7 +1348,6 @@ export default function PersonalistaClient({
         )
       })
       .filter(person => {
-        if (!legacyFoodGroupsEnabledState) return true
         if (groupFilter === 'ALL') return true
         if (groupFilter === 'UNGROUPED') return person.groups.length === 0
         return person.groups.some(group => group.id === groupFilter)
@@ -1373,7 +1373,7 @@ export default function PersonalistaClient({
       .sort((a, b) => {
         return (peopleOrderById.get(a.id) ?? 0) - (peopleOrderById.get(b.id) ?? 0)
       })
-  }, [people, peopleOrderById, search, groupFilter, foodFilter, qrFilter, statusFilter, legacyFoodGroupsEnabledState])
+  }, [people, peopleOrderById, search, groupFilter, foodFilter, qrFilter, statusFilter])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -1486,10 +1486,10 @@ export default function PersonalistaClient({
         : ''
     }
 
-    return legacyFoodGroupsEnabledState && printQrForm.foodGroupId
+    return printQrForm.foodGroupId
       ? `/dashboard/personalista/print-qr?groupId=${encodeURIComponent(printQrForm.foodGroupId)}`
       : ''
-  }, [printQrForm, legacyFoodGroupsEnabledState])
+  }, [printQrForm])
   const selectedRegistrationAssignmentPeople = useMemo(() => {
     const selectedIds = new Set(registrationAssignmentForm.userIds)
 
@@ -1948,7 +1948,7 @@ export default function PersonalistaClient({
     setLegacyFoodGroupsMessageType('')
 
     try {
-      const res = await fetch('/api/personalista/app-settings/legacy-food-groups', {
+      const res = await fetch('/api/personalista/app-settings/legacy-bulk-issue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled })
@@ -3479,7 +3479,7 @@ export default function PersonalistaClient({
               setLegacyFoodGroupsMessageType('')
             }}
           >
-            Stravovacie skupiny
+            Starý hromadný výdaj
           </button>
         )}
 
@@ -3983,11 +3983,7 @@ export default function PersonalistaClient({
           <div style={styles.createHeader}>
             <div>
               <b>Tlac QR skupiny</b>
-              <span>
-                {legacyFoodGroupsEnabledState
-                  ? 'Vyber, ci chces tlacit QR podla registracnej alebo stravovacej skupiny.'
-                  : 'Tlač QR je dostupná podľa registračnej skupiny.'}
-              </span>
+              <span>Vyber, či chceš tlačiť QR podľa registračnej alebo stravovacej skupiny.</span>
             </div>
 
             <button
@@ -4011,13 +4007,11 @@ export default function PersonalistaClient({
                 style={styles.input}
               >
                 <option value="REGISTRATION_GROUP">Registracna skupina</option>
-                {legacyFoodGroupsEnabledState && (
-                  <option value="FOOD_GROUP">Stravovacia skupina</option>
-                )}
+                <option value="FOOD_GROUP">Stravovacia skupina</option>
               </select>
             </label>
 
-            {printQrForm.type === 'REGISTRATION_GROUP' || !legacyFoodGroupsEnabledState ? (
+            {printQrForm.type === 'REGISTRATION_GROUP' ? (
               <label style={styles.field}>
                 <span>Registracna skupina</span>
                 <select
@@ -4074,7 +4068,7 @@ export default function PersonalistaClient({
         <section style={styles.createPanel}>
           <div style={styles.createHeader}>
             <div>
-              <b>Stravovacie skupiny</b>
+              <b>Starý hromadný výdaj</b>
               <span>Admin prepína starý systém stravovacích skupín a starý hromadný výdaj.</span>
             </div>
 
@@ -5406,7 +5400,7 @@ export default function PersonalistaClient({
               autoComplete="off"
             />
 
-            {legacyFoodGroupsEnabledState && (
+            {foodGroupsVisible && (
               <select
                 value={groupFilter}
                 onChange={event => setGroupFilter(event.target.value)}
@@ -5465,7 +5459,7 @@ export default function PersonalistaClient({
               <span>Osoba</span>
               <span>Stav</span>
               <span>Registracna skupina</span>
-              {legacyFoodGroupsEnabledState && <span>Stravovacie skupiny</span>}
+              {foodGroupsVisible && <span>Stravovacie skupiny</span>}
               <span>Strava</span>
               <span>QR</span>
               <span>Nároky</span>
@@ -5536,7 +5530,7 @@ export default function PersonalistaClient({
                       )}
                     </div>
 
-                    {legacyFoodGroupsEnabledState && (
+                    {foodGroupsVisible && (
                       <div style={styles.groupBadges}>
                         {person.groups.length === 0 && (
                           <span style={styles.groupBadge}>
