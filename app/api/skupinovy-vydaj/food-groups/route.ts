@@ -3,7 +3,6 @@ import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
 import {
   cleanText,
-  fullName,
   getIssueAccess,
   loadPreparationPeople,
   loadUsersByIds,
@@ -137,7 +136,7 @@ async function loadFoodGroupMembers(groupId: string) {
       const user: any = userById.get(userId)
       return {
         id: userId,
-        name: fullName(user) || user?.email || userId,
+        name: displayName(user),
         email: user?.email || ''
       }
     })
@@ -215,7 +214,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         users: (data || []).map((user: any) => ({
           id: user.id,
-          name: fullName(user) || user.email || user.id,
+          name: displayName(user),
           email: user.email || ''
         }))
       })
