@@ -1834,32 +1834,61 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                 )}
 
                 <div style={styles.issueToolbar}>
-                  <button
-                    type="button"
-                    onClick={() => setQrModalOpen(true)}
-                    disabled={issueLoading || issueReadOnly || !selectedGroupId || !date || !meal}
-                    style={styles.compactDarkButton}
-                  >
-                    QR
-                  </button>
+                  <div style={styles.toolbarLeft}>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkIssueSelection('ALL')}
+                      disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
+                      style={styles.bulkButton}
+                    >
+                      Všetci
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkIssueSelection('READY')}
+                      disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
+                      style={styles.bulkButton}
+                    >
+                      Vydateľní
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkIssueSelection('NONE')}
+                      disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
+                      style={styles.bulkButton}
+                    >
+                      Žiadni
+                    </button>
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIssueSearchOpen(open => {
-                        if (open) setIssuePersonFilter('')
-                        return !open
-                      })
-                    }}
-                    disabled={issuePeople.length === 0}
-                    style={{
-                      ...styles.secondaryButton,
-                      ...styles.compactButton,
-                      ...(issueSearchOpen || issuePersonFilter ? styles.secondaryButtonActive : {})
-                    }}
-                  >
-                    Hľadať
-                  </button>
+                  <div style={styles.toolbarRight}>
+                    <button
+                      type="button"
+                      onClick={() => setQrModalOpen(true)}
+                      disabled={issueLoading || issueReadOnly || !selectedGroupId || !date || !meal}
+                      style={styles.compactDarkButton}
+                    >
+                      QR
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIssueSearchOpen(open => {
+                          if (open) setIssuePersonFilter('')
+                          return !open
+                        })
+                      }}
+                      disabled={issuePeople.length === 0}
+                      style={{
+                        ...styles.secondaryButton,
+                        ...styles.compactButton,
+                        ...(issueSearchOpen || issuePersonFilter ? styles.secondaryButtonActive : {})
+                      }}
+                    >
+                      Hľadať
+                    </button>
+                  </div>
 
                   {editingIssueId && (
                     <button
@@ -1882,33 +1911,6 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                 <div style={styles.peopleSectionHeader}>
                   <b>Osoby vo výdaji</b>
                   <span>{selectedSummary.SPOLU} vydateľných / {selectedIssueUserIds.length} označených / {issuePeople.length} spolu</span>
-                </div>
-
-                <div style={styles.bulkButtonRow}>
-                  <button
-                    type="button"
-                    onClick={() => handleBulkIssueSelection('ALL')}
-                    disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
-                    style={styles.bulkButton}
-                  >
-                    Všetci
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleBulkIssueSelection('READY')}
-                    disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
-                    style={styles.bulkButton}
-                  >
-                    Vydateľní
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleBulkIssueSelection('NONE')}
-                    disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
-                    style={styles.bulkButton}
-                  >
-                    Žiadni
-                  </button>
                 </div>
 
                 {(issueSearchOpen || issuePersonFilter) && (
@@ -3622,7 +3624,27 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexWrap: 'wrap',
     gap: 6,
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: 10
+  },
+  toolbarLeft: {
+    display: 'flex',
+    flex: '1 1 auto',
+    flexWrap: 'wrap',
+    gap: 6,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    minWidth: 0
+  },
+  toolbarRight: {
+    display: 'flex',
+    flex: '0 0 auto',
+    flexWrap: 'wrap',
+    gap: 6,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginLeft: 'auto'
   },
   pickupStepCard: {
     border: '1px solid #c4b5fd',
