@@ -2029,23 +2029,23 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                       {issueLoading ? 'Ukladám...' : 'Uložiť skupinový výdaj'}
                     </button>
                   )}
-                </div>
-
-                {createdIssue && (
-                  <div style={styles.createdBox}>
-                    <b>{createdIssue.title}</b>
-                    <span>
-                      MASO {createdIssue.summary?.MASO || 0} / VEGE {createdIssue.summary?.VEGE || 0} / DIETA {createdIssue.summary?.DIETA || 0} / SPOLU {createdIssue.summary?.SPOLU || 0}
-                    </span>
-                    {createdIssue.status === 'WAITING' && <span>Platnosť začne o 15 minút.</span>}
-                  </div>
-                )}
 
                   {issueFeedback && (
-                    <div style={issueFeedbackType === 'ok' ? styles.feedbackOk : styles.feedbackError}>
+                    <div style={issueFeedbackType === 'ok' ? styles.feedbackOkCompact : styles.feedbackErrorCompact}>
                       {issueFeedback}
                     </div>
                   )}
+
+                  {createdIssue && (
+                    <div style={{ ...styles.createdBox, ...styles.createdBoxCompact }}>
+                      <b>{createdIssue.title}</b>
+                      <span>
+                        MASO {createdIssue.summary?.MASO || 0} / VEGE {createdIssue.summary?.VEGE || 0} / DIETA {createdIssue.summary?.DIETA || 0} / SPOLU {createdIssue.summary?.SPOLU || 0}
+                      </span>
+                      {createdIssue.status === 'WAITING' && <span>Platnosť začne o 15 minút.</span>}
+                    </div>
+                  )}
+                </div>
                 </div>
                 </section>
               </div>
@@ -3641,7 +3641,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 6,
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 10
+    marginTop: 6
   },
   toolbarLeft: {
     display: 'flex',
@@ -3679,7 +3679,7 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '12px -14px -14px -14px',
     padding: '8px 14px max(8px, env(safe-area-inset-bottom)) 14px',
     display: 'grid',
-    gap: 6,
+    gap: 5,
     borderTop: '1px solid #e5e7eb',
     background: '#fff',
     boxShadow: '0 -10px 22px rgba(17, 24, 39, 0.08)'
@@ -3850,7 +3850,7 @@ const styles: Record<string, React.CSSProperties> = {
   issuePeopleList: {
     display: 'grid',
     gap: 4,
-    marginTop: 8,
+    marginTop: 6,
     maxHeight: 560,
     overflow: 'auto',
     paddingRight: 3
@@ -3869,7 +3869,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#111827'
   },
   peopleSectionHeader: {
-    marginTop: 12,
+    marginTop: 8,
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -4002,6 +4002,12 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
     fontSize: 12,
     fontWeight: 900
+  },
+  createdBoxCompact: {
+    marginTop: 0,
+    padding: 8,
+    gap: 3,
+    fontSize: 11
   },
   delegateHeader: {
     display: 'flex',
