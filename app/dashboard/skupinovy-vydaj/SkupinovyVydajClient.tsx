@@ -1009,6 +1009,17 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     void loadIssuePeople(meal)
   }
 
+  function closeIssueEditor() {
+    resetIssueState({ clearExisting: false, preserveMeal: true })
+    if (selectedGroupId && date) void loadExistingIssuesFor(selectedGroupId, date, '')
+  }
+
+  function backIssueEditorToSource() {
+    setConfirmed(false)
+    setPrepareSourceStep(sourceMode === 'FOOD_GROUP' ? 'DETAIL' : 'SOURCE')
+    setPrepareSourceModalOpen(true)
+  }
+
   async function editExistingIssue(issueId: string) {
     setIssueLoading(true)
     setIssueMessage('')
@@ -1638,16 +1649,27 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     <small>{fullDateLabel(date)}</small>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      resetIssueState({ clearExisting: false, preserveMeal: true })
-                      void loadExistingIssuesFor(selectedGroupId, date, '')
-                    }}
-                    style={styles.smallButtonWhite}
-                  >
-                    Späť
-                  </button>
+                  <div style={styles.modalHeaderActions}>
+                    <button
+                      type="button"
+                      onClick={backIssueEditorToSource}
+                      style={styles.iconBackButton}
+                      title="Späť"
+                      aria-label="Späť"
+                    >
+                      ←
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={closeIssueEditor}
+                      style={styles.qrCloseButton}
+                      title="Zatvoriť"
+                      aria-label="Zatvoriť"
+                    >
+                      x
+                    </button>
+                  </div>
                 </div>
 
                 <label style={styles.field}>
@@ -2220,14 +2242,31 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   <span>{selectedGroup.name} / {mealLabel(meal)} / {fullDateLabel(date)}</span>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setPrepareSourceModalOpen(false)}
-                  style={styles.qrCloseButton}
-                  disabled={issueLoading}
-                >
-                  x
-                </button>
+                <div style={styles.modalHeaderActions}>
+                  {prepareSourceStep === 'DETAIL' && (
+                    <button
+                      type="button"
+                      onClick={() => setPrepareSourceStep('SOURCE')}
+                      style={styles.iconBackButton}
+                      title="Späť"
+                      aria-label="Späť"
+                      disabled={issueLoading}
+                    >
+                      ←
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setPrepareSourceModalOpen(false)}
+                    style={styles.qrCloseButton}
+                    disabled={issueLoading}
+                    title="Zatvoriť"
+                    aria-label="Zatvoriť"
+                  >
+                    x
+                  </button>
+                </div>
               </div>
 
               {prepareSourceStep === 'SOURCE' && (
@@ -2275,15 +2314,6 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
 
               {sourceMode === 'FOOD_GROUP' && prepareSourceStep === 'DETAIL' && (
                 <div style={styles.sourceFoodGroupBox}>
-                  <button
-                    type="button"
-                    onClick={() => setPrepareSourceStep('SOURCE')}
-                    style={{ ...styles.smallButtonWhite, width: 'fit-content' }}
-                    disabled={issueLoading}
-                  >
-                    Späť na zdroj
-                  </button>
-
                   <label style={styles.field}>
                     <span>Stravovacia skupina</span>
                     <select
@@ -4111,6 +4141,24 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 0,
     fontSize: 13,
     fontWeight: 850
+  },
+  modalHeaderActions: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
+    flex: '0 0 auto'
+  },
+  iconBackButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    border: '1px solid #ddd6fe',
+    background: '#fff',
+    color: '#4c1d95',
+    fontSize: 18,
+    fontWeight: 950,
+    lineHeight: 1
   },
   qrCloseButton: {
     width: 34,
