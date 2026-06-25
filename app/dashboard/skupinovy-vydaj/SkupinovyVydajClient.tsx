@@ -526,14 +526,10 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
 
   function selectRegistrationGroup(nextGroupId: string) {
     if (nextGroupId === selectedGroupId) {
-      setGroupPickerOpen(false)
-      setGroupQuery('')
       return
     }
 
     setSelectedGroupId(nextGroupId)
-    setGroupPickerOpen(false)
-    setGroupQuery('')
     setDelegatesPanelOpen(false)
     setSelectedFoodGroupId('')
     setFoodGroups([])
@@ -1795,6 +1791,20 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                 <div style={styles.formGrid}>
                   <div style={styles.field}>
                     <span>Registracna skupina</span>
+                    <select
+                      value={selectedGroupId}
+                      onChange={event => selectRegistrationGroup(event.target.value)}
+                      disabled={issueLoading}
+                      style={styles.input}
+                    >
+                      <option value="">Vyberte</option>
+                      {groups.map(group => (
+                        <option key={group.id} value={group.id}>
+                          {group.name}
+                        </option>
+                      ))}
+                    </select>
+                    {false && (
                     <div style={styles.groupPicker}>
                       <button
                         type="button"
@@ -1837,6 +1847,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                         </div>
                       )}
                     </div>
+                    )}
                   </div>
 
                   <label style={styles.field}>
@@ -1852,7 +1863,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     )}
                   </label>
 
-                  <label style={styles.field}>
+                  <label style={{ ...styles.field, display: 'none' }}>
                     <span>Zdroj ľudí</span>
                     <select
                       value={sourceMode}
@@ -1869,7 +1880,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     </select>
                   </label>
 
-                  {sourceMode === 'FOOD_GROUP' && (
+                  {false && sourceMode === 'FOOD_GROUP' && (
                     <label style={styles.field}>
                       <span>Stravovacia skupina</span>
                       <select
@@ -1912,7 +1923,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   </label>
                 </div>
 
-                {selectedGroupId && (
+                {false && selectedGroupId && (
                   <div style={styles.delegateSummaryCard}>
                     <div style={styles.delegateSummaryText}>
                       <b>Stravovacie skupiny</b>
@@ -2034,6 +2045,56 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   )}
 
                   <div style={styles.prepareActions}>
+                    <label style={styles.field}>
+                      <span>Zdroj ľudí</span>
+                      <select
+                        value={sourceMode}
+                        onChange={event => {
+                          setSourceMode(event.target.value as IssueSourceMode)
+                          resetIssueState({ clearExisting: false, preserveMeal: true })
+                        }}
+                        disabled={issueLoading || readOnlyDate}
+                        style={styles.input}
+                      >
+                        <option value="REGISTRATION_GROUP">Registračná skupina</option>
+                        <option value="FOOD_GROUP">Stravovacia skupina</option>
+                        <option value="ONE_OFF">Jednorazový výdaj cez QR</option>
+                      </select>
+                    </label>
+
+                    {sourceMode === 'FOOD_GROUP' && (
+                      <div style={styles.prepareFoodGroupRow}>
+                        <label style={{ ...styles.field, flex: 1 }}>
+                          <span>Stravovacia skupina</span>
+                          <select
+                            value={selectedFoodGroupId}
+                            onChange={event => {
+                              setSelectedFoodGroupId(event.target.value)
+                              resetIssueState({ clearExisting: false, preserveMeal: true })
+                            }}
+                            disabled={issueLoading || readOnlyDate || foodGroupsLoading}
+                            style={styles.input}
+                          >
+                            <option value="">Vyber stravovaciu skupinu</option>
+                            {foodGroups.map(group => (
+                              <option key={group.id} value={group.id}>
+                                {group.name} ({group.memberCount})
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => openFoodGroupModal(selectedFoodGroupId)}
+                          style={styles.smallButtonWhite}
+                          disabled={issueLoading || readOnlyDate || foodGroupsLoading}
+                        >
+                          Spravovať
+                        </button>
+                      </div>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => {
@@ -3137,6 +3198,12 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     marginTop: 10,
     alignItems: 'end'
+  },
+  prepareFoodGroupRow: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'end',
+    flexWrap: 'wrap'
   },
   existingIssuesBox: {
     marginTop: 12,
