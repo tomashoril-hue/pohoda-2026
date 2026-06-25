@@ -242,6 +242,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const [issueFeedbackType, setIssueFeedbackType] = useState<'ok' | 'error'>('ok')
   const [createdIssue, setCreatedIssue] = useState<any>(null)
   const [qrModalOpen, setQrModalOpen] = useState(false)
+  const [prepareSourceModalOpen, setPrepareSourceModalOpen] = useState(false)
   const [existingLoading, setExistingLoading] = useState(false)
   const [selectedGroupId, setSelectedGroupId] = useState(groups.length === 1 ? groups[0]?.id || '' : '')
   const [sourceMode, setSourceMode] = useState<IssueSourceMode>('REGISTRATION_GROUP')
@@ -907,6 +908,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       const existingForMeal = dailyIssues.filter(issue => issue.meal === nextMeal).length
       setIssueTitle(defaultIssueTitle(selectedGroup?.name || '', nextMeal, existingForMeal + 1))
       setConfirmed(true)
+      setPrepareSourceModalOpen(false)
       setIssueMessage(
         people.length
           ? excludedCount > 0
@@ -920,6 +922,31 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     } finally {
       setIssueLoading(false)
     }
+  }
+
+  function openPrepareSourceModal() {
+    if (!selectedGroupId || !date || !meal) {
+      setIssueMessage('Najprv vyber dátum, registračnú skupinu a jedlo.', 'error')
+      return
+    }
+
+    if (readOnlyDate) {
+      setIssueMessage('Starší dátum je iba na prezeranie.', 'error')
+      return
+    }
+
+    setIssueMessage('')
+    setPrepareSourceModalOpen(true)
+  }
+
+  function selectSourceMode(nextSourceMode: IssueSourceMode) {
+    setSourceMode(nextSourceMode)
+    resetIssueState({ clearExisting: false, preserveMeal: true })
+  }
+
+  function continuePrepareFromSourceModal() {
+    if (!meal) return
+    void loadIssuePeople(meal)
   }
 
   async function editExistingIssue(issueId: string) {
@@ -1881,7 +1908,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   </label>
 
                   {false && sourceMode === 'FOOD_GROUP' && (
-                    <label style={styles.field}>
+                    <label style={{ ...styles.field, display: 'none' }}>
                       <span>Stravovacia skupina</span>
                       <select
                         value={selectedFoodGroupId}
@@ -2062,7 +2089,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                       </select>
                     </label>
 
-                    {sourceMode === 'FOOD_GROUP' && (
+                    {false && sourceMode === 'FOOD_GROUP' && (
                       <div style={styles.prepareFoodGroupRow}>
                         <label style={{ ...styles.field, flex: 1 }}>
                           <span>Stravovacia skupina</span>
@@ -2097,17 +2124,15 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
 
                     <button
                       type="button"
-                      onClick={() => {
-                        if (meal) void loadIssuePeople(meal)
-                      }}
-                      disabled={issueLoading || readOnlyDate || !meal || (sourceMode === 'FOOD_GROUP' && !selectedFoodGroupId)}
+                      onClick={openPrepareSourceModal}
+                      disabled={issueLoading || readOnlyDate || !meal}
                       style={{ ...styles.primaryButton, alignSelf: 'end', width: '100%' }}
                     >
                       {issueLoading
                         ? 'Načítavam...'
                         : readOnlyDate
                           ? 'Starší dátum je iba na prezeranie'
-                          : sourceMode === 'FOOD_GROUP' && !selectedFoodGroupId
+                          : false
                             ? 'Vyber stravovaciu skupinu'
                             : meal ? 'Pripraviť nový výdaj' : 'Vyber jedlo pre nový výdaj'}
                     </button>
@@ -2121,6 +2146,117 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                 </section>
               )}
             </aside>
+          </div>
+        )}
+
+        {prepareSourceModalOpen && selectedGroup && (
+          <div style={styles.modalOverlay} onClick={() => !issueLoading && setPrepareSourceModalOpen(false)}>
+            <div style={styles.sourceModal} onClick={event => event.stopPropagation()}>
+              <div style={styles.qrModalHeader}>
+                <div style={styles.modalTitleBlock}>
+                  <b>Vyber zdroj osôb</b>
+                  <span>{selectedGroup.name} / {mealLabel(meal)} / {fullDateLabel(date)}</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setPrepareSourceModalOpen(false)}
+                  style={styles.qrCloseButton}
+                  disabled={issueLoading}
+                >
+                  x
+                </button>
+              </div>
+
+              <div style={styles.sourceChoiceGrid}>
+                <button
+                  type="button"
+                  onClick={() => selectSourceMode('REGISTRATION_GROUP')}
+                  style={{
+                    ...styles.sourceChoiceButton,
+                    ...(sourceMode === 'REGISTRATION_GROUP' ? styles.sourceChoiceButtonActive : {})
+                  }}
+                  disabled={issueLoading}
+                >
+                  <b>Registračná skupina</b>
+                  <span>Načíta aktuálne vydateľných ľudí z vybranej registračnej skupiny.</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => selectSourceMode('FOOD_GROUP')}
+                  style={{
+                    ...styles.sourceChoiceButton,
+                    ...(sourceMode === 'FOOD_GROUP' ? styles.sourceChoiceButtonActive : {})
+                  }}
+                  disabled={issueLoading}
+                >
+                  <b>Stravovacia skupina</b>
+                  <span>Použi vlastný zoznam ľudí v rámci tejto registračnej skupiny.</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => selectSourceMode('ONE_OFF')}
+                  style={{
+                    ...styles.sourceChoiceButton,
+                    ...(sourceMode === 'ONE_OFF' ? styles.sourceChoiceButtonActive : {})
+                  }}
+                  disabled={issueLoading}
+                >
+                  <b>Jednorazový QR výdaj</b>
+                  <span>Začne prázdnym výdajom, osoby pridáš skenovaním QR kódov.</span>
+                </button>
+              </div>
+
+              {sourceMode === 'FOOD_GROUP' && (
+                <div style={styles.sourceFoodGroupBox}>
+                  <label style={styles.field}>
+                    <span>Stravovacia skupina</span>
+                    <select
+                      value={selectedFoodGroupId}
+                      onChange={event => {
+                        setSelectedFoodGroupId(event.target.value)
+                        resetIssueState({ clearExisting: false, preserveMeal: true })
+                      }}
+                      disabled={issueLoading || foodGroupsLoading}
+                      style={styles.input}
+                    >
+                      <option value="">Vyber stravovaciu skupinu</option>
+                      {foodGroups.map(group => (
+                        <option key={group.id} value={group.id}>
+                          {group.name} ({group.memberCount})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => openFoodGroupModal(selectedFoodGroupId)}
+                    style={styles.smallButtonWhite}
+                    disabled={issueLoading || foodGroupsLoading}
+                  >
+                    Spravovať stravovacie skupiny
+                  </button>
+                </div>
+              )}
+
+              <div style={styles.modalFooter}>
+                <button
+                  type="button"
+                  onClick={continuePrepareFromSourceModal}
+                  disabled={issueLoading || (sourceMode === 'FOOD_GROUP' && !selectedFoodGroupId)}
+                  style={styles.primaryButton}
+                >
+                  {issueLoading
+                    ? 'Načítavam...'
+                    : sourceMode === 'FOOD_GROUP' && !selectedFoodGroupId
+                      ? 'Vyber stravovaciu skupinu'
+                      : 'Pokračovať'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -3753,6 +3889,53 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
     display: 'grid',
     gap: 12
+  },
+  sourceModal: {
+    width: '100%',
+    maxWidth: 720,
+    maxHeight: '100%',
+    overflow: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    background: '#fff',
+    borderRadius: 18,
+    boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
+    display: 'grid',
+    gap: 12
+  },
+  sourceChoiceGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+    gap: 10,
+    padding: '0 14px'
+  },
+  sourceChoiceButton: {
+    minHeight: 116,
+    display: 'grid',
+    alignContent: 'start',
+    gap: 7,
+    textAlign: 'left',
+    border: '1px solid #d1d5db',
+    borderRadius: 10,
+    background: '#fff',
+    color: '#111827',
+    padding: 14,
+    fontSize: 12,
+    fontWeight: 850,
+    boxShadow: '0 6px 16px rgba(17, 24, 39, 0.06)'
+  },
+  sourceChoiceButtonActive: {
+    borderColor: '#22c55e',
+    background: '#ecfdf5',
+    boxShadow: 'inset 4px 0 0 #22c55e, 0 8px 18px rgba(34, 197, 94, 0.12)'
+  },
+  sourceFoodGroupBox: {
+    margin: '0 14px',
+    display: 'grid',
+    gap: 8,
+    border: '1px solid #e5e7eb',
+    borderRadius: 10,
+    background: '#f9fafb',
+    padding: 12
   },
   peopleModal: {
     width: '100%',
