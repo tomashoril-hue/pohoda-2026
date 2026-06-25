@@ -994,17 +994,12 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
 
   function selectSourceMode(nextSourceMode: IssueSourceMode) {
     setSourceMode(nextSourceMode)
-    setPrepareSourceStep(nextSourceMode === 'FOOD_GROUP' ? 'DETAIL' : 'SOURCE')
+    setPrepareSourceStep('SOURCE')
     resetIssueState({ clearExisting: false, preserveMeal: true })
   }
 
   function continuePrepareFromSourceModal() {
     if (!meal) return
-
-    if (sourceMode === 'FOOD_GROUP' && prepareSourceStep === 'SOURCE') {
-      setPrepareSourceStep('DETAIL')
-      return
-    }
 
     void loadIssuePeople(meal)
   }
@@ -1016,7 +1011,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
 
   function backIssueEditorToSource() {
     setConfirmed(false)
-    setPrepareSourceStep(sourceMode === 'FOOD_GROUP' ? 'DETAIL' : 'SOURCE')
+    setPrepareSourceStep('SOURCE')
     setPrepareSourceModalOpen(true)
   }
 
@@ -2312,7 +2307,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
               </div>
               )}
 
-              {sourceMode === 'FOOD_GROUP' && prepareSourceStep === 'DETAIL' && (
+              {sourceMode === 'FOOD_GROUP' && prepareSourceStep === 'SOURCE' && (
                 <div style={styles.sourceFoodGroupBox}>
                   <label style={styles.field}>
                     <span>Stravovacia skupina</span>
@@ -2349,12 +2344,12 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                 <button
                   type="button"
                   onClick={continuePrepareFromSourceModal}
-                  disabled={issueLoading || (sourceMode === 'FOOD_GROUP' && prepareSourceStep === 'DETAIL' && !selectedFoodGroupId)}
+                  disabled={issueLoading || (sourceMode === 'FOOD_GROUP' && !selectedFoodGroupId)}
                   style={styles.primaryButton}
                 >
                   {issueLoading
                     ? 'Načítavam...'
-                    : sourceMode === 'FOOD_GROUP' && prepareSourceStep === 'DETAIL' && !selectedFoodGroupId
+                    : sourceMode === 'FOOD_GROUP' && !selectedFoodGroupId
                       ? 'Vyber stravovaciu skupinu'
                       : 'Pokračovať'}
                 </button>
@@ -4026,7 +4021,7 @@ const styles: Record<string, React.CSSProperties> = {
     inset: 0,
     height: 'var(--group-issue-viewport-height, 100dvh)',
     boxSizing: 'border-box',
-    background: 'rgba(17, 24, 39, 0.55)',
+    background: 'rgba(17, 24, 39, 0.68)',
     zIndex: 50,
     display: 'flex',
     alignItems: 'flex-start',
@@ -4089,11 +4084,12 @@ const styles: Record<string, React.CSSProperties> = {
   sourceFoodGroupBox: {
     margin: '0 14px',
     display: 'grid',
-    gap: 8,
-    border: '1px solid #e5e7eb',
-    borderRadius: 10,
-    background: '#f9fafb',
-    padding: 12
+    gap: 10,
+    border: '1px solid #ddd6fe',
+    borderRadius: 12,
+    background: '#faf7ff',
+    padding: 12,
+    boxShadow: 'inset 4px 0 0 #7c3aed'
   },
   peopleModal: {
     width: '100%',
