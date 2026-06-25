@@ -1733,33 +1733,36 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     <span style={styles.summaryLabel}>Pripravuješ</span>
                     <b>{mealLabel(meal)} · {selectedGroup?.name || '-'}</b>
                     <small>{fullDateLabel(date)}</small>
-                    <div style={styles.issueTitleCompact}>
-                      {issueTitleEditing && !issueReadOnly ? (
-                        <input
-                          type="text"
-                          value={issueTitle}
-                          onChange={event => setIssueTitle(event.target.value)}
-                          placeholder="Názov výdaja"
-                          style={styles.compactTitleInput}
-                          disabled={issueLoading}
-                          autoFocus
-                        />
-                      ) : (
-                        <span>{issueTitle || '-'}</span>
-                      )}
+                    <div style={styles.issueTitleRow}>
+                      <span style={styles.issueTitleLabel}>Názov výdaja:</span>
+                      <div style={styles.issueTitleCompact}>
+                        {issueTitleEditing && !issueReadOnly ? (
+                          <input
+                            type="text"
+                            value={issueTitle}
+                            onChange={event => setIssueTitle(event.target.value)}
+                            placeholder="Názov výdaja"
+                            style={styles.compactTitleInput}
+                            disabled={issueLoading}
+                            autoFocus
+                          />
+                        ) : (
+                          <span>{issueTitle || '-'}</span>
+                        )}
 
-                      {!issueReadOnly && (
-                        <button
-                          type="button"
-                          onClick={() => setIssueTitleEditing(open => !open)}
-                          style={styles.compactIconButton}
-                          disabled={issueLoading}
-                          title="Upraviť názov"
-                          aria-label="Upraviť názov"
-                        >
-                          Z
-                        </button>
-                      )}
+                        {!issueReadOnly && (
+                          <button
+                            type="button"
+                            onClick={() => setIssueTitleEditing(open => !open)}
+                            style={styles.compactIconButton}
+                            disabled={issueLoading}
+                            title="Upraviť názov"
+                            aria-label="Upraviť názov"
+                          >
+                            Z
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -3198,6 +3201,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontWeight: 900
   },
+  issueTitleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+    minWidth: 0
+  },
+  issueTitleLabel: {
+    color: '#6b7280',
+    fontSize: 11,
+    fontWeight: 900
+  },
   compactTitleInput: {
     width: 170,
     maxWidth: '48vw',
@@ -3210,10 +3225,10 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 900
   },
   issueEditorBody: {
-    padding: 14,
-    overflowY: 'auto',
-    WebkitOverflowScrolling: 'touch',
-    overscrollBehaviorY: 'contain',
+    padding: '8px 14px 14px 14px',
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
     flex: '1 1 auto',
     minHeight: 0
   },
@@ -3641,7 +3656,8 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 6,
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 6
+    marginTop: 4,
+    flex: '0 0 auto'
   },
   toolbarLeft: {
     display: 'flex',
@@ -3673,11 +3689,10 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8
   },
   issueStickyFooter: {
-    position: 'sticky',
-    bottom: -14,
+    position: 'relative',
     zIndex: 3,
-    margin: '12px -14px -14px -14px',
-    padding: '8px 14px max(8px, env(safe-area-inset-bottom)) 14px',
+    margin: '8px -14px -14px -14px',
+    padding: '7px 14px max(7px, env(safe-area-inset-bottom)) 14px',
     display: 'grid',
     gap: 5,
     borderTop: '1px solid #e5e7eb',
@@ -3850,9 +3865,13 @@ const styles: Record<string, React.CSSProperties> = {
   issuePeopleList: {
     display: 'grid',
     gap: 4,
-    marginTop: 6,
-    maxHeight: 560,
+    marginTop: 5,
+    maxHeight: 'none',
+    flex: '1 1 auto',
+    minHeight: 0,
     overflow: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    overscrollBehaviorY: 'contain',
     paddingRight: 3
   },
   filterInput: {
@@ -3869,14 +3888,15 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#111827'
   },
   peopleSectionHeader: {
-    marginTop: 8,
+    marginTop: 6,
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
     color: '#374151',
     fontSize: 12,
-    fontWeight: 900
+    fontWeight: 900,
+    flex: '0 0 auto'
   },
   issuePersonRow: {
     display: 'grid',
