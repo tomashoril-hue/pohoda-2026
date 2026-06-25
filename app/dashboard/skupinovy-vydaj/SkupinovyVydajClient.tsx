@@ -230,6 +230,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const [pickupResults, setPickupResults] = useState<SearchUser[]>([])
   const [pickupLoading, setPickupLoading] = useState(false)
   const [pickupSearchOutside, setPickupSearchOutside] = useState(false)
+  const [pendingPickupSearchUsers, setPendingPickupSearchUsers] = useState<SearchUser[]>([])
   const [pendingPickupExternalUsers, setPendingPickupExternalUsers] = useState<SearchUser[]>([])
   const [pickupModalOpen, setPickupModalOpen] = useState(false)
   const [pendingPickupUserIds, setPendingPickupUserIds] = useState<string[]>([])
@@ -340,8 +341,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const pickupCandidateUsers = useMemo(() => {
     return pickupSearchOutside
       ? mergeSearchUsers(pendingPickupExternalUsers, pickupResults)
-      : mergeSearchUsers(pickupUsers, issuePickupCandidates, pickupResults)
-  }, [pickupSearchOutside, pickupUsers, issuePickupCandidates, pendingPickupExternalUsers, pickupResults])
+      : mergeSearchUsers(pickupUsers, issuePickupCandidates, pendingPickupSearchUsers, pickupResults)
+  }, [pickupSearchOutside, pickupUsers, issuePickupCandidates, pendingPickupSearchUsers, pendingPickupExternalUsers, pickupResults])
   const delegateUserIds = useMemo(() => delegates.map(delegate => delegate.userId), [delegates])
   const delegateSelectionChanged = !sameIds(delegateUserIds, pendingDelegateUserIds)
   const pickupSelectionChanged = !sameIds(pickupUserIds, pendingPickupUserIds)
@@ -575,6 +576,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setPickupSearchOutside(false)
     setPickupQuery('')
     setPickupResults([])
+    setPendingPickupSearchUsers([])
     setPendingPickupExternalUsers([])
     setPendingPickupUserIds(pickupUserIds)
   }
@@ -585,6 +587,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setPickupQuery('')
     setPickupResults([])
     setPendingPickupUserIds([])
+    setPendingPickupSearchUsers([])
     setPendingPickupExternalUsers([])
   }
 
@@ -626,6 +629,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setIssueSearchOpen(false)
     setPickupQuery('')
     setPickupResults([])
+    setPendingPickupSearchUsers([])
     setPendingPickupExternalUsers([])
     setMoveModalOpen(false)
     setMoveTargetIssueId('')
@@ -956,6 +960,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       setIssueSearchOpen(false)
       setPickupQuery('')
       setPickupResults([])
+      setPendingPickupSearchUsers([])
       setPendingPickupExternalUsers([])
       setIssuePeopleConfirmed(true)
       setEditingIssueId('')
@@ -1020,6 +1025,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       setIssueSearchOpen(false)
       setPickupQuery('')
       setPickupResults([])
+      setPendingPickupSearchUsers([])
       setPendingPickupExternalUsers([])
       setIssuePeopleConfirmed(true)
       setEditingIssueId('')
@@ -1055,6 +1061,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       setIssueSearchOpen(false)
       setPickupQuery('')
       setPickupResults([])
+      setPendingPickupSearchUsers([])
       setPendingPickupExternalUsers([])
       setIssuePeopleConfirmed(true)
       setIssueMessage(
@@ -1119,6 +1126,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       setIssueSearchOpen(false)
       setPickupQuery('')
       setPickupResults([])
+      setPendingPickupSearchUsers([])
+      setPendingPickupExternalUsers([])
       setMoveModalOpen(false)
       setMoveTargetIssueId('')
       const hasEditablePeople = people.some(isPlannedIssuePerson)
@@ -1356,19 +1365,23 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     }
   }
 
-  function togglePendingPickupUser(userId: string) {
-    setPendingPickupUserIds(current => {
-      return current.includes(userId)
-        ? current.filter(id => id !== userId)
-        : [...current, userId]
-    })
-  }
+  function togglePendingPickupUser(user: SearchUser, source: 'group' | 'outside') {
+    const selected = pendingPickupUserIds.includes(user.id)
 
-  function addOutsidePickupUser(user: SearchUser) {
+    if (selected) {
+      setPendingPickupUserIds(current => current.filter(id => id !== user.id))
+      setPendingPickupSearchUsers(current => current.filter(item => item.id !== user.id))
+      setPendingPickupExternalUsers(current => current.filter(item => item.id !== user.id))
+      return
+    }
+
     setPendingPickupUserIds(current => current.includes(user.id) ? current : [...current, user.id])
-    setPendingPickupExternalUsers(current => mergeSearchUsers(current, [user]))
-    setPickupQuery('')
-    setPickupResults([])
+
+    if (source === 'outside') {
+      setPendingPickupExternalUsers(current => mergeSearchUsers(current, [user]))
+    } else {
+      setPendingPickupSearchUsers(current => mergeSearchUsers(current, [user]))
+    }
   }
 
   async function savePickupSelection() {
@@ -1382,7 +1395,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       return
     }
 
-    const usersById = new Map(mergeSearchUsers(pickupCandidateUsers, pendingPickupExternalUsers).map(user => [user.id, user]))
+    const usersById = new Map(mergeSearchUsers(pickupCandidateUsers, pendingPickupSearchUsers, pendingPickupExternalUsers).map(user => [user.id, user]))
     const nextUsers = pendingPickupUserIds
       .map(id => usersById.get(id))
       .filter(Boolean) as SearchUser[]
@@ -1393,6 +1406,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       setPickupModalOpen(false)
       setPickupQuery('')
       setPickupResults([])
+      setPendingPickupSearchUsers([])
       setPendingPickupExternalUsers([])
       return
     }
@@ -1418,6 +1432,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       setPickupModalOpen(false)
       setPickupQuery('')
       setPickupResults([])
+      setPendingPickupSearchUsers([])
       setPendingPickupExternalUsers([])
       setIssueMessage(json.message || 'Oprávnení prevziať boli uložení.')
     } catch (err: any) {
@@ -3001,7 +3016,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                           <button
                             key={user.id}
                             type="button"
-                            onClick={() => pickupSearchOutside ? addOutsidePickupUser(user) : togglePendingPickupUser(user.id)}
+                            onClick={() => togglePendingPickupUser(user, pickupSearchOutside ? 'outside' : 'group')}
                             style={{
                               ...styles.resultButton,
                               ...(selected && !willAdd ? styles.resultButtonSelected : {}),
