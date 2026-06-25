@@ -994,7 +994,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
 
   function selectSourceMode(nextSourceMode: IssueSourceMode) {
     setSourceMode(nextSourceMode)
-    setPrepareSourceStep('SOURCE')
+    setPrepareSourceStep(nextSourceMode === 'FOOD_GROUP' ? 'DETAIL' : 'SOURCE')
     resetIssueState({ clearExisting: false, preserveMeal: true })
   }
 
@@ -1646,7 +1646,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     }}
                     style={styles.smallButtonWhite}
                   >
-                    Zmeniť
+                    Späť
                   </button>
                 </div>
 
@@ -2230,6 +2230,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                 </button>
               </div>
 
+              {prepareSourceStep === 'SOURCE' && (
               <div style={styles.sourceChoiceGrid}>
                 <button
                   type="button"
@@ -2270,9 +2271,19 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   <span>Začne prázdnym výdajom, osoby pridáš skenovaním QR kódov.</span>
                 </button>
               </div>
+              )}
 
               {sourceMode === 'FOOD_GROUP' && prepareSourceStep === 'DETAIL' && (
                 <div style={styles.sourceFoodGroupBox}>
+                  <button
+                    type="button"
+                    onClick={() => setPrepareSourceStep('SOURCE')}
+                    style={{ ...styles.smallButtonWhite, width: 'fit-content' }}
+                    disabled={issueLoading}
+                  >
+                    Späť na zdroj
+                  </button>
+
                   <label style={styles.field}>
                     <span>Stravovacia skupina</span>
                     <select
@@ -3001,9 +3012,9 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 24px 70px rgba(0,0,0,0.28)'
   },
   prepHeading: {
-    border: '1px solid #86efac',
-    borderRadius: 8,
-    background: '#dcfce7',
+    border: '1px solid #ddd6fe',
+    borderRadius: 10,
+    background: '#fff',
     padding: '10px 12px',
     marginBottom: 12,
     display: 'flex',
@@ -3011,10 +3022,10 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 10,
     flexWrap: 'wrap',
-    color: '#14532d',
+    color: '#111827',
     fontSize: 13,
     fontWeight: 900,
-    boxShadow: 'inset 4px 0 0 #22c55e'
+    boxShadow: 'inset 4px 0 0 #7c3aed, 0 6px 18px rgba(76, 29, 149, 0.06)'
   },
   prepHeadingInfo: {
     display: 'grid',
@@ -3262,7 +3273,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 800
   },
   summaryLabel: {
-    color: '#ede9fe',
+    color: '#6d28d9',
     fontSize: 10,
     fontWeight: 950,
     textTransform: 'uppercase'
