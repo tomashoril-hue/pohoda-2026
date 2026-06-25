@@ -368,7 +368,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     return mergeSearchUsers(
       issuePickupCandidates,
       pendingPickupSearchUsers,
-      pickupQuery.trim().length >= 3 ? pickupResults : []
+      pickupResults
     )
   }, [foodGroupMembers, issuePickupCandidates, pendingPickupSearchUsers, pickupQuery, pickupResults, sourceMode])
   const pickupKnownUsers = useMemo(() => {
@@ -1393,6 +1393,9 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setPickupQuery('')
     setPickupResults([])
     setPickupLoading(false)
+    if (mode === 'group' && sourceMode === 'REGISTRATION_GROUP') {
+      void searchPickupUsers('', 'group')
+    }
   }
 
   async function searchPickupUsers(query: string, mode = pickupMode) {
@@ -1407,7 +1410,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       (mode !== 'group' && mode !== 'outside') ||
       sourceMode === 'FOOD_GROUP' ||
       sourceMode === 'ONE_OFF' ||
-      searchText.length < 3
+      (mode === 'outside' && searchText.length < 3)
     ) {
       setPickupLoading(false)
       return
@@ -3090,7 +3093,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                           ...(pickupMode === 'selected' ? styles.segmentButtonActive : {})
                         }}
                       >
-                        Z označených
+                        Vybratí
                       </button>
 
                       <button

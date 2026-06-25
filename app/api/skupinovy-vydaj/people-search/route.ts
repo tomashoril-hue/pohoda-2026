@@ -35,7 +35,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Chyba registracna skupina, datum alebo jedlo.' }, { status: 400 })
     }
 
-    if (query.length < 3) {
+    const isPickupGroupSearch = mode === 'PICKUP' && scope !== 'OUTSIDE'
+
+    if (!isPickupGroupSearch && query.length < 3) {
       return NextResponse.json({ people: [] })
     }
 
@@ -49,7 +51,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Nemas opravnenie pre tuto registracnu skupinu.' }, { status: 403 })
     }
 
-    if (mode === 'PICKUP' && scope !== 'OUTSIDE') {
+    if (isPickupGroupSearch) {
       if (!date) {
         return NextResponse.json({ error: 'Chyba datum.' }, { status: 400 })
       }
@@ -73,7 +75,6 @@ export async function GET(req: NextRequest) {
             String(a.email || '').localeCompare(String(b.email || ''), 'sk', { sensitivity: 'base' })
           )
         })
-        .slice(0, 16)
         .map((user: any) => ({
           id: user.id,
           name: displayName(user),
