@@ -3,9 +3,9 @@ import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
 import {
   cleanText,
-  filterIssuablePeople,
   fullName,
   getIssueAccess,
+  loadPreparationPeople,
   loadUsersByIds,
   type MealType,
   normalizeDate,
@@ -142,12 +142,12 @@ async function loadFoodGroupPeople(groupId: string, date: string, meal: MealType
   const members = await loadFoodGroupMembers(groupId)
   const users = await loadUsersByIds(members.map(member => member.id))
   const plannedUserIds = await loadPlannedGroupIssueUserIds(date, meal)
-  const candidates = users.filter((user: any) => !plannedUserIds.has(user.id))
-  const people = await filterIssuablePeople({
-    users: candidates,
+  const people = await loadPreparationPeople({
+    users,
     date,
     meal,
-    source: 'FOOD_GROUP'
+    source: 'FOOD_GROUP',
+    plannedUserIds
   })
 
   return { people, members }

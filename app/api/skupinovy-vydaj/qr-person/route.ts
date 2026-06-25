@@ -3,8 +3,8 @@ import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
 import {
   cleanText,
-  filterIssuablePeople,
   getIssueAccess,
+  loadPreparationPeople,
   normalizeDate,
   normalizeMeal
 } from '@/lib/registrationGroupIssue'
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Osoba k QR kodu sa nenasla.' }, { status: 404 })
     }
 
-    const people = await filterIssuablePeople({
+    const people = await loadPreparationPeople({
       users: [user],
       date,
       meal,
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
 
     if (people.length === 0) {
       return NextResponse.json(
-        { error: 'Osoba nie je pre tento datum a jedlo aktualne vydatelna.' },
+        { error: 'Osoba sa nepodarila nacitat do pripravy vydaja.' },
         { status: 400 }
       )
     }

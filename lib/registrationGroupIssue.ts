@@ -14,6 +14,10 @@ export type IssuablePerson = {
   email: string
   choice: FoodChoice
   source: 'REGISTRATION_GROUP' | 'FOOD_GROUP' | 'SEARCH' | 'QR'
+  issuable?: boolean
+  issueStatus?: string
+  issueStatusLabel?: string
+  itemStatus?: string
 }
 
 export function cleanText(value: any) {
@@ -268,4 +272,125 @@ export async function filterIssuablePeople({
       }
     })
     .filter(Boolean) as IssuablePerson[]
+}
+
+export async function loadPreparationPeople({
+  users,
+  date,
+  meal,
+  source,
+  plannedUserIds = new Set<string>()
+}: {
+  users: any[]
+  date: string
+  meal: MealType
+  source: 'REGISTRATION_GROUP' | 'FOOD_GROUP' | 'SEARCH' | 'QR'
+  plannedUserIds?: Set<string>
+}) {
+  const userIds = Array.from(new Set(users.map((user: any) => user.id).filter(Boolean)))
+  if (userIds.length === 0) return []
+
+  const [entitlementResult, selectionResult, issuedResult] = await Promise.all([
+    supabaseServer
+      .from('user_food_entitlements')
+      .select('user_id, datum, obed, vecera')
+      .eq('datum', date)
+      .in('user_id', userIds),
+    supabaseServer
+      .from('vyber_jedal')
+      .select('user_id, datum, typ_jedla, volba')
+      .eq('datum', date)
+      .eq('typ_jedla', meal)
+      .in('user_id', userIds),
+    supabaseServer
+      .from('vydaj_jedal')
+      .select('user_id, status')
+      .eq('datum', date)
+      .eq('typ_jedla', meal)
+      .eq('status', 'VYDANE')
+      .in('user_id', userIds)
+  ])
+
+  if (entitlementResult.error) throw entitlementResult.error
+  if (selectionResult.error) throw selectionResult.error
+  if (issuedResult.error) throw issuedResult.error
+
+  const entitlementByUserId = new Map((entitlementResult.data || []).map((row: any) => [row.user_id, row]))
+  const selectionByUserId = new Map((selectionResult.data || []).map((row: any) => [row.user_id, row]))
+  const issuedUserIds = new Set((issuedResult.data || []).map((row: any) => row.user_id))
+
+  return users.map((user: any): IssuablePerson => {
+    const selectionChoice = normalizeSelectionChoice(selectionByUserId.get(user.id)?.volba)
+    const choice = normalizeChoice(selectionChoice || user.typ_stravy) || 'MASO'
+    const base = {
+      id: user.id,
+      name: fullName(user),
+      firstName: user.meno || '',
+      lastName: user.priezvisko || '',
+      email: user.email || '',
+      choice,
+      source
+    }
+
+    if (String(user.aktivny || '').toUpperCase() !== 'ANO') {
+      return {
+        ...base,
+        issuable: false,
+        issueStatus: 'INACTIVE',
+        issueStatusLabel: 'Neaktívny'
+      }
+    }
+
+    if (plannedUserIds.has(user.id)) {
+      return {
+        ...base,
+        issuable: false,
+        issueStatus: 'IN_OTHER_ISSUE',
+        issueStatusLabel: 'V inom výdaji'
+      }
+    }
+
+    if (issuedUserIds.has(user.id)) {
+      return {
+        ...base,
+        issuable: false,
+        issueStatus: 'ALREADY_ISSUED',
+        issueStatusLabel: 'Už vydané'
+      }
+    }
+
+    if (!entitlementOk(entitlementByUserId.get(user.id), meal)) {
+      return {
+        ...base,
+        issuable: false,
+        issueStatus: 'NO_ENTITLEMENT',
+        issueStatusLabel: 'Bez nároku'
+      }
+    }
+
+    if (selectionChoice === 'BEZ_ZAUJMU') {
+      return {
+        ...base,
+        issuable: false,
+        issueStatus: 'NO_INTEREST',
+        issueStatusLabel: 'Odhlásené'
+      }
+    }
+
+    const selectedChoice = normalizeChoice(selectionChoice || user.typ_stravy)
+    if (!selectedChoice) {
+      return {
+        ...base,
+        issuable: false,
+        issueStatus: 'NO_FOOD_CHOICE',
+        issueStatusLabel: 'Bez stravy'
+      }
+    }
+
+    return {
+      ...base,
+      choice: selectedChoice,
+      issuable: true
+    }
+  })
 }

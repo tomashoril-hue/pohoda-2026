@@ -3,8 +3,8 @@ import { getCurrentUser } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabaseServer'
 import {
   choiceSummary,
-  filterIssuablePeople,
   getIssueAccess,
+  loadPreparationPeople,
   loadRegistrationGroup,
   loadRegistrationGroupPeople,
   normalizeDate,
@@ -64,14 +64,15 @@ export async function GET(req: NextRequest) {
     }
 
     const plannedIssueUserIds = await loadPlannedGroupIssueUserIds(date, meal)
-    const groupUsers = (await loadRegistrationGroupPeople(registrationGroupId, date))
-      .filter((user: any) => !plannedIssueUserIds.has(user.id))
-    const people = await filterIssuablePeople({
+    const groupUsers = await loadRegistrationGroupPeople(registrationGroupId, date)
+    const people = await loadPreparationPeople({
       users: groupUsers,
       date,
       meal,
-      source: 'REGISTRATION_GROUP'
+      source: 'REGISTRATION_GROUP',
+      plannedUserIds: plannedIssueUserIds
     })
+    const issuablePeople = people.filter(person => person.issuable !== false)
 
     return NextResponse.json({
       ok: true,
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest) {
         name: registrationGroup.name || ''
       },
       people,
-      summary: choiceSummary(people),
+      summary: choiceSummary(issuablePeople),
       plannedExcludedCount: plannedIssueUserIds.size
     })
   } catch (err: any) {

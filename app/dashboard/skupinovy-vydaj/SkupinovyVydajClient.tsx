@@ -325,8 +325,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     return [...filtered].sort(compareIssuePeople)
   }, [issuePeople, issuePersonFilter])
   const issuePickupCandidates = useMemo(() => {
-    return selectedIssuePeople.map(issuePersonToSearchUser)
-  }, [selectedIssuePeople])
+    return selectedIssuablePeople.map(issuePersonToSearchUser)
+  }, [selectedIssuablePeople])
   const delegateCandidates = useMemo(() => {
     const selectedDelegates = delegates.map(delegate => ({
         id: delegate.userId,
@@ -1215,11 +1215,14 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     }
 
     addIssuePerson(json.person)
-    const message = `${json.person.name || 'Osoba'} pridaná cez QR.`
-    setIssueMessage(message)
+    const ready = isIssuePersonReady(json.person)
+    const message = ready
+      ? `${json.person.name || 'Osoba'} pridaná cez QR.`
+      : `${json.person.name || 'Osoba'} pridaná cez QR, ale nie je vydateľná: ${json.person.issueStatusLabel || 'bez nároku'}.`
+    setIssueMessage(message, ready ? 'ok' : 'error')
 
     return {
-      tone: 'success' as const,
+      tone: ready ? 'success' as const : 'error' as const,
       message
     }
   }
@@ -1229,6 +1232,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       if (current.some(item => item.id === person.id)) return current
       return [...current, person]
     })
+    if (!isIssuePersonReady(person)) return
+
     setSelectedIssueUserIds(current => {
       if (current.includes(person.id)) return current
       return [...current, person.id]
@@ -1240,6 +1245,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
 
     const person = issuePeople.find(item => item.id === userId)
     if (editingIssueId && person && !isPlannedIssuePerson(person)) return
+    if (person && !isIssuePersonReady(person)) return
 
     setSelectedIssueUserIds(current => {
       return current.includes(userId)
@@ -1252,7 +1258,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     if (issueReadOnly) return
 
     if (action === 'ALL') {
-      setSelectedIssueUserIds(editableIssuePeople.map(person => person.id))
+      setSelectedIssueUserIds(editableIssuePeople.filter(isIssuePersonReady).map(person => person.id))
       return
     }
 
@@ -1272,7 +1278,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       return
     }
 
-    if (selectedIssuePeople.length === 0) {
+    if (selectedIssuablePeople.length === 0) {
       setIssueMessage('Vyber aspoň jednu osobu.', 'error')
       return
     }
@@ -1448,7 +1454,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       return
     }
 
-    if (!selectedGroupId || !date || !meal || selectedIssuePeople.length === 0) {
+    if (!selectedGroupId || !date || !meal || selectedIssuablePeople.length === 0) {
       setIssueMessage('Vyber aspoň jednu osobu.', 'error')
       return
     }
@@ -1491,7 +1497,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
           date,
           meal,
           title,
-          people: selectedIssuePeople.map(person => ({
+          people: selectedIssuablePeople.map(person => ({
             userId: person.id,
             source: person.source
           })),
@@ -1969,7 +1975,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                               checked={selected}
                               onChange={() => toggleIssuePerson(person.id)}
                               style={styles.checkbox}
-                              disabled={issueReadOnly || (Boolean(editingIssueId) && !isPlannedIssuePerson(person))}
+                              disabled={issueReadOnly || !ready || (Boolean(editingIssueId) && !isPlannedIssuePerson(person))}
                             />
                             <span>
                               <b>{displayIssuePersonName(person)}</b>
@@ -2017,7 +2023,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     <button
                       type="button"
                       onClick={confirmIssuePeople}
-                      disabled={issueLoading || issueReadOnly || selectedIssuePeople.length === 0}
+                      disabled={issueLoading || issueReadOnly || selectedIssuablePeople.length === 0}
                       style={{ ...styles.primaryButton, width: '100%' }}
                     >
                       Potvrdiť osoby a pokračovať
@@ -2026,7 +2032,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     <button
                       type="button"
                       onClick={saveIssue}
-                      disabled={issueLoading || issueReadOnly || selectedIssuePeople.length === 0 || pickupUserIds.length === 0}
+                      disabled={issueLoading || issueReadOnly || selectedIssuablePeople.length === 0 || pickupUserIds.length === 0}
                       style={{ ...styles.primaryButton, width: '100%' }}
                     >
                       {issueLoading ? 'Ukladám...' : 'Uložiť skupinový výdaj'}
