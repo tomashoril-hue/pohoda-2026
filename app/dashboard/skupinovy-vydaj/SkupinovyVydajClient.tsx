@@ -91,11 +91,11 @@ function mealLabel(value: MealSelection) {
   return MEAL_OPTIONS.find(option => option.value === value)?.label || 'Vyberte jedlo'
 }
 
-function defaultIssueTitle(groupName: string, meal: MealSelection, sequence: number) {
+function defaultIssueTitle(_groupName: string, meal: MealSelection, sequence: number) {
   if (!meal) return ''
 
-  const mealText = meal === 'OBED' ? 'obed' : 'večera'
-  return `${groupName || 'Skupinový výdaj'} ${mealText} výdaj č. ${Math.max(1, sequence)}`
+  const mealText = meal === 'OBED' ? 'Obed' : 'Večera'
+  return `${mealText} výdaj č. ${Math.max(1, sequence)}`
 }
 
 function dateTimeLabel(value: string | null) {
@@ -224,6 +224,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const [pickupUserIds, setPickupUserIds] = useState<string[]>([])
   const [pickupUsers, setPickupUsers] = useState<SearchUser[]>([])
   const [issuePersonFilter, setIssuePersonFilter] = useState('')
+  const [issueSearchOpen, setIssueSearchOpen] = useState(false)
   const [pickupQuery, setPickupQuery] = useState('')
   const [pickupResults, setPickupResults] = useState<SearchUser[]>([])
   const [pickupLoading, setPickupLoading] = useState(false)
@@ -620,6 +621,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setPickupUserIds([])
     setPickupUsers([])
     setIssuePersonFilter('')
+    setIssueSearchOpen(false)
     setPickupQuery('')
     setPickupResults([])
     setPendingPickupExternalUsers([])
@@ -949,6 +951,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       setPickupUserIds([])
       setPickupUsers([])
       setIssuePersonFilter('')
+      setIssueSearchOpen(false)
       setPickupQuery('')
       setPickupResults([])
       setPendingPickupExternalUsers([])
@@ -1012,6 +1015,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       setPickupUserIds([])
       setPickupUsers([])
       setIssuePersonFilter('')
+      setIssueSearchOpen(false)
       setPickupQuery('')
       setPickupResults([])
       setPendingPickupExternalUsers([])
@@ -1046,6 +1050,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       setPickupUserIds([])
       setPickupUsers([])
       setIssuePersonFilter('')
+      setIssueSearchOpen(false)
       setPickupQuery('')
       setPickupResults([])
       setPendingPickupExternalUsers([])
@@ -1109,6 +1114,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       setPickupUserIds(issue.pickupUserIds || [])
       setPickupUsers(issue.pickupUsers || [])
       setIssuePersonFilter('')
+      setIssueSearchOpen(false)
       setPickupQuery('')
       setPickupResults([])
       setMoveModalOpen(false)
@@ -1824,6 +1830,23 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     Pridať cez QR
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIssueSearchOpen(open => {
+                        if (open) setIssuePersonFilter('')
+                        return !open
+                      })
+                    }}
+                    disabled={issuePeople.length === 0}
+                    style={{
+                      ...styles.secondaryButton,
+                      ...(issueSearchOpen || issuePersonFilter ? styles.secondaryButtonActive : {})
+                    }}
+                  >
+                    Hľadať
+                  </button>
+
                   {editingIssueId && (
                     <button
                       type="button"
@@ -1874,14 +1897,17 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   </button>
                 </div>
 
-                <input
-                  type="search"
-                  value={issuePersonFilter}
-                  onChange={event => setIssuePersonFilter(event.target.value)}
-                  placeholder="Hľadať v osobách vo výdaji"
-                  style={styles.filterInput}
-                  disabled={issuePeople.length === 0}
-                />
+                {(issueSearchOpen || issuePersonFilter) && (
+                  <input
+                    type="search"
+                    value={issuePersonFilter}
+                    onChange={event => setIssuePersonFilter(event.target.value)}
+                    placeholder="Hľadať v osobách vo výdaji"
+                    style={styles.filterInput}
+                    disabled={issuePeople.length === 0}
+                    autoFocus
+                  />
+                )}
 
                 <div style={styles.issuePeopleList}>
                   {issuePeople.length === 0 ? (
@@ -1930,47 +1956,49 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   )}
                 </div>
 
-                {(editingIssueId || issuePeopleConfirmed) && (
-                  <div style={styles.pickupStepCard}>
-                    <div style={styles.pickupStepInfo}>
-                      <b>Oprávnení prevziať</b>
-                      <span>
-                        {pickupUserIds.length > 0
-                          ? `${pickupUserIds.length} osôb môže prevziať tento výdaj.`
-                          : 'Zatiaľ nie je pridaná žiadna osoba na prevzatie.'}
-                      </span>
-                    </div>
+                <div style={styles.issueStickyFooter}>
+                  {(editingIssueId || issuePeopleConfirmed) && (
+                    <div style={styles.pickupStepCard}>
+                      <div style={styles.pickupStepInfo}>
+                        <b>Oprávnení prevziať</b>
+                        <span>
+                          {pickupUserIds.length > 0
+                            ? `${pickupUserIds.length} osôb môže prevziať tento výdaj.`
+                            : 'Zatiaľ nie je pridaná žiadna osoba na prevzatie.'}
+                        </span>
+                      </div>
 
+                      <button
+                        type="button"
+                        onClick={openPickupModal}
+                        disabled={issueLoading || issueReadOnly}
+                        style={styles.secondaryButton}
+                      >
+                        Upraviť prevzatie
+                      </button>
+                    </div>
+                  )}
+
+                  {!editingIssueId && !issuePeopleConfirmed ? (
                     <button
                       type="button"
-                      onClick={openPickupModal}
-                      disabled={issueLoading || issueReadOnly}
-                      style={{ ...styles.secondaryButton, width: '100%' }}
+                      onClick={confirmIssuePeople}
+                      disabled={issueLoading || issueReadOnly || selectedIssuePeople.length === 0}
+                      style={{ ...styles.primaryButton, width: '100%' }}
                     >
-                      Upraviť prevzatie
+                      Potvrdiť osoby a pokračovať
                     </button>
-                  </div>
-                )}
-
-                {!editingIssueId && !issuePeopleConfirmed ? (
-                  <button
-                    type="button"
-                    onClick={confirmIssuePeople}
-                    disabled={issueLoading || issueReadOnly || selectedIssuePeople.length === 0}
-                    style={{ ...styles.primaryButton, marginTop: 14, width: '100%' }}
-                  >
-                    Potvrdiť osoby a pokračovať
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={saveIssue}
-                    disabled={issueLoading || issueReadOnly || selectedIssuePeople.length === 0 || pickupUserIds.length === 0}
-                    style={{ ...styles.primaryButton, marginTop: 14, width: '100%' }}
-                  >
-                    {issueLoading ? 'Ukladám...' : editingIssueId ? 'Uložiť skupinový výdaj' : 'Uložiť skupinový výdaj'}
-                  </button>
-                )}
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={saveIssue}
+                      disabled={issueLoading || issueReadOnly || selectedIssuePeople.length === 0 || pickupUserIds.length === 0}
+                      style={{ ...styles.primaryButton, width: '100%' }}
+                    >
+                      {issueLoading ? 'Ukladám...' : 'Uložiť skupinový výdaj'}
+                    </button>
+                  )}
+                </div>
 
                 {createdIssue && (
                   <div style={styles.createdBox}>
@@ -3450,6 +3478,12 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 900,
     textDecoration: 'none'
   },
+  secondaryButtonActive: {
+    borderColor: '#7c3aed',
+    background: '#ede9fe',
+    color: '#4c1d95',
+    boxShadow: 'inset 0 0 0 1px #7c3aed'
+  },
   messageError: {
     background: '#fef2f2',
     border: '1px solid #fecaca',
@@ -3520,7 +3554,6 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 12
   },
   pickupStepCard: {
-    marginTop: 12,
     border: '1px solid #c4b5fd',
     borderRadius: 10,
     background: '#f5f3ff',
@@ -3530,6 +3563,18 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 10,
     flexWrap: 'wrap'
+  },
+  issueStickyFooter: {
+    position: 'sticky',
+    bottom: -14,
+    zIndex: 3,
+    margin: '12px -14px -14px -14px',
+    padding: '10px 14px max(10px, env(safe-area-inset-bottom)) 14px',
+    display: 'grid',
+    gap: 8,
+    borderTop: '1px solid #e5e7eb',
+    background: '#fff',
+    boxShadow: '0 -10px 22px rgba(17, 24, 39, 0.08)'
   },
   pickupStepInfo: {
     display: 'grid',
