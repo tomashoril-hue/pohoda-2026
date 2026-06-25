@@ -243,6 +243,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const [createdIssue, setCreatedIssue] = useState<any>(null)
   const [qrModalOpen, setQrModalOpen] = useState(false)
   const [prepareSourceModalOpen, setPrepareSourceModalOpen] = useState(false)
+  const [prepareSourceStep, setPrepareSourceStep] = useState<'SOURCE' | 'DETAIL'>('SOURCE')
   const [existingLoading, setExistingLoading] = useState(false)
   const [selectedGroupId, setSelectedGroupId] = useState(groups.length === 1 ? groups[0]?.id || '' : '')
   const [sourceMode, setSourceMode] = useState<IssueSourceMode>('REGISTRATION_GROUP')
@@ -936,16 +937,24 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     }
 
     setIssueMessage('')
+    setPrepareSourceStep('SOURCE')
     setPrepareSourceModalOpen(true)
   }
 
   function selectSourceMode(nextSourceMode: IssueSourceMode) {
     setSourceMode(nextSourceMode)
+    setPrepareSourceStep('SOURCE')
     resetIssueState({ clearExisting: false, preserveMeal: true })
   }
 
   function continuePrepareFromSourceModal() {
     if (!meal) return
+
+    if (sourceMode === 'FOOD_GROUP' && prepareSourceStep === 'SOURCE') {
+      setPrepareSourceStep('DETAIL')
+      return
+    }
+
     void loadIssuePeople(meal)
   }
 
@@ -2209,7 +2218,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                 </button>
               </div>
 
-              {sourceMode === 'FOOD_GROUP' && (
+              {sourceMode === 'FOOD_GROUP' && prepareSourceStep === 'DETAIL' && (
                 <div style={styles.sourceFoodGroupBox}>
                   <label style={styles.field}>
                     <span>Stravovacia skupina</span>
@@ -2246,12 +2255,12 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                 <button
                   type="button"
                   onClick={continuePrepareFromSourceModal}
-                  disabled={issueLoading || (sourceMode === 'FOOD_GROUP' && !selectedFoodGroupId)}
+                  disabled={issueLoading || (sourceMode === 'FOOD_GROUP' && prepareSourceStep === 'DETAIL' && !selectedFoodGroupId)}
                   style={styles.primaryButton}
                 >
                   {issueLoading
                     ? 'Načítavam...'
-                    : sourceMode === 'FOOD_GROUP' && !selectedFoodGroupId
+                    : sourceMode === 'FOOD_GROUP' && prepareSourceStep === 'DETAIL' && !selectedFoodGroupId
                       ? 'Vyber stravovaciu skupinu'
                       : 'Pokračovať'}
                 </button>
@@ -3914,19 +3923,19 @@ const styles: Record<string, React.CSSProperties> = {
     alignContent: 'start',
     gap: 7,
     textAlign: 'left',
-    border: '1px solid #d1d5db',
-    borderRadius: 10,
-    background: '#fff',
-    color: '#111827',
+    border: '1px solid #c4b5fd',
+    borderRadius: 12,
+    background: 'linear-gradient(135deg, #6d28d9 0%, #7c3aed 58%, #8b5cf6 100%)',
+    color: '#fff',
     padding: 14,
     fontSize: 12,
     fontWeight: 850,
-    boxShadow: '0 6px 16px rgba(17, 24, 39, 0.06)'
+    boxShadow: '0 10px 24px rgba(109, 40, 217, 0.22)'
   },
   sourceChoiceButtonActive: {
-    borderColor: '#22c55e',
-    background: '#ecfdf5',
-    boxShadow: 'inset 4px 0 0 #22c55e, 0 8px 18px rgba(34, 197, 94, 0.12)'
+    borderColor: '#facc15',
+    background: 'linear-gradient(135deg, #4c1d95 0%, #6d28d9 55%, #7c3aed 100%)',
+    boxShadow: 'inset 0 0 0 2px rgba(250, 204, 21, 0.9), 0 14px 28px rgba(76, 29, 149, 0.28)'
   },
   sourceFoodGroupBox: {
     margin: '0 14px',
