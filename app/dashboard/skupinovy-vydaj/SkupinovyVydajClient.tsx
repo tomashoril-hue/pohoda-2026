@@ -663,12 +663,12 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     }
   }
 
-  async function loadFoodGroupPeople(nextMeal: MealType) {
-    if (!selectedGroupId || !selectedFoodGroupId || !date) return []
+  async function loadFoodGroupPeople(nextMeal: MealType, foodGroupId = selectedFoodGroupId) {
+    if (!selectedGroupId || !foodGroupId || !date) return []
 
     const params = new URLSearchParams({
       registrationGroupId: selectedGroupId,
-      foodGroupId: selectedFoodGroupId,
+      foodGroupId,
       date,
       meal: nextMeal
     })
@@ -995,11 +995,79 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   function selectSourceMode(nextSourceMode: IssueSourceMode) {
     setSourceMode(nextSourceMode)
     setPrepareSourceStep('SOURCE')
+    if (nextSourceMode === 'FOOD_GROUP') setSelectedFoodGroupId('')
     resetIssueState({ clearExisting: false, preserveMeal: true })
+  }
+
+  async function openFoodGroupIssueEditorShell() {
+    if (!selectedGroupId || !date || !meal) return
+
+    setIssueLoading(true)
+    setIssueMessage('')
+    setCreatedIssue(null)
+
+    try {
+      setIssuePeople([])
+      setSelectedIssueUserIds([])
+      setPickupUserIds([])
+      setPickupUsers([])
+      setIssuePersonFilter('')
+      setPickupQuery('')
+      setPickupResults([])
+      setPendingPickupExternalUsers([])
+      setIssuePeopleConfirmed(true)
+      setEditingIssueId('')
+      setEditingIssueStatus('')
+      setEditingIssueValidAfter(null)
+
+      const dailyIssues = await loadExistingIssuesFor(selectedGroupId, date, '')
+      const existingForMeal = dailyIssues.filter(issue => issue.meal === meal).length
+      setIssueTitle(defaultIssueTitle(selectedGroup?.name || '', meal, existingForMeal + 1))
+      setConfirmed(true)
+      setPrepareSourceModalOpen(false)
+    } catch (err: any) {
+      setIssueMessage(err?.message || 'Prípravu výdaja sa nepodarilo otvoriť.', 'error')
+    } finally {
+      setIssueLoading(false)
+    }
+  }
+
+  async function selectFoodGroupForIssue(foodGroupId: string) {
+    if (!meal) return
+
+    setSelectedFoodGroupId(foodGroupId)
+    setIssueLoading(true)
+    setIssueMessage('')
+
+    try {
+      const people = await loadFoodGroupPeople(meal, foodGroupId)
+      setIssuePeople(people)
+      setSelectedIssueUserIds([])
+      setPickupUserIds([])
+      setPickupUsers([])
+      setIssuePersonFilter('')
+      setPickupQuery('')
+      setPickupResults([])
+      setPendingPickupExternalUsers([])
+      setIssuePeopleConfirmed(true)
+      setIssueMessage(
+        people.length ? `Načítaných ${people.length} osôb.` : 'Táto stravovacia skupina nemá pre výber vydateľné osoby.',
+        people.length ? 'ok' : 'error'
+      )
+    } catch (err: any) {
+      setIssueMessage(err?.message || 'Ľudí zo stravovacej skupiny sa nepodarilo načítať.', 'error')
+    } finally {
+      setIssueLoading(false)
+    }
   }
 
   function continuePrepareFromSourceModal() {
     if (!meal) return
+
+    if (sourceMode === 'FOOD_GROUP') {
+      void openFoodGroupIssueEditorShell()
+      return
+    }
 
     void loadIssuePeople(meal)
   }
@@ -1690,6 +1758,42 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   </div>
                 )}
 
+                {sourceMode === 'FOOD_GROUP' && !editingIssueId && (
+                  <div style={styles.issueSourcePanel}>
+                    <div style={styles.issueSourceHeader}>
+                      <b>Stravovacia skupina</b>
+                      <button
+                        type="button"
+                        onClick={() => openFoodGroupModal(selectedFoodGroupId)}
+                        style={styles.smallButtonWhite}
+                        disabled={issueLoading || issueReadOnly || foodGroupsLoading}
+                      >
+                        Spravovať
+                      </button>
+                    </div>
+
+                    <div style={styles.foodGroupButtonGrid}>
+                      {foodGroups.length === 0 ? (
+                        <span style={styles.emptyInlineText}>Zatiaľ nie je vytvorená žiadna stravovacia skupina.</span>
+                      ) : foodGroups.map(group => (
+                        <button
+                          key={group.id}
+                          type="button"
+                          onClick={() => selectFoodGroupForIssue(group.id)}
+                          style={{
+                            ...styles.foodGroupChoiceButton,
+                            ...(selectedFoodGroupId === group.id ? styles.foodGroupChoiceButtonActive : {})
+                          }}
+                          disabled={issueLoading || issueReadOnly}
+                        >
+                          <b>{group.name}</b>
+                          <span>{group.memberCount}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {issueFullyLocked && (
                   <div style={styles.readOnlyNotice}>
                     Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu. Výdaj je iba na prezeranie.
@@ -2276,7 +2380,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   disabled={issueLoading}
                 >
                   <b>Registračná skupina</b>
-                  <span>Načíta aktuálne vydateľných ľudí z vybranej registračnej skupiny.</span>
+                  <span>Ľudia z registrácie</span>
                 </button>
 
                 <button
@@ -2289,7 +2393,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   disabled={issueLoading}
                 >
                   <b>Stravovacia skupina</b>
-                  <span>Použi vlastný zoznam ľudí v rámci tejto registračnej skupiny.</span>
+                  <span>Vlastný zoznam</span>
                 </button>
 
                 <button
@@ -2302,56 +2406,21 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   disabled={issueLoading}
                 >
                   <b>Jednorazový QR výdaj</b>
-                  <span>Začne prázdnym výdajom, osoby pridáš skenovaním QR kódov.</span>
+                  <span>Pridáš cez QR</span>
                 </button>
               </div>
-              )}
-
-              {sourceMode === 'FOOD_GROUP' && prepareSourceStep === 'SOURCE' && (
-                <div style={styles.sourceFoodGroupBox}>
-                  <label style={styles.field}>
-                    <span>Stravovacia skupina</span>
-                    <select
-                      value={selectedFoodGroupId}
-                      onChange={event => {
-                        setSelectedFoodGroupId(event.target.value)
-                        resetIssueState({ clearExisting: false, preserveMeal: true })
-                      }}
-                      disabled={issueLoading || foodGroupsLoading}
-                      style={styles.input}
-                    >
-                      <option value="">Vyber stravovaciu skupinu</option>
-                      {foodGroups.map(group => (
-                        <option key={group.id} value={group.id}>
-                          {group.name} ({group.memberCount})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={() => openFoodGroupModal(selectedFoodGroupId)}
-                    style={styles.smallButtonWhite}
-                    disabled={issueLoading || foodGroupsLoading}
-                  >
-                    Spravovať stravovacie skupiny
-                  </button>
-                </div>
               )}
 
               <div style={styles.modalFooter}>
                 <button
                   type="button"
                   onClick={continuePrepareFromSourceModal}
-                  disabled={issueLoading || (sourceMode === 'FOOD_GROUP' && !selectedFoodGroupId)}
+                  disabled={issueLoading}
                   style={styles.primaryButton}
                 >
                   {issueLoading
                     ? 'Načítavam...'
-                    : sourceMode === 'FOOD_GROUP' && !selectedFoodGroupId
-                      ? 'Vyber stravovaciu skupinu'
-                      : 'Pokračovať'}
+                    : 'Pokračovať'}
                 </button>
               </div>
             </div>
@@ -4062,16 +4131,17 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '0 14px'
   },
   sourceChoiceButton: {
-    minHeight: 116,
+    minHeight: 78,
     display: 'grid',
-    alignContent: 'start',
-    gap: 7,
-    textAlign: 'left',
+    alignContent: 'center',
+    justifyItems: 'center',
+    gap: 5,
+    textAlign: 'center',
     border: '1px solid #c4b5fd',
     borderRadius: 12,
     background: 'linear-gradient(135deg, #6d28d9 0%, #7c3aed 58%, #8b5cf6 100%)',
     color: '#fff',
-    padding: 14,
+    padding: 12,
     fontSize: 12,
     fontWeight: 850,
     boxShadow: '0 10px 24px rgba(109, 40, 217, 0.22)'
@@ -4090,6 +4160,60 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#faf7ff',
     padding: 12,
     boxShadow: 'inset 4px 0 0 #7c3aed'
+  },
+  issueSourcePanel: {
+    display: 'grid',
+    gap: 10,
+    border: '1px solid #ddd6fe',
+    borderRadius: 10,
+    background: '#faf7ff',
+    padding: 10,
+    boxShadow: 'inset 4px 0 0 #7c3aed'
+  },
+  issueSourceHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    flexWrap: 'wrap',
+    color: '#111827',
+    fontSize: 13,
+    fontWeight: 900
+  },
+  foodGroupButtonGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+    gap: 8,
+    maxHeight: 150,
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    overscrollBehaviorY: 'contain'
+  },
+  foodGroupChoiceButton: {
+    minHeight: 46,
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    background: '#fff',
+    color: '#111827',
+    padding: '8px 10px',
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    alignItems: 'center',
+    gap: 8,
+    textAlign: 'left',
+    fontSize: 12,
+    fontWeight: 850
+  },
+  foodGroupChoiceButtonActive: {
+    borderColor: '#7c3aed',
+    background: '#ede9fe',
+    color: '#4c1d95',
+    boxShadow: 'inset 0 0 0 1px #7c3aed'
+  },
+  emptyInlineText: {
+    color: '#6b7280',
+    fontSize: 12,
+    fontWeight: 850
   },
   peopleModal: {
     width: '100%',
