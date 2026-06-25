@@ -2570,7 +2570,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   disabled={issueLoading}
                 >
                   <b>Registračná skupina</b>
-                  <span>Ľudia z registrácie</span>
+                  <span>Aktuálne zaradení ľudia</span>
                 </button>
 
                 <button
@@ -2582,8 +2582,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   }}
                   disabled={issueLoading}
                 >
-                  <b>Stravovacia skupina</b>
-                  <span>Vlastný zoznam</span>
+                  <b>Moje stravovacie skupiny</b>
+                  <span>Uložené vlastné zoznamy</span>
                 </button>
 
                 <button
@@ -2595,8 +2595,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   }}
                   disabled={issueLoading}
                 >
-                  <b>Jednorazový QR výdaj</b>
-                  <span>Pridáš cez QR</span>
+                  <b>Skupina QR</b>
+                  <span>Vytvoríš skenovaním</span>
                 </button>
               </div>
               )}
