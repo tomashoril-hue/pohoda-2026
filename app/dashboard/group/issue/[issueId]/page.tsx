@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
+import { getLegacyFoodGroupsEnabled } from '@/lib/appSettings'
 import { supabaseServer } from '@/lib/supabaseServer'
 import IssueDetailClient from './IssueDetailClient'
 
@@ -21,6 +22,10 @@ export default async function IssueDetailPage({
 
   if (!user) {
     redirect('/')
+  }
+
+  if (!await getLegacyFoodGroupsEnabled()) {
+    redirect('/dashboard')
   }
 
   const { issueId } = await params

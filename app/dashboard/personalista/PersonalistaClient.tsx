@@ -404,7 +404,8 @@ export default function PersonalistaClient({
   peopleScope,
   currentUserId,
   currentUserName,
-  currentUserRoleLabel
+  currentUserRoleLabel,
+  legacyFoodGroupsEnabled
 }: {
   people: PersonItem[]
   groups: GroupItem[]
@@ -420,6 +421,7 @@ export default function PersonalistaClient({
   currentUserId: string
   currentUserName: string
   currentUserRoleLabel: string
+  legacyFoodGroupsEnabled: boolean
 }) {
   const router = useRouter()
   const initialPeopleSearchMessage = peopleScope === 'all'
@@ -497,10 +499,15 @@ export default function PersonalistaClient({
     foodGroupId: ''
   })
   const [qrRulesOpen, setQrRulesOpen] = useState(false)
+  const [legacyFoodGroupsOpen, setLegacyFoodGroupsOpen] = useState(false)
   const [qrRulesLoading, setQrRulesLoading] = useState(false)
   const [qrRulesMessage, setQrRulesMessage] = useState('')
   const [qrRulesMessageType, setQrRulesMessageType] = useState<'ok' | 'error' | ''>('')
   const [qrRulesForm, setQrRulesForm] = useState<QrWristbandRules>(qrWristbandRules)
+  const [legacyFoodGroupsEnabledState, setLegacyFoodGroupsEnabledState] = useState(legacyFoodGroupsEnabled)
+  const [legacyFoodGroupsLoading, setLegacyFoodGroupsLoading] = useState(false)
+  const [legacyFoodGroupsMessage, setLegacyFoodGroupsMessage] = useState('')
+  const [legacyFoodGroupsMessageType, setLegacyFoodGroupsMessageType] = useState<'ok' | 'error' | ''>('')
   const [registrationAssignmentOpen, setRegistrationAssignmentOpen] = useState(false)
   const [registrationAssignmentLoading, setRegistrationAssignmentLoading] = useState(false)
   const [registrationAssignmentMessage, setRegistrationAssignmentMessage] = useState('')
@@ -617,6 +624,7 @@ export default function PersonalistaClient({
     setRegistrationGroupsOpen(false)
     setPrintQrOpen(false)
     setQrRulesOpen(false)
+    setLegacyFoodGroupsOpen(false)
     setPersonnelTool('')
   }
 
@@ -1103,9 +1111,15 @@ export default function PersonalistaClient({
     ? `/dashboard/personalista/print-qr?personId=${encodeURIComponent(selectedPerson.id)}`
     : ''
   const tableColumns = isMobile
-    ? 'minmax(155px, 1.25fr) 64px minmax(120px, 0.9fr) minmax(120px, 1fr) 56px 52px 62px'
-    : 'minmax(180px, 1.3fr) 70px minmax(135px, 0.9fr) minmax(135px, 1fr) 62px 58px 68px'
-  const tableMinWidth = isMobile ? 760 : 920
+    ? legacyFoodGroupsEnabledState
+      ? 'minmax(155px, 1.25fr) 64px minmax(120px, 0.9fr) minmax(120px, 1fr) 56px 52px 62px'
+      : 'minmax(155px, 1.25fr) 64px minmax(135px, 1fr) 56px 52px 62px'
+    : legacyFoodGroupsEnabledState
+      ? 'minmax(180px, 1.3fr) 70px minmax(135px, 0.9fr) minmax(135px, 1fr) 62px 58px 68px'
+      : 'minmax(180px, 1.3fr) 70px minmax(160px, 1fr) 62px 58px 68px'
+  const tableMinWidth = legacyFoodGroupsEnabledState
+    ? (isMobile ? 760 : 920)
+    : (isMobile ? 640 : 760)
   const peopleSearchHintStyle = peopleSearchLoading
     ? styles.toolbarHintLoading
     : peopleSearchMessage.startsWith('Vysledky hladania')
@@ -1333,6 +1347,7 @@ export default function PersonalistaClient({
         )
       })
       .filter(person => {
+        if (!legacyFoodGroupsEnabledState) return true
         if (groupFilter === 'ALL') return true
         if (groupFilter === 'UNGROUPED') return person.groups.length === 0
         return person.groups.some(group => group.id === groupFilter)
@@ -1358,7 +1373,7 @@ export default function PersonalistaClient({
       .sort((a, b) => {
         return (peopleOrderById.get(a.id) ?? 0) - (peopleOrderById.get(b.id) ?? 0)
       })
-  }, [people, peopleOrderById, search, groupFilter, foodFilter, qrFilter, statusFilter])
+  }, [people, peopleOrderById, search, groupFilter, foodFilter, qrFilter, statusFilter, legacyFoodGroupsEnabledState])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -1471,10 +1486,10 @@ export default function PersonalistaClient({
         : ''
     }
 
-    return printQrForm.foodGroupId
+    return legacyFoodGroupsEnabledState && printQrForm.foodGroupId
       ? `/dashboard/personalista/print-qr?groupId=${encodeURIComponent(printQrForm.foodGroupId)}`
       : ''
-  }, [printQrForm])
+  }, [printQrForm, legacyFoodGroupsEnabledState])
   const selectedRegistrationAssignmentPeople = useMemo(() => {
     const selectedIds = new Set(registrationAssignmentForm.userIds)
 
@@ -1918,6 +1933,44 @@ export default function PersonalistaClient({
       setQrRulesMessageType('error')
     } finally {
       setQrRulesLoading(false)
+    }
+  }
+
+  const saveLegacyFoodGroupsSetting = async (enabled: boolean) => {
+    if (!canAssignSensitiveRoles) {
+      setLegacyFoodGroupsMessage('Toto nastavenie moze menit iba ADMIN.')
+      setLegacyFoodGroupsMessageType('error')
+      return
+    }
+
+    setLegacyFoodGroupsLoading(true)
+    setLegacyFoodGroupsMessage('')
+    setLegacyFoodGroupsMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/app-settings/legacy-food-groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setLegacyFoodGroupsMessage(json.error || 'Nastavenie sa nepodarilo ulozit.')
+        setLegacyFoodGroupsMessageType('error')
+        return
+      }
+
+      setLegacyFoodGroupsEnabledState(json.enabled === true)
+      setLegacyFoodGroupsMessage(json.message || 'Nastavenie bolo ulozene.')
+      setLegacyFoodGroupsMessageType('ok')
+      router.refresh()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setLegacyFoodGroupsMessage('Chyba spojenia so serverom: ' + message)
+      setLegacyFoodGroupsMessageType('error')
+    } finally {
+      setLegacyFoodGroupsLoading(false)
     }
   }
 
@@ -3400,12 +3453,33 @@ export default function PersonalistaClient({
               setCreateOpen(false)
               setRegistrationGroupsOpen(false)
               setPrintQrOpen(false)
+              setLegacyFoodGroupsOpen(false)
               setPersonnelTool('')
               setQrRulesMessage('')
               setQrRulesMessageType('')
             }}
           >
             Pravidla QR naramkov
+          </button>
+        )}
+
+        {canAssignSensitiveRoles && (
+          <button
+            type="button"
+            style={styles.lightButton}
+            disabled={legacyFoodGroupsLoading}
+            onClick={() => {
+              setLegacyFoodGroupsOpen(prev => !prev)
+              setCreateOpen(false)
+              setRegistrationGroupsOpen(false)
+              setPrintQrOpen(false)
+              setQrRulesOpen(false)
+              setPersonnelTool('')
+              setLegacyFoodGroupsMessage('')
+              setLegacyFoodGroupsMessageType('')
+            }}
+          >
+            Stravovacie skupiny
           </button>
         )}
 
@@ -3909,7 +3983,11 @@ export default function PersonalistaClient({
           <div style={styles.createHeader}>
             <div>
               <b>Tlac QR skupiny</b>
-              <span>Vyber, ci chces tlacit QR podla registracnej alebo stravovacej skupiny.</span>
+              <span>
+                {legacyFoodGroupsEnabledState
+                  ? 'Vyber, ci chces tlacit QR podla registracnej alebo stravovacej skupiny.'
+                  : 'Tlač QR je dostupná podľa registračnej skupiny.'}
+              </span>
             </div>
 
             <button
@@ -3933,11 +4011,13 @@ export default function PersonalistaClient({
                 style={styles.input}
               >
                 <option value="REGISTRATION_GROUP">Registracna skupina</option>
-                <option value="FOOD_GROUP">Stravovacia skupina</option>
+                {legacyFoodGroupsEnabledState && (
+                  <option value="FOOD_GROUP">Stravovacia skupina</option>
+                )}
               </select>
             </label>
 
-            {printQrForm.type === 'REGISTRATION_GROUP' ? (
+            {printQrForm.type === 'REGISTRATION_GROUP' || !legacyFoodGroupsEnabledState ? (
               <label style={styles.field}>
                 <span>Registracna skupina</span>
                 <select
@@ -3986,6 +4066,78 @@ export default function PersonalistaClient({
             <button type="button" style={styles.actionButton} disabled>
               Vyber skupinu
             </button>
+          )}
+        </section>
+      )}
+
+      {!showMobilePersonDetail && legacyFoodGroupsOpen && (
+        <section style={styles.createPanel}>
+          <div style={styles.createHeader}>
+            <div>
+              <b>Stravovacie skupiny</b>
+              <span>Admin prepína starý systém stravovacích skupín a starý hromadný výdaj.</span>
+            </div>
+
+            <button
+              type="button"
+              style={styles.closeButton}
+              disabled={legacyFoodGroupsLoading}
+              onClick={() => setLegacyFoodGroupsOpen(false)}
+            >
+              x
+            </button>
+          </div>
+
+          <div style={styles.detailEditBoxSoft}>
+            <div style={styles.detailEditTitle}>
+              Stav: {legacyFoodGroupsEnabledState ? 'zapnuté' : 'vypnuté'}
+            </div>
+
+            <div style={styles.optionHint}>
+              Keď je vypnuté, používateľom sa nezobrazujú stravovacie skupiny na dashboarde a starý hromadný výdaj sa nepoužíva. Nový skupinový výdaj podľa registračných skupín ostáva zapnutý.
+            </div>
+
+            <div style={styles.toolActionRow}>
+              <button
+                type="button"
+                style={{
+                  ...styles.confirmButton,
+                  opacity: legacyFoodGroupsLoading || legacyFoodGroupsEnabledState ? 0.55 : 1
+                }}
+                disabled={legacyFoodGroupsLoading || legacyFoodGroupsEnabledState}
+                onClick={() => void saveLegacyFoodGroupsSetting(true)}
+              >
+                Zapnúť
+              </button>
+
+              <button
+                type="button"
+                style={{
+                  ...styles.dangerButton,
+                  opacity: legacyFoodGroupsLoading || !legacyFoodGroupsEnabledState ? 0.55 : 1
+                }}
+                disabled={legacyFoodGroupsLoading || !legacyFoodGroupsEnabledState}
+                onClick={() => {
+                  const ok = window.confirm('Naozaj vypnúť staré stravovacie skupiny a starý hromadný výdaj pre používateľov?')
+                  if (ok) void saveLegacyFoodGroupsSetting(false)
+                }}
+              >
+                Vypnúť
+              </button>
+            </div>
+          </div>
+
+          {legacyFoodGroupsMessage && (
+            <div
+              style={{
+                ...styles.message,
+                background: legacyFoodGroupsMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                color: legacyFoodGroupsMessageType === 'ok' ? '#166534' : '#991b1b',
+                borderColor: legacyFoodGroupsMessageType === 'ok' ? '#86efac' : '#fecaca'
+              }}
+            >
+              {legacyFoodGroupsMessage}
+            </div>
           )}
         </section>
       )}
@@ -5254,19 +5406,21 @@ export default function PersonalistaClient({
               autoComplete="off"
             />
 
-            <select
-              value={groupFilter}
-              onChange={event => setGroupFilter(event.target.value)}
-              style={styles.select}
-            >
-              <option value="ALL">Vsetky stravovacie skupiny</option>
-              <option value="UNGROUPED">Bez skupiny</option>
-              {groups.map(group => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                </option>
-              ))}
-            </select>
+            {legacyFoodGroupsEnabledState && (
+              <select
+                value={groupFilter}
+                onChange={event => setGroupFilter(event.target.value)}
+                style={styles.select}
+              >
+                <option value="ALL">Vsetky stravovacie skupiny</option>
+                <option value="UNGROUPED">Bez skupiny</option>
+                {groups.map(group => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <select
               value={foodFilter}
@@ -5311,7 +5465,7 @@ export default function PersonalistaClient({
               <span>Osoba</span>
               <span>Stav</span>
               <span>Registracna skupina</span>
-              <span>Stravovacie skupiny</span>
+              {legacyFoodGroupsEnabledState && <span>Stravovacie skupiny</span>}
               <span>Strava</span>
               <span>QR</span>
               <span>Nároky</span>
@@ -5382,23 +5536,25 @@ export default function PersonalistaClient({
                       )}
                     </div>
 
-                    <div style={styles.groupBadges}>
-                      {person.groups.length === 0 && (
-                        <span style={styles.groupBadge}>
-                          Bez skupiny
-                        </span>
-                      )}
+                    {legacyFoodGroupsEnabledState && (
+                      <div style={styles.groupBadges}>
+                        {person.groups.length === 0 && (
+                          <span style={styles.groupBadge}>
+                            Bez skupiny
+                          </span>
+                        )}
 
-                      {person.groups.slice(0, 3).map(group => (
-                        <span key={`${person.id}-${group.id}`} style={styles.groupBadge}>
-                          {group.name}
-                        </span>
-                      ))}
+                        {person.groups.slice(0, 3).map(group => (
+                          <span key={`${person.id}-${group.id}`} style={styles.groupBadge}>
+                            {group.name}
+                          </span>
+                        ))}
 
-                      {person.groups.length > 3 && (
-                        <span style={styles.moreBadge}>+{person.groups.length - 3}</span>
-                      )}
-                    </div>
+                        {person.groups.length > 3 && (
+                          <span style={styles.moreBadge}>+{person.groups.length - 3}</span>
+                        )}
+                      </div>
+                    )}
 
                     <div>
                       <span style={styles.foodBadge}>

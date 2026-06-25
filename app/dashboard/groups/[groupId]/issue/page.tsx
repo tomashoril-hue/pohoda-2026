@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
+import { getLegacyFoodGroupsEnabled } from '@/lib/appSettings'
 import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import GroupIssueClient from '../../../group/issue/GroupIssueClient'
@@ -59,6 +60,10 @@ export default async function GroupIssuePage({
 
   if (!user) {
     redirect('/')
+  }
+
+  if (!await getLegacyFoodGroupsEnabled()) {
+    redirect('/dashboard')
   }
 
   const { groupId } = await params

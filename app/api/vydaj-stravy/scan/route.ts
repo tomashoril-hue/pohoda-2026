@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { getLegacyFoodGroupsEnabled } from '@/lib/appSettings'
 import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
@@ -681,6 +682,7 @@ export async function POST(req: NextRequest) {
     }
 
     const access = await issuerAccess(actor.id)
+    const legacyFoodGroupsEnabled = await getLegacyFoodGroupsEnabled()
     markPhase('accessMs')
 
     if (!access.canUse) {
@@ -705,7 +707,14 @@ export async function POST(req: NextRequest) {
     const selectedRegistrationIssueId = bulkIssueId.startsWith('registration:')
       ? bulkIssueId.replace(/^registration:/, '')
       : ''
-    const needsLegacyPlannedItems = !issueAction || issueAction === 'INDIVIDUAL'
+    if (issueAction === 'BULK' && bulkIssueId && !selectedRegistrationIssueId && !legacyFoodGroupsEnabled) {
+      return NextResponse.json(
+        { error: 'Stravovacie skupiny a stary hromadny vydaj su vypnute.' },
+        { status: 403 }
+      )
+    }
+
+    const needsLegacyPlannedItems = legacyFoodGroupsEnabled && (!issueAction || issueAction === 'INDIVIDUAL')
     const needsRegistrationPlannedItems = !issueAction || issueAction === 'INDIVIDUAL' || Boolean(selectedRegistrationIssueId)
     const needsRegistrationPickupIssues = !issueAction || Boolean(selectedRegistrationIssueId)
     const emptyRowsResult = Promise.resolve({ data: [], error: null })
@@ -954,7 +963,7 @@ export async function POST(req: NextRequest) {
     ))
     let bulkIssueOptions: any[] = []
 
-    if (!issueAction && authorizedGroupIds.length > 0) {
+    if (legacyFoodGroupsEnabled && !issueAction && authorizedGroupIds.length > 0) {
       const { data: candidateIssues, error: candidateIssuesError } = await supabaseServer
         .from('hromadne_vydaje')
         .select(`
@@ -1289,7 +1298,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (issueAction === 'BULK' && !selectedBulkOption && bulkIssueId && !bulkIssueId.startsWith('registration:')) {
+    if (legacyFoodGroupsEnabled && issueAction === 'BULK' && !selectedBulkOption && bulkIssueId && !bulkIssueId.startsWith('registration:')) {
       const { data: selectedLegacyIssue, error: selectedLegacyIssueError } = await supabaseServer
         .from('hromadne_vydaje')
         .select(`

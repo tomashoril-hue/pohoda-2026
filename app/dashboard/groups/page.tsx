@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
+import { getLegacyFoodGroupsEnabled } from '@/lib/appSettings'
 import { canCreateGroup, canIssueForGroupByRole, canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 import GroupsClient from './GroupsClient'
@@ -9,6 +10,10 @@ export default async function GroupsPage() {
 
   if (!user) {
     redirect('/')
+  }
+
+  if (!await getLegacyFoodGroupsEnabled()) {
+    redirect('/dashboard')
   }
 
   const { data: memberships, error } = await supabaseServer

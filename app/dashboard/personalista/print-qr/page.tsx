@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
+import { getLegacyFoodGroupsEnabled } from '@/lib/appSettings'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { canManagePersonAsPersonalista } from '@/lib/personalistaAccess'
 import { supabaseServer } from '@/lib/supabaseServer'
@@ -40,8 +41,13 @@ export default async function PersonalistaPrintQrPage({
   const groupId = String(params.groupId || '').trim()
   const personId = String(params.personId || '').trim()
   const registrationGroupId = String(params.registrationGroupId || '').trim()
+  const legacyFoodGroupsEnabled = await getLegacyFoodGroupsEnabled()
 
   if (!groupId && !personId && !registrationGroupId) {
+    redirect('/dashboard/personalista')
+  }
+
+  if (groupId && !legacyFoodGroupsEnabled) {
     redirect('/dashboard/personalista')
   }
 
