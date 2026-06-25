@@ -1735,6 +1735,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   </div>
                 </div>
 
+                <div style={styles.issueEditorBody}>
                 <label style={styles.field}>
                   <span style={styles.label}>Názov skupinového výdaja</span>
                   {issueReadOnly ? (
@@ -1981,11 +1982,12 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   </div>
                 )}
 
-                {issueFeedback && (
-                  <div style={issueFeedbackType === 'ok' ? styles.feedbackOk : styles.feedbackError}>
-                    {issueFeedback}
-                  </div>
-                )}
+                  {issueFeedback && (
+                    <div style={issueFeedbackType === 'ok' ? styles.feedbackOk : styles.feedbackError}>
+                      {issueFeedback}
+                    </div>
+                  )}
+                </div>
                 </section>
               </div>
             )}
@@ -3096,35 +3098,39 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     maxWidth: 900,
     maxHeight: '100%',
-    overflow: 'auto',
-    WebkitOverflowScrolling: 'touch',
+    overflow: 'hidden',
     minWidth: 0,
     background: '#fff',
-    border: '1px solid #ddd6fe',
-    borderRadius: 14,
-    padding: 12,
-    boxShadow: '0 24px 70px rgba(0,0,0,0.28)'
+    borderRadius: 18,
+    boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
+    display: 'flex',
+    flexDirection: 'column'
   },
   prepHeading: {
-    border: '1px solid #ddd6fe',
-    borderRadius: 10,
     background: '#fff',
-    padding: '10px 12px',
-    marginBottom: 12,
+    padding: '14px 14px 10px 14px',
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 10,
-    flexWrap: 'wrap',
+    borderBottom: '1px solid #e5e7eb',
     color: '#111827',
     fontSize: 13,
     fontWeight: 900,
-    boxShadow: 'inset 4px 0 0 #7c3aed, 0 6px 18px rgba(76, 29, 149, 0.06)'
+    flex: '0 0 auto'
   },
   prepHeadingInfo: {
     display: 'grid',
-    gap: 3,
+    gap: 4,
     minWidth: 0
+  },
+  issueEditorBody: {
+    padding: 14,
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    overscrollBehaviorY: 'contain',
+    flex: '1 1 auto',
+    minHeight: 0
   },
   waitingNotice: {
     marginTop: 10,
