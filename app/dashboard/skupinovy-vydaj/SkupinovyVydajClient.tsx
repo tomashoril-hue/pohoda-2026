@@ -2081,7 +2081,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   )}
 
                   <div style={styles.prepareActions}>
-                    <label style={styles.field}>
+                    <label style={{ ...styles.field, display: 'none' }}>
                       <span>Zdroj ľudí</span>
                       <select
                         value={sourceMode}
