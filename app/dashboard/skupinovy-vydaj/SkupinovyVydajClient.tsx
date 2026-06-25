@@ -218,6 +218,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const [meal, setMeal] = useState<MealSelection>('')
   const [confirmed, setConfirmed] = useState(false)
   const [issueTitle, setIssueTitle] = useState('')
+  const [issueTitleEditing, setIssueTitleEditing] = useState(false)
   const [issuePeople, setIssuePeople] = useState<IssuePerson[]>([])
   const [selectedIssueUserIds, setSelectedIssueUserIds] = useState<string[]>([])
   const [issuePeopleConfirmed, setIssuePeopleConfirmed] = useState(false)
@@ -615,6 +616,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setConfirmed(false)
     if (!options.preserveMeal) setMeal('')
     setIssueTitle('')
+    setIssueTitleEditing(false)
     setIssuePeople([])
     setSelectedIssueUserIds([])
     setIssuePeopleConfirmed(false)
@@ -1716,6 +1718,34 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     <span style={styles.summaryLabel}>Pripravuješ</span>
                     <b>{mealLabel(meal)} · {selectedGroup?.name || '-'}</b>
                     <small>{fullDateLabel(date)}</small>
+                    <div style={styles.issueTitleCompact}>
+                      {issueTitleEditing && !issueReadOnly ? (
+                        <input
+                          type="text"
+                          value={issueTitle}
+                          onChange={event => setIssueTitle(event.target.value)}
+                          placeholder="Názov výdaja"
+                          style={styles.compactTitleInput}
+                          disabled={issueLoading}
+                          autoFocus
+                        />
+                      ) : (
+                        <span>{issueTitle || '-'}</span>
+                      )}
+
+                      {!issueReadOnly && (
+                        <button
+                          type="button"
+                          onClick={() => setIssueTitleEditing(open => !open)}
+                          style={styles.compactIconButton}
+                          disabled={issueLoading}
+                          title="Upraviť názov"
+                          aria-label="Upraviť názov"
+                        >
+                          Z
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div style={styles.modalHeaderActions}>
@@ -1742,23 +1772,6 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                 </div>
 
                 <div style={styles.issueEditorBody}>
-                <label style={styles.field}>
-                  <span style={styles.label}>Názov skupinového výdaja</span>
-                  {issueReadOnly ? (
-                    <div style={styles.readOnlyInputValue}>{issueTitle || '-'}</div>
-                  ) : (
-                    <input
-                      type="text"
-                      value={issueTitle}
-                      onChange={event => setIssueTitle(event.target.value)}
-                      placeholder="Zadaj názov výdaja"
-                      style={styles.input}
-                      disabled={issueLoading}
-                      required
-                    />
-                  )}
-                </label>
-
                 {readOnlyDate && (
                   <div style={styles.readOnlyNotice}>
                     Starší dátum je iba na prezeranie. Vytvoriť alebo upraviť skupinový výdaj môžeš najskôr na dnešný dátum.
@@ -1825,9 +1838,9 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     type="button"
                     onClick={() => setQrModalOpen(true)}
                     disabled={issueLoading || issueReadOnly || !selectedGroupId || !date || !meal}
-                    style={styles.darkButton}
+                    style={styles.compactDarkButton}
                   >
-                    Pridať cez QR
+                    QR
                   </button>
 
                   <button
@@ -1841,6 +1854,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     disabled={issuePeople.length === 0}
                     style={{
                       ...styles.secondaryButton,
+                      ...styles.compactButton,
                       ...(issueSearchOpen || issuePersonFilter ? styles.secondaryButtonActive : {})
                     }}
                   >
@@ -1972,9 +1986,9 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                         type="button"
                         onClick={openPickupModal}
                         disabled={issueLoading || issueReadOnly}
-                        style={styles.secondaryButton}
+                        style={{ ...styles.secondaryButton, ...styles.compactButton }}
                       >
-                        Upraviť prevzatie
+                        Upraviť
                       </button>
                     </div>
                   )}
@@ -3152,6 +3166,32 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
     minWidth: 0
   },
+  issueTitleCompact: {
+    display: 'inline-grid',
+    gridTemplateColumns: 'minmax(0, auto) 26px',
+    alignItems: 'center',
+    gap: 6,
+    width: 'fit-content',
+    maxWidth: '100%',
+    border: '1px solid #e5e7eb',
+    borderRadius: 999,
+    background: '#f9fafb',
+    color: '#374151',
+    padding: '3px 4px 3px 9px',
+    fontSize: 11,
+    fontWeight: 900
+  },
+  compactTitleInput: {
+    width: 170,
+    maxWidth: '48vw',
+    minWidth: 0,
+    border: 0,
+    outline: 'none',
+    background: 'transparent',
+    color: '#111827',
+    fontSize: 11,
+    fontWeight: 900
+  },
   issueEditorBody: {
     padding: 14,
     overflowY: 'auto',
@@ -3484,6 +3524,37 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#4c1d95',
     boxShadow: 'inset 0 0 0 1px #7c3aed'
   },
+  compactButton: {
+    minHeight: 30,
+    borderRadius: 6,
+    padding: '0 9px',
+    fontSize: 11,
+    fontWeight: 950
+  },
+  compactDarkButton: {
+    minHeight: 30,
+    background: '#4c1d95',
+    color: '#fff',
+    border: '1px solid #4c1d95',
+    borderRadius: 6,
+    padding: '0 10px',
+    fontSize: 11,
+    fontWeight: 950
+  },
+  compactIconButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    border: '1px solid #ddd6fe',
+    background: '#fff',
+    color: '#4c1d95',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 10,
+    fontWeight: 950,
+    lineHeight: 1
+  },
   messageError: {
     background: '#fef2f2',
     border: '1px solid #fecaca',
@@ -3550,38 +3621,38 @@ const styles: Record<string, React.CSSProperties> = {
   issueToolbar: {
     display: 'flex',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 12
+    gap: 6,
+    marginTop: 10
   },
   pickupStepCard: {
     border: '1px solid #c4b5fd',
-    borderRadius: 10,
+    borderRadius: 8,
     background: '#f5f3ff',
-    padding: 10,
-    display: 'flex',
+    padding: 7,
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 10,
-    flexWrap: 'wrap'
+    gap: 8
   },
   issueStickyFooter: {
     position: 'sticky',
     bottom: -14,
     zIndex: 3,
     margin: '12px -14px -14px -14px',
-    padding: '10px 14px max(10px, env(safe-area-inset-bottom)) 14px',
+    padding: '8px 14px max(8px, env(safe-area-inset-bottom)) 14px',
     display: 'grid',
-    gap: 8,
+    gap: 6,
     borderTop: '1px solid #e5e7eb',
     background: '#fff',
     boxShadow: '0 -10px 22px rgba(17, 24, 39, 0.08)'
   },
   pickupStepInfo: {
     display: 'grid',
-    gap: 3,
+    gap: 1,
     minWidth: 0,
     color: '#1e3a8a',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 900
   },
   bulkButtonRow: {
