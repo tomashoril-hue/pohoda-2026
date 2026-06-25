@@ -245,7 +245,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const [prepareSourceModalOpen, setPrepareSourceModalOpen] = useState(false)
   const [prepareSourceStep, setPrepareSourceStep] = useState<'SOURCE' | 'DETAIL'>('SOURCE')
   const [existingLoading, setExistingLoading] = useState(false)
-  const [selectedGroupId, setSelectedGroupId] = useState(groups.length === 1 ? groups[0]?.id || '' : '')
+  const [selectedGroupId, setSelectedGroupId] = useState('')
   const [sourceMode, setSourceMode] = useState<IssueSourceMode>('REGISTRATION_GROUP')
   const [foodGroups, setFoodGroups] = useState<FoodGroup[]>([])
   const [selectedFoodGroupId, setSelectedFoodGroupId] = useState('')
@@ -1629,7 +1629,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
         ) : (
           <div className="group-issue-layout" style={styles.layout}>
             {confirmed && (
-              <section className="group-issue-main" style={styles.mainPanel}>
+              <div style={styles.modalOverlay}>
+                <section className="group-issue-main" style={styles.issueEditorModal}>
                 <div style={styles.prepHeading}>
                   <div style={styles.prepHeadingInfo}>
                     <span style={styles.summaryLabel}>Pripravuješ</span>
@@ -1864,7 +1865,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     {issueFeedback}
                   </div>
                 )}
-              </section>
+                </section>
+              </div>
             )}
 
             <aside className="group-issue-sidebar" style={styles.sidebar}>
@@ -2000,7 +2002,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                       disabled={issueLoading}
                       style={styles.input}
                     >
-                      <option value="">Vyberte jedlo</option>
+                      <option value="">Vyberte</option>
                       {MEAL_OPTIONS.map(option => (
                         <option key={option.value} value={option.value}>
                           {option.label}
@@ -2920,22 +2922,22 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10
   },
   header: {
-    background: 'linear-gradient(135deg, #4c1d95 0%, #6d28d9 62%, #7c3aed 100%)',
-    border: '1px solid #7c3aed',
-    borderRadius: 12,
+    background: '#fff',
+    border: '1px solid #ddd6fe',
+    borderRadius: 10,
     padding: '10px 12px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
-    boxShadow: '0 14px 30px rgba(76, 29, 149, 0.18)'
+    boxShadow: 'inset 4px 0 0 #7c3aed, 0 6px 18px rgba(76, 29, 149, 0.06)'
   },
   title: {
     margin: 0,
     fontSize: 28,
     lineHeight: 1.05,
     fontWeight: 950,
-    color: '#111827'
+    color: '#4c1d95'
   },
   subtitle: {
     margin: '4px 0 0 0',
@@ -2946,9 +2948,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   backButton: {
     minHeight: 34,
-    background: '#111827',
-    color: '#fff',
-    border: '1px solid #111827',
+    background: '#fff',
+    color: '#4c1d95',
+    border: '1px solid #ddd6fe',
     borderRadius: 6,
     padding: '8px 12px',
     fontSize: 12,
@@ -2984,6 +2986,19 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 12,
     boxShadow: '0 8px 22px rgba(76, 29, 149, 0.06)',
     order: 4
+  },
+  issueEditorModal: {
+    width: '100%',
+    maxWidth: 900,
+    maxHeight: '100%',
+    overflow: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    minWidth: 0,
+    background: '#fff',
+    border: '1px solid #ddd6fe',
+    borderRadius: 14,
+    padding: 12,
+    boxShadow: '0 24px 70px rgba(0,0,0,0.28)'
   },
   prepHeading: {
     border: '1px solid #86efac',
@@ -3154,7 +3169,10 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 800,
     background: '#fff',
-    color: '#fff'
+    color: '#111827',
+    cursor: 'pointer',
+    appearance: 'auto',
+    WebkitAppearance: 'menulist'
   },
   readOnlyInputValue: {
     width: '100%',
