@@ -259,6 +259,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const [foodGroupSearchResults, setFoodGroupSearchResults] = useState<SearchUser[]>([])
   const [foodGroupMessage, setFoodGroupMessage] = useState('')
   const [foodGroupMessageType, setFoodGroupMessageType] = useState<'ok' | 'error'>('ok')
+  const [foodGroupQrModalOpen, setFoodGroupQrModalOpen] = useState(false)
   const [delegatesPanelOpen, setDelegatesPanelOpen] = useState(false)
   const [groupPickerOpen, setGroupPickerOpen] = useState(false)
   const [groupQuery, setGroupQuery] = useState('')
@@ -728,6 +729,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
 
   function closeFoodGroupModal() {
     if (foodGroupsLoading) return
+    setFoodGroupQrModalOpen(false)
     setFoodGroupModalOpen(false)
     setFoodGroupEditId('')
     setFoodGroupName('')
@@ -770,6 +772,55 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       setFoodGroupMessageType('error')
     } finally {
       setFoodGroupsLoading(false)
+    }
+  }
+
+  async function addFoodGroupMemberByQr(qrCode: string) {
+    if (!selectedGroupId) {
+      return {
+        tone: 'error' as const,
+        message: 'Najprv vyber registračnú skupinu.'
+      }
+    }
+
+    try {
+      const params = new URLSearchParams({
+        registrationGroupId: selectedGroupId,
+        qrCode
+      })
+      const res = await fetch(`/api/skupinovy-vydaj/food-groups?${params.toString()}`)
+      const json = await res.json()
+
+      if (!res.ok || !json.user) {
+        const message = json.error || 'QR sa nepodarilo načítať.'
+        setFoodGroupMessage(message)
+        setFoodGroupMessageType('error')
+        return {
+          tone: 'error' as const,
+          message
+        }
+      }
+
+      const user = json.user as SearchUser
+      setFoodGroupMembers(current => mergeSearchUsers(current, [user]))
+      setFoodGroupMemberIds(current => current.includes(user.id) ? current : [...current, user.id])
+
+      const message = `${user.name || 'Osoba'} pridaná do stravovacej skupiny.`
+      setFoodGroupMessage(message)
+      setFoodGroupMessageType('ok')
+
+      return {
+        tone: 'success' as const,
+        message
+      }
+    } catch (err: any) {
+      const message = err?.message || 'QR sa nepodarilo načítať.'
+      setFoodGroupMessage(message)
+      setFoodGroupMessageType('error')
+      return {
+        tone: 'error' as const,
+        message
+      }
     }
   }
 
@@ -901,7 +952,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       setPickupQuery('')
       setPickupResults([])
       setPendingPickupExternalUsers([])
-      setIssuePeopleConfirmed(false)
+      setIssuePeopleConfirmed(true)
       setEditingIssueId('')
       setEditingIssueStatus('')
       setEditingIssueValidAfter(null)
@@ -2442,6 +2493,15 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     />
                   </label>
 
+                  <button
+                    type="button"
+                    onClick={() => setFoodGroupQrModalOpen(true)}
+                    style={styles.darkButton}
+                    disabled={foodGroupsLoading}
+                  >
+                    Pridať osobu cez QR
+                  </button>
+
                   {foodGroupsLoading && <div style={styles.emptyBox}>Načítavam...</div>}
 
                   <div style={styles.searchResults}>
@@ -2496,6 +2556,33 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   {foodGroupsLoading ? 'Ukladám...' : `Uložiť skupinu (${foodGroupMemberIds.length})`}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {foodGroupQrModalOpen && (
+          <div style={styles.modalOverlay} onClick={() => setFoodGroupQrModalOpen(false)}>
+            <div style={styles.qrModal} onClick={event => event.stopPropagation()}>
+              <div style={styles.qrModalHeader}>
+                <div style={styles.modalTitleBlock}>
+                  <b>Pridať do stravovacej skupiny</b>
+                  <span>Skenuj QR osoby. Po načítaní sa pridá do zoznamu členov.</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setFoodGroupQrModalOpen(false)}
+                  style={styles.qrCloseButton}
+                  disabled={foodGroupsLoading}
+                >
+                  x
+                </button>
+              </div>
+
+              <QrCameraScanner
+                disabled={foodGroupsLoading || !selectedGroupId}
+                onScan={addFoodGroupMemberByQr}
+              />
             </div>
           </div>
         )}
@@ -2833,14 +2920,15 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10
   },
   header: {
-    background: '#fff',
-    border: '1px solid #e5e7eb',
-    borderRadius: 8,
+    background: 'linear-gradient(135deg, #4c1d95 0%, #6d28d9 62%, #7c3aed 100%)',
+    border: '1px solid #7c3aed',
+    borderRadius: 12,
     padding: '10px 12px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12
+    gap: 12,
+    boxShadow: '0 14px 30px rgba(76, 29, 149, 0.18)'
   },
   title: {
     margin: 0,
@@ -2883,18 +2971,18 @@ const styles: Record<string, React.CSSProperties> = {
   },
   panel: {
     background: '#fff',
-    border: '1px solid #e5e7eb',
-    borderRadius: 8,
+    border: '1px solid #ddd6fe',
+    borderRadius: 10,
     padding: 12,
-    boxShadow: '0 1px 2px rgba(17, 24, 39, 0.04)'
+    boxShadow: '0 8px 22px rgba(76, 29, 149, 0.06)'
   },
   mainPanel: {
     minWidth: 0,
     background: '#fff',
-    border: '1px solid #e5e7eb',
-    borderRadius: 8,
+    border: '1px solid #ddd6fe',
+    borderRadius: 10,
     padding: 12,
-    boxShadow: '0 1px 2px rgba(17, 24, 39, 0.04)',
+    boxShadow: '0 8px 22px rgba(76, 29, 149, 0.06)',
     order: 4
   },
   prepHeading: {
@@ -3066,7 +3154,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 800,
     background: '#fff',
-    color: '#111827'
+    color: '#fff'
   },
   readOnlyInputValue: {
     width: '100%',
@@ -3156,7 +3244,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 800
   },
   summaryLabel: {
-    color: '#6b7280',
+    color: '#ede9fe',
     fontSize: 10,
     fontWeight: 950,
     textTransform: 'uppercase'
@@ -3210,13 +3298,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   primaryButton: {
     minHeight: 40,
-    background: '#22c55e',
-    color: '#052e16',
-    border: '1px solid #16a34a',
-    borderRadius: 6,
+    background: 'linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%)',
+    color: '#fff',
+    border: '1px solid #6d28d9',
+    borderRadius: 8,
     padding: '0 12px',
     fontSize: 13,
-    fontWeight: 950
+    fontWeight: 950,
+    boxShadow: '0 8px 18px rgba(109, 40, 217, 0.18)'
   },
   secondaryButton: {
     minHeight: 40,
@@ -3303,9 +3392,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   pickupStepCard: {
     marginTop: 12,
-    border: '1px solid #bfdbfe',
-    borderRadius: 8,
-    background: '#eff6ff',
+    border: '1px solid #c4b5fd',
+    borderRadius: 10,
+    background: '#f5f3ff',
     padding: 10,
     display: 'flex',
     justifyContent: 'space-between',
@@ -3752,13 +3841,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   darkButton: {
     minHeight: 36,
-    background: '#111827',
+    background: '#4c1d95',
     color: '#fff',
-    border: '1px solid #111827',
-    borderRadius: 6,
+    border: '1px solid #6d28d9',
+    borderRadius: 8,
     padding: '0 12px',
     fontSize: 12,
-    fontWeight: 900
+    fontWeight: 900,
+    boxShadow: '0 6px 14px rgba(76, 29, 149, 0.16)'
   },
   resultButton: {
     border: '1px solid #d1d5db',
