@@ -392,6 +392,7 @@ function thresholdImage(imageData: ImageData) {
 
 export default function PersonalistaClient({
   people: initialPeople,
+  pendingReviewPeople: initialPendingReviewPeople,
   groups,
   registrationGroups,
   qrWristbandRules,
@@ -408,6 +409,7 @@ export default function PersonalistaClient({
   legacyFoodGroupsEnabled
 }: {
   people: PersonItem[]
+  pendingReviewPeople: PersonItem[]
   groups: GroupItem[]
   registrationGroups: RegistrationGroupItem[]
   qrWristbandRules: QrWristbandRules
@@ -444,6 +446,7 @@ export default function PersonalistaClient({
 
   const [isMobile, setIsMobile] = useState(false)
   const [people, setPeople] = useState(initialPeople)
+  const [pendingReviewPeople, setPendingReviewPeople] = useState(initialPendingReviewPeople)
   const [peopleSearchLoading, setPeopleSearchLoading] = useState(false)
   const [peopleSearchMessage, setPeopleSearchMessage] = useState(initialPeopleSearchMessage)
   const [search, setSearch] = useState('')
@@ -959,6 +962,12 @@ export default function PersonalistaClient({
 
       return [person, ...nextPeople]
     })
+    setPendingReviewPeople(prev => {
+      const personIsPending = String(person.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
+      const nextPeople = prev.filter(item => item.id !== person.id)
+
+      return personIsPending ? [person, ...nextPeople] : nextPeople
+    })
   }
 
   const reloadPersonDetail = async (userId: string) => {
@@ -980,8 +989,9 @@ export default function PersonalistaClient({
     replacePersonInList(person)
   }
 
+  const displayPeople = statusFilter === 'PENDING_REVIEW' ? pendingReviewPeople : people
   const selectedPerson = selectedPersonId
-    ? people.find(person => person.id === selectedPersonId) || null
+    ? displayPeople.find(person => person.id === selectedPersonId) || null
     : null
   const selectedPersonIsTechnical = String(selectedPerson?.accountType || '').toUpperCase() === 'TECHNICAL'
   const canUseSelectedPersonAccessCode = !!selectedPerson && (!selectedPersonIsTechnical || canAssignSensitiveRoles)
@@ -1219,11 +1229,21 @@ export default function PersonalistaClient({
   }, [initialPeople])
 
   useEffect(() => {
+    setPendingReviewPeople(initialPendingReviewPeople)
+  }, [initialPendingReviewPeople])
+
+  useEffect(() => {
     setQrRulesForm(qrWristbandRules)
   }, [qrWristbandRules])
 
   useEffect(() => {
     const q = search.trim()
+
+    if (statusFilter === 'PENDING_REVIEW') {
+      setPeopleSearchLoading(false)
+      setPeopleSearchMessage(`Ziadosti na schvalenie: ${pendingReviewPeople.length}`)
+      return
+    }
 
     if (!q) {
       setPeople(initialPeople)
@@ -1271,7 +1291,7 @@ export default function PersonalistaClient({
       cancelled = true
       window.clearTimeout(timeout)
     }
-  }, [search, initialPeople, initialPeopleSearchMessage])
+  }, [search, initialPeople, initialPeopleSearchMessage, statusFilter, pendingReviewPeople.length])
 
   useEffect(() => {
     if (!selectedPerson) return
@@ -1333,13 +1353,13 @@ export default function PersonalistaClient({
   }, [selectedPerson, fromDate, toDate])
 
   const peopleOrderById = useMemo(() => {
-    return new Map(people.map((person, index) => [person.id, index]))
-  }, [people])
+    return new Map(displayPeople.map((person, index) => [person.id, index]))
+  }, [displayPeople])
 
   const filteredPeople = useMemo(() => {
     const q = search.trim().toLowerCase()
 
-    return people
+    return displayPeople
       .filter(person => {
         if (!q) return true
 
@@ -1375,22 +1395,22 @@ export default function PersonalistaClient({
       .sort((a, b) => {
         return (peopleOrderById.get(a.id) ?? 0) - (peopleOrderById.get(b.id) ?? 0)
       })
-  }, [people, peopleOrderById, search, groupFilter, foodFilter, qrFilter, statusFilter])
+  }, [displayPeople, peopleOrderById, search, groupFilter, foodFilter, qrFilter, statusFilter])
 
   useEffect(() => {
     setCurrentPage(1)
   }, [search, groupFilter, foodFilter, qrFilter, statusFilter, pageSize])
 
   useEffect(() => {
-    if (!people.length) {
+    if (!displayPeople.length) {
       if (selectedPersonId) setSelectedPersonId('')
       return
     }
 
-    if (!people.some(person => person.id === selectedPersonId)) {
+    if (!displayPeople.some(person => person.id === selectedPersonId)) {
       setSelectedPersonId('')
     }
-  }, [people, selectedPersonId])
+  }, [displayPeople, selectedPersonId])
 
   const pageCount = Math.max(1, Math.ceil(filteredPeople.length / pageSize))
   const safeCurrentPage = Math.min(currentPage, pageCount)
@@ -1402,7 +1422,7 @@ export default function PersonalistaClient({
     const activeQr = people.filter(person => person.activeQrCount > 0).length
     const withoutQr = people.length - activeQr
     const blocked = people.filter(person => String(person.aktivny || '').toUpperCase() !== 'ANO').length
-    const pendingReview = people.filter(person => String(person.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW').length
+    const pendingReview = pendingReviewPeople.length
     const withDiet = people.filter(person => foodLabel(person.typStravy) === 'DIÉTA').length
     const totalClaims = people.reduce((sum, person) => sum + person.mealClaims, 0)
     const totalLunches = people.reduce((sum, person) => sum + person.lunchClaims, 0)
@@ -1420,7 +1440,7 @@ export default function PersonalistaClient({
       totalDinners,
       totalDays
     }
-  }, [people])
+  }, [people, pendingReviewPeople.length])
 
   const selectedCreateGroups = useMemo(() => {
     return groups.filter(group => createForm.groupIds.includes(group.id))
@@ -3501,8 +3521,19 @@ export default function PersonalistaClient({
 
         <button
           type="button"
-          style={styles.lightButton}
-          onClick={() => setStatusFilter('PENDING_REVIEW')}
+          style={{
+            ...styles.lightButton,
+            ...(stats.pendingReview > 0 ? styles.pendingReviewButton : {})
+          }}
+          onClick={() => {
+            closeTopPanels()
+            setSearch('')
+            setGroupFilter('ALL')
+            setFoodFilter('ALL')
+            setQrFilter('ALL')
+            setStatusFilter('PENDING_REVIEW')
+            setSelectedPersonId('')
+          }}
         >
           Na schvalenie ({stats.pendingReview})
         </button>
@@ -8486,6 +8517,12 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950,
     textDecoration: 'none',
     cursor: 'pointer'
+  },
+  pendingReviewButton: {
+    background: '#fef3c7',
+    color: '#92400e',
+    borderColor: '#f59e0b',
+    boxShadow: '0 0 0 2px rgba(245, 158, 11, 0.18)'
   },
   qrScannerOverlay: {
     position: 'fixed',

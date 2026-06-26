@@ -373,10 +373,8 @@ export default async function PersonalistaPage({
   const fallbackRecentUsersResult = auditRecentUsers.length === 0 && peopleScope === 'all'
     ? await fetchRecentUsers()
     : { rows: [], error: null }
-  const recentUsers = mergeVisibleUsers(
-    pendingReviewUsersResult.rows,
-    auditRecentUsers.length > 0 ? auditRecentUsers : fallbackRecentUsersResult.rows
-  )
+  const recentUsers = auditRecentUsers.length > 0 ? auditRecentUsers : fallbackRecentUsersResult.rows
+  const pendingReviewUsers = pendingReviewUsersResult.rows
   const usersError = pendingReviewUsersResult.error || auditUsersError || fallbackRecentUsersResult.error
 
   if (usersError) {
@@ -389,12 +387,15 @@ export default async function PersonalistaPage({
     )
   }
 
-  const allVisibleUsers = recentUsers || []
+  const allVisibleUsers = mergeVisibleUsers(recentUsers || [], pendingReviewUsers || [])
   const recentUserIds = allVisibleUsers
     .map((item: any) => item.id)
     .filter(Boolean)
   const recentOrderByUserId = new Map(
-    recentUserIds.map((id: string, index: number) => [id, index])
+    (recentUsers || []).map((item: any, index: number) => [item.id, index])
+  )
+  const pendingReviewOrderByUserId = new Map(
+    (pendingReviewUsers || []).map((item: any, index: number) => [item.id, index])
   )
 
   const { rows: memberships, error } = await fetchMembershipsForUsers(recentUserIds)
@@ -728,7 +729,10 @@ export default async function PersonalistaPage({
     return a.name.localeCompare(b.name, 'sk')
   })
 
-  const people = Array.from(personMap.values()).sort((a, b) => {
+  const people = (recentUsers || [])
+    .map((profile: any) => personMap.get(profile.id))
+    .filter(Boolean)
+    .sort((a, b) => {
     const aOrder = recentOrderByUserId.get(a.id) ?? Number.MAX_SAFE_INTEGER
     const bOrder = recentOrderByUserId.get(b.id) ?? Number.MAX_SAFE_INTEGER
 
@@ -741,10 +745,22 @@ export default async function PersonalistaPage({
 
     return a.fullName.localeCompare(b.fullName, 'sk')
   })
+  const pendingReviewPeople = (pendingReviewUsers || [])
+    .map((profile: any) => personMap.get(profile.id))
+    .filter(Boolean)
+    .sort((a, b) => {
+      const aOrder = pendingReviewOrderByUserId.get(a.id) ?? Number.MAX_SAFE_INTEGER
+      const bOrder = pendingReviewOrderByUserId.get(b.id) ?? Number.MAX_SAFE_INTEGER
+
+      if (aOrder !== bOrder) return aOrder - bOrder
+
+      return a.fullName.localeCompare(b.fullName, 'sk')
+    })
 
   return (
     <PersonalistaClient
       people={people}
+      pendingReviewPeople={pendingReviewPeople}
       groups={groups}
       registrationGroups={registrationGroups.filter((group: any) => group.active)}
       qrWristbandRules={qrWristbandRules}
