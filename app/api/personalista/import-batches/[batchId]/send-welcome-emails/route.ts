@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { sendAppEmail } from '@/lib/email'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { createQrPngAttachment } from '@/lib/qrEmailAttachment'
 import { checkActorRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
@@ -9,7 +10,19 @@ function text(value: any) {
   return String(value || '').trim()
 }
 
+function escapeHtml(value: any) {
+  return text(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
 function welcomeEmailHtml(meno: string, loginUrl: string) {
+  const safeMeno = escapeHtml(meno)
+  const safeLoginUrl = escapeHtml(loginUrl)
+
   return `
     <div style="font-family:Arial,Helvetica,sans-serif;background:#f6f2ff;padding:24px;color:#111;">
       <div style="max-width:620px;margin:0 auto;background:#fff;border:3px solid #000;border-radius:22px;padding:24px;">
@@ -17,15 +30,16 @@ function welcomeEmailHtml(meno: string, loginUrl: string) {
           PohodaPass
         </div>
         <h1 style="font-size:28px;margin:20px 0 10px;">Boli ste pridaný do stravovacieho systému</h1>
-        <p>Dobrý deň${meno ? `, ${meno}` : ''},</p>
+        <p>Dobrý deň${safeMeno ? `, ${safeMeno}` : ''},</p>
         <p>práve sme vás registrovali do stravovacieho systému aplikácie PohodaPass.</p>
         <p>Do aplikácie sa môžete prihlásiť cez svoju e-mailovú adresu.</p>
+        <p>V prílohe nájdete aj PNG obrázok svojho QR kódu, ak už bol osobe pridelený.</p>
         <p style="margin:26px 0;">
-          <a href="${loginUrl}" style="display:inline-block;background:#000;color:#fff;text-decoration:none;border-radius:999px;padding:14px 22px;font-weight:900;">
+          <a href="${safeLoginUrl}" style="display:inline-block;background:#000;color:#fff;text-decoration:none;border-radius:999px;padding:14px 22px;font-weight:900;">
             Otvoriť PohodaPass
           </a>
         </p>
-        <p style="font-size:13px;color:#555;">Adresa aplikácie: <a href="${loginUrl}">${loginUrl}</a></p>
+        <p style="font-size:13px;color:#555;">Adresa aplikácie: <a href="${safeLoginUrl}">${safeLoginUrl}</a></p>
       </div>
     </div>
   `
@@ -39,17 +53,17 @@ export async function POST(
     const currentUser = await getCurrentUser()
 
     if (!currentUser) {
-      return NextResponse.json({ error: 'Nie si prihlaseny.' }, { status: 401 })
+      return NextResponse.json({ error: 'Nie si prihlásený.' }, { status: 401 })
     }
 
     const access = await getGlobalAccess(currentUser.id)
 
     if (!access.canUsePersonalista) {
-      return NextResponse.json({ error: 'Nemate opravnenie.' }, { status: 403 })
+      return NextResponse.json({ error: 'Nemáš oprávnenie.' }, { status: 403 })
     }
 
     const sendLimit = checkActorRateLimit(currentUser.id, 'import-welcome-email', 4, 10 * 60 * 1000)
-    if (!sendLimit.ok) return rateLimitResponse(sendLimit, 'Prilis vela hromadnych e-mailov. Skuste znova neskor.')
+    if (!sendLimit.ok) return rateLimitResponse(sendLimit, 'Príliš veľa hromadných e-mailov. Skús znova neskôr.')
 
     const { batchId } = await params
     const body = await req.json().catch(() => ({}))
@@ -88,6 +102,19 @@ export async function POST(
     }
 
     const loginUrl = `${process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin}/login`
+    const createdUserIds = Array.from(new Set((rows || []).map((row: any) => row.created_user_id).filter(Boolean)))
+    const { data: qrUsers, error: qrUsersError } = createdUserIds.length > 0
+      ? await supabaseServer
+        .from('users')
+        .select('id, qr_code')
+        .in('id', createdUserIds)
+      : { data: [], error: null }
+
+    if (qrUsersError) {
+      return NextResponse.json({ error: qrUsersError.message }, { status: 500 })
+    }
+
+    const qrCodeByUserId = new Map((qrUsers || []).map((user: any) => [user.id, user.qr_code || '']))
     let sent = 0
     let failed = 0
 
@@ -97,12 +124,14 @@ export async function POST(
       if (!email) continue
 
       try {
+        const qrAttachment = await createQrPngAttachment(qrCodeByUserId.get(row.created_user_id) || '', 'pohodapass-qr')
         const result = await sendAppEmail({
           from: 'POHODA 2026 <registracia@pohodapass.sk>',
           to: email,
           subject: 'Boli ste pridaný do stravovacieho systému PohodaPass',
           html: welcomeEmailHtml(row.meno || '', loginUrl),
-          text: `Dobrý deň ${row.meno || ''}, boli ste pridaný do stravovacieho systému PohodaPass. Aplikáciu otvoríte na ${loginUrl}`
+          text: `Dobrý deň ${row.meno || ''}, boli ste pridaný do stravovacieho systému PohodaPass. Aplikáciu otvoríte na ${loginUrl}`,
+          attachments: qrAttachment ? [qrAttachment] : undefined
         })
 
         await supabaseServer.from('personnel_email_log').insert({
@@ -163,6 +192,6 @@ export async function POST(
       total: rows?.length || 0
     })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Neznama chyba servera.' }, { status: 500 })
+    return NextResponse.json({ error: err?.message || 'Neznáma chyba servera.' }, { status: 500 })
   }
 }

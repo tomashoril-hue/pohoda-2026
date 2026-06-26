@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { slovakiaDateIso } from '@/lib/date'
 import { sendAppEmail } from '@/lib/email'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { createQrPngAttachment } from '@/lib/qrEmailAttachment'
 import { checkActorRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
@@ -141,7 +142,7 @@ export async function POST(req: NextRequest) {
 
     const { data: users, error: usersError } = await supabaseServer
       .from('users')
-      .select('id, meno, priezvisko, email')
+      .select('id, meno, priezvisko, email, qr_code')
       .in('id', userIds)
       .eq('aktivny', 'ANO')
       .not('email', 'is', null)
@@ -164,6 +165,7 @@ export async function POST(req: NextRequest) {
       if (!email) continue
 
       try {
+        const qrAttachment = await createQrPngAttachment(user.qr_code || '', 'pohodapass-qr')
         const result = await sendAppEmail({
           from: 'POHODA 2026 <registracia@pohodapass.sk>',
           to: email,
@@ -173,7 +175,8 @@ export async function POST(req: NextRequest) {
           html: welcomeEmailHtml(user.meno || '', loginUrl, language),
           text: language === 'EN'
             ? `Hello ${user.meno || ''}, you have been added to the PohodaPass meal system. Open the application at ${loginUrl}`
-            : `Dobry den ${user.meno || ''}, boli ste pridany do stravovacieho systemu PohodaPass. Aplikaciu otvorite na ${loginUrl}`
+            : `Dobry den ${user.meno || ''}, boli ste pridany do stravovacieho systemu PohodaPass. Aplikaciu otvorite na ${loginUrl}`,
+          attachments: qrAttachment ? [qrAttachment] : undefined
         })
 
         await supabaseServer.from('personnel_email_log').insert({

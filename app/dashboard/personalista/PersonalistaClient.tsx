@@ -390,6 +390,24 @@ function thresholdImage(imageData: ImageData) {
   return output
 }
 
+function HomeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+      <path d="M3.5 10.8 12 3.8l8.5 7v9.1a.9.9 0 0 1-.9.9h-5.1v-6.2h-5v6.2H4.4a.9.9 0 0 1-.9-.9v-9.1Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M2.5 11.6 12 3.8l9.5 7.8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function RefreshIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+      <path d="M20.2 6.8v5h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M19.2 11.8a7.2 7.2 0 1 0-2.1 5.1" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 export default function PersonalistaClient({
   people: initialPeople,
   pendingReviewPeople: initialPendingReviewPeople,
@@ -447,6 +465,7 @@ export default function PersonalistaClient({
   const [isMobile, setIsMobile] = useState(false)
   const [people, setPeople] = useState(initialPeople)
   const [pendingReviewPeople, setPendingReviewPeople] = useState(initialPendingReviewPeople)
+  const [refreshingPeople, setRefreshingPeople] = useState(false)
   const [peopleSearchLoading, setPeopleSearchLoading] = useState(false)
   const [peopleSearchMessage, setPeopleSearchMessage] = useState(initialPeopleSearchMessage)
   const [search, setSearch] = useState('')
@@ -597,7 +616,8 @@ export default function PersonalistaClient({
   const [qrScannerStatus, setQrScannerStatus] = useState('Kamera je vypnutá.')
   const [groupForm, setGroupForm] = useState({
     groupId: '',
-    role: 'MEMBER'
+    role: 'MEMBER',
+    newGroupName: ''
   })
   const [nfcForm, setNfcForm] = useState({
     tokenUid: ''
@@ -631,6 +651,26 @@ export default function PersonalistaClient({
     setQrRulesOpen(false)
     setLegacyFoodGroupsOpen(false)
     setPersonnelTool('')
+  }
+
+  const resetPersonalistaHome = () => {
+    closeTopPanels()
+    setSearch('')
+    setGroupFilter('ALL')
+    setFoodFilter('ALL')
+    setQrFilter('ALL')
+    setStatusFilter('ALL')
+    setSelectedPersonId('')
+    setCurrentPage(1)
+    setPeople(initialPeople)
+    setPeopleSearchLoading(false)
+    setPeopleSearchMessage(initialPeopleSearchMessage)
+  }
+
+  const refreshPersonalistaData = () => {
+    setRefreshingPeople(true)
+    router.refresh()
+    window.setTimeout(() => setRefreshingPeople(false), 900)
   }
 
   const loadCommunicationSummary = async (registrationGroupId: string, target: 'communication' | 'accessCodes') => {
@@ -1323,7 +1363,7 @@ export default function PersonalistaClient({
     setBulkEntitlementClaims({ obed: [], vecera: [] })
 
     setQrForm({ qrCode: '' })
-    setGroupForm({ groupId: '', role: 'MEMBER' })
+    setGroupForm({ groupId: '', role: 'MEMBER', newGroupName: '' })
     setNfcForm({ tokenUid: '' })
     setAccessCodeLoading(false)
     setAccessCodeLoaded(false)
@@ -2946,6 +2986,75 @@ export default function PersonalistaClient({
     )
   }
 
+  const createGroupForSelectedPerson = async () => {
+    if (!selectedPerson) return
+
+    const name = String(groupForm.newGroupName || '').trim().replace(/\s+/g, ' ')
+
+    if (name.length < 2) {
+      setDetailFeedback('Zadaj názov stravovacej skupiny.', 'error', 'groups')
+      return
+    }
+
+    if (name.length > 80) {
+      setDetailFeedback('Názov stravovacej skupiny môže mať najviac 80 znakov.', 'error', 'groups')
+      return
+    }
+
+    setDetailLoading(true)
+    clearDetailFeedback()
+
+    try {
+      const createRes = await fetch('/api/group/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      })
+      const createJson = await createRes.json().catch(() => ({}))
+
+      if (!createRes.ok || createJson.error || !createJson.group?.id) {
+        setDetailFeedback(createJson.error || 'Stravovaciu skupinu sa nepodarilo vytvoriť.', 'error', 'groups')
+        return
+      }
+
+      const addRes = await fetch('/api/personalista/people/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: selectedPerson.id,
+          action: selectedPerson.id === currentUserId ? 'UPDATE_ROLE' : 'ADD',
+          groupId: createJson.group.id,
+          role: groupForm.role
+        })
+      })
+      const addJson = await addRes.json().catch(() => ({}))
+
+      if (!addRes.ok || addJson.error) {
+        setDetailFeedback(addJson.error || 'Osobu sa nepodarilo pridať do novej skupiny.', 'error', 'groups')
+        return
+      }
+
+      setGroupForm(prev => ({
+        ...prev,
+        groupId: '',
+        newGroupName: ''
+      }))
+      preservedDetailMessageRef.current = {
+        userId: selectedPerson.id,
+        message: `Stravovacia skupina ${name} bola vytvorená a osoba bola pridaná.`,
+        type: 'ok',
+        mode: 'groups'
+      }
+      await reloadPersonDetail(selectedPerson.id)
+      router.refresh()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setDetailFeedback('Chyba spojenia so serverom: ' + message, 'error', 'groups')
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
   const updatePersonGroupRole = (groupId: string, role: string) => {
     postGroupAction(
       {
@@ -3406,6 +3515,31 @@ export default function PersonalistaClient({
         ...styles.actionPanel,
         ...(isMobile ? styles.mobileActionStripPanel : {})
       }}>
+        <button
+          type="button"
+          style={styles.iconActionButton}
+          title="Domov - posledné upravené osoby"
+          aria-label="Domov - posledné upravené osoby"
+          onClick={resetPersonalistaHome}
+        >
+          <HomeIcon />
+        </button>
+
+        <button
+          type="button"
+          style={{
+            ...styles.iconActionButton,
+            opacity: refreshingPeople ? 0.65 : 1,
+            cursor: refreshingPeople ? 'wait' : 'pointer'
+          }}
+          title="Obnoviť personalistiku"
+          aria-label="Obnoviť personalistiku"
+          disabled={refreshingPeople}
+          onClick={refreshPersonalistaData}
+        >
+          <RefreshIcon />
+        </button>
+
         <button
           type="button"
           style={{
@@ -5970,7 +6104,7 @@ export default function PersonalistaClient({
                   disabled={detailLoading}
                   onClick={() => setDetailMode(detailMode === 'groups' ? '' : 'groups')}
                 >
-                  Upraviť skupiny
+                  Stravovacie skupiny
                 </button>
 
                 {canAssignSensitiveRoles && (
@@ -6701,6 +6835,47 @@ export default function PersonalistaClient({
                   >
                     Pridať do skupiny
                   </button>
+
+                  <div style={styles.inlineDivider} />
+
+                  <div style={styles.detailEditGrid}>
+                    <label style={styles.field}>
+                      <span>Vytvoriť novú stravovaciu skupinu</span>
+                      <input
+                        value={groupForm.newGroupName}
+                        onChange={event => updateGroupForm('newGroupName', event.target.value.slice(0, 80))}
+                        style={styles.input}
+                        disabled={detailLoading}
+                        placeholder="Názov novej skupiny"
+                        maxLength={80}
+                      />
+                    </label>
+
+                    <label style={styles.field}>
+                      <span>Rola osoby</span>
+                      <select
+                        value={groupForm.role}
+                        onChange={event => updateGroupForm('role', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                      >
+                        {groupRoleOptions.map(role => (
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    style={styles.confirmButton}
+                    disabled={detailLoading || groupForm.newGroupName.trim().length < 2}
+                    onClick={() => void createGroupForSelectedPerson()}
+                  >
+                    Vytvoriť skupinu a pridať osobu
+                  </button>
                 </div>
               )}
 
@@ -7252,6 +7427,19 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: 'repeat(auto-fit, minmax(118px, auto))',
     gap: 5
   },
+  iconActionButton: {
+    width: 36,
+    minHeight: 30,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#f3f4f6',
+    color: '#111827',
+    border: '1px solid #e5e7eb',
+    borderRadius: 5,
+    padding: 0,
+    cursor: 'pointer'
+  },
   scopeToggle: {
     background: '#eef2ff',
     border: '1px solid #c7d2fe',
@@ -7346,6 +7534,11 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid #fecaca',
     borderRadius: 5,
     padding: '4px 6px'
+  },
+  inlineDivider: {
+    height: 1,
+    background: '#e5e7eb',
+    margin: '4px 0'
   },
   searchInput: {
     width: '100%',

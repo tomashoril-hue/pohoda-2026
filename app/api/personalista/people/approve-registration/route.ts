@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { slovakiaDateIso } from '@/lib/date'
 import { sendAppEmail } from '@/lib/email'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { createQrPngAttachment } from '@/lib/qrEmailAttachment'
 import { checkActorRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
@@ -119,6 +120,8 @@ export async function POST(req: NextRequest) {
 
     if (user.email && qrCode) {
       try {
+        const qrAttachment = await createQrPngAttachment(qrCode, 'pohodapass-qr')
+
         await sendAppEmail({
           from: 'POHODA 2026 <registracia@pohodapass.sk>',
           to: user.email,
@@ -128,7 +131,8 @@ export async function POST(req: NextRequest) {
             <p>Dobrý deň, ${escapeHtml(user.meno)} ${escapeHtml(user.priezvisko)},</p>
             <p>Vaša registrácia bola schválená. Môžete používať aplikáciu POHODA PASS.</p>
             <p>Váš QR kód: <b>${escapeHtml(qrCode)}</b></p>
-          `
+          `,
+          attachments: qrAttachment ? [qrAttachment] : undefined
         })
         emailSent = true
       } catch {
