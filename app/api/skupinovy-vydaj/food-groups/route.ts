@@ -349,3 +349,63 @@ export async function POST(req: NextRequest) {
     )
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const actor = await getCurrentUser()
+
+    if (!actor) {
+      return NextResponse.json({ error: 'Nie si prihlásený.' }, { status: 401 })
+    }
+
+    const body = await req.json().catch(() => ({}))
+    const registrationGroupId = cleanText(body.registrationGroupId)
+    const foodGroupId = cleanText(body.foodGroupId)
+
+    if (!registrationGroupId || !foodGroupId) {
+      return NextResponse.json({ error: 'Chýba registračná alebo stravovacia skupina.' }, { status: 400 })
+    }
+
+    await assertGroupAccess(actor.id, registrationGroupId)
+
+    const { data: group, error: groupError } = await supabaseServer
+      .from('groups')
+      .select('id, name')
+      .eq('id', foodGroupId)
+      .eq('registration_group_id', registrationGroupId)
+      .maybeSingle()
+
+    if (groupError) throw groupError
+    if (!group) {
+      return NextResponse.json({ error: 'Stravovacia skupina sa nenašla.' }, { status: 404 })
+    }
+
+    const { error: memberError } = await supabaseServer
+      .from('group_members')
+      .delete()
+      .eq('group_id', foodGroupId)
+
+    if (memberError) throw memberError
+
+    const { error: deleteError } = await supabaseServer
+      .from('groups')
+      .delete()
+      .eq('id', foodGroupId)
+      .eq('registration_group_id', registrationGroupId)
+
+    if (deleteError) throw deleteError
+
+    const groups = await loadFoodGroups(registrationGroupId)
+
+    return NextResponse.json({
+      ok: true,
+      groups,
+      message: `Stravovacia skupina "${group.name || ''}" bola zrušená.`
+    })
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message || 'Stravovaciu skupinu sa nepodarilo zrušiť.' },
+      { status: err?.status || 500 }
+    )
+  }
+}
