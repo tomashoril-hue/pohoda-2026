@@ -17,6 +17,11 @@ type RegisterResult = {
   qr_code?: string
 }
 
+const NAME_MAX_LENGTH = 60
+const EMAIL_MAX_LENGTH = 254
+const PHONE_MAX_LENGTH = 24
+const REGISTRATION_NOTE_MAX_LENGTH = 120
+
 const registerCopy = {
   SK: {
     badge: 'Registrácia stravy',
@@ -33,7 +38,7 @@ const registerCopy = {
     other: 'Iné',
     otherPlaceholder: 'Napíš, pod koho patríš',
     clearGroup: 'Zrušiť výber skupiny',
-    privacyText: 'Potvrdzujem, že som sa oboznámil/a s pravidlami ochrany osobných údajov.',
+    privacyText: 'Beriem na vedomie spracovanie mojich osobných údajov v rozsahu potrebnom na registráciu, správu stravovania, prideľovanie QR/NFC identifikátora, evidenciu výberu stravy, nárokov a výdaja stravy v systéme PohodaPass. Potvrdzujem, že som sa oboznámil/a s',
     privacyLink: 'Pravidlá ochrany osobných údajov',
     submit: 'Registrovať',
     loading: 'Spracovávam...',
@@ -51,6 +56,10 @@ const registerCopy = {
     validationFirstName: 'Zadaj meno.',
     validationLastName: 'Zadaj priezvisko.',
     validationEmail: 'Zadaj e-mail.',
+    validationEmailFormat: 'Zadaj platný e-mail.',
+    validationNameFormat: 'Meno a priezvisko môžu obsahovať iba písmená, medzery, bodku, pomlčku alebo apostrof a môžu mať najviac 60 znakov.',
+    validationPhoneFormat: 'Telefón zadaj v medzinárodnom tvare, napríklad +421900123456.',
+    validationNoteLength: 'Poznámka k registračnej skupine môže mať najviac 120 znakov.',
     validationGroup: 'Vyber registračnú skupinu alebo možnosť Iné.',
     validationOther: 'Doplň, pod koho patríš.',
     validationPrivacy: 'Potvrď oboznámenie s pravidlami ochrany osobných údajov.'
@@ -70,7 +79,7 @@ const registerCopy = {
     other: 'Other',
     otherPlaceholder: 'Tell us who you belong under',
     clearGroup: 'Clear group selection',
-    privacyText: 'I confirm that I have read the personal data protection rules.',
+    privacyText: 'I acknowledge the processing of my personal data to the extent necessary for registration, meal administration, QR/NFC identifier assignment, meal selection records, meal entitlements and meal issue records in the PohodaPass system. I confirm that I have read the',
     privacyLink: 'Personal data protection rules',
     submit: 'Register',
     loading: 'Processing...',
@@ -88,6 +97,10 @@ const registerCopy = {
     validationFirstName: 'Enter first name.',
     validationLastName: 'Enter last name.',
     validationEmail: 'Enter e-mail.',
+    validationEmailFormat: 'Enter a valid e-mail.',
+    validationNameFormat: 'First name and last name may contain only letters, spaces, a dot, hyphen or apostrophe and may have at most 60 characters.',
+    validationPhoneFormat: 'Enter the phone number in international format, for example +421900123456.',
+    validationNoteLength: 'Registration group note may have at most 120 characters.',
     validationGroup: 'Choose a registration group or Other.',
     validationOther: 'Fill in who you belong under.',
     validationPrivacy: 'Confirm that you have read the personal data protection rules.'
@@ -167,11 +180,21 @@ export default function RegisterClient({ language = 'SK' }: { language?: AppLang
   }
 
   const handleSubmit = async () => {
-    if (!meno.trim()) return alert(copy.validationFirstName)
-    if (!priezvisko.trim()) return alert(copy.validationLastName)
-    if (!email.trim()) return alert(copy.validationEmail)
+    const cleanFirstName = cleanName(meno)
+    const cleanLastName = cleanName(priezvisko)
+    const cleanEmail = email.trim().toLowerCase()
+    const cleanPhone = normalizePhone(telefon)
+    const cleanRegistrationGroupNote = registrationGroupNote.trim().replace(/\s+/g, ' ')
+
+    if (!cleanFirstName) return alert(copy.validationFirstName)
+    if (!cleanLastName) return alert(copy.validationLastName)
+    if (!isValidName(cleanFirstName) || !isValidName(cleanLastName)) return alert(copy.validationNameFormat)
+    if (!cleanEmail) return alert(copy.validationEmail)
+    if (!isValidEmail(cleanEmail)) return alert(copy.validationEmailFormat)
+    if (telefon.trim() && !cleanPhone) return alert(copy.validationPhoneFormat)
     if (!registrationGroupId) return alert(copy.validationGroup)
-    if (registrationGroupId === 'OTHER' && !registrationGroupNote.trim()) return alert(copy.validationOther)
+    if (registrationGroupId === 'OTHER' && !cleanRegistrationGroupNote) return alert(copy.validationOther)
+    if (cleanRegistrationGroupNote.length > REGISTRATION_NOTE_MAX_LENGTH) return alert(copy.validationNoteLength)
     if (!privacyAccepted) return alert(copy.validationPrivacy)
 
     setLoading(true)
@@ -181,14 +204,14 @@ export default function RegisterClient({ language = 'SK' }: { language?: AppLang
       const ipData = await ipRes.json()
 
       const { data, error } = await supabase.rpc('create_registration', {
-        p_meno: meno.trim(),
-        p_priezvisko: priezvisko.trim(),
-        p_email: email.trim(),
-        p_telefon: telefon.trim(),
+        p_meno: cleanFirstName,
+        p_priezvisko: cleanLastName,
+        p_email: cleanEmail,
+        p_telefon: cleanPhone,
         p_typ_stravy: typStravy,
         p_skupina: null,
         p_registration_group_id: registrationGroupId === 'OTHER' ? null : registrationGroupId,
-        p_registration_group_note: registrationGroupId === 'OTHER' ? registrationGroupNote.trim() : null,
+        p_registration_group_note: registrationGroupId === 'OTHER' ? cleanRegistrationGroupNote : null,
         p_zdroj: 'WEBAPP',
         p_ip: ipData.ip
       })
@@ -367,10 +390,45 @@ export default function RegisterClient({ language = 'SK' }: { language?: AppLang
         </p>
 
         <div className="register-grid" style={styles.grid}>
-          <input className="register-input" style={styles.input} placeholder={copy.firstName} value={meno} onChange={e => setMeno(e.target.value)} />
-          <input className="register-input" style={styles.input} placeholder={copy.lastName} value={priezvisko} onChange={e => setPriezvisko(e.target.value)} />
-          <input className="register-input" style={styles.input} placeholder={copy.email} value={email} onChange={e => setEmail(e.target.value)} type="email" />
-          <input className="register-input" style={styles.input} placeholder={copy.phone} value={telefon} onChange={e => setTelefon(e.target.value)} />
+          <input
+            className="register-input"
+            style={styles.input}
+            placeholder={copy.firstName}
+            value={meno}
+            onChange={e => setMeno(e.target.value.slice(0, NAME_MAX_LENGTH))}
+            maxLength={NAME_MAX_LENGTH}
+            autoComplete="given-name"
+          />
+          <input
+            className="register-input"
+            style={styles.input}
+            placeholder={copy.lastName}
+            value={priezvisko}
+            onChange={e => setPriezvisko(e.target.value.slice(0, NAME_MAX_LENGTH))}
+            maxLength={NAME_MAX_LENGTH}
+            autoComplete="family-name"
+          />
+          <input
+            className="register-input"
+            style={styles.input}
+            placeholder={copy.email}
+            value={email}
+            onChange={e => setEmail(e.target.value.slice(0, EMAIL_MAX_LENGTH))}
+            type="email"
+            maxLength={EMAIL_MAX_LENGTH}
+            autoComplete="email"
+          />
+          <input
+            className="register-input"
+            style={styles.input}
+            placeholder={`${copy.phone} (+421...)`}
+            value={telefon}
+            onChange={e => setTelefon(e.target.value.slice(0, PHONE_MAX_LENGTH))}
+            type="tel"
+            inputMode="tel"
+            maxLength={PHONE_MAX_LENGTH}
+            autoComplete="tel"
+          />
 
           <select className="register-input" style={styles.input} value={typStravy} onChange={e => setTypStravy(e.target.value)} aria-label={copy.foodType}>
             <option value="MASO">MASO</option>
@@ -469,7 +527,8 @@ export default function RegisterClient({ language = 'SK' }: { language?: AppLang
               style={styles.input}
               placeholder={copy.otherPlaceholder}
               value={registrationGroupNote}
-              onChange={e => setRegistrationGroupNote(e.target.value)}
+              onChange={e => setRegistrationGroupNote(e.target.value.slice(0, REGISTRATION_NOTE_MAX_LENGTH))}
+              maxLength={REGISTRATION_NOTE_MAX_LENGTH}
             />
           )}
         </div>
@@ -541,6 +600,34 @@ function normalizeSearch(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
+}
+
+function cleanName(value: string) {
+  return value.trim().replace(/\s+/g, ' ')
+}
+
+function isValidName(value: string) {
+  if (value.length < 2 || value.length > NAME_MAX_LENGTH) return false
+  if (!/\p{L}/u.test(value)) return false
+
+  return /^[\p{L}\p{M} .'-]+$/u.test(value)
+}
+
+function isValidEmail(value: string) {
+  if (value.length > EMAIL_MAX_LENGTH) return false
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)
+}
+
+function normalizePhone(value: string) {
+  const text = value.trim()
+  if (!text) return ''
+
+  const compact = text.replace(/[\s().-]/g, '')
+
+  if (!/^\+[1-9]\d{7,14}$/.test(compact)) return ''
+
+  return compact
 }
 
 const styles: Record<string, CSSProperties> = {
