@@ -1117,11 +1117,64 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
         return
       }
 
-      void loadIssuePeople(meal)
+      void createFoodGroupIssue()
       return
     }
 
     void loadIssuePeople(meal)
+  }
+
+  async function createFoodGroupIssue() {
+    if (!selectedGroupId || !selectedFoodGroupId || !date || !meal) return
+
+    setIssueLoading(true)
+    setIssueMessage('')
+    setFoodGroupMessage('')
+    setCreatedIssue(null)
+
+    try {
+      const people = await loadFoodGroupPeople(meal, selectedFoodGroupId)
+      const issuablePeople = people.filter(isIssuePersonReady)
+
+      if (issuablePeople.length === 0) {
+        throw new Error('Táto stravovacia skupina nemá pre tento výdaj žiadne vydateľné osoby.')
+      }
+
+      const dailyIssues = await loadExistingIssuesFor(selectedGroupId, date, '')
+      const existingForMeal = dailyIssues.filter(issue => issue.meal === meal).length
+      const title = defaultIssueTitle(selectedGroup?.name || '', meal, existingForMeal + 1)
+
+      const res = await fetch('/api/skupinovy-vydaj/issues', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          registrationGroupId: selectedGroupId,
+          date,
+          meal,
+          title,
+          people: issuablePeople.map(person => ({
+            userId: person.id,
+            source: 'FOOD_GROUP'
+          })),
+          pickupUserIds: issuablePeople.map(person => person.id)
+        })
+      })
+      const json = await res.json()
+
+      if (!res.ok) throw new Error(json.error || 'Skupinový výdaj sa nepodarilo vytvoriť.')
+
+      setPrepareSourceModalOpen(false)
+      resetIssueState({ preserveMeal: true, clearExisting: false })
+      await loadExistingIssuesFor(selectedGroupId, date, '')
+      setIssueMessage(json.message || `Skupinový výdaj bol vytvorený pre ${issuablePeople.length} osôb.`)
+    } catch (err: any) {
+      const message = err?.message || 'Skupinový výdaj sa nepodarilo vytvoriť.'
+      setFoodGroupMessage(message)
+      setFoodGroupMessageType('error')
+      setIssueMessage(message, 'error')
+    } finally {
+      setIssueLoading(false)
+    }
   }
 
   function closeIssueEditor() {
