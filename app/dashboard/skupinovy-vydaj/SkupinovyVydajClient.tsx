@@ -272,6 +272,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const [foodGroupName, setFoodGroupName] = useState('')
   const [foodGroupMemberIds, setFoodGroupMemberIds] = useState<string[]>([])
   const [foodGroupMembers, setFoodGroupMembers] = useState<SearchUser[]>([])
+  const [foodGroupOutsideUsers, setFoodGroupOutsideUsers] = useState<SearchUser[]>([])
   const [foodGroupMemberMode, setFoodGroupMemberMode] = useState<FoodGroupMemberMode>('group')
   const [foodGroupSearchQuery, setFoodGroupSearchQuery] = useState('')
   const [foodGroupSearchResults, setFoodGroupSearchResults] = useState<SearchUser[]>([])
@@ -280,6 +281,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const [foodGroupPickupMode, setFoodGroupPickupMode] = useState<FoodGroupMemberMode>('group')
   const [foodGroupPickupUserIds, setFoodGroupPickupUserIds] = useState<string[]>([])
   const [foodGroupPickupUsers, setFoodGroupPickupUsers] = useState<SearchUser[]>([])
+  const [foodGroupPickupOutsideUsers, setFoodGroupPickupOutsideUsers] = useState<SearchUser[]>([])
   const [foodGroupPickupQuery, setFoodGroupPickupQuery] = useState('')
   const [foodGroupPickupResults, setFoodGroupPickupResults] = useState<SearchUser[]>([])
   const [foodGroupPickupLoading, setFoodGroupPickupLoading] = useState(false)
@@ -421,12 +423,26 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const pickupSelectionChanged = !sameIds(pickupUserIds, pendingPickupUserIds)
   const foodGroupCandidateUsers = useMemo(() => {
     if (foodGroupMemberQrMode) return foodGroupMembers
+    if (foodGroupMemberOutsideMode) {
+      return mergeSearchUsers(
+        foodGroupOutsideUsers,
+        foodGroupSearchQuery.trim().length >= 3 ? foodGroupSearchResults : []
+      )
+    }
+
     return mergeSearchUsers(foodGroupMembers, foodGroupSearchResults)
-  }, [foodGroupMemberQrMode, foodGroupMembers, foodGroupSearchResults])
+  }, [foodGroupMemberOutsideMode, foodGroupMemberQrMode, foodGroupMembers, foodGroupOutsideUsers, foodGroupSearchQuery, foodGroupSearchResults])
   const foodGroupPickupCandidateUsers = useMemo(() => {
     if (foodGroupPickupQrMode) return foodGroupPickupUsers
+    if (foodGroupPickupOutsideMode) {
+      return mergeSearchUsers(
+        foodGroupPickupOutsideUsers,
+        foodGroupPickupQuery.trim().length >= 3 ? foodGroupPickupResults : []
+      )
+    }
+
     return mergeSearchUsers(foodGroupPickupUsers, foodGroupPickupResults)
-  }, [foodGroupPickupQrMode, foodGroupPickupResults, foodGroupPickupUsers])
+  }, [foodGroupPickupOutsideMode, foodGroupPickupOutsideUsers, foodGroupPickupQrMode, foodGroupPickupQuery, foodGroupPickupResults, foodGroupPickupUsers])
   const moveTargetIssues = useMemo(() => {
     return existingIssues.filter(issue => {
       return issue.id !== editingIssueId && issue.meal === meal && issue.status !== 'CANCELLED'
@@ -799,6 +815,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setFoodGroupName(selected?.name || '')
     setFoodGroupMemberIds([])
     setFoodGroupMembers([])
+    setFoodGroupOutsideUsers([])
     setFoodGroupModalStep('MEMBERS')
     setFoodGroupMemberMode('group')
     setFoodGroupSearchQuery('')
@@ -806,6 +823,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setFoodGroupPickupMode('group')
     setFoodGroupPickupUserIds([])
     setFoodGroupPickupUsers([])
+    setFoodGroupPickupOutsideUsers([])
     setFoodGroupPickupQuery('')
     setFoodGroupPickupResults([])
     setFoodGroupMessage('')
@@ -844,10 +862,12 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
         if (pickupRes.ok) {
           setFoodGroupPickupUserIds(pickupJson.pickupUserIds || [])
           setFoodGroupPickupUsers(pickupJson.pickupUsers || [])
+          setFoodGroupPickupOutsideUsers([])
         }
       } catch {
         setFoodGroupPickupUserIds([])
         setFoodGroupPickupUsers([])
+        setFoodGroupPickupOutsideUsers([])
       }
     } catch (err: any) {
       setFoodGroupMessage(err?.message || 'Členov sa nepodarilo načítať.')
@@ -868,12 +888,14 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setFoodGroupName('')
     setFoodGroupMemberIds([])
     setFoodGroupMembers([])
+    setFoodGroupOutsideUsers([])
     setFoodGroupMemberMode('group')
     setFoodGroupSearchQuery('')
     setFoodGroupSearchResults([])
     setFoodGroupPickupMode('group')
     setFoodGroupPickupUserIds([])
     setFoodGroupPickupUsers([])
+    setFoodGroupPickupOutsideUsers([])
     setFoodGroupPickupQuery('')
     setFoodGroupPickupResults([])
     setFoodGroupMessage('')
@@ -895,10 +917,17 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   }
 
   function toggleFoodGroupMember(user: SearchUser) {
+    const selected = foodGroupMemberIds.includes(user.id)
     setFoodGroupMembers(current => mergeSearchUsers(current, [user]))
     setFoodGroupMemberIds(current => current.includes(user.id)
       ? current.filter(id => id !== user.id)
       : [...current, user.id])
+
+    if (foodGroupMemberOutsideMode) {
+      setFoodGroupOutsideUsers(current => selected
+        ? current.filter(existing => existing.id !== user.id)
+        : mergeSearchUsers(current, [user]))
+    }
   }
 
   function selectAllFoodGroupMembers() {
@@ -907,10 +936,15 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       ...current,
       ...foodGroupCandidateUsers.map(user => user.id)
     ])))
+
+    if (foodGroupMemberOutsideMode) {
+      setFoodGroupOutsideUsers(current => mergeSearchUsers(current, foodGroupCandidateUsers))
+    }
   }
 
   function clearFoodGroupMembers() {
     setFoodGroupMemberIds([])
+    setFoodGroupOutsideUsers([])
   }
 
   function switchFoodGroupMemberMode(mode: FoodGroupMemberMode) {
@@ -1077,10 +1111,17 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   }
 
   function toggleFoodGroupPickupUser(user: SearchUser) {
+    const selected = foodGroupPickupUserIds.includes(user.id)
     setFoodGroupPickupUsers(current => mergeSearchUsers(current, [user]))
     setFoodGroupPickupUserIds(current => current.includes(user.id)
       ? current.filter(id => id !== user.id)
       : [...current, user.id])
+
+    if (foodGroupPickupOutsideMode) {
+      setFoodGroupPickupOutsideUsers(current => selected
+        ? current.filter(existing => existing.id !== user.id)
+        : mergeSearchUsers(current, [user]))
+    }
   }
 
   function selectAllFoodGroupPickupUsers() {
@@ -1089,10 +1130,15 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       ...current,
       ...foodGroupPickupCandidateUsers.map(user => user.id)
     ])))
+
+    if (foodGroupPickupOutsideMode) {
+      setFoodGroupPickupOutsideUsers(current => mergeSearchUsers(current, foodGroupPickupCandidateUsers))
+    }
   }
 
   function clearFoodGroupPickupUsers() {
     setFoodGroupPickupUserIds([])
+    setFoodGroupPickupOutsideUsers([])
   }
 
   async function addFoodGroupPickupUserByQr(qrCode: string) {
