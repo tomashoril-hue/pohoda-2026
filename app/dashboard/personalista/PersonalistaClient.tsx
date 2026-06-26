@@ -7418,21 +7418,24 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid #e5e7eb',
     borderRadius: 6,
     padding: 6,
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(118px, auto))',
-    gap: 5
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'stretch',
+    gap: 5,
+    minWidth: 0
   },
   toolbarStartGroup: {
     display: 'inline-flex',
     alignItems: 'stretch',
-    gap: 0,
-    width: 'max-content'
+    gap: 5,
+    flex: '0 0 auto',
+    minWidth: 0
   },
   iconActionGroup: {
     display: 'inline-flex',
     alignItems: 'stretch',
     gap: 5,
-    width: 'max-content'
+    flex: '0 0 auto'
   },
   iconActionButton: {
     width: 36,
@@ -7472,9 +7475,7 @@ const styles: Record<string, CSSProperties> = {
     boxShadow: '0 1px 2px rgba(17, 24, 39, 0.12)'
   },
   mobileActionStripPanel: {
-    gridTemplateColumns: 'none',
-    gridAutoFlow: 'column',
-    gridAutoColumns: 'max-content',
+    flexWrap: 'nowrap',
     overflowX: 'auto',
     overflowY: 'hidden',
     paddingBottom: 6,
@@ -7998,7 +7999,8 @@ const styles: Record<string, CSSProperties> = {
     padding: '7px 9px',
     fontSize: 12,
     fontWeight: 950,
-    cursor: 'pointer'
+    cursor: 'pointer',
+    whiteSpace: 'nowrap'
   },
   createPanel: {
     background: '#fff',
@@ -8716,7 +8718,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 12,
     fontWeight: 950,
     textDecoration: 'none',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    flex: '0 0 auto'
   },
   pendingReviewButton: {
     background: '#fef3c7',
