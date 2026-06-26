@@ -660,8 +660,8 @@ export default async function DashboardPage({
               const issuedByName = fullName(issuedByUser)
               const issuedTime = formatTime(meal.issued?.issued_at, language)
               const showBulkPickup = meal.issued?.status === 'VYDANE' && meal.issued?.sposob === 'HROMADNE'
-              const entitlementIsYes = meal.entitlement === (language === 'EN' ? 'YES' : 'ÁNO')
-              const entitlementIsNo = meal.entitlement === (language === 'EN' ? 'NO' : 'NIE')
+              const entitlementIsYes = meal.entitlement === 'YES' || meal.entitlement === 'ÁNO'
+              const entitlementIsNo = meal.entitlement === 'NO' || meal.entitlement === 'NIE'
               const noInterest = meal.selection?.volba === 'BEZ_ZAUJMU'
               const state = mealState({
                 entitlement: meal.entitlement,
@@ -726,14 +726,6 @@ export default async function DashboardPage({
                     <div style={styles.todayRowWide}>
                       <span>{copy.mealStatus}</span>
                       <b style={styles.todayStateInline}>
-                        <span
-                          style={{
-                            ...styles.todayStateDot,
-                            ...(state.tone === 'issued' ? styles.todayStateDotIssued : {}),
-                            ...(state.tone === 'prepared' ? styles.todayStateDotPrepared : {}),
-                            ...(state.tone === 'blocked' ? styles.todayStateDotBlocked : {})
-                          }}
-                        />
                         {state.label}
                       </b>
                       {state.detail && (
