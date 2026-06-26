@@ -680,6 +680,17 @@ export default function MenuClient({
           .deadline-blink {
             animation: deadlinePulse 0.7s infinite;
           }
+
+          .menu-back-button {
+            transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+            -webkit-tap-highlight-color: rgba(86, 219, 63, 0.22);
+          }
+
+          .menu-back-button:active {
+            transform: translate(3px, 3px) scale(0.96);
+            box-shadow: 1px 1px 0 #000 !important;
+            filter: brightness(0.94);
+          }
         `}
       </style>
 
@@ -760,6 +771,7 @@ export default function MenuClient({
 
           {!kioskMode && (
             <a
+              className="menu-back-button"
               href="/dashboard"
               aria-label={isEnglish ? 'Back to dashboard' : 'Späť na dashboard'}
               title={isEnglish ? 'Back' : 'Späť'}

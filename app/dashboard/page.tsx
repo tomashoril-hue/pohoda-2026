@@ -582,7 +582,6 @@ export default async function DashboardPage({
           .dashboard-page { padding: 12px !important; }
           .dashboard-top-bar { margin-bottom: 12px !important; gap: 10px !important; }
           .dashboard-logo { height: 42px !important; max-width: 190px !important; }
-          .dashboard-date { font-size: 12px !important; padding: 7px 10px !important; }
           .dashboard-card { padding: 18px !important; border-radius: 22px !important; box-shadow: 7px 7px 0 #000 !important; }
           .dashboard-badge { display: none !important; }
           .dashboard-title { font-size: 34px !important; }
@@ -609,7 +608,6 @@ export default async function DashboardPage({
         </a>
         <div style={styles.topControls}>
           <LanguageSwitcher language={language} compact />
-          <div className="dashboard-date" style={styles.date}>8. & 9. - 11. 7. 2026</div>
         </div>
       </div>
 
@@ -910,14 +908,6 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'flex-end',
     flexWrap: 'wrap',
     gap: 10
-  },
-  date: {
-    background: '#000',
-    color: '#fff',
-    borderRadius: 999,
-    padding: '10px 18px',
-    fontWeight: 900,
-    fontSize: 18
   },
   card: {
     maxWidth: 760,
