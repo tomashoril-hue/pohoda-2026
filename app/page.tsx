@@ -80,10 +80,15 @@ export default async function HomePage() {
               gap: 7px !important;
             }
 
+            .home-hero-title-row {
+              align-items: flex-start !important;
+              gap: 10px !important;
+            }
+
             .home-chef-frame {
-              width: 44px !important;
-              height: 44px !important;
-              min-width: 44px !important;
+              width: 46px !important;
+              height: 46px !important;
+              min-width: 46px !important;
               border-radius: 15px !important;
               box-shadow: 3px 3px 0 #000 !important;
             }
@@ -136,6 +141,12 @@ export default async function HomePage() {
 
         <div className="home-right-tools" style={styles.rightTools}>
           <LanguageSwitcher language={language} compact />
+        </div>
+      </div>
+
+      <section className="home-card" style={styles.card}>
+        <div className="home-hero-title-row" style={styles.heroTitleRow}>
+          <h1 className="home-title" style={styles.title}>POHODA 2026</h1>
 
           <div className="home-chef-frame" style={styles.chefIconWrap}>
             <img
@@ -145,10 +156,7 @@ export default async function HomePage() {
             />
           </div>
         </div>
-      </div>
 
-      <section className="home-card" style={styles.card}>
-        <h1 className="home-title" style={styles.title}>POHODA 2026</h1>
         <div className="home-system" style={styles.systemTitle}>{copy.system}</div>
 
         <p className="home-subtitle" style={styles.subtitle}>
@@ -167,7 +175,7 @@ export default async function HomePage() {
 
         <div className="home-info-grid" style={styles.infoGrid}>
           <div style={styles.infoCard}>
-            <div style={styles.infoIcon}>01</div>
+            <div style={{ ...styles.infoIcon, ...styles.infoIconGreen }} aria-hidden="true" />
 
             <div>
               <div style={styles.infoTitle}>{copy.selectionTitle}</div>
@@ -176,7 +184,7 @@ export default async function HomePage() {
           </div>
 
           <div style={styles.infoCard}>
-            <div style={styles.infoIcon}>QR</div>
+            <div style={{ ...styles.infoIcon, ...styles.infoIconPink }} aria-hidden="true" />
 
             <div>
               <div style={styles.infoTitle}>{copy.qrTitle}</div>
@@ -185,7 +193,7 @@ export default async function HomePage() {
           </div>
 
           <div style={styles.infoCard}>
-            <div style={styles.infoIcon}>03</div>
+            <div style={{ ...styles.infoIcon, ...styles.infoIconPurple }} aria-hidden="true" />
 
             <div>
               <div style={styles.infoTitle}>{copy.groupsTitle}</div>
@@ -262,6 +270,12 @@ const styles: Record<string, CSSProperties> = {
     padding: 30,
     boxShadow: '0 18px 46px rgba(0,0,0,0.24)'
   },
+  heroTitleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16
+  },
   title: {
     margin: 0,
     fontSize: 52,
@@ -332,13 +346,17 @@ const styles: Record<string, CSSProperties> = {
     height: 38,
     minWidth: 38,
     borderRadius: 14,
-    background: '#56db3f',
     border: '2px solid #000',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 13,
-    fontWeight: 950
+    boxShadow: '3px 3px 0 #000'
+  },
+  infoIconGreen: {
+    background: '#56db3f'
+  },
+  infoIconPink: {
+    background: '#f25be6'
+  },
+  infoIconPurple: {
+    background: '#7417e8'
   },
   infoTitle: {
     fontSize: 16,
