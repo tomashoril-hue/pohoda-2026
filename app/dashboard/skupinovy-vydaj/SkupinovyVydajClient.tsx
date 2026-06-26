@@ -1412,8 +1412,11 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     }
 
     setIssueMessage('')
+    setSourceMode('FOOD_GROUP')
+    setSelectedFoodGroupId('')
     setPrepareSourceStep('SOURCE')
     setPrepareSourceModalOpen(true)
+    if (selectedGroupId) void loadFoodGroups(selectedGroupId)
   }
 
   function selectSourceMode(nextSourceMode: IssueSourceMode, nextStep: 'SOURCE' | 'DETAIL' = 'SOURCE') {
@@ -2959,19 +2962,6 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
 
               {prepareSourceStep === 'SOURCE' && (
               <div style={styles.sourceChoiceGrid}>
-                <button
-                  type="button"
-                  onClick={() => selectSourceMode('REGISTRATION_GROUP')}
-                  style={{
-                    ...styles.sourceChoiceButton,
-                    ...(sourceMode === 'REGISTRATION_GROUP' ? styles.sourceChoiceButtonActive : {})
-                  }}
-                  disabled={issueLoading}
-                >
-                  <b>Registračná skupina</b>
-                  <span>Aktuálne zaradení ľudia</span>
-                </button>
-
                 <button
                   type="button"
                   onClick={() => selectSourceMode('FOOD_GROUP', 'DETAIL')}
