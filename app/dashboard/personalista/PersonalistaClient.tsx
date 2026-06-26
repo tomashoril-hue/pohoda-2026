@@ -3526,30 +3526,32 @@ export default function PersonalistaClient({
         ...styles.actionPanel,
         ...(isMobile ? styles.mobileActionStripPanel : {})
       }}>
-        <button
-          type="button"
-          style={styles.iconActionButton}
-          title="Domov - posledné upravené osoby"
-          aria-label="Domov - posledné upravené osoby"
-          onClick={resetPersonalistaHome}
-        >
-          <HomeIcon />
-        </button>
+        <div style={styles.iconActionGroup}>
+          <button
+            type="button"
+            style={styles.iconActionButton}
+            title="Domov - posledné upravené osoby"
+            aria-label="Domov - posledné upravené osoby"
+            onClick={resetPersonalistaHome}
+          >
+            <HomeIcon />
+          </button>
 
-        <button
-          type="button"
-          style={{
-            ...styles.iconActionButton,
-            opacity: refreshingPeople ? 0.65 : 1,
-            cursor: refreshingPeople ? 'wait' : 'pointer'
-          }}
-          title="Obnoviť personalistiku"
-          aria-label="Obnoviť personalistiku"
-          disabled={refreshingPeople}
-          onClick={refreshPersonalistaData}
-        >
-          <RefreshIcon />
-        </button>
+          <button
+            type="button"
+            style={{
+              ...styles.iconActionButton,
+              opacity: refreshingPeople ? 0.65 : 1,
+              cursor: refreshingPeople ? 'wait' : 'pointer'
+            }}
+            title="Obnoviť personalistiku"
+            aria-label="Obnoviť personalistiku"
+            disabled={refreshingPeople}
+            onClick={refreshPersonalistaData}
+          >
+            <RefreshIcon />
+          </button>
+        </div>
 
         <button
           type="button"
@@ -7417,6 +7419,12 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(118px, auto))',
     gap: 5
+  },
+  iconActionGroup: {
+    display: 'inline-flex',
+    alignItems: 'stretch',
+    gap: 5,
+    width: 'max-content'
   },
   iconActionButton: {
     width: 36,
