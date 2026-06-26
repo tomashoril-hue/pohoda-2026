@@ -226,6 +226,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const delegateSearchModeRef = useRef<'group' | 'outside'>('group')
   const pickupSearchRequestRef = useRef(0)
   const foodGroupSearchRequestRef = useRef(0)
+  const foodGroupPickupSearchRequestRef = useRef(0)
   const [date, setDate] = useState(initialDate)
   const [meal, setMeal] = useState<MealSelection>('')
   const [confirmed, setConfirmed] = useState(false)
@@ -276,6 +277,14 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const [foodGroupMessage, setFoodGroupMessage] = useState('')
   const [foodGroupMessageType, setFoodGroupMessageType] = useState<'ok' | 'error'>('ok')
   const [foodGroupQrModalOpen, setFoodGroupQrModalOpen] = useState(false)
+  const [foodGroupPickupModalOpen, setFoodGroupPickupModalOpen] = useState(false)
+  const [foodGroupPickupGroup, setFoodGroupPickupGroup] = useState<FoodGroup | null>(null)
+  const [foodGroupPickupMode, setFoodGroupPickupMode] = useState<FoodGroupMemberMode>('group')
+  const [foodGroupPickupUserIds, setFoodGroupPickupUserIds] = useState<string[]>([])
+  const [foodGroupPickupUsers, setFoodGroupPickupUsers] = useState<SearchUser[]>([])
+  const [foodGroupPickupQuery, setFoodGroupPickupQuery] = useState('')
+  const [foodGroupPickupResults, setFoodGroupPickupResults] = useState<SearchUser[]>([])
+  const [foodGroupPickupLoading, setFoodGroupPickupLoading] = useState(false)
   const [delegatesPanelOpen, setDelegatesPanelOpen] = useState(false)
   const [groupPickerOpen, setGroupPickerOpen] = useState(false)
   const [groupQuery, setGroupQuery] = useState('')
@@ -314,6 +323,9 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const foodGroupMemberGroupMode = foodGroupMemberMode === 'group'
   const foodGroupMemberOutsideMode = foodGroupMemberMode === 'outside'
   const foodGroupMemberQrMode = foodGroupMemberMode === 'qr'
+  const foodGroupPickupGroupMode = foodGroupPickupMode === 'group'
+  const foodGroupPickupOutsideMode = foodGroupPickupMode === 'outside'
+  const foodGroupPickupQrMode = foodGroupPickupMode === 'qr'
   const daySelectionReady = Boolean(date && selectedGroupId)
   const readOnlyDate = Boolean(date && minEditableDate && date < minEditableDate)
   const selectedIssuePeople = issuePeople.filter(person => selectedIssueUserIds.includes(person.id))
@@ -411,6 +423,10 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     if (foodGroupMemberQrMode) return foodGroupMembers
     return mergeSearchUsers(foodGroupMembers, foodGroupSearchResults)
   }, [foodGroupMemberQrMode, foodGroupMembers, foodGroupSearchResults])
+  const foodGroupPickupCandidateUsers = useMemo(() => {
+    if (foodGroupPickupQrMode) return foodGroupPickupUsers
+    return mergeSearchUsers(foodGroupPickupUsers, foodGroupPickupResults)
+  }, [foodGroupPickupQrMode, foodGroupPickupResults, foodGroupPickupUsers])
   const moveTargetIssues = useMemo(() => {
     return existingIssues.filter(issue => {
       return issue.id !== editingIssueId && issue.meal === meal && issue.status !== 'CANCELLED'
@@ -755,6 +771,21 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     return (json.people || []) as IssuePerson[]
   }
 
+  async function loadFoodGroupPickupUserIds(foodGroupId = selectedFoodGroupId) {
+    if (!selectedGroupId || !foodGroupId) return []
+
+    const params = new URLSearchParams({
+      registrationGroupId: selectedGroupId,
+      foodGroupId
+    })
+    const res = await fetch(`/api/skupinovy-vydaj/food-groups/pickup-users?${params.toString()}`)
+    const json = await res.json()
+
+    if (!res.ok) throw new Error(json.error || 'Oprávnených prevziať sa nepodarilo načítať.')
+
+    return (json.pickupUserIds || []) as string[]
+  }
+
   async function openFoodGroupModal(groupId = selectedFoodGroupId) {
     if (!selectedGroupId) {
       setIssueMessage('Najprv vyber registračnú skupinu.', 'error')
@@ -932,6 +963,204 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
         tone: 'error' as const,
         message
       }
+    }
+  }
+
+  function closeFoodGroupPickupModal() {
+    if (foodGroupPickupLoading) return
+    foodGroupPickupSearchRequestRef.current += 1
+    setFoodGroupPickupModalOpen(false)
+    setFoodGroupPickupGroup(null)
+    setFoodGroupPickupMode('group')
+    setFoodGroupPickupUserIds([])
+    setFoodGroupPickupUsers([])
+    setFoodGroupPickupQuery('')
+    setFoodGroupPickupResults([])
+  }
+
+  async function openFoodGroupPickupModal(group: FoodGroup) {
+    if (!selectedGroupId) {
+      setFoodGroupMessage('Najprv vyber registračnú skupinu.')
+      setFoodGroupMessageType('error')
+      return
+    }
+
+    setFoodGroupPickupGroup(group)
+    setFoodGroupPickupMode('group')
+    setFoodGroupPickupUserIds([])
+    setFoodGroupPickupUsers([])
+    setFoodGroupPickupQuery('')
+    setFoodGroupPickupResults([])
+    setFoodGroupMessage('')
+    setFoodGroupMessageType('ok')
+    setFoodGroupPickupModalOpen(true)
+    setFoodGroupPickupLoading(true)
+
+    try {
+      const params = new URLSearchParams({
+        registrationGroupId: selectedGroupId,
+        foodGroupId: group.id
+      })
+      const res = await fetch(`/api/skupinovy-vydaj/food-groups/pickup-users?${params.toString()}`)
+      const json = await res.json()
+
+      if (!res.ok) throw new Error(json.error || 'Oprávnených prevziať sa nepodarilo načítať.')
+
+      setFoodGroupPickupUserIds(json.pickupUserIds || [])
+      setFoodGroupPickupUsers(json.pickupUsers || [])
+    } catch (err: any) {
+      setFoodGroupMessage(err?.message || 'Oprávnených prevziať sa nepodarilo načítať.')
+      setFoodGroupMessageType('error')
+    } finally {
+      setFoodGroupPickupLoading(false)
+    }
+
+    void searchFoodGroupPickupUsers('', 'group')
+  }
+
+  function switchFoodGroupPickupMode(mode: FoodGroupMemberMode) {
+    foodGroupPickupSearchRequestRef.current += 1
+    setFoodGroupPickupMode(mode)
+    setFoodGroupPickupQuery('')
+    setFoodGroupPickupResults([])
+    setFoodGroupPickupLoading(false)
+
+    if (mode === 'group') {
+      void searchFoodGroupPickupUsers('', 'group')
+    }
+  }
+
+  async function searchFoodGroupPickupUsers(query: string, mode = foodGroupPickupMode) {
+    const requestId = foodGroupPickupSearchRequestRef.current + 1
+    foodGroupPickupSearchRequestRef.current = requestId
+    setFoodGroupPickupQuery(query)
+    setFoodGroupPickupResults([])
+
+    const searchText = query.trim()
+    if (
+      !selectedGroupId ||
+      !date ||
+      mode === 'qr' ||
+      (mode === 'outside' && searchText.length < 3)
+    ) {
+      setFoodGroupPickupLoading(false)
+      return
+    }
+
+    setFoodGroupPickupLoading(true)
+
+    try {
+      const params = new URLSearchParams({
+        registrationGroupId: selectedGroupId,
+        mode: 'pickup',
+        date,
+        q: searchText
+      })
+      if (mode === 'outside') params.set('scope', 'outside')
+      const res = await fetch(`/api/skupinovy-vydaj/people-search?${params.toString()}`)
+      const json = await res.json()
+
+      if (!res.ok) throw new Error(json.error || 'Vyhľadávanie zlyhalo.')
+
+      if (foodGroupPickupSearchRequestRef.current !== requestId) return
+      setFoodGroupPickupResults(json.people || [])
+    } catch (err: any) {
+      if (foodGroupPickupSearchRequestRef.current !== requestId) return
+      setFoodGroupMessage(err?.message || 'Vyhľadávanie zlyhalo.')
+      setFoodGroupMessageType('error')
+    } finally {
+      if (foodGroupPickupSearchRequestRef.current === requestId) {
+        setFoodGroupPickupLoading(false)
+      }
+    }
+  }
+
+  function toggleFoodGroupPickupUser(user: SearchUser) {
+    setFoodGroupPickupUsers(current => mergeSearchUsers(current, [user]))
+    setFoodGroupPickupUserIds(current => current.includes(user.id)
+      ? current.filter(id => id !== user.id)
+      : [...current, user.id])
+  }
+
+  async function addFoodGroupPickupUserByQr(qrCode: string) {
+    if (!selectedGroupId) {
+      return {
+        tone: 'error' as const,
+        message: 'Najprv vyber registračnú skupinu.'
+      }
+    }
+
+    try {
+      const params = new URLSearchParams({
+        registrationGroupId: selectedGroupId,
+        qrCode
+      })
+      const res = await fetch(`/api/skupinovy-vydaj/food-groups?${params.toString()}`)
+      const json = await res.json()
+
+      if (!res.ok || !json.user) {
+        const message = json.error || 'QR sa nepodarilo načítať.'
+        setFoodGroupMessage(message)
+        setFoodGroupMessageType('error')
+        return {
+          tone: 'error' as const,
+          message
+        }
+      }
+
+      const user = json.user as SearchUser
+      setFoodGroupPickupUsers(current => mergeSearchUsers(current, [user]))
+      setFoodGroupPickupUserIds(current => current.includes(user.id) ? current : [...current, user.id])
+
+      const message = `${user.name || 'Osoba'} pridaná medzi oprávnených prevziať.`
+      setFoodGroupMessage(message)
+      setFoodGroupMessageType('ok')
+
+      return {
+        tone: 'success' as const,
+        message
+      }
+    } catch (err: any) {
+      const message = err?.message || 'QR sa nepodarilo načítať.'
+      setFoodGroupMessage(message)
+      setFoodGroupMessageType('error')
+      return {
+        tone: 'error' as const,
+        message
+      }
+    }
+  }
+
+  async function saveFoodGroupPickupUsers() {
+    if (!selectedGroupId || !foodGroupPickupGroup) return
+
+    setFoodGroupPickupLoading(true)
+    setFoodGroupMessage('')
+
+    try {
+      const res = await fetch('/api/skupinovy-vydaj/food-groups/pickup-users', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          registrationGroupId: selectedGroupId,
+          foodGroupId: foodGroupPickupGroup.id,
+          pickupUserIds: foodGroupPickupUserIds
+        })
+      })
+      const json = await res.json()
+
+      if (!res.ok) throw new Error(json.error || 'Oprávnených prevziať sa nepodarilo uložiť.')
+
+      setFoodGroupPickupUsers(json.pickupUsers || foodGroupPickupUsers)
+      setFoodGroupPickupUserIds(json.pickupUserIds || foodGroupPickupUserIds)
+      setFoodGroupPickupModalOpen(false)
+      setFoodGroupMessage(json.message || 'Oprávnení prevziať boli uložení.')
+      setFoodGroupMessageType('ok')
+    } catch (err: any) {
+      setFoodGroupMessage(err?.message || 'Oprávnených prevziať sa nepodarilo uložiť.')
+      setFoodGroupMessageType('error')
+    } finally {
+      setFoodGroupPickupLoading(false)
     }
   }
 
@@ -1189,6 +1418,15 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     try {
       const people = await loadFoodGroupPeople(meal, selectedFoodGroupId)
       const issuablePeople = people.filter(isIssuePersonReady)
+      let savedPickupUserIds: string[] = []
+      try {
+        savedPickupUserIds = await loadFoodGroupPickupUserIds(selectedFoodGroupId)
+      } catch {
+        savedPickupUserIds = []
+      }
+      const pickupIds = savedPickupUserIds.length > 0
+        ? savedPickupUserIds
+        : issuablePeople.map(person => person.id)
 
       if (issuablePeople.length === 0) {
         throw new Error('Táto stravovacia skupina nemá pre tento výdaj žiadne vydateľné osoby.')
@@ -1208,7 +1446,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
             userId: person.id,
             source: 'FOOD_GROUP'
           })),
-          pickupUserIds: issuablePeople.map(person => person.id)
+          pickupUserIds: pickupIds
         })
       })
       const json = await res.json()
@@ -2764,6 +3002,19 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                                 type="button"
                                 onClick={event => {
                                   event.stopPropagation()
+                                  void openFoodGroupPickupModal(group)
+                                }}
+                                style={styles.smallEditButton}
+                                disabled={foodGroupsLoading || issueLoading}
+                                title="Oprávnení prevziať"
+                                aria-label="Oprávnení prevziať"
+                              >
+                                P
+                              </button>
+                              <button
+                                type="button"
+                                onClick={event => {
+                                  event.stopPropagation()
                                   void deleteFoodGroup(group)
                                 }}
                                 style={styles.smallRemoveButton}
@@ -3066,6 +3317,149 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   style={styles.primaryButton}
                 >
                   {foodGroupsLoading ? 'Ukladám...' : `Uložiť skupinu (${foodGroupMemberIds.length})`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {foodGroupPickupModalOpen && foodGroupPickupGroup && (
+          <div style={styles.modalOverlay} onClick={closeFoodGroupPickupModal}>
+            <div style={styles.peopleModal} onClick={event => event.stopPropagation()}>
+              <div style={styles.qrModalHeader}>
+                <div style={styles.modalTitleBlock}>
+                  <b>Oprávnení prevziať</b>
+                  <span>{foodGroupPickupGroup.name}</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeFoodGroupPickupModal}
+                  style={styles.qrCloseButton}
+                  disabled={foodGroupPickupLoading}
+                >
+                  x
+                </button>
+              </div>
+
+              <div style={styles.modalScrollBody}>
+                <div style={styles.searchBox}>
+                  <div style={styles.peopleSectionHeader}>
+                    <b>Oprávnení prevziať</b>
+                    <span>{foodGroupPickupUserIds.length} označených / {foodGroupPickupCandidateUsers.length} v zozname</span>
+                  </div>
+
+                  <div style={{ ...styles.segment, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+                    <button
+                      type="button"
+                      onClick={() => switchFoodGroupPickupMode('group')}
+                      style={{
+                        ...styles.segmentButton,
+                        ...(foodGroupPickupGroupMode ? styles.segmentButtonActive : {})
+                      }}
+                    >
+                      Zo skupiny
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => switchFoodGroupPickupMode('outside')}
+                      style={{
+                        ...styles.segmentButton,
+                        ...(foodGroupPickupOutsideMode ? styles.segmentButtonActive : {})
+                      }}
+                    >
+                      Mimo skupiny
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => switchFoodGroupPickupMode('qr')}
+                      style={{
+                        ...styles.segmentButton,
+                        ...(foodGroupPickupQrMode ? styles.segmentButtonActive : {})
+                      }}
+                    >
+                      QR
+                    </button>
+                  </div>
+
+                  {(foodGroupPickupGroupMode || foodGroupPickupOutsideMode) && (
+                    <label style={styles.field}>
+                      <span style={styles.label}>
+                        {foodGroupPickupOutsideMode ? 'Vyhľadať mimo skupiny' : 'Vyhľadať v skupine'}
+                      </span>
+                      <input
+                        type="search"
+                        value={foodGroupPickupQuery}
+                        onChange={event => searchFoodGroupPickupUsers(event.target.value, foodGroupPickupOutsideMode ? 'outside' : 'group')}
+                        placeholder={foodGroupPickupOutsideMode ? 'Zadaj aspoň 3 znaky mimo skupiny' : 'Hľadaj v aktuálnej skupine'}
+                        style={styles.input}
+                        disabled={foodGroupPickupLoading}
+                      />
+                    </label>
+                  )}
+
+                  {foodGroupPickupQrMode && (
+                    <QrCameraScanner
+                      disabled={foodGroupPickupLoading || !selectedGroupId}
+                      onScan={addFoodGroupPickupUserByQr}
+                    />
+                  )}
+
+                  {foodGroupPickupLoading && <div style={styles.emptyBox}>Načítavam...</div>}
+
+                  <div style={styles.searchResults}>
+                    {foodGroupPickupCandidateUsers.length === 0 ? (
+                      <div style={styles.emptyBox}>
+                        {foodGroupPickupQrMode
+                          ? 'Naskenuj QR osoby, ktorú chceš pridať medzi oprávnených prevziať.'
+                          : foodGroupPickupOutsideMode
+                            ? 'Pre vyhľadávanie mimo skupiny zadaj aspoň 3 znaky.'
+                            : 'V tejto registračnej skupine nie je nikto na výber.'}
+                      </div>
+                    ) : (
+                      foodGroupPickupCandidateUsers.map(user => {
+                        const selected = foodGroupPickupUserIds.includes(user.id)
+
+                        return (
+                          <button
+                            key={user.id}
+                            type="button"
+                            onClick={() => toggleFoodGroupPickupUser(user)}
+                            disabled={foodGroupPickupLoading}
+                            style={{
+                              ...styles.resultButton,
+                              ...(selected ? styles.resultButtonSelected : {})
+                            }}
+                          >
+                            <span style={{
+                              ...styles.resultMarker,
+                              ...(selected ? styles.resultMarkerSelected : {})
+                            }}>
+                              {selected ? '✓' : ''}
+                            </span>
+                            <span style={styles.resultText}>
+                              <b>{user.name}</b>
+                              {user.email && <span>{user.email}</span>}
+                              <small>{selected ? 'Oprávnený prevziať' : 'Kliknutím označíš'}</small>
+                            </span>
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.modalFooter}>
+                <button
+                  type="button"
+                  onClick={saveFoodGroupPickupUsers}
+                  disabled={foodGroupPickupLoading}
+                  style={styles.primaryButton}
+                >
+                  {foodGroupPickupLoading ? 'Ukladám...' : `Uložiť oprávnených (${foodGroupPickupUserIds.length})`}
                 </button>
               </div>
             </div>
