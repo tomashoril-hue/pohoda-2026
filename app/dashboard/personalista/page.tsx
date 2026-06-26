@@ -84,6 +84,35 @@ async function fetchRecentUsers(limit = INITIAL_PEOPLE_LIMIT) {
   }
 }
 
+async function fetchPendingReviewUsers() {
+  const { data, error } = await supabaseServer
+    .from('users')
+    .select(RECENT_USER_SELECT)
+    .eq('review_status', 'PENDING_REVIEW')
+    .order('created_at', { ascending: false })
+
+  return {
+    rows: data || [],
+    error
+  }
+}
+
+function mergeVisibleUsers(...lists: any[][]) {
+  const merged: any[] = []
+  const seen = new Set<string>()
+
+  for (const list of lists) {
+    for (const user of list || []) {
+      if (!user?.id || seen.has(user.id)) continue
+
+      seen.add(user.id)
+      merged.push(user)
+    }
+  }
+
+  return merged
+}
+
 async function fetchRecentUsersFromAudit({
   actorUserId,
   limit = INITIAL_PEOPLE_LIMIT
@@ -340,11 +369,15 @@ export default async function PersonalistaPage({
   } = peopleScope === 'all'
     ? await fetchRecentUsersFromAudit({})
     : await fetchRecentUsersEditedByActor(user.id)
+  const pendingReviewUsersResult = await fetchPendingReviewUsers()
   const fallbackRecentUsersResult = auditRecentUsers.length === 0 && peopleScope === 'all'
     ? await fetchRecentUsers()
     : { rows: [], error: null }
-  const recentUsers = auditRecentUsers.length > 0 ? auditRecentUsers : fallbackRecentUsersResult.rows
-  const usersError = auditUsersError || fallbackRecentUsersResult.error
+  const recentUsers = mergeVisibleUsers(
+    pendingReviewUsersResult.rows,
+    auditRecentUsers.length > 0 ? auditRecentUsers : fallbackRecentUsersResult.rows
+  )
+  const usersError = pendingReviewUsersResult.error || auditUsersError || fallbackRecentUsersResult.error
 
   if (usersError) {
     return (
