@@ -76,6 +76,14 @@ export default async function HomePage() {
               max-width: 190px !important;
             }
 
+            .home-logo-group {
+              gap: 0 !important;
+            }
+
+            .home-date {
+              display: none !important;
+            }
+
             .home-right-tools {
               gap: 7px !important;
             }
@@ -135,9 +143,12 @@ export default async function HomePage() {
       </style>
 
       <div className="home-top-bar" style={styles.topBar}>
-        <a href="/dashboard" style={styles.logoLink}>
-          <img className="home-logo" src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
-        </a>
+        <div className="home-logo-group" style={styles.logoGroup}>
+          <a href="/dashboard" style={styles.logoLink}>
+            <img className="home-logo" src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
+          </a>
+          <div className="home-date" style={styles.date}>8. & 9. - 11. 7. 2026</div>
+        </div>
 
         <div className="home-right-tools" style={styles.rightTools}>
           <LanguageSwitcher language={language} compact />
@@ -231,11 +242,25 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     textDecoration: 'none'
   },
+  logoGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 14,
+    minWidth: 0
+  },
   logo: {
     height: 54,
     maxWidth: 260,
     objectFit: 'contain',
     display: 'block'
+  },
+  date: {
+    background: '#000',
+    color: '#fff',
+    borderRadius: 999,
+    padding: '10px 18px',
+    fontWeight: 900,
+    fontSize: 18
   },
   rightTools: {
     display: 'flex',
