@@ -345,7 +345,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     return summary
   }, { MASO: 0, VEGE: 0, DIETA: 0, SPOLU: 0 })
   const filteredIssuePeople = useMemo(() => {
-    const query = issuePersonFilter.trim().toLowerCase()
+    const query = sourceMode === 'ONE_OFF' ? '' : issuePersonFilter.trim().toLowerCase()
     const filtered = query
       ? issuePeople.filter(person => {
           return [
@@ -360,7 +360,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       : issuePeople
 
     return [...filtered].sort(compareIssuePeople)
-  }, [issuePeople, issuePersonFilter])
+  }, [issuePeople, issuePersonFilter, sourceMode])
   const issuePickupCandidates = useMemo(() => {
     return selectedIssuablePeople.map(issuePersonToSearchUser)
   }, [selectedIssuablePeople])
@@ -2371,63 +2371,69 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                 )}
 
                 <div style={styles.issueToolbar}>
-                  <div style={styles.toolbarLeft}>
-                    <button
-                      type="button"
-                      onClick={() => handleBulkIssueSelection('ALL')}
-                      disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
-                      style={styles.bulkButton}
-                    >
-                      Všetci
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleBulkIssueSelection('READY')}
-                      disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
-                      style={styles.bulkButton}
-                    >
-                      Vydateľní
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleBulkIssueSelection('NONE')}
-                      disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
-                      style={styles.bulkButton}
-                    >
-                      Žiadni
-                    </button>
-                  </div>
+                  {sourceMode !== 'ONE_OFF' && (
+                    <div style={styles.toolbarLeft}>
+                      <button
+                        type="button"
+                        onClick={() => handleBulkIssueSelection('ALL')}
+                        disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
+                        style={styles.bulkButton}
+                      >
+                        Všetci
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBulkIssueSelection('READY')}
+                        disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
+                        style={styles.bulkButton}
+                      >
+                        Vydateľní
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBulkIssueSelection('NONE')}
+                        disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
+                        style={styles.bulkButton}
+                      >
+                        Žiadni
+                      </button>
+                    </div>
+                  )}
 
-                  <div style={styles.toolbarRight}>
+                  <div style={sourceMode === 'ONE_OFF' ? styles.qrOnlyToolbar : styles.toolbarRight}>
                     <button
                       type="button"
                       onClick={() => setQrModalOpen(true)}
                       disabled={issueLoading || issueReadOnly || !selectedGroupId || !date || !meal}
-                      style={styles.compactDarkButton}
+                      style={sourceMode === 'ONE_OFF'
+                        ? { ...styles.primaryButton, width: '100%' }
+                        : styles.compactDarkButton}
                     >
-                      QR
+                      {sourceMode === 'ONE_OFF' ? 'Pridať ľudí cez QR' : 'QR'}
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIssueSearchOpen(open => {
-                          if (open) setIssuePersonFilter('')
-                          return !open
-                        })
-                      }}
-                      disabled={issuePeople.length === 0}
-                      style={{
-                        ...styles.secondaryButton,
-                        ...styles.compactButton,
-                        ...(issueSearchOpen || issuePersonFilter ? styles.secondaryButtonActive : {})
-                      }}
-                    >
-                      Hľadať
-                    </button>
+                    {sourceMode !== 'ONE_OFF' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIssueSearchOpen(open => {
+                            if (open) setIssuePersonFilter('')
+                            return !open
+                          })
+                        }}
+                        disabled={issuePeople.length === 0}
+                        style={{
+                          ...styles.secondaryButton,
+                          ...styles.compactButton,
+                          ...(issueSearchOpen || issuePersonFilter ? styles.secondaryButtonActive : {})
+                        }}
+                      >
+                        Hľadať
+                      </button>
+                    )}
                   </div>
 
-                  {editingIssueId && (
+                  {editingIssueId && sourceMode !== 'ONE_OFF' && (
                     <button
                       type="button"
                       onClick={openMoveModal}
@@ -2450,7 +2456,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   <span>{selectedSummary.SPOLU} vydateľných / {selectedIssueUserIds.length} označených / {issuePeople.length} spolu</span>
                 </div>
 
-                {(issueSearchOpen || issuePersonFilter) && (
+                {sourceMode !== 'ONE_OFF' && (issueSearchOpen || issuePersonFilter) && (
                   <input
                     type="search"
                     value={issuePersonFilter}
@@ -4525,6 +4531,11 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'flex-end',
     marginLeft: 'auto'
+  },
+  qrOnlyToolbar: {
+    display: 'grid',
+    width: '100%',
+    flex: '1 1 100%'
   },
   pickupStepCard: {
     border: '1px solid #c4b5fd',
