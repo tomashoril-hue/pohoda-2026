@@ -728,9 +728,6 @@ export default async function DashboardPage({
                       <b style={styles.todayStateInline}>
                         {state.label}
                       </b>
-                      {state.detail && (
-                        <small style={styles.todayStateDetail}>{state.detail}</small>
-                      )}
                     </div>
 
                     {showBulkPickup && (
