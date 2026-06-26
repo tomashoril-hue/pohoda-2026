@@ -758,7 +758,10 @@ export default function PersonalistaClient({
         return
       }
 
-      setCommunicationMessage(`Odoslane: ${json.sent}, chyby: ${json.failed}.`)
+      setCommunicationMessage(
+        `Odoslané: ${json.sent}, chyby: ${json.failed}.` +
+        (json.remaining ? ` Zostáva ešte: ${json.remaining}. Spusti odoslanie znova pre ďalšiu dávku.` : '')
+      )
       setCommunicationMessageType(json.failed ? 'error' : 'ok')
       await loadCommunicationSummary(communicationGroupId, 'communication')
     } catch (err) {

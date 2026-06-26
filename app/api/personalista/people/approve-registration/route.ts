@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
       try {
         const qrAttachment = await createQrPngAttachment(qrCode, 'pohodapass-qr')
 
-        await sendAppEmail({
+        const result = await sendAppEmail({
           from: 'POHODA 2026 <registracia@pohodapass.sk>',
           to: user.email,
           subject: 'Registrácia schválená - POHODA 2026',
@@ -135,6 +135,20 @@ export async function POST(req: NextRequest) {
           attachments: qrAttachment ? [qrAttachment] : undefined
         })
         emailSent = true
+
+        const { error: emailLogError } = await supabaseServer.from('personnel_email_log').insert({
+          user_id: userId,
+          email: user.email,
+          type: 'WELCOME_IMPORTED_USER',
+          status: 'SENT',
+          provider: result.provider,
+          provider_message_id: result.messageId || null,
+          sent_by: actor.id
+        })
+
+        if (emailLogError) {
+          console.warn('Failed to store approved registration welcome email log.', emailLogError)
+        }
       } catch {
         emailSent = false
       }

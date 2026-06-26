@@ -7,6 +7,8 @@ import { createQrPngAttachment } from '@/lib/qrEmailAttachment'
 import { checkActorRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
+const WELCOME_EMAIL_BATCH_SIZE = 50
+
 function text(value: any) {
   return String(value || '').trim()
 }
@@ -152,9 +154,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: usersError.message }, { status: 500 })
     }
 
-    const targetUsers = (users || [])
+    const pendingUsers = (users || [])
       .filter((user: any) => resend || !sentUserIds.has(user.id))
-      .slice(0, 200)
+    const targetUsers = pendingUsers.slice(0, WELCOME_EMAIL_BATCH_SIZE)
     const loginUrl = `${process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin}/login`
     let sent = 0
     let failed = 0
@@ -208,7 +210,9 @@ export async function POST(req: NextRequest) {
       ok: true,
       sent,
       failed,
-      total: targetUsers.length
+      total: targetUsers.length,
+      remaining: Math.max(0, pendingUsers.length - targetUsers.length),
+      batchSize: WELCOME_EMAIL_BATCH_SIZE
     })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Neznama chyba servera.' }, { status: 500 })
