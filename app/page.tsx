@@ -1,6 +1,9 @@
+import type { CSSProperties } from 'react'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getSessionUser } from '@/lib/auth'
+import { requestLanguage } from '@/lib/i18nServer'
+import LanguageSwitcher from '@/components/LanguageSwitcher'
 
 export default async function HomePage() {
   const user = await getSessionUser()
@@ -10,85 +13,196 @@ export default async function HomePage() {
     redirect(reviewStatus === 'APPROVED' ? '/dashboard' : '/pending-approval')
   }
 
+  const language = await requestLanguage()
+  const isEnglish = language === 'EN'
+  const copy = isEnglish
+    ? {
+      system: 'Meal system',
+      subtitle: 'Choose meals, show your QR code and manage groups in one simple app.',
+      login: 'Sign in',
+      register: 'Register',
+      selectionTitle: 'Meal selection',
+      selectionText: 'Lunch and dinner clearly organized by day.',
+      qrTitle: 'QR identification',
+      qrText: 'Fast QR code display and download.',
+      groupsTitle: 'Meal groups',
+      groupsText: 'Useful for teams, crews and shared meal pickup.',
+      note: 'If you are already signed in, the app will redirect you to the dashboard automatically.'
+    }
+    : {
+      system: 'Stravovací systém',
+      subtitle: 'Vyber si stravu, zobraz QR kód a spravuj skupiny jednoducho v jednej aplikácii.',
+      login: 'Prihlásiť sa',
+      register: 'Registrovať sa',
+      selectionTitle: 'Výber stravy',
+      selectionText: 'Obed a večera prehľadne podľa dní.',
+      qrTitle: 'QR identifikácia',
+      qrText: 'Rýchle zobrazenie a stiahnutie QR kódu.',
+      groupsTitle: 'Stravovacie skupiny',
+      groupsText: 'Vhodné pre tímy, partie a spoločné stravovanie.',
+      note: 'Ak si už prihlásený, aplikácia ťa automaticky presmeruje na dashboard.'
+    }
+
   return (
-    <main style={styles.page}>
-      <div style={styles.topBar}>
-        <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
-          <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
+    <main className="home-page" style={styles.page}>
+      <style>
+        {`
+          .home-page a[href],
+          .home-page button {
+            touch-action: manipulation;
+            transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+            -webkit-tap-highlight-color: rgba(86, 219, 63, 0.22);
+          }
+
+          .home-page a[href]:active,
+          .home-page button:not(:disabled):active {
+            transform: translate(2px, 2px) scale(0.98);
+            filter: brightness(0.94);
+            box-shadow: 2px 2px 0 #000 !important;
+          }
+
+          @media (max-width: 640px) {
+            .home-page {
+              padding: 14px !important;
+            }
+
+            .home-top-bar {
+              margin-bottom: 12px !important;
+              gap: 10px !important;
+            }
+
+            .home-logo {
+              height: 42px !important;
+              max-width: 190px !important;
+            }
+
+            .home-right-tools {
+              gap: 7px !important;
+            }
+
+            .home-chef-frame {
+              width: 44px !important;
+              height: 44px !important;
+              min-width: 44px !important;
+              border-radius: 15px !important;
+              box-shadow: 3px 3px 0 #000 !important;
+            }
+
+            .home-chef-frame img {
+              width: 28px !important;
+              height: 28px !important;
+            }
+
+            .home-card {
+              padding: 20px !important;
+              border-radius: 24px !important;
+            }
+
+            .home-title {
+              font-size: 40px !important;
+            }
+
+            .home-system {
+              font-size: 22px !important;
+            }
+
+            .home-subtitle {
+              font-size: 16px !important;
+              margin-top: 14px !important;
+            }
+
+            .home-action-panel {
+              margin-top: 22px !important;
+              gap: 10px !important;
+            }
+
+            .home-action-panel a {
+              padding: 14px 18px !important;
+              font-size: 16px !important;
+            }
+
+            .home-info-grid {
+              margin-top: 20px !important;
+              gap: 10px !important;
+            }
+          }
+        `}
+      </style>
+
+      <div className="home-top-bar" style={styles.topBar}>
+        <a href="/dashboard" style={styles.logoLink}>
+          <img className="home-logo" src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
         </a>
 
-        <div style={styles.chefIconWrap}>
-          <img
-            src="/kuchar-capica.png"
-            alt="Stravovanie"
-            style={styles.chefIcon}
-          />
+        <div className="home-right-tools" style={styles.rightTools}>
+          <LanguageSwitcher language={language} compact />
+
+          <div className="home-chef-frame" style={styles.chefIconWrap}>
+            <img
+              src="/kuchar-capica.png"
+              alt={copy.system}
+              style={styles.chefIcon}
+            />
+          </div>
         </div>
       </div>
 
-      <section style={styles.card}>
-        <div style={styles.badge}>Stravovací systém</div>
+      <section className="home-card" style={styles.card}>
+        <h1 className="home-title" style={styles.title}>POHODA 2026</h1>
+        <div className="home-system" style={styles.systemTitle}>{copy.system}</div>
 
-        <h1 style={styles.title}>POHODA 2026</h1>
-
-        <p style={styles.subtitle}>
-          Vyber si stravu, zobraz QR kód a spravuj skupiny jednoducho v jednej aplikácii.
+        <p className="home-subtitle" style={styles.subtitle}>
+          {copy.subtitle}
         </p>
 
-        <div style={styles.actionPanel}>
+        <div className="home-action-panel" style={styles.actionPanel}>
           <Link href="/login" style={styles.primaryButton}>
-            Prihlásiť sa
+            {copy.login}
           </Link>
 
           <Link href="/register" style={styles.secondaryButton}>
-            Registrovať sa
+            {copy.register}
           </Link>
         </div>
 
-        <div style={styles.infoGrid}>
+        <div className="home-info-grid" style={styles.infoGrid}>
           <div style={styles.infoCard}>
-            <div style={styles.infoIcon}>🍽️</div>
+            <div style={styles.infoIcon}>01</div>
 
             <div>
-              <div style={styles.infoTitle}>Výber stravy</div>
-              <div style={styles.infoText}>
-                Obed a večera prehľadne podľa dní.
-              </div>
+              <div style={styles.infoTitle}>{copy.selectionTitle}</div>
+              <div style={styles.infoText}>{copy.selectionText}</div>
             </div>
           </div>
 
           <div style={styles.infoCard}>
-            <div style={styles.infoIcon}>▦</div>
+            <div style={styles.infoIcon}>QR</div>
 
             <div>
-              <div style={styles.infoTitle}>QR identifikácia</div>
-              <div style={styles.infoText}>
-                Rýchle zobrazenie a stiahnutie QR kódu.
-              </div>
+              <div style={styles.infoTitle}>{copy.qrTitle}</div>
+              <div style={styles.infoText}>{copy.qrText}</div>
             </div>
           </div>
 
           <div style={styles.infoCard}>
-            <div style={styles.infoIcon}>👥</div>
+            <div style={styles.infoIcon}>03</div>
 
             <div>
-              <div style={styles.infoTitle}>Stravovacie skupiny</div>
-              <div style={styles.infoText}>
-                Vhodné pre tímy, partie a spoločné stravovanie.
-              </div>
+              <div style={styles.infoTitle}>{copy.groupsTitle}</div>
+              <div style={styles.infoText}>{copy.groupsText}</div>
             </div>
           </div>
         </div>
 
         <p style={styles.note}>
-          Ak si už prihlásený, aplikácia ťa automaticky presmeruje na dashboard.
+          {copy.note}
         </p>
       </section>
     </main>
   )
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: '100vh',
     background: 'linear-gradient(135deg, #7417e8 0%, #ed59dc 45%, #56db3f 100%)',
@@ -98,11 +212,16 @@ const styles: Record<string, React.CSSProperties> = {
   },
   topBar: {
     maxWidth: 980,
-    margin: '0 auto 24px auto',
+    margin: '0 auto 16px auto',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 20
+  },
+  logoLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    textDecoration: 'none'
   },
   logo: {
     height: 54,
@@ -110,11 +229,17 @@ const styles: Record<string, React.CSSProperties> = {
     objectFit: 'contain',
     display: 'block'
   },
+  rightTools: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 10
+  },
   chefIconWrap: {
-    width: 54,
-    height: 54,
-    minWidth: 54,
-    borderRadius: '50%',
+    width: 56,
+    height: 56,
+    minWidth: 56,
+    borderRadius: 18,
     background: '#fff',
     border: '3px solid #000',
     display: 'flex',
@@ -129,22 +254,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'block'
   },
   card: {
-  maxWidth: 760,
-  margin: '0 auto',
-  background: 'rgba(255,255,255,0.97)',
-  border: '2px solid rgba(0,0,0,0.92)',
-  borderRadius: 34,
-  padding: 30,
-  boxShadow: '0 18px 46px rgba(0,0,0,0.24)'
-},
-  badge: {
-    display: 'inline-block',
-    background: '#56db3f',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '8px 16px',
-    fontWeight: 950,
-    marginBottom: 20
+    maxWidth: 760,
+    margin: '0 auto',
+    background: 'rgba(255,255,255,0.97)',
+    border: '2px solid rgba(0,0,0,0.92)',
+    borderRadius: 34,
+    padding: 30,
+    boxShadow: '0 18px 46px rgba(0,0,0,0.24)'
   },
   title: {
     margin: 0,
@@ -152,6 +268,12 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 0.95,
     fontWeight: 950,
     letterSpacing: '-1.5px'
+  },
+  systemTitle: {
+    marginTop: 10,
+    fontSize: 28,
+    lineHeight: 1.05,
+    fontWeight: 950
   },
   subtitle: {
     maxWidth: 620,
@@ -215,6 +337,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    fontSize: 13,
     fontWeight: 950
   },
   infoTitle: {
