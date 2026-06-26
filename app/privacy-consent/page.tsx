@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getSessionUser } from '@/lib/auth'
+import { requestLanguage } from '@/lib/i18nServer'
 import { hasAcceptedCurrentPrivacyConsent } from '@/lib/privacyConsent'
 import PrivacyConsentClient from './PrivacyConsentClient'
 
@@ -24,5 +25,7 @@ export default async function PrivacyConsentPage() {
     redirect('/dashboard')
   }
 
-  return <PrivacyConsentClient userName={fullName(user)} />
+  const language = await requestLanguage(user)
+
+  return <PrivacyConsentClient language={language} userName={fullName(user)} />
 }

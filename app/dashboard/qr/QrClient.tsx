@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
+import { appText, type AppLanguage } from '@/lib/i18n'
 
 type Props = {
+  language: AppLanguage
   meno: string
   priezvisko: string
   email: string
@@ -11,7 +13,8 @@ type Props = {
   qrKind: 'NONE' | 'DATABASE' | 'WRISTBAND'
 }
 
-export default function QrClient({ meno, priezvisko, email, qrCode, qrKind }: Props) {
+export default function QrClient({ language, meno, priezvisko, email, qrCode, qrKind }: Props) {
+  const copy = appText(language)
   const [qrImage, setQrImage] = useState<string | null>(null)
   const isDatabaseQr = qrKind === 'DATABASE'
   const isWristbandQr = qrKind === 'WRISTBAND'
@@ -45,22 +48,20 @@ export default function QrClient({ meno, priezvisko, email, qrCode, qrKind }: Pr
         }
       `}</style>
       <div className="qr-top-bar" style={styles.topBar}>
-        <a href="/dashboard" style={styles.logoLink} aria-label="Späť na dashboard">
+        <a href="/dashboard" style={styles.logoLink} aria-label={copy.backToDashboard}>
           <img className="qr-logo" src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
         </a>
         <div className="qr-date" style={styles.date}>8. & 9. - 11. 7. 2026</div>
       </div>
 
       <section className="qr-card" style={styles.card}>
-        <div className="qr-badge" style={styles.badge}>Môj QR kód</div>
+        <div className="qr-badge" style={styles.badge}>{copy.myQr}</div>
 
         <h1 className="qr-title" style={styles.title}>POHODA 2026</h1>
-        <h2 className="qr-subtitle" style={styles.subtitle}>Identifikácia stravníka</h2>
+        <h2 className="qr-subtitle" style={styles.subtitle}>{copy.dinerIdentification}</h2>
 
         {!qrCode ? (
-          <p style={styles.status}>
-            QR kód zatiaľ nie je priradený.
-          </p>
+          <p style={styles.status}>{copy.qrNotAssigned}</p>
         ) : (
           <div style={styles.qrBox}>
             <h3 style={styles.qrTitle}>
@@ -70,18 +71,18 @@ export default function QrClient({ meno, priezvisko, email, qrCode, qrKind }: Pr
             <p style={styles.email}>{email}</p>
 
             <div style={styles.qrCodeText}>
-              {isWristbandQr ? 'Náramok aktívny' : 'QR kód aktívny'}
+              {isWristbandQr ? copy.wristbandActive : copy.qrActive}
             </div>
 
             {qrImage && (
               <div style={styles.qrImageWrap}>
-                <img src={qrImage} alt="QR kód" style={styles.qrImage} />
+                <img src={qrImage} alt="QR code" style={styles.qrImage} />
               </div>
             )}
 
             {isWristbandQr && (
               <div style={styles.wristbandImageWrap}>
-                <img src="/icon.png" alt="Náramok aktívny" style={styles.wristbandImage} />
+                <img src="/icon.png" alt={copy.wristbandActive} style={styles.wristbandImage} />
               </div>
             )}
 
@@ -89,14 +90,14 @@ export default function QrClient({ meno, priezvisko, email, qrCode, qrKind }: Pr
               {qrImage && (
                 <a href={qrImage} download="qr-pohoda-pass.png" style={styles.link}>
                   <button style={styles.primaryButton}>
-                    Stiahnuť QR kód
+                    {copy.downloadQr}
                   </button>
                 </a>
               )}
 
               <a href="/dashboard" style={styles.link}>
                 <button style={styles.secondaryButton}>
-                  Späť na dashboard
+                  {copy.backToDashboard}
                 </button>
               </a>
             </div>
@@ -222,45 +223,47 @@ const styles: Record<string, React.CSSProperties> = {
     width: 250,
     height: 250,
     margin: '0 auto',
-    background: '#000',
+    background: '#f6f2ff',
     border: '4px solid #000',
     borderRadius: 24,
+    padding: 0,
     overflow: 'hidden'
   },
   wristbandImage: {
     width: '100%',
     height: '100%',
-    display: 'block',
     objectFit: 'cover'
   },
   buttons: {
-    marginTop: 26,
     display: 'flex',
     justifyContent: 'center',
-    gap: 14,
-    flexWrap: 'wrap'
+    gap: 12,
+    flexWrap: 'wrap',
+    marginTop: 22
   },
   link: {
     textDecoration: 'none'
   },
   primaryButton: {
-    background: '#000',
-    color: '#fff',
+    background: '#56db3f',
+    color: '#000',
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '13px 22px',
-    fontSize: 17,
+    padding: '12px 18px',
+    fontSize: 16,
     fontWeight: 900,
-    cursor: 'pointer'
+    cursor: 'pointer',
+    boxShadow: '4px 4px 0 #000'
   },
   secondaryButton: {
     background: '#fff',
     color: '#000',
     border: '3px solid #000',
     borderRadius: 999,
-    padding: '13px 22px',
-    fontSize: 17,
+    padding: '12px 18px',
+    fontSize: 16,
     fontWeight: 900,
-    cursor: 'pointer'
+    cursor: 'pointer',
+    boxShadow: '4px 4px 0 #000'
   }
 }

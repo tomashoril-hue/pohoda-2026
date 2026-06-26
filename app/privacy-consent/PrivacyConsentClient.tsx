@@ -2,16 +2,23 @@
 
 import type { CSSProperties } from 'react'
 import { useState } from 'react'
+import LanguageSwitcher from '@/components/LanguageSwitcher'
+import { appText, type AppLanguage } from '@/lib/i18n'
 import {
   PRIVACY_CONSENT_TEXT,
+  PRIVACY_CONSENT_TEXT_EN,
   PRIVACY_POLICY_URL
 } from '@/lib/privacyConsentConfig'
 
 export default function PrivacyConsentClient({
+  language,
   userName
 }: {
+  language: AppLanguage
   userName: string
 }) {
+  const copy = appText(language)
+  const isEnglish = language === 'EN'
   const [accepted, setAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [pressed, setPressed] = useState(false)
@@ -19,7 +26,9 @@ export default function PrivacyConsentClient({
 
   const submit = async () => {
     if (!accepted) {
-      setError('Najprv potvrď oboznámenie s pravidlami ochrany osobných údajov.')
+      setError(isEnglish
+        ? 'Please confirm that you have read the personal data protection rules.'
+        : 'Najprv potvrď oboznámenie s pravidlami ochrany osobných údajov.')
       return
     }
 
@@ -36,12 +45,12 @@ export default function PrivacyConsentClient({
       const json = await response.json()
 
       if (!response.ok || json.error) {
-        throw new Error(json.error || 'Potvrdenie sa nepodarilo uložiť.')
+        throw new Error(json.error || (isEnglish ? 'The confirmation could not be saved.' : 'Potvrdenie sa nepodarilo uložiť.'))
       }
 
       window.location.href = '/dashboard'
     } catch (err: any) {
-      setError(err?.message || 'Potvrdenie sa nepodarilo uložiť.')
+      setError(err?.message || (isEnglish ? 'The confirmation could not be saved.' : 'Potvrdenie sa nepodarilo uložiť.'))
     } finally {
       setLoading(false)
     }
@@ -50,14 +59,24 @@ export default function PrivacyConsentClient({
   return (
     <main style={styles.page}>
       <section style={styles.card}>
-        <div style={styles.badge}>Ochrana osobných údajov</div>
+        <div style={styles.headerRow}>
+          <div style={styles.badge}>{copy.privacy}</div>
+          <LanguageSwitcher language={language} compact />
+        </div>
+
         <h1 style={styles.title}>PohodaPass</h1>
         <p style={styles.lead}>
-          {userName ? `${userName}, pred vstupom do aplikácie je potrebné potvrdiť oboznámenie s pravidlami.` : 'Pred vstupom do aplikácie je potrebné potvrdiť oboznámenie s pravidlami.'}
+          {userName
+            ? (isEnglish
+              ? `${userName}, before entering the app you need to confirm that you have read the rules.`
+              : `${userName}, pred vstupom do aplikácie je potrebné potvrdiť oboznámenie s pravidlami.`)
+            : (isEnglish
+              ? 'Before entering the app you need to confirm that you have read the rules.'
+              : 'Pred vstupom do aplikácie je potrebné potvrdiť oboznámenie s pravidlami.')}
         </p>
 
         <div style={styles.textBox}>
-          {PRIVACY_CONSENT_TEXT}
+          {isEnglish ? PRIVACY_CONSENT_TEXT_EN : PRIVACY_CONSENT_TEXT}
         </div>
 
         <a
@@ -66,7 +85,7 @@ export default function PrivacyConsentClient({
           rel="noreferrer"
           style={styles.policyLink}
         >
-          Otvoriť Pravidlá ochrany osobných údajov
+          {copy.privacyOpen}
         </a>
 
         <label style={styles.checkRow}>
@@ -76,9 +95,7 @@ export default function PrivacyConsentClient({
             onChange={event => setAccepted(event.target.checked)}
             style={styles.checkbox}
           />
-          <span>
-            Potvrdzujem, že som sa oboznámil/a s pravidlami ochrany osobných údajov.
-          </span>
+          <span>{copy.privacyConfirm}</span>
         </label>
 
         {error && <div style={styles.error}>{error}</div>}
@@ -98,7 +115,7 @@ export default function PrivacyConsentClient({
             ...((loading || !accepted) ? styles.buttonDisabled : {})
           }}
         >
-          {loading ? 'Ukladám...' : 'Pokračovať do aplikácie'}
+          {loading ? copy.saving : copy.continueToApp}
         </button>
       </section>
     </main>
@@ -125,6 +142,13 @@ const styles: Record<string, CSSProperties> = {
     boxShadow: '8px 8px 0 #000',
     display: 'grid',
     gap: 14
+  },
+  headerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap'
   },
   badge: {
     justifySelf: 'start',

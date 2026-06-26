@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
+import { requestLanguage } from '@/lib/i18nServer'
 import { supabaseServer } from '@/lib/supabaseServer'
 import QrClient from './QrClient'
 
@@ -23,8 +24,11 @@ export default async function QrPage() {
     qrKind = poolQr ? 'DATABASE' : 'WRISTBAND'
   }
 
+  const language = await requestLanguage(user)
+
   return (
     <QrClient
+      language={language}
       meno={user.meno || ''}
       priezvisko={user.priezvisko || ''}
       email={user.email || ''}

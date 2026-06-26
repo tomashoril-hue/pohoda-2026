@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { slovakiaDateIso } from '@/lib/date'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { requestLanguage } from '@/lib/i18nServer'
 import { canManageRegistrationGroup } from '@/lib/registrationGroupManagers'
 import { supabaseServer } from '@/lib/supabaseServer'
 import AccessCodesGroupPickerClient from './AccessCodesGroupPickerClient'
@@ -168,12 +169,15 @@ export default async function AccessCodesSharePage({
 }) {
   const params = await searchParams
   const registrationGroupId = text(params.registrationGroupId)
-  const language = languageValue(params.language)
+  const requestedLanguage = text(params.language)
   const user = await getCurrentUser()
+  const initialLanguage = requestedLanguage ? languageValue(requestedLanguage) : await requestLanguage()
 
   if (!user) {
-    redirect(`/login?next=${encodeURIComponent(currentPath(registrationGroupId, language))}`)
+    redirect(`/login?next=${encodeURIComponent(currentPath(registrationGroupId, initialLanguage))}`)
   }
+
+  const language = requestedLanguage ? initialLanguage : await requestLanguage(user)
 
   const access = await getGlobalAccess(user.id)
 

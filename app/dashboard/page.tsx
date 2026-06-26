@@ -3,9 +3,12 @@ import Link from 'next/link'
 import { getCurrentUser } from '@/lib/auth'
 import { getLegacyBulkIssueEnabled } from '@/lib/appSettings'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { appText, localeFor, type AppLanguage } from '@/lib/i18n'
+import { requestLanguage } from '@/lib/i18nServer'
 import { PRIVACY_POLICY_URL } from '@/lib/privacyConsentConfig'
 import { canUseGroupIssue, getManagedRegistrationGroupIds } from '@/lib/registrationGroupManagers'
 import { supabaseServer } from '@/lib/supabaseServer'
+import LanguageSwitcher from '@/components/LanguageSwitcher'
 import DashboardInvites from './DashboardInvites'
 import DashboardDatePicker from './DashboardDatePicker'
 
@@ -24,9 +27,9 @@ function todayIsoDate() {
   return `${year}-${month}-${day}`
 }
 
-function formatDate(value: string) {
+function formatDate(value: string, language: AppLanguage = 'SK') {
   try {
-    return new Intl.DateTimeFormat('sk-SK', {
+    return new Intl.DateTimeFormat(localeFor(language), {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
@@ -52,23 +55,23 @@ function normalizeDateParam(value: string | string[] | undefined, fallback: stri
   return rawValue
 }
 
-function mealLabel(value: string) {
-  if (value === 'OBED') return 'OBED'
-  if (value === 'VECERA') return 'VEČERA'
+function mealLabel(value: string, language: AppLanguage = 'SK') {
+  if (value === 'OBED') return language === 'EN' ? 'LUNCH' : 'OBED'
+  if (value === 'VECERA') return language === 'EN' ? 'DINNER' : 'VEČERA'
   return value
 }
 
-function choiceLabel(value: string | null | undefined, defaultValue?: string | null) {
-  if (value === 'BEZ_ZAUJMU') return 'ODHLÁSENÉ'
-  if (value === 'MASO') return 'MÄSO'
+function choiceLabel(value: string | null | undefined, defaultValue?: string | null, language: AppLanguage = 'SK') {
+  if (value === 'BEZ_ZAUJMU') return language === 'EN' ? 'SIGNED OFF' : 'ODHLÁSENÉ'
+  if (value === 'MASO') return language === 'EN' ? 'MEAT' : 'MÄSO'
   if (value === 'VEGE') return 'VEGE'
-  if (isDietFood(value)) return 'DIÉTA'
+  if (isDietFood(value)) return language === 'EN' ? 'DIET' : 'DIÉTA'
 
-  if (defaultValue === 'MASO') return 'PREDVOLENÉ: MÄSO'
-  if (defaultValue === 'VEGE') return 'PREDVOLENÉ: VEGE'
-  if (isDietFood(defaultValue)) return 'PREDVOLENÉ: DIÉTA'
+  if (defaultValue === 'MASO') return language === 'EN' ? 'DEFAULT: MEAT' : 'PREDVOLENÉ: MÄSO'
+  if (defaultValue === 'VEGE') return language === 'EN' ? 'DEFAULT: VEGE' : 'PREDVOLENÉ: VEGE'
+  if (isDietFood(defaultValue)) return language === 'EN' ? 'DEFAULT: DIET' : 'PREDVOLENÉ: DIÉTA'
 
-  return 'PREDVOLENÉ: BEZ STRAVY'
+  return language === 'EN' ? 'DEFAULT: NO MEAL' : 'PREDVOLENÉ: BEZ STRAVY'
 }
 
 function isDietFood(value: string | null | undefined) {
@@ -76,12 +79,14 @@ function isDietFood(value: string | null | undefined) {
   return normalized === 'DIETA' || normalized === 'DIÉTA'
 }
 
-function menuVariantLabel(value: string | null | undefined) {
-  return isDietFood(value) ? 'DIÉTA' : value
+function menuVariantLabel(value: string | null | undefined, language: AppLanguage = 'SK') {
+  if (isDietFood(value)) return language === 'EN' ? 'DIET' : 'DIÉTA'
+  if (value === 'MASO') return language === 'EN' ? 'MEAT' : 'MÄSO'
+  return value
 }
 
-function entitlementLabel(value: boolean | null | undefined) {
-  return value ? 'ÁNO' : 'NIE'
+function entitlementLabel(value: boolean | null | undefined, language: AppLanguage = 'SK') {
+  return value ? (language === 'EN' ? 'YES' : 'ÁNO') : (language === 'EN' ? 'NO' : 'NIE')
 }
 
 function activeRegistrationGroupName(period: any, fallbackGroup: any) {
@@ -112,11 +117,11 @@ function issueTitle(issue: any) {
   return issue?.title || issueGroupName(issue)
 }
 
-function formatTime(value: string | null | undefined) {
+function formatTime(value: string | null | undefined, language: AppLanguage = 'SK') {
   if (!value) return ''
 
   try {
-    return new Intl.DateTimeFormat('sk-SK', {
+    return new Intl.DateTimeFormat(localeFor(language), {
       hour: '2-digit',
       minute: '2-digit',
       timeZone: 'Europe/Bratislava'
@@ -134,7 +139,8 @@ function mealState({
   legacyBulkItem,
   registrationBulkItem,
   issuedGroup,
-  issuedRegistrationIssue
+  issuedRegistrationIssue,
+  language = 'SK'
 }: {
   entitlement: string
   hasEntitlementRow: boolean
@@ -144,11 +150,14 @@ function mealState({
   registrationBulkItem: any
   issuedGroup: any
   issuedRegistrationIssue: any
+  language?: AppLanguage
 }) {
+  const isEnglish = language === 'EN'
+
   if (issued?.status === 'VYDANE') {
     if (issued.sposob === 'HROMADNE' && issued.registration_group_issue_id) {
       return {
-        label: 'Vydané skupinovo',
+        label: isEnglish ? 'Issued as group' : 'Vydané skupinovo',
         detail: issueTitle(issuedRegistrationIssue),
         tone: 'issued'
       }
@@ -156,27 +165,33 @@ function mealState({
 
     if (issued.sposob === 'HROMADNE') {
       return {
-        label: 'Vydané hromadne',
+        label: isEnglish ? 'Issued bulk' : 'Vydané hromadne',
         detail: issuedGroup?.name || '',
         tone: 'issued'
       }
     }
 
-    return { label: 'Vydané osobne', detail: '', tone: 'issued' }
+    return { label: isEnglish ? 'Issued personally' : 'Vydané osobne', detail: '', tone: 'issued' }
   }
 
-  if (entitlement === 'NIE' && hasEntitlementRow) {
-    return { label: 'Bez nároku', detail: '', tone: 'blocked' }
+  if ((entitlement === 'NIE' || entitlement === 'NO') && hasEntitlementRow) {
+    return { label: isEnglish ? 'No entitlement' : 'Bez nároku', detail: '', tone: 'blocked' }
   }
 
   if (noInterest) {
-    return { label: 'Odhlásené', detail: 'Jedlo je odhlásené vo výbere.', tone: 'blocked' }
+    return {
+      label: isEnglish ? 'Signed off' : 'Odhlásené',
+      detail: isEnglish ? 'Meal is signed off in meal selection.' : 'Jedlo je odhlásené vo výbere.',
+      tone: 'blocked'
+    }
   }
 
   const registrationIssue = relationOne(registrationBulkItem?.registration_group_issues)
   if (registrationIssue && (registrationIssue.status === 'READY' || registrationIssue.status === 'WAITING')) {
     return {
-      label: registrationBulkItem.status === 'REMOVED' ? 'Vyradené zo skupinového výdaja' : 'Pripravené skupinovo',
+      label: registrationBulkItem.status === 'REMOVED'
+        ? (isEnglish ? 'Removed from group issue' : 'Vyradené zo skupinového výdaja')
+        : (isEnglish ? 'Prepared as group' : 'Pripravené skupinovo'),
       detail: issueTitle(registrationIssue),
       tone: registrationBulkItem.status === 'REMOVED' ? 'blocked' : 'prepared'
     }
@@ -185,13 +200,15 @@ function mealState({
   const legacyIssue = relationOne(legacyBulkItem?.hromadne_vydaje)
   if (legacyIssue && (legacyIssue.status === 'READY' || legacyIssue.status === 'WAITING')) {
     return {
-      label: legacyBulkItem.status === 'REMOVED' ? 'Vyradené z hromadného výdaja' : 'Pripravené hromadne',
+      label: legacyBulkItem.status === 'REMOVED'
+        ? (isEnglish ? 'Removed from bulk issue' : 'Vyradené z hromadného výdaja')
+        : (isEnglish ? 'Prepared bulk' : 'Pripravené hromadne'),
       detail: issueGroupName(legacyIssue),
       tone: legacyBulkItem.status === 'REMOVED' ? 'blocked' : 'prepared'
     }
   }
 
-  return { label: 'Nevydané', detail: '', tone: 'neutral' }
+  return { label: isEnglish ? 'Not issued' : 'Nevydané', detail: '', tone: 'neutral' }
 }
 
 export default async function DashboardPage({
@@ -205,6 +222,8 @@ export default async function DashboardPage({
     redirect('/')
   }
 
+  const language = await requestLanguage(user)
+  const copy = appText(language)
   const today = todayIsoDate()
   const resolvedSearchParams = searchParams ? await searchParams : {}
   const selectedDate = normalizeDateParam(resolvedSearchParams.datum, today)
@@ -457,10 +476,10 @@ export default async function DashboardPage({
       )
     })
 
-    if (!items.length) return 'Jedlo nie je zadané'
+    if (!items.length) return language === 'EN' ? 'Meal is not entered' : 'Jedlo nie je zadané'
 
     return items
-      .map((item: any) => `${menuVariantLabel(item.varianta)}: ${item.nazov}`)
+      .map((item: any) => `${menuVariantLabel(item.varianta, language)}: ${item.nazov}`)
       .join('\n')
   }
 
@@ -516,7 +535,7 @@ export default async function DashboardPage({
   const todayMeals = [
     {
       typJedla: 'OBED',
-      entitlement: entitlementLabel(entitlement?.obed),
+      entitlement: entitlementLabel(entitlement?.obed, language),
       hasEntitlementRow,
       selection: obedSelection,
       menuText: getMenuText('OBED', showDiet),
@@ -526,7 +545,7 @@ export default async function DashboardPage({
     },
     {
       typJedla: 'VECERA',
-      entitlement: entitlementLabel(entitlement?.vecera),
+      entitlement: entitlementLabel(entitlement?.vecera, language),
       hasEntitlementRow,
       selection: veceraSelection,
       menuText: getMenuText('VECERA', showDiet),
@@ -585,46 +604,49 @@ export default async function DashboardPage({
         }
       `}</style>
       <div className="dashboard-top-bar" style={styles.topBar}>
-        <a href="/dashboard" style={styles.logoLink} aria-label="Späť na dashboard">
+        <a href="/dashboard" style={styles.logoLink} aria-label={copy.backToDashboard}>
           <img className="dashboard-logo" src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
         </a>
-        <div className="dashboard-date" style={styles.date}>8. & 9. – 11. 7. 2026</div>
+        <div style={styles.topControls}>
+          <LanguageSwitcher language={language} compact />
+          <div className="dashboard-date" style={styles.date}>8. & 9. - 11. 7. 2026</div>
+        </div>
       </div>
 
       <section className="dashboard-card" style={styles.card}>
         <div style={styles.titleRow}>
           <div>
-            <h1 className="dashboard-title" style={styles.title}>Vitaj</h1>
+            <h1 className="dashboard-title" style={styles.title}>{copy.dashboardWelcome}</h1>
 
             <p className="dashboard-name" style={styles.name}>
               {user.meno} {user.priezvisko}
             </p>
           </div>
 
-          <a className="dashboard-logout" href="/logout" style={styles.logoutCircle} title="Odhlásiť sa">
-            Odhlásiť
+          <a className="dashboard-logout" href="/logout" style={styles.logoutCircle} title={copy.logout}>
+            {copy.logout}
           </a>
         </div>
 
         <div className="dashboard-info" style={styles.infoBox}>
-          <p><b>E-mail:</b> {user.email || '-'}</p>
-          <p><b>Registračná skupina:</b> {registrationGroupName}</p>
-          <p><b>Typ stravy:</b> {menuVariantLabel(defaultFood) || '-'}</p>
+          <p><b>{copy.email}:</b> {user.email || '-'}</p>
+          <p><b>{copy.registrationGroup}:</b> {registrationGroupName}</p>
+          <p><b>{copy.foodType}:</b> {menuVariantLabel(defaultFood, language) || '-'}</p>
         </div>
 
         <section className="dashboard-today-box" style={styles.todayBox}>
           <div style={styles.todayHeader}>
             <div>
-              <div style={styles.todaySmall}>{isTodaySelected ? 'Dnes' : 'Vybraný deň'}</div>
+              <div style={styles.todaySmall}>{isTodaySelected ? copy.today : copy.selectedDay}</div>
               <h2 className="dashboard-today-title" style={styles.todayTitle}>
-                {isTodaySelected ? 'Dnešná strava' : 'Strava na deň'}
+                {isTodaySelected ? copy.todayFood : copy.foodForDay}
               </h2>
             </div>
 
             <DashboardDatePicker
               selectedDate={selectedDate}
               today={today}
-              formattedDate={formatDate(selectedDate)}
+              formattedDate={formatDate(selectedDate, language)}
             />
           </div>
 
@@ -636,10 +658,10 @@ export default async function DashboardPage({
                 : null
               const issuedByUser = meal.issued?.issued_by ? issuedByUserMap.get(meal.issued.issued_by) : null
               const issuedByName = fullName(issuedByUser)
-              const issuedTime = formatTime(meal.issued?.issued_at)
+              const issuedTime = formatTime(meal.issued?.issued_at, language)
               const showBulkPickup = meal.issued?.status === 'VYDANE' && meal.issued?.sposob === 'HROMADNE'
-              const entitlementIsYes = meal.entitlement === 'ÁNO'
-              const entitlementIsNo = meal.entitlement === 'NIE'
+              const entitlementIsYes = meal.entitlement === (language === 'EN' ? 'YES' : 'ÁNO')
+              const entitlementIsNo = meal.entitlement === (language === 'EN' ? 'NO' : 'NIE')
               const noInterest = meal.selection?.volba === 'BEZ_ZAUJMU'
               const state = mealState({
                 entitlement: meal.entitlement,
@@ -649,7 +671,8 @@ export default async function DashboardPage({
                 legacyBulkItem: meal.bulk,
                 registrationBulkItem: meal.registrationBulk,
                 issuedGroup,
-                issuedRegistrationIssue
+                issuedRegistrationIssue,
+                language
               })
 
               return (
@@ -663,7 +686,7 @@ export default async function DashboardPage({
                 >
                   <div style={styles.todayMealTop}>
                     <h3 className="dashboard-meal-title" style={styles.todayMealTitle}>
-                      {mealLabel(meal.typJedla)}
+                      {mealLabel(meal.typJedla, language)}
                     </h3>
 
                     <span
@@ -677,7 +700,7 @@ export default async function DashboardPage({
                             : '#fff3bf'
                       }}
                     >
-                      Nárok {meal.entitlement}
+                      {copy.entitlement} {meal.entitlement}
                     </span>
                   </div>
 
@@ -689,19 +712,19 @@ export default async function DashboardPage({
                         ...(noInterest ? styles.todayChoiceBoxNoInterest : {})
                       }}
                     >
-                      <span style={styles.todayChoiceLabel}>Môj výber</span>
+                      <span style={styles.todayChoiceLabel}>{copy.mealSelection}</span>
                       <b style={styles.todayChoiceValue}>
-                        {choiceLabel(meal.selection?.volba, defaultFood)}
+                        {choiceLabel(meal.selection?.volba, defaultFood, language)}
                       </b>
                     </div>
 
                     <div style={styles.todayRowWide}>
-                      <span>Jedlo</span>
+                      <span>{copy.meal}</span>
                       <b style={styles.todayMenuText}>{meal.menuText}</b>
                     </div>
 
                     <div style={styles.todayRowWide}>
-                      <span>Stav jedla</span>
+                      <span>{copy.mealStatus}</span>
                       <b style={styles.todayStateInline}>
                         <span
                           style={{
@@ -720,7 +743,7 @@ export default async function DashboardPage({
 
                     {showBulkPickup && (
                       <div style={styles.todayRow}>
-                        <span>Prevzal</span>
+                        <span>{copy.pickedUpBy}</span>
                         <b>
                           {issuedByName || '-'}
                           {issuedTime ? `, ${issuedTime}` : ''}
@@ -736,16 +759,16 @@ export default async function DashboardPage({
 
         <div className="dashboard-menu-grid" style={styles.menuGrid}>
           <a className="dashboard-menu-tile" href="/dashboard/qr" style={{ ...styles.menuTile, ...styles.menuTileBlack }}>
-            <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Náramok</span>
-            <b className="dashboard-menu-title" style={styles.menuTileTitle}>Môj QR kód</b>
+            <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>{copy.wristband}</span>
+            <b className="dashboard-menu-title" style={styles.menuTileTitle}>{copy.myQr}</b>
           </a>
           <a className="dashboard-menu-tile" href="/menu" style={{ ...styles.menuTile, ...styles.menuTileGreen }}>
-            <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Strava</span>
-            <b className="dashboard-menu-title" style={styles.menuTileTitle}>Môj výber</b>
+            <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>{copy.food}</span>
+            <b className="dashboard-menu-title" style={styles.menuTileTitle}>{copy.mealSelection}</b>
           </a>
           <Link className="dashboard-menu-tile" href="/dashboard/naroky" style={{ ...styles.menuTile, ...styles.menuTileWhite }}>
-            <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Prehľad</span>
-            <b className="dashboard-menu-title" style={styles.menuTileTitle}>Nároky na stravu</b>
+            <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>{copy.overview}</span>
+            <b className="dashboard-menu-title" style={styles.menuTileTitle}>{copy.foodEntitlements}</b>
           </Link>
           {legacyBulkIssueEnabled && (
             <Link className="dashboard-menu-tile" href="/dashboard/groups" style={{ ...styles.menuTile, ...styles.menuTilePink }}>
@@ -755,8 +778,8 @@ export default async function DashboardPage({
           )}
           {canOpenGroupIssue && (
             <Link className="dashboard-menu-tile" href="/dashboard/skupinovy-vydaj" style={{ ...styles.menuTile, ...styles.menuTileWhite }}>
-              <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Strava</span>
-              <b className="dashboard-menu-title" style={styles.menuTileTitle}>Skupinový výdaj</b>
+              <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>{copy.food}</span>
+              <b className="dashboard-menu-title" style={styles.menuTileTitle}>{copy.groupIssue}</b>
             </Link>
           )}
           {canOpenOfflineIssue && (
@@ -767,8 +790,8 @@ export default async function DashboardPage({
           )}
           {canOpenAccessCodesShare && (
             <Link className="dashboard-menu-tile" href="/dashboard/access-codes-share" style={{ ...styles.menuTile, ...styles.menuTileBlack }}>
-              <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Prístupy</span>
-              <b className="dashboard-menu-title" style={styles.menuTileTitle}>Prístupové údaje</b>
+              <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>{copy.accessCode}</span>
+              <b className="dashboard-menu-title" style={styles.menuTileTitle}>{copy.accessDetails}</b>
             </Link>
           )}
           {canOpenFoodIssue && (
@@ -864,7 +887,7 @@ export default async function DashboardPage({
 
         <footer style={styles.footer}>
           <a href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer" style={styles.privacyLink}>
-            Ochrana osobných údajov
+            {copy.privacy}
           </a>
         </footer>
       </section>
@@ -897,6 +920,13 @@ const styles: Record<string, React.CSSProperties> = {
     height: 54,
     maxWidth: 260,
     objectFit: 'contain'
+  },
+  topControls: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap',
+    gap: 10
   },
   date: {
     background: '#000',

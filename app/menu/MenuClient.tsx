@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { appText, localeFor, type AppLanguage } from '@/lib/i18n'
 
 type MealType = 'OBED' | 'VECERA'
 type MenuVariant = 'MASO' | 'VEGE' | 'DIETA'
@@ -51,16 +52,21 @@ function normalizeVariant(value: string | null | undefined): Variant | null {
   return null
 }
 
-function variantLabel(value: string | null | undefined) {
-  if (normalizeVariant(value) === 'BEZ_ZAUJMU') return 'NEMÁM ZÁUJEM'
-  return normalizeVariant(value) === 'DIETA' ? 'DIÉTA' : value
+function variantLabel(value: string | null | undefined, language: AppLanguage = 'SK') {
+  const normalized = normalizeVariant(value)
+  if (normalized === 'BEZ_ZAUJMU') return language === 'EN' ? 'NO INTEREST' : 'NEMÁM ZÁUJEM'
+  if (normalized === 'DIETA') return language === 'EN' ? 'DIET' : 'DIÉTA'
+  if (normalized === 'MASO') return language === 'EN' ? 'MEAT' : 'MÄSO'
+  return value
 }
 
-function noInterestLabel(meal: MealType) {
+function noInterestLabel(meal: MealType, language: AppLanguage = 'SK') {
+  if (language === 'EN') return meal === 'OBED' ? 'I do not want lunch' : 'I do not want dinner'
   return meal === 'OBED' ? 'Nemám záujem o obed' : 'Nemám záujem o večeru'
 }
 
 export default function MenuClient({
+  language = 'SK',
   userId,
   today,
   defaultFood,
@@ -70,14 +76,15 @@ export default function MenuClient({
   submitUrl = '/api/menu/select',
   submitExtraBody,
   kioskMode = false,
-  heading = 'Výber stravy',
-  description = 'Vyber si jedlo na každý deň. Po uzávierke už výber nebude možné meniť.',
+  heading,
+  description,
   infoTitle,
   infoBody,
   selectedPersonName,
   topSlot,
   onActivity,
 }: {
+  language?: AppLanguage
   userId: string
   today: string
   defaultFood: string | null
@@ -95,6 +102,12 @@ export default function MenuClient({
   topSlot?: ReactNode
   onActivity?: () => void
 }) {
+  const copy = appText(language)
+  const isEnglish = language === 'EN'
+  const effectiveHeading = heading || copy.mealSelection
+  const effectiveDescription = description || (isEnglish
+    ? 'Choose your meal for each day. After the deadline the selection can no longer be changed.'
+    : 'Vyber si jedlo na každý deň. Po uzávierke už výber nebude možné meniť.')
   const [selectedDate, setSelectedDate] = useState(today)
   const [localSelections, setLocalSelections] = useState<Selection[]>(selections)
   const [savingKey, setSavingKey] = useState<string | null>(null)
@@ -130,7 +143,9 @@ export default function MenuClient({
       setOnline(false)
       setSavingKey(null)
       setPressedKey(null)
-      setMessage('Telefón je offline. Výber stravy bude možné meniť po obnovení internetu.')
+      setMessage(isEnglish
+        ? 'The device is offline. Meal selection can be changed after the internet connection is restored.'
+        : 'Telefón je offline. Výber stravy bude možné meniť po obnovení internetu.')
     }
 
     window.addEventListener('online', handleOnline)
@@ -148,11 +163,11 @@ export default function MenuClient({
 
   const defaultFoodLabel = useMemo(() => {
     const normalized = normalizeVariant(defaultFood)
-    if (normalized === 'MASO') return 'MASO'
+    if (normalized === 'MASO') return isEnglish ? 'MEAT' : 'MÄSO'
     if (normalized === 'VEGE') return 'VEGE'
-    if (normalized === 'DIETA') return 'DIÉTA'
-    return 'nenastavená'
-  }, [defaultFood])
+    if (normalized === 'DIETA') return isEnglish ? 'DIET' : 'DIÉTA'
+    return isEnglish ? 'not set' : 'nenastavená'
+  }, [defaultFood, isEnglish])
 
   const canSelectDiet = normalizeVariant(defaultFood) === 'DIETA'
 
@@ -184,7 +199,7 @@ export default function MenuClient({
 
   const formatDateLabel = (date: string) => {
     const d = new Date(date + 'T12:00:00')
-    return d.toLocaleDateString('sk-SK', {
+    return d.toLocaleDateString(localeFor(language), {
       weekday: 'short',
       day: '2-digit',
       month: '2-digit',
@@ -193,7 +208,7 @@ export default function MenuClient({
 
   const formatFullDate = (date: string) => {
     const d = new Date(date + 'T12:00:00')
-    return d.toLocaleDateString('sk-SK', {
+    return d.toLocaleDateString(localeFor(language), {
       weekday: 'long',
       day: '2-digit',
       month: 'long',
@@ -204,7 +219,7 @@ export default function MenuClient({
   const formatDeadline = (iso: string | null) => {
     if (!iso) return ''
     const d = new Date(iso)
-    return d.toLocaleString('sk-SK', {
+    return d.toLocaleString(localeFor(language), {
       day: '2-digit',
       month: '2-digit',
       hour: '2-digit',
@@ -243,7 +258,7 @@ export default function MenuClient({
         countdown: '',
         showCountdown: false,
         danger: false,
-        label: 'BLOKOVANÉ',
+        label: isEnglish ? 'LOCKED' : 'BLOKOVANÉ',
       }
     }
 
@@ -259,7 +274,7 @@ export default function MenuClient({
           countdown: '',
           showCountdown: false,
           danger: false,
-          label: 'UZATVORENÉ',
+          label: isEnglish ? 'CLOSED' : 'UZATVORENÉ',
         }
       }
 
@@ -271,7 +286,7 @@ export default function MenuClient({
         countdown: diff <= 60 * 60 * 1000 ? formatCountdown(diff) : '',
         showCountdown: diff <= 60 * 60 * 1000,
         danger: diff <= 5 * 60 * 1000,
-        label: 'OTVORENÉ',
+        label: isEnglish ? 'OPEN' : 'OTVORENÉ',
       }
     }
 
@@ -292,7 +307,9 @@ export default function MenuClient({
     const state = getDeadlineState(datum, typ)
 
     if (!online) {
-      setMessage('Telefón je offline. Výber stravy bude možné meniť po obnovení internetu.')
+      setMessage(isEnglish
+        ? 'The device is offline. Meal selection can be changed after the internet connection is restored.'
+        : 'Telefón je offline. Výber stravy bude možné meniť po obnovení internetu.')
       return
     }
 
@@ -314,7 +331,9 @@ export default function MenuClient({
     }).catch(() => null)
 
     if (!res) {
-      setMessage('Telefón je offline alebo spojenie vypadlo. Skús to znova po obnovení internetu.')
+      setMessage(isEnglish
+        ? 'The device is offline or the connection dropped. Try again after the internet connection is restored.'
+        : 'Telefón je offline alebo spojenie vypadlo. Skús to znova po obnovení internetu.')
       setSavingKey(null)
       setPressedKey(null)
       return
@@ -325,14 +344,14 @@ export default function MenuClient({
     try {
       result = await res.json()
     } catch {
-      setMessage('Server nevrátil platnú odpoveď.')
+      setMessage(isEnglish ? 'The server did not return a valid response.' : 'Server nevrátil platnú odpoveď.')
       setSavingKey(null)
       setPressedKey(null)
       return
     }
 
     if (!res.ok) {
-      setMessage(result.error || 'Nepodarilo sa uložiť výber.')
+      setMessage(result.error || (isEnglish ? 'The selection could not be saved.' : 'Nepodarilo sa uložiť výber.'))
       setSavingKey(null)
       setPressedKey(null)
       return
@@ -354,9 +373,9 @@ export default function MenuClient({
       ]
     })
 
-    setMessage('Výber bol uložený.')
+    setMessage(isEnglish ? 'Selection saved.' : 'Výber bol uložený.')
     if (volba === 'BEZ_ZAUJMU') {
-      setMessage('Jedlo bolo odhlásené.')
+      setMessage(isEnglish ? 'Meal signed off.' : 'Jedlo bolo odhlásené.')
     }
 
     setSavingKey(null)
@@ -406,7 +425,7 @@ export default function MenuClient({
                 fontWeight: 900,
               }}
             >
-              {typ === 'OBED' ? 'OBED' : 'VEČERA'}
+              {typ === 'OBED' ? (isEnglish ? 'LUNCH' : 'OBED') : (isEnglish ? 'DINNER' : 'VEČERA')}
             </h2>
 
             {state.deadlineText && (
@@ -417,7 +436,7 @@ export default function MenuClient({
                   fontWeight: 900,
                 }}
               >
-                Uzávierka: {state.deadlineText}
+                {isEnglish ? 'Deadline' : 'Uzávierka'}: {state.deadlineText}
               </div>
             )}
           </div>
@@ -449,12 +468,12 @@ export default function MenuClient({
             {state.locked
               ? state.label
                 : state.showCountdown
-                  ? `UZÁVIERKA ${state.countdown}`
+                  ? `${isEnglish ? 'DEADLINE' : 'UZÁVIERKA'} ${state.countdown}`
                   : noInterestSelected
-                  ? `Odhlásené: ${typ === 'OBED' ? 'obed' : 'večera'}`
+                  ? `${isEnglish ? 'Signed off' : 'Odhlásené'}: ${typ === 'OBED' ? (isEnglish ? 'lunch' : 'obed') : (isEnglish ? 'dinner' : 'večera')}`
                   : selected
-                  ? `Vybrané: ${variantLabel(selected)}`
-                  : `Predvolené: ${defaultFoodLabel}`}
+                  ? `${isEnglish ? 'Selected' : 'Vybrané'}: ${variantLabel(selected, language)}`
+                  : `${isEnglish ? 'Default' : 'Predvolené'}: ${defaultFoodLabel}`}
           </div>
         </div>
 
@@ -504,7 +523,7 @@ export default function MenuClient({
                     marginBottom: 12,
                   }}
                 >
-                  {variantLabel(item.varianta)}
+                  {variantLabel(item.varianta, language)}
                 </div>
 
                 <div
@@ -526,7 +545,7 @@ export default function MenuClient({
                     color: '#000',
                   }}
                 >
-                  {item.popis || 'Bez popisu'}
+                  {item.popis || (isEnglish ? 'No description' : 'Bez popisu')}
                 </div>
 
                 {(active || isPressed) && (
@@ -537,7 +556,7 @@ export default function MenuClient({
                       fontSize: 14,
                     }}
                   >
-                    ✓ Toto máš vybrané
+                    ✓ {isEnglish ? 'This is selected' : 'Toto máš vybrané'}
                   </div>
                 )}
               </button>
@@ -583,7 +602,7 @@ export default function MenuClient({
                     marginBottom: 12,
                   }}
                 >
-                  ODHLÁSIŤ
+                  {isEnglish ? 'SIGN OFF' : 'ODHLÁSIŤ'}
                 </div>
 
                 <div
@@ -594,7 +613,7 @@ export default function MenuClient({
                     marginBottom: 8,
                   }}
                 >
-                  {noInterestLabel(typ)}
+                  {noInterestLabel(typ, language)}
                 </div>
 
                 <div
@@ -605,7 +624,9 @@ export default function MenuClient({
                     color: '#000',
                   }}
                 >
-                  Toto jedlo sa nezapočíta do gastro tabuľky ani do výdaja.
+                  {isEnglish
+                    ? 'This meal will not be counted in the gastro table or in meal distribution.'
+                    : 'Toto jedlo sa nezapočíta do gastro tabuľky ani do výdaja.'}
                 </div>
 
                 {(active || isPressed) && (
@@ -704,7 +725,7 @@ export default function MenuClient({
             fontWeight: 900,
           }}
         >
-          {heading}
+          {effectiveHeading}
         </h1>
 
         {selectedPersonName && (
@@ -732,7 +753,7 @@ export default function MenuClient({
             fontWeight: 700,
           }}
         >
-          {description}
+          {effectiveDescription}
         </p>
 
         {!online && (

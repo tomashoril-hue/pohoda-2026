@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getCurrentUser } from '@/lib/auth'
+import { appText, localeFor } from '@/lib/i18n'
+import { requestLanguage } from '@/lib/i18nServer'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 type EntitlementRow = {
@@ -17,7 +19,8 @@ type CalendarDay = {
   vecera: boolean
 }
 
-const WEEKDAYS = ['Po', 'Ut', 'St', 'Št', 'Pi', 'So', 'Ne']
+const WEEKDAYS_SK = ['Po', 'Ut', 'St', 'Št', 'Pi', 'So', 'Ne']
+const WEEKDAYS_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 function todayIsoDate() {
   const now = new Date()
@@ -47,16 +50,16 @@ function toIsoDate(date: Date) {
   return `${year}-${month}-${day}`
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('sk-SK', {
+function formatDate(value: string, language: 'SK' | 'EN') {
+  return new Intl.DateTimeFormat(localeFor(language), {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric'
   }).format(parseIsoDate(value))
 }
 
-function monthTitle(year: number, month: number) {
-  return new Intl.DateTimeFormat('sk-SK', {
+function monthTitle(year: number, month: number, language: 'SK' | 'EN') {
+  return new Intl.DateTimeFormat(localeFor(language), {
     month: 'long',
     year: 'numeric'
   }).format(new Date(year, month, 1))
@@ -126,6 +129,9 @@ export default async function FoodEntitlementsPage() {
     redirect('/')
   }
 
+  const language = await requestLanguage(user)
+  const copy = appText(language)
+  const weekdays = language === 'EN' ? WEEKDAYS_EN : WEEKDAYS_SK
   const today = todayIsoDate()
   const until = addDaysIso(today, 120)
 
@@ -157,47 +163,47 @@ export default async function FoodEntitlementsPage() {
       </div>
 
       <section style={styles.card}>
-        <div style={styles.badge}>Nároky na stravu</div>
+        <div style={styles.badge}>{copy.foodEntitlements}</div>
 
         <div style={styles.titleRow}>
           <div>
-            <h1 style={styles.title}>Kalendár</h1>
+            <h1 style={styles.title}>{copy.calendar}</h1>
             <p style={styles.name}>
               {user.meno} {user.priezvisko}
             </p>
           </div>
 
           <Link href="/dashboard" style={styles.backButton}>
-            Späť
+            {copy.back}
           </Link>
         </div>
 
         <div style={styles.summaryGrid}>
           <div style={styles.summaryBox}>
             <strong>{dayCount}</strong>
-            <span>dní</span>
+            <span>{copy.days}</span>
           </div>
 
           <div style={styles.summaryBoxPink}>
             <strong>{lunchCount}</strong>
-            <span>obed</span>
+            <span>{copy.lunch}</span>
           </div>
 
           <div style={styles.summaryBoxGreen}>
             <strong>{dinnerCount}</strong>
-            <span>večera</span>
+            <span>{copy.dinner}</span>
           </div>
         </div>
 
         <div style={styles.legend}>
-          <span><b style={styles.lunchDot} /> Obed</span>
-          <span><b style={styles.dinnerDot} /> Večera</span>
-          <span><b style={styles.bothDot} /> Obed + večera</span>
+          <span><b style={styles.lunchDot} /> {copy.lunch}</span>
+          <span><b style={styles.dinnerDot} /> {copy.dinner}</span>
+          <span><b style={styles.bothDot} /> {copy.lunchDinner}</span>
         </div>
 
         {activeRows.length === 0 ? (
           <div style={styles.emptyBox}>
-            Zatiaľ nemáš priradené nadchádzajúce nároky na stravu.
+            {copy.noUpcomingEntitlements}
           </div>
         ) : (
           <div style={styles.calendarStack}>
@@ -207,11 +213,11 @@ export default async function FoodEntitlementsPage() {
               return (
                 <section key={`${year}-${month}`} style={styles.monthCard}>
                   <h2 style={styles.monthTitle}>
-                    {monthTitle(year, month)}
+                    {monthTitle(year, month, language)}
                   </h2>
 
                   <div style={styles.weekdays}>
-                    {WEEKDAYS.map(day => (
+                    {weekdays.map(day => (
                       <span key={day}>{day}</span>
                     ))}
                   </div>
@@ -254,7 +260,7 @@ export default async function FoodEntitlementsPage() {
 
         {activeRows.length > 0 && (
           <div style={styles.rangeBox}>
-            Zobrazené od {formatDate(today)} do {formatDate(lastEntitlementDate)}.
+            {language === 'EN' ? 'Displayed from' : 'Zobrazené od'} {formatDate(today, language)} {language === 'EN' ? 'to' : 'do'} {formatDate(lastEntitlementDate, language)}.
           </div>
         )}
       </section>

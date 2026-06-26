@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { requestLanguage } from '@/lib/i18nServer'
 import { loadMenuSelectionData } from '@/lib/menuData'
 import MenuClient from './MenuClient'
 
@@ -20,9 +21,11 @@ export default async function MenuPage() {
   }
 
   const menuData = await loadMenuSelectionData(user.id)
+  const language = await requestLanguage(user)
 
   return (
     <MenuClient
+      language={language}
       userId={user.id}
       today={menuData.today}
       defaultFood={user.typ_stravy || null}

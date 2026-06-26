@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { appText, localeFor, type AppLanguage } from '@/lib/i18n'
 import QrCameraScanner from './QrCameraScanner'
 
 type MealType = 'OBED' | 'VECERA'
@@ -71,6 +72,7 @@ type ExistingIssue = {
 }
 
 type Props = {
+  language?: AppLanguage
   initialDate: string
   minEditableDate: string
   groups: RegistrationGroupOption[]
@@ -93,6 +95,12 @@ function fullDateLabel(value: string) {
 
 function mealLabel(value: MealSelection) {
   return MEAL_OPTIONS.find(option => option.value === value)?.label || 'Vyberte jedlo'
+}
+
+function localizedMealLabel(value: MealSelection, language: AppLanguage) {
+  if (value === 'OBED') return language === 'EN' ? 'Lunch' : 'Obed'
+  if (value === 'VECERA') return language === 'EN' ? 'Dinner' : 'Večera'
+  return language === 'EN' ? 'Choose meal' : 'Vyberte jedlo'
 }
 
 function defaultIssueTitle(_groupName: string, meal: MealSelection, sequence: number) {
@@ -153,6 +161,28 @@ function sourceLabel(value: IssuePerson['source']) {
   if (value === 'FOOD_GROUP') return 'Strav. skupina'
   if (value === 'QR') return 'QR'
   return 'Vyhladane'
+}
+
+function localizedDateTimeLabel(value: string | null, language: AppLanguage) {
+  if (!value) return ''
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+
+  return new Intl.DateTimeFormat(localeFor(language), {
+    timeZone: 'Europe/Bratislava',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date)
+}
+
+function issueSourceLabel(value: IssueSourceMode, language: AppLanguage) {
+  if (value === 'REGISTRATION_GROUP') return language === 'EN' ? 'Registration group' : 'Registračná skupina'
+  if (value === 'FOOD_GROUP') return language === 'EN' ? 'Meal groups' : 'Stravovacie skupiny'
+  return language === 'EN' ? 'QR group' : 'Skupina QR'
 }
 
 function isIssuePersonReady(person: IssuePerson) {
@@ -220,7 +250,9 @@ function sameIds(a: string[], b: string[]) {
   return b.every(id => ids.has(id))
 }
 
-export default function SkupinovyVydajClient({ initialDate, minEditableDate, groups, delegatesByGroupId, canEditExistingIssues }: Props) {
+export default function SkupinovyVydajClient({ language = 'SK', initialDate, minEditableDate, groups, delegatesByGroupId, canEditExistingIssues }: Props) {
+  const copy = appText(language)
+  const isEnglish = language === 'EN'
   const pageRef = useRef<HTMLElement | null>(null)
   const stableViewportHeightRef = useRef<number | null>(null)
   const delegateSearchRequestRef = useRef(0)
@@ -2250,12 +2282,16 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       <div className="group-issue-shell" style={styles.shell}>
         <header className="group-issue-header" style={styles.header}>
           <div>
-            <h1 className="group-issue-title" style={styles.title}>Skupinový výdaj</h1>
-            <p style={styles.subtitle}>Príprava výdaja pre registračné skupiny a poverených ľudí.</p>
+            <h1 className="group-issue-title" style={styles.title}>{copy.groupIssue}</h1>
+            <p style={styles.subtitle}>
+              {isEnglish
+                ? 'Prepare meal distribution for registration groups and delegated people.'
+                : 'Príprava výdaja pre registračné skupiny a poverených ľudí.'}
+            </p>
           </div>
 
           <Link href="/dashboard" style={styles.backButton}>
-            Späť
+            {copy.back}
           </Link>
         </header>
 
@@ -2268,18 +2304,18 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                 <section className="group-issue-main" style={styles.issueEditorModal}>
                 <div style={styles.prepHeading}>
                   <div style={styles.prepHeadingInfo}>
-                    <span style={styles.summaryLabel}>Pripravuješ</span>
-                    <b>{mealLabel(meal)} · {selectedGroup?.name || '-'}</b>
+                    <span style={styles.summaryLabel}>{isEnglish ? 'Preparing' : 'Pripravuješ'}</span>
+                    <b>{localizedMealLabel(meal, language)} · {selectedGroup?.name || '-'}</b>
                     <small>{fullDateLabel(date)}</small>
                     <div style={styles.issueTitleRow}>
-                      <span style={styles.issueTitleLabel}>Názov výdaja:</span>
+                      <span style={styles.issueTitleLabel}>{isEnglish ? 'Issue name:' : 'Názov výdaja:'}</span>
                       <div style={styles.issueTitleCompact}>
                         {issueTitleEditing && !issueReadOnly ? (
                           <input
                             type="text"
                             value={issueTitle}
                             onChange={event => setIssueTitle(event.target.value)}
-                            placeholder="Názov výdaja"
+                            placeholder={isEnglish ? 'Issue name' : 'Názov výdaja'}
                             style={styles.compactTitleInput}
                             disabled={issueLoading}
                             autoFocus
@@ -2294,8 +2330,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                             onClick={() => setIssueTitleEditing(open => !open)}
                             style={styles.compactIconButton}
                             disabled={issueLoading}
-                            title="Upraviť názov"
-                            aria-label="Upraviť názov"
+                             title={isEnglish ? 'Edit name' : 'Upraviť názov'}
+                             aria-label={isEnglish ? 'Edit name' : 'Upraviť názov'}
                           >
                             Z
                           </button>
@@ -2383,7 +2419,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                         disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
                         style={styles.bulkButton}
                       >
-                        Všetci
+                        {isEnglish ? 'All' : 'Všetci'}
                       </button>
                       <button
                         type="button"
@@ -2391,7 +2427,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                         disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
                         style={styles.bulkButton}
                       >
-                        Vydateľní
+                        {isEnglish ? 'Issuable' : 'Vydateľní'}
                       </button>
                       <button
                         type="button"
@@ -2399,7 +2435,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                         disabled={issueLoading || issueReadOnly || editableIssuePeople.length === 0}
                         style={styles.bulkButton}
                       >
-                        Žiadni
+                        {isEnglish ? 'None' : 'Žiadni'}
                       </button>
                     </div>
                   )}
@@ -2413,7 +2449,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                         ? { ...styles.primaryButton, width: '100%' }
                         : styles.compactDarkButton}
                     >
-                      {sourceMode === 'ONE_OFF' ? 'Pridať ľudí cez QR' : 'QR'}
+                      {sourceMode === 'ONE_OFF' ? (isEnglish ? 'Add people by QR' : 'Pridať ľudí cez QR') : 'QR'}
                     </button>
 
                     {sourceMode !== 'ONE_OFF' && (
@@ -2432,7 +2468,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                           ...(issueSearchOpen || issuePersonFilter ? styles.secondaryButtonActive : {})
                         }}
                       >
-                        Hľadať
+                        {isEnglish ? 'Search' : 'Hľadať'}
                       </button>
                     )}
                   </div>
@@ -2450,14 +2486,16 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                       }
                       style={styles.secondaryButton}
                     >
-                      Presunúť ({selectedMovableIssuePeople.length})
+                      {isEnglish ? 'Move' : 'Presunúť'} ({selectedMovableIssuePeople.length})
                     </button>
                   )}
                 </div>
 
                 <div style={styles.peopleSectionHeader}>
-                  <b>Osoby vo výdaji</b>
-                  <span>{selectedSummary.SPOLU} vydateľných / {selectedIssueUserIds.length} označených / {issuePeople.length} spolu</span>
+                  <b>{isEnglish ? 'People in issue' : 'Osoby vo výdaji'}</b>
+                  <span>
+                    {selectedSummary.SPOLU} {isEnglish ? 'issuable' : 'vydateľných'} / {selectedIssueUserIds.length} {isEnglish ? 'selected' : 'označených'} / {issuePeople.length} {isEnglish ? 'total' : 'spolu'}
+                  </span>
                 </div>
 
                 {sourceMode !== 'ONE_OFF' && (issueSearchOpen || issuePersonFilter) && (
@@ -2465,7 +2503,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     type="search"
                     value={issuePersonFilter}
                     onChange={event => setIssuePersonFilter(event.target.value)}
-                    placeholder="Hľadať v osobách vo výdaji"
+                    placeholder={isEnglish ? 'Search people in issue' : 'Hľadať v osobách vo výdaji'}
                     style={styles.filterInput}
                     disabled={issuePeople.length === 0}
                     autoFocus
@@ -2523,11 +2561,11 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   {(editingIssueId || issuePeopleConfirmed) && (
                     <div style={styles.pickupStepCard}>
                       <div style={styles.pickupStepInfo}>
-                        <b>Oprávnení prevziať</b>
+                        <b>{isEnglish ? 'Allowed to pick up' : 'Oprávnení prevziať'}</b>
                         <span>
                           {pickupUserIds.length > 0
-                            ? `${pickupUserIds.length} osôb môže prevziať tento výdaj.`
-                            : 'Zatiaľ nie je pridaná žiadna osoba na prevzatie.'}
+                            ? (isEnglish ? `${pickupUserIds.length} people can pick up this issue.` : `${pickupUserIds.length} osôb môže prevziať tento výdaj.`)
+                            : (isEnglish ? 'No pickup person has been added yet.' : 'Zatiaľ nie je pridaná žiadna osoba na prevzatie.')}
                         </span>
                       </div>
 
@@ -2537,7 +2575,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                         disabled={issueLoading || issueReadOnly}
                         style={{ ...styles.secondaryButton, ...styles.compactButton }}
                       >
-                        Upraviť
+                         {isEnglish ? 'Edit' : 'Upraviť'}
                       </button>
                     </div>
                   )}
@@ -2549,7 +2587,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                       disabled={issueLoading || issueReadOnly || selectedIssuablePeople.length === 0}
                       style={{ ...styles.primaryButton, width: '100%' }}
                     >
-                      Potvrdiť osoby a pokračovať
+                       {isEnglish ? 'Confirm people and continue' : 'Potvrdiť osoby a pokračovať'}
                     </button>
                   ) : (
                     <button
@@ -2558,7 +2596,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                       disabled={issueLoading || issueReadOnly || selectedIssuablePeople.length === 0 || pickupUserIds.length === 0}
                       style={{ ...styles.primaryButton, width: '100%' }}
                     >
-                      {issueLoading ? 'Ukladám...' : 'Uložiť skupinový výdaj'}
+                       {issueLoading ? copy.saving : (isEnglish ? 'Save group issue' : 'Uložiť skupinový výdaj')}
                     </button>
                   )}
 
@@ -2931,8 +2969,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
             <div style={styles.sourceModal} onClick={event => event.stopPropagation()}>
               <div style={styles.qrModalHeader}>
                 <div style={styles.modalTitleBlock}>
-                  <b>Vyber zdroj osôb</b>
-                  <span>{selectedGroup.name} / {mealLabel(meal)} / {fullDateLabel(date)}</span>
+                  <b>{isEnglish ? 'Choose people source' : 'Vyber zdroj osôb'}</b>
+                  <span>{selectedGroup.name} / {localizedMealLabel(meal, language)} / {fullDateLabel(date)}</span>
                 </div>
 
                 <div style={styles.modalHeaderActions}>
@@ -2941,8 +2979,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                       type="button"
                       onClick={() => setPrepareSourceStep('SOURCE')}
                       style={styles.iconBackButton}
-                      title="Späť"
-                      aria-label="Späť"
+                      title={copy.back}
+                      aria-label={copy.back}
                       disabled={issueLoading}
                     >
                       ←
@@ -2954,8 +2992,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     onClick={() => setPrepareSourceModalOpen(false)}
                     style={styles.qrCloseButton}
                     disabled={issueLoading}
-                    title="Zatvoriť"
-                    aria-label="Zatvoriť"
+                    title={isEnglish ? 'Close' : 'Zatvoriť'}
+                    aria-label={isEnglish ? 'Close' : 'Zatvoriť'}
                   >
                     x
                   </button>
@@ -2973,8 +3011,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   }}
                   disabled={issueLoading}
                 >
-                  <b>Stravovacie skupiny</b>
-                  <span>Uložené vlastné zoznamy</span>
+                  <b>{isEnglish ? 'Meal groups' : 'Stravovacie skupiny'}</b>
+                  <span>{isEnglish ? 'Saved custom lists' : 'Uložené vlastné zoznamy'}</span>
                 </button>
 
                 <button
@@ -2986,7 +3024,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   }}
                   disabled={issueLoading}
                 >
-                  <b>Skupina QR</b>
+                  <b>{isEnglish ? 'QR group' : 'Skupina QR'}</b>
                   <span>Vytvoríš skenovaním</span>
                 </button>
               </div>
@@ -3507,7 +3545,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     disabled={foodGroupsLoading}
                     style={styles.primaryButton}
                   >
-                    Ďalej
+                    ÄŽalej
                   </button>
                 ) : (
                   <div style={styles.modalFooterActions}>

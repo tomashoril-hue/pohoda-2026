@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { getSessionUser } from '@/lib/auth'
+import { requestLanguage } from '@/lib/i18nServer'
 import { loginEmailCookieName } from '@/lib/loginForm'
 import LoginClient from './LoginClient'
 
@@ -28,9 +29,11 @@ export default async function LoginPage({
 
   const cookieStore = await cookies()
   const initialEmail = emailValue(params.email) || cookieStore.get(loginEmailCookieName)?.value || ''
+  const language = await requestLanguage()
 
   return (
     <LoginClient
+      language={language}
       initialEmail={initialEmail}
       initialSent={params.sent === '1'}
       initialError={params.error || ''}

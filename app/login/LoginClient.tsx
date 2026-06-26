@@ -1,9 +1,12 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useState, type CSSProperties, type FormEvent } from 'react'
 import Link from 'next/link'
+import LanguageSwitcher from '@/components/LanguageSwitcher'
+import { appText, type AppLanguage } from '@/lib/i18n'
 
 export default function LoginPage({
+  language = 'SK',
   initialEmail = '',
   initialSent = false,
   initialError = '',
@@ -11,6 +14,7 @@ export default function LoginPage({
   initialAccessCode = '',
   initialNext = ''
 }: {
+  language?: AppLanguage
   initialEmail?: string
   initialSent?: boolean
   initialError?: string
@@ -18,6 +22,8 @@ export default function LoginPage({
   initialAccessCode?: string
   initialNext?: string
 }) {
+  const copy = appText(language)
+  const isEnglish = language === 'EN'
   const [email, setEmail] = useState(initialEmail)
   const [code, setCode] = useState('')
   const [accessMeno, setAccessMeno] = useState('')
@@ -37,7 +43,7 @@ export default function LoginPage({
     event.preventDefault()
 
     if (!cleanEmail) {
-      alert('Zadaj e-mail')
+      alert(isEnglish ? 'Enter e-mail.' : 'Zadaj e-mail.')
       return
     }
 
@@ -50,18 +56,17 @@ export default function LoginPage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleanEmail })
       })
-
       const json = await res.json()
 
       if (!res.ok || json.error) {
-        setError(json.error || 'E-mail sa nepodarilo odoslať.')
+        setError(json.error || (isEnglish ? 'The e-mail could not be sent.' : 'E-mail sa nepodarilo odoslať.'))
         return
       }
 
       setSent(true)
       setCode('')
     } catch (err: any) {
-      setError('Chyba: ' + err.message)
+      setError((isEnglish ? 'Error: ' : 'Chyba: ') + err.message)
     } finally {
       setLoading(false)
     }
@@ -71,12 +76,12 @@ export default function LoginPage({
     event.preventDefault()
 
     if (!cleanEmail) {
-      setError('Chýba e-mail. Pošli si nový prihlasovací kód.')
+      setError(isEnglish ? 'E-mail is missing. Send yourself a new sign-in code.' : 'Chýba e-mail. Pošli si nový prihlasovací kód.')
       return
     }
 
     if (code.length !== 6) {
-      setError('Zadaj 6-miestny kód.')
+      setError(isEnglish ? 'Enter the 6-digit code.' : 'Zadaj 6-miestny kód.')
       return
     }
 
@@ -89,17 +94,16 @@ export default function LoginPage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleanEmail, code })
       })
-
       const json = await res.json()
 
       if (!res.ok || json.error) {
-        setError(json.error || 'Prihlásenie kódom zlyhalo.')
+        setError(json.error || (isEnglish ? 'Code sign-in failed.' : 'Prihlásenie kódom zlyhalo.'))
         return
       }
 
       window.location.href = redirectAfterLogin
     } catch (err: any) {
-      setError('Chyba: ' + err.message)
+      setError((isEnglish ? 'Error: ' : 'Chyba: ') + err.message)
     } finally {
       setCodeLoading(false)
     }
@@ -115,12 +119,12 @@ export default function LoginPage({
     event.preventDefault()
 
     if (!accessMeno.trim() || !accessPriezvisko.trim()) {
-      setError('Zadaj meno aj priezvisko.')
+      setError(isEnglish ? 'Enter first name and last name.' : 'Zadaj meno aj priezvisko.')
       return
     }
 
     if (accessCode.length !== 8) {
-      setError('Zadaj 8-miestny prístupový kód.')
+      setError(isEnglish ? 'Enter the 8-digit access code.' : 'Zadaj 8-miestny prístupový kód.')
       return
     }
 
@@ -137,17 +141,16 @@ export default function LoginPage({
           code: accessCode
         })
       })
-
       const json = await res.json()
 
       if (!res.ok || json.error) {
-        setError(json.error || 'Prihlásenie prístupovým kódom zlyhalo.')
+        setError(json.error || (isEnglish ? 'Access code sign-in failed.' : 'Prihlásenie prístupovým kódom zlyhalo.'))
         return
       }
 
       window.location.href = redirectAfterLogin
     } catch (err: any) {
-      setError('Chyba: ' + err.message)
+      setError((isEnglish ? 'Error: ' : 'Chyba: ') + err.message)
     } finally {
       setAccessLoading(false)
     }
@@ -159,142 +162,142 @@ export default function LoginPage({
         <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
           <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
         </a>
-        <div style={styles.date}>8. & 9. - 11. 7. 2026</div>
+        <div style={styles.topControls}>
+          <LanguageSwitcher language={language} compact />
+          <div style={styles.date}>8. & 9. - 11. 7. 2026</div>
+        </div>
       </div>
 
       <section style={styles.card}>
-        <div style={styles.badge}>Prihlásenie</div>
-
-        <h1 style={styles.title}>Vitaj späť</h1>
+        <div style={styles.badge}>{copy.login}</div>
+        <h1 style={styles.title}>{copy.welcomeBack}</h1>
 
         {!sent ? (
           <>
-          <div style={styles.methodSwitch}>
-            <button
-              type="button"
-              style={{
-                ...styles.methodButton,
-                ...(loginMethod === 'email' ? styles.methodButtonActive : {})
-              }}
-              onClick={() => {
-                setLoginMethod('email')
-                setError('')
-              }}
-            >
-              E-mail
-            </button>
+            <div style={styles.methodSwitch}>
+              <button
+                type="button"
+                style={{
+                  ...styles.methodButton,
+                  ...(loginMethod === 'email' ? styles.methodButtonActive : {})
+                }}
+                onClick={() => {
+                  setLoginMethod('email')
+                  setError('')
+                }}
+              >
+                {copy.email}
+              </button>
 
-            <button
-              type="button"
-              style={{
-                ...styles.methodButton,
-                ...(loginMethod === 'code' ? styles.methodButtonActive : {})
-              }}
-              onClick={() => {
-                setLoginMethod('code')
-                setError('')
-              }}
-            >
-              Prístupový kód
-            </button>
-          </div>
-
-          {loginMethod === 'email' ? (
-          <form action="/api/auth/login/request" method="post" onSubmit={handleLogin}>
-            <p style={styles.subtitle}>
-              Zadaj svoj registračný e-mail. Pošleme ti prihlasovací link aj 6-miestny kód.
-            </p>
-
-            <input
-              style={styles.input}
-              placeholder="E-mail"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              type="email"
-              name="email"
-              autoComplete="email"
-              required
-            />
-
-            <button
-              type="submit"
-              style={{
-                ...styles.button,
-                opacity: loading ? 0.65 : 1,
-                cursor: loading ? 'not-allowed' : 'pointer'
-              }}
-              disabled={loading}
-            >
-              {loading ? 'Odosielam...' : 'Poslať prihlasenie'}
-            </button>
-
-            <Link href="/register" style={styles.registerLink}>
-              Ešte nemám registráciu
-            </Link>
-          </form>
-          ) : (
-          <form onSubmit={handleAccessCodeLogin} style={styles.accessBox}>
-            <h2 style={styles.accessTitle}>Prihlásenie menom a kódom</h2>
-            <p style={styles.accessText}>
-              Použi túto možnosť, ak máš pridelený prístupový kód od organizátora.
-            </p>
-
-            <div style={styles.accessGrid}>
-              <input
-                style={styles.input}
-                placeholder="Meno"
-                value={accessMeno}
-                onChange={e => setAccessMeno(e.target.value)}
-                autoComplete="given-name"
-              />
-              <input
-                style={styles.input}
-                placeholder="Priezvisko"
-                value={accessPriezvisko}
-                onChange={e => setAccessPriezvisko(e.target.value)}
-                autoComplete="family-name"
-              />
+              <button
+                type="button"
+                style={{
+                  ...styles.methodButton,
+                  ...(loginMethod === 'code' ? styles.methodButtonActive : {})
+                }}
+                onClick={() => {
+                  setLoginMethod('code')
+                  setError('')
+                }}
+              >
+                {copy.accessCode}
+              </button>
             </div>
 
-            <input
-              style={styles.codeInput}
-              placeholder="00000000"
-              value={accessCode}
-              onChange={e => setAccessCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
-              inputMode="numeric"
-              pattern="[0-9]*"
-              autoComplete="one-time-code"
-              maxLength={8}
-            />
+            {loginMethod === 'email' ? (
+              <form action="/api/auth/login/request" method="post" onSubmit={handleLogin}>
+                <p style={styles.subtitle}>{copy.loginIntro}</p>
 
-            <button
-              type="submit"
-              style={{
-                ...styles.button,
-                opacity: accessLoading ? 0.65 : 1,
-                cursor: accessLoading ? 'not-allowed' : 'pointer'
-              }}
-              disabled={accessLoading}
-            >
-              {accessLoading ? 'Prihlasujem...' : 'Prihlásiť kódom'}
-            </button>
-          </form>
-          )}
+                <input
+                  style={styles.input}
+                  placeholder={copy.email}
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  required
+                />
 
-          {error && (
-            <div style={styles.error}>
-              {error}
-            </div>
-          )}
+                <button
+                  type="submit"
+                  style={{
+                    ...styles.button,
+                    opacity: loading ? 0.65 : 1,
+                    cursor: loading ? 'not-allowed' : 'pointer'
+                  }}
+                  disabled={loading}
+                >
+                  {loading ? copy.sending : copy.sendLogin}
+                </button>
+
+                <Link href="/register" style={styles.registerLink}>
+                  {copy.noRegistration}
+                </Link>
+              </form>
+            ) : (
+              <form onSubmit={handleAccessCodeLogin} style={styles.accessBox}>
+                <h2 style={styles.accessTitle}>{copy.accessCode}</h2>
+                <p style={styles.accessText}>{copy.accessIntro}</p>
+
+                <div style={styles.accessGrid}>
+                  <input
+                    style={styles.input}
+                    placeholder={copy.firstName}
+                    value={accessMeno}
+                    onChange={e => setAccessMeno(e.target.value)}
+                    autoComplete="given-name"
+                  />
+                  <input
+                    style={styles.input}
+                    placeholder={copy.lastName}
+                    value={accessPriezvisko}
+                    onChange={e => setAccessPriezvisko(e.target.value)}
+                    autoComplete="family-name"
+                  />
+                </div>
+
+                <input
+                  style={styles.codeInput}
+                  placeholder="00000000"
+                  value={accessCode}
+                  onChange={e => setAccessCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="one-time-code"
+                  maxLength={8}
+                />
+
+                <button
+                  type="submit"
+                  style={{
+                    ...styles.button,
+                    opacity: accessLoading ? 0.65 : 1,
+                    cursor: accessLoading ? 'not-allowed' : 'pointer'
+                  }}
+                  disabled={accessLoading}
+                >
+                  {accessLoading
+                    ? (isEnglish ? 'Signing in...' : 'Prihlasujem...')
+                    : (isEnglish ? 'Sign in with code' : 'Prihlásiť kódom')}
+                </button>
+              </form>
+            )}
+
+            {error && <div style={styles.error}>{error}</div>}
           </>
         ) : (
           <div style={styles.success}>
-            <h2 style={styles.messageTitle}>E-mail bol odoslaný</h2>
+            <h2 style={styles.messageTitle}>{isEnglish ? 'E-mail sent' : 'E-mail bol odoslaný'}</h2>
             <p>
-              Na adresu <b>{cleanEmail}</b> sme poslali prihlasovací link aj 6-miestny kód.
+              {isEnglish ? 'We sent a sign-in link and a 6-digit code to ' : 'Na adresu '}
+              <b>{cleanEmail}</b>
+              {isEnglish ? '.' : ' sme poslali prihlasovací link aj 6-miestny kód.'}
             </p>
             <p>
-              Ak používaš aplikáciu z plochy, zadaj kód priamo sem.
+              {isEnglish
+                ? 'If you use the installed app, enter the code here.'
+                : 'Ak používaš aplikáciu z plochy, zadaj kód priamo sem.'}
             </p>
 
             <form action="/api/auth/login/code" method="post" onSubmit={handleCodeLogin}>
@@ -322,23 +325,17 @@ export default function LoginPage({
                 }}
                 disabled={codeLoading}
               >
-                {codeLoading ? 'Prihlasujem...' : 'Prihlásiť kódom'}
+                {codeLoading
+                  ? (isEnglish ? 'Signing in...' : 'Prihlasujem...')
+                  : (isEnglish ? 'Sign in with code' : 'Prihlásiť kódom')}
               </button>
             </form>
 
-            <button
-              style={styles.secondaryButton}
-              onClick={resetLogin}
-              type="button"
-            >
-              Zadať iný e-mail
+            <button style={styles.secondaryButton} onClick={resetLogin} type="button">
+              {isEnglish ? 'Use another e-mail' : 'Zadať iný e-mail'}
             </button>
 
-            {error && (
-              <div style={styles.error}>
-                {error}
-              </div>
-            )}
+            {error && <div style={styles.error}>{error}</div>}
           </div>
         )}
       </section>
@@ -346,7 +343,7 @@ export default function LoginPage({
   )
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: '100vh',
     background: 'linear-gradient(135deg, #7417e8 0%, #ed59dc 45%, #56db3f 100%)',
@@ -366,6 +363,13 @@ const styles: Record<string, React.CSSProperties> = {
     height: 54,
     maxWidth: 260,
     objectFit: 'contain'
+  },
+  topControls: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap',
+    gap: 10
   },
   date: {
     background: '#000',
@@ -493,14 +497,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#000',
     fontWeight: 900,
     textDecoration: 'underline'
-  },
-  divider: {
-    margin: '24px 0',
-    textAlign: 'center',
-    fontSize: 13,
-    fontWeight: 950,
-    opacity: 0.62,
-    textTransform: 'uppercase'
   },
   accessBox: {
     marginTop: 0,

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { requestLanguage } from '@/lib/i18nServer'
 import { canUseGroupIssue, getDelegatedRegistrationGroupIds, getManagedRegistrationGroupIds } from '@/lib/registrationGroupManagers'
 import { fullName, loadUsersByIds } from '@/lib/registrationGroupIssue'
 import { supabaseServer } from '@/lib/supabaseServer'
@@ -141,9 +142,11 @@ export default async function SkupinovyVydajPage() {
   }
 
   const groupIssueAccess = await loadGroupIssueAccess(user.id, access)
+  const language = await requestLanguage(user)
 
   return (
     <SkupinovyVydajClient
+      language={language}
       initialDate={defaultIssueDate()}
       minEditableDate={todayIsoDate()}
       groups={groupIssueAccess.groups}
