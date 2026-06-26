@@ -8,6 +8,7 @@ type MealType = 'OBED' | 'VECERA'
 type MealSelection = MealType | ''
 type IssueSourceMode = 'REGISTRATION_GROUP' | 'FOOD_GROUP' | 'ONE_OFF'
 type PickupMode = 'selected' | 'group' | 'outside' | 'qr'
+type FoodGroupMemberMode = 'group' | 'outside' | 'qr'
 
 type RegistrationGroupOption = {
   id: string
@@ -224,6 +225,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const delegateSearchRequestRef = useRef(0)
   const delegateSearchModeRef = useRef<'group' | 'outside'>('group')
   const pickupSearchRequestRef = useRef(0)
+  const foodGroupSearchRequestRef = useRef(0)
   const [date, setDate] = useState(initialDate)
   const [meal, setMeal] = useState<MealSelection>('')
   const [confirmed, setConfirmed] = useState(false)
@@ -268,6 +270,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const [foodGroupName, setFoodGroupName] = useState('')
   const [foodGroupMemberIds, setFoodGroupMemberIds] = useState<string[]>([])
   const [foodGroupMembers, setFoodGroupMembers] = useState<SearchUser[]>([])
+  const [foodGroupMemberMode, setFoodGroupMemberMode] = useState<FoodGroupMemberMode>('group')
   const [foodGroupSearchQuery, setFoodGroupSearchQuery] = useState('')
   const [foodGroupSearchResults, setFoodGroupSearchResults] = useState<SearchUser[]>([])
   const [foodGroupMessage, setFoodGroupMessage] = useState('')
@@ -308,6 +311,9 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const pickupGroupMode = pickupMode === 'group'
   const pickupSearchOutside = pickupMode === 'outside'
   const pickupQrMode = pickupMode === 'qr'
+  const foodGroupMemberGroupMode = foodGroupMemberMode === 'group'
+  const foodGroupMemberOutsideMode = foodGroupMemberMode === 'outside'
+  const foodGroupMemberQrMode = foodGroupMemberMode === 'qr'
   const daySelectionReady = Boolean(date && selectedGroupId)
   const readOnlyDate = Boolean(date && minEditableDate && date < minEditableDate)
   const selectedIssuePeople = issuePeople.filter(person => selectedIssueUserIds.includes(person.id))
@@ -401,6 +407,10 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const delegateUserIds = useMemo(() => delegates.map(delegate => delegate.userId), [delegates])
   const delegateSelectionChanged = !sameIds(delegateUserIds, pendingDelegateUserIds)
   const pickupSelectionChanged = !sameIds(pickupUserIds, pendingPickupUserIds)
+  const foodGroupCandidateUsers = useMemo(() => {
+    if (foodGroupMemberQrMode) return foodGroupMembers
+    return mergeSearchUsers(foodGroupMembers, foodGroupSearchResults)
+  }, [foodGroupMemberQrMode, foodGroupMembers, foodGroupSearchResults])
   const moveTargetIssues = useMemo(() => {
     return existingIssues.filter(issue => {
       return issue.id !== editingIssueId && issue.meal === meal && issue.status !== 'CANCELLED'
@@ -758,13 +768,17 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setFoodGroupName(selected?.name || '')
     setFoodGroupMemberIds([])
     setFoodGroupMembers([])
+    setFoodGroupMemberMode('group')
     setFoodGroupSearchQuery('')
     setFoodGroupSearchResults([])
     setFoodGroupMessage('')
     setFoodGroupMessageType('ok')
     setFoodGroupModalOpen(true)
 
-    if (!selected?.id || !date) return
+    if (!selected?.id || !date) {
+      void searchFoodGroupMembers('', 'group')
+      return
+    }
 
     setFoodGroupsLoading(true)
 
@@ -789,16 +803,20 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     } finally {
       setFoodGroupsLoading(false)
     }
+
+    void searchFoodGroupMembers('', 'group')
   }
 
   function closeFoodGroupModal() {
     if (foodGroupsLoading) return
+    foodGroupSearchRequestRef.current += 1
     setFoodGroupQrModalOpen(false)
     setFoodGroupModalOpen(false)
     setFoodGroupEditId('')
     setFoodGroupName('')
     setFoodGroupMemberIds([])
     setFoodGroupMembers([])
+    setFoodGroupMemberMode('group')
     setFoodGroupSearchQuery('')
     setFoodGroupSearchResults([])
     setFoodGroupMessage('')
@@ -811,11 +829,34 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       : [...current, user.id])
   }
 
-  async function searchFoodGroupMembers(query: string) {
+  function switchFoodGroupMemberMode(mode: FoodGroupMemberMode) {
+    foodGroupSearchRequestRef.current += 1
+    setFoodGroupMemberMode(mode)
+    setFoodGroupSearchQuery('')
+    setFoodGroupSearchResults([])
+    setFoodGroupsLoading(false)
+
+    if (mode === 'group') {
+      void searchFoodGroupMembers('', 'group')
+    }
+  }
+
+  async function searchFoodGroupMembers(query: string, mode = foodGroupMemberMode) {
+    const requestId = foodGroupSearchRequestRef.current + 1
+    foodGroupSearchRequestRef.current = requestId
     setFoodGroupSearchQuery(query)
     setFoodGroupSearchResults([])
 
-    if (!selectedGroupId || query.trim().length < 3) return
+    const searchText = query.trim()
+    if (
+      !selectedGroupId ||
+      !date ||
+      mode === 'qr' ||
+      (mode === 'outside' && searchText.length < 3)
+    ) {
+      setFoodGroupsLoading(false)
+      return
+    }
 
     setFoodGroupsLoading(true)
     setFoodGroupMessage('')
@@ -823,19 +864,25 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     try {
       const params = new URLSearchParams({
         registrationGroupId: selectedGroupId,
-        q: query
+        mode: 'pickup',
+        date,
+        q: searchText
       })
-      const res = await fetch(`/api/skupinovy-vydaj/food-groups?${params.toString()}`)
+      if (mode === 'outside') params.set('scope', 'outside')
+      const res = await fetch(`/api/skupinovy-vydaj/people-search?${params.toString()}`)
       const json = await res.json()
 
       if (!res.ok) throw new Error(json.error || 'Vyhľadávanie zlyhalo.')
 
-      setFoodGroupSearchResults(json.users || [])
+      if (foodGroupSearchRequestRef.current !== requestId) return
+      setFoodGroupSearchResults(json.people || [])
     } catch (err: any) {
       setFoodGroupMessage(err?.message || 'Vyhľadávanie zlyhalo.')
       setFoodGroupMessageType('error')
     } finally {
-      setFoodGroupsLoading(false)
+      if (foodGroupSearchRequestRef.current === requestId) {
+        setFoodGroupsLoading(false)
+      }
     }
   }
 
@@ -2897,22 +2944,61 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     </label>
                   )}
 
+                  <div style={{ ...styles.segment, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+                    <button
+                      type="button"
+                      onClick={() => switchFoodGroupMemberMode('group')}
+                      style={{
+                        ...styles.segmentButton,
+                        ...(foodGroupMemberGroupMode ? styles.segmentButtonActive : {})
+                      }}
+                    >
+                      Zo skupiny
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => switchFoodGroupMemberMode('outside')}
+                      style={{
+                        ...styles.segmentButton,
+                        ...(foodGroupMemberOutsideMode ? styles.segmentButtonActive : {})
+                      }}
+                    >
+                      Mimo skupiny
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => switchFoodGroupMemberMode('qr')}
+                      style={{
+                        ...styles.segmentButton,
+                        ...(foodGroupMemberQrMode ? styles.segmentButtonActive : {})
+                      }}
+                    >
+                      QR
+                    </button>
+                  </div>
+
+                  {(foodGroupMemberGroupMode || foodGroupMemberOutsideMode) && (
                   <label style={styles.field}>
-                    <span style={styles.label}>Pridať osobu</span>
+                    <span style={styles.label}>
+                      {foodGroupMemberOutsideMode ? 'Vyhľadať mimo skupiny' : 'Vyhľadať v skupine'}
+                    </span>
                     <input
                       type="search"
                       value={foodGroupSearchQuery}
-                      onChange={event => searchFoodGroupMembers(event.target.value)}
-                      placeholder="Zadaj aspoň 3 znaky"
+                      onChange={event => searchFoodGroupMembers(event.target.value, foodGroupMemberOutsideMode ? 'outside' : 'group')}
+                      placeholder={foodGroupMemberOutsideMode ? 'Zadaj aspoň 3 znaky mimo skupiny' : 'Hľadaj v aktuálnej skupine'}
                       style={styles.input}
                       disabled={foodGroupsLoading}
                     />
                   </label>
+                  )}
 
                   <button
                     type="button"
                     onClick={() => setFoodGroupQrModalOpen(true)}
-                    style={styles.darkButton}
+                    style={{ ...styles.darkButton, display: 'none' }}
                     disabled={foodGroupsLoading}
                   >
                     Pridať osobu cez QR
@@ -2920,11 +3006,18 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
 
                   {foodGroupsLoading && <div style={styles.emptyBox}>Načítavam...</div>}
 
+                  {foodGroupMemberQrMode && (
+                    <QrCameraScanner
+                      disabled={foodGroupsLoading || !selectedGroupId}
+                      onScan={addFoodGroupMemberByQr}
+                    />
+                  )}
+
                   <div style={styles.searchResults}>
-                    {mergeSearchUsers(foodGroupMembers, foodGroupSearchResults).length === 0 ? (
+                    {foodGroupCandidateUsers.length === 0 ? (
                       <div style={styles.emptyBox}>Vyhľadaj osobu alebo uprav existujúcu skupinu.</div>
                     ) : (
-                      mergeSearchUsers(foodGroupMembers, foodGroupSearchResults).map(user => {
+                      foodGroupCandidateUsers.map(user => {
                         const selected = foodGroupMemberIds.includes(user.id)
 
                         return (

@@ -6,6 +6,7 @@ import {
   filterIssuablePeople,
   getIssueAccess,
   loadRegistrationGroupPeople,
+  normalizeChoice,
   normalizeDate,
   normalizeMeal
 } from '@/lib/registrationGroupIssue'
@@ -78,7 +79,8 @@ export async function GET(req: NextRequest) {
         .map((user: any) => ({
           id: user.id,
           name: displayName(user),
-          email: user.email || ''
+          email: user.email || '',
+          foodChoice: normalizeChoice(user.typ_stravy) || ''
         }))
 
       return NextResponse.json({ people })
@@ -110,7 +112,8 @@ export async function GET(req: NextRequest) {
           .map((user: any) => ({
             id: user.id,
             name: displayName(user),
-            email: user.email || ''
+            email: user.email || '',
+            foodChoice: normalizeChoice(user.typ_stravy) || ''
           }))
       })
     }
