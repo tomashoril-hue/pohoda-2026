@@ -216,6 +216,16 @@ export default function MenuClient({
     })
   }
 
+  const todayFullLabel = () => {
+    const d = new Date(today + 'T12:00:00')
+    return d.toLocaleDateString(localeFor(language), {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+  }
+
   const formatDeadline = (iso: string | null) => {
     if (!iso) return ''
     const d = new Date(iso)
@@ -676,32 +686,42 @@ export default function MenuClient({
       <div
         style={{
           maxWidth: 980,
-          margin: '0 auto 20px auto',
+          margin: '0 auto 14px auto',
           display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
+          justifyContent: 'flex-start',
+          alignItems: 'flex-start',
           gap: 16,
         }}
       >
-        {kioskMode ? (
-          <img src="/pohoda-30.svg" alt="POHODA" style={{ height: 46 }} />
-        ) : (
-          <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
-            <img src="/pohoda-30.svg" alt="POHODA" style={{ height: 46 }} />
-          </a>
-        )}
-
         <div
           style={{
-            background: '#000',
-            color: '#fff',
-            padding: '8px 16px',
-            borderRadius: 999,
-            fontWeight: 900,
-            border: '3px solid #000',
+            display: 'grid',
+            gap: 7,
+            justifyItems: 'start',
           }}
         >
-          {formatFullDate(selectedDate)}
+          {kioskMode ? (
+            <img src="/pohoda-30.svg" alt="POHODA" style={{ height: 46 }} />
+          ) : (
+            <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
+              <img src="/pohoda-30.svg" alt="POHODA" style={{ height: 46 }} />
+            </a>
+          )}
+
+          <div
+            style={{
+              background: '#000',
+              color: '#fff',
+              padding: '6px 12px',
+              borderRadius: 999,
+              fontWeight: 900,
+              border: '3px solid #000',
+              fontSize: 13,
+              lineHeight: 1.1,
+            }}
+          >
+            {isEnglish ? 'Today is' : 'Dnes je'} : {todayFullLabel()}
+          </div>
         </div>
       </div>
 
@@ -718,15 +738,52 @@ export default function MenuClient({
           boxShadow: '12px 12px 0 #000',
         }}
       >
-        <h1
+        <div
           style={{
-            margin: '0 0 8px 0',
-            fontSize: 34,
-            fontWeight: 900,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 8,
+            flexWrap: 'wrap',
           }}
         >
-          {effectiveHeading}
-        </h1>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 34,
+              fontWeight: 900,
+            }}
+          >
+            {effectiveHeading}
+          </h1>
+
+          {!kioskMode && (
+            <a
+              href="/dashboard"
+              aria-label={isEnglish ? 'Back to dashboard' : 'Späť na dashboard'}
+              title={isEnglish ? 'Back' : 'Späť'}
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 999,
+                border: '3px solid #000',
+                background: '#fff',
+                color: '#000',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textDecoration: 'none',
+                fontSize: 22,
+                fontWeight: 950,
+                boxShadow: '4px 4px 0 #000',
+                lineHeight: 1,
+              }}
+            >
+              ←
+            </a>
+          )}
+        </div>
 
         {selectedPersonName && (
           <div
