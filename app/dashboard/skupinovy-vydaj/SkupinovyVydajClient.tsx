@@ -31,6 +31,7 @@ type SearchUser = {
   id: string
   name: string
   email: string
+  foodChoice?: string
 }
 
 type FoodGroup = {
@@ -2679,7 +2680,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   {issueLoading
                     ? 'Načítavam...'
                     : sourceMode === 'FOOD_GROUP' && prepareSourceStep === 'DETAIL'
-                      ? 'Pokračovať s vybranou skupinou'
+                      ? 'Príprava výdaja'
                       : 'Pokračovať'}
                 </button>
               </div>
@@ -2823,31 +2824,6 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     />
                   </label>
 
-                  {foodGroups.length > 0 && (
-                    <label style={styles.field}>
-                      <span style={styles.label}>Upraviť existujúcu</span>
-                      <select
-                        value={foodGroupEditId}
-                        onChange={event => {
-                          const nextId = event.target.value
-                          const group = foodGroups.find(item => item.id === nextId)
-                          setFoodGroupEditId(nextId)
-                          setFoodGroupName(group?.name || '')
-                          void openFoodGroupModal(nextId)
-                        }}
-                        style={styles.input}
-                        disabled={foodGroupsLoading}
-                      >
-                        <option value="">Nová stravovacia skupina</option>
-                        {foodGroups.map(group => (
-                          <option key={group.id} value={group.id}>
-                            {group.name} ({group.memberCount})
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-
                   <label style={styles.field}>
                     <span style={styles.label}>Pridať osobu</span>
                     <input
@@ -2898,7 +2874,10 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                             <span style={styles.resultText}>
                               <b>{user.name}</b>
                               {user.email && <span>{user.email}</span>}
-                              <small>{selected ? 'V skupine' : 'Kliknutím označíš'}</small>
+                              <small>
+                                {selected ? 'V skupine' : 'Kliknutím označíš'}
+                                {user.foodChoice ? ` · ${user.foodChoice}` : ''}
+                              </small>
                             </span>
                           </button>
                         )

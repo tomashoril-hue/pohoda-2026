@@ -6,6 +6,7 @@ import {
   getIssueAccess,
   loadPreparationPeople,
   loadUsersByIds,
+  normalizeChoice,
   type MealType,
   normalizeDate,
   normalizeMeal
@@ -137,7 +138,8 @@ async function loadFoodGroupMembers(groupId: string) {
       return {
         id: userId,
         name: displayName(user),
-        email: user?.email || ''
+        email: user?.email || '',
+        foodChoice: normalizeChoice(user?.typ_stravy) || ''
       }
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'sk', { sensitivity: 'base' }))
@@ -191,7 +193,8 @@ export async function GET(req: NextRequest) {
         user: {
           id: user.id,
           name: displayName(user),
-          email: user.email || ''
+          email: user.email || '',
+          foodChoice: normalizeChoice(user.typ_stravy) || ''
         }
       })
     }
@@ -202,7 +205,7 @@ export async function GET(req: NextRequest) {
       const pattern = `%${query}%`
       const { data, error } = await supabaseServer
         .from('users')
-        .select('id, meno, priezvisko, email, aktivny')
+        .select('id, meno, priezvisko, email, aktivny, typ_stravy')
         .eq('aktivny', 'ANO')
         .or(`meno.ilike.${pattern},priezvisko.ilike.${pattern},email.ilike.${pattern}`)
         .order('priezvisko', { ascending: true })
@@ -215,7 +218,8 @@ export async function GET(req: NextRequest) {
         users: (data || []).map((user: any) => ({
           id: user.id,
           name: displayName(user),
-          email: user.email || ''
+          email: user.email || '',
+          foodChoice: normalizeChoice(user.typ_stravy) || ''
         }))
       })
     }
