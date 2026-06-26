@@ -148,6 +148,7 @@ export default async function SkupinovyVydajPage() {
       minEditableDate={todayIsoDate()}
       groups={groupIssueAccess.groups}
       delegatesByGroupId={groupIssueAccess.delegatesByGroupId}
+      canEditExistingIssues={access.isAdmin}
     />
   )
 }

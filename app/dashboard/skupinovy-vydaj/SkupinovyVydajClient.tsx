@@ -75,6 +75,7 @@ type Props = {
   minEditableDate: string
   groups: RegistrationGroupOption[]
   delegatesByGroupId: Record<string, Delegate[]>
+  canEditExistingIssues: boolean
 }
 
 const MEAL_OPTIONS: Array<{ value: MealType, label: string }> = [
@@ -219,7 +220,7 @@ function sameIds(a: string[], b: string[]) {
   return b.every(id => ids.has(id))
 }
 
-export default function SkupinovyVydajClient({ initialDate, minEditableDate, groups, delegatesByGroupId }: Props) {
+export default function SkupinovyVydajClient({ initialDate, minEditableDate, groups, delegatesByGroupId, canEditExistingIssues }: Props) {
   const pageRef = useRef<HTMLElement | null>(null)
   const stableViewportHeightRef = useRef<number | null>(null)
   const delegateSearchRequestRef = useRef(0)
@@ -335,7 +336,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     ? issuePeople.filter(isPlannedIssuePerson)
     : issuePeople
   const issueFullyLocked = Boolean(editingIssueId && issuePeople.length > 0 && editableIssuePeople.length === 0)
-  const issueReadOnly = readOnlyDate || issueFullyLocked
+  const issueReadOnly = readOnlyDate || issueFullyLocked || Boolean(editingIssueId && !canEditExistingIssues)
   const selectedMovableIssuePeople = selectedIssuePeople.filter(person => person.itemStatus === 'PLANNED')
   const selectedHasUnmovablePeople = selectedIssuePeople.some(person => person.itemStatus !== 'PLANNED')
   const selectedIssuablePeople = selectedIssuePeople.filter(isIssuePersonReady)
@@ -2790,6 +2791,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                           : null
                         const fullyIssuedIssue = (issue.summary?.SPOLU || 0) === 0
                         const isReadOnlyIssue = readOnlyDate || fullyIssuedIssue
+                        const canChangeIssue = canEditExistingIssues && !isReadOnlyIssue
 
                         return (
                           <div
@@ -2824,9 +2826,9 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                                 onClick={() => editExistingIssue(issue.id)}
                                 disabled={issueLoading}
                                 style={styles.smallEditButton}
-                                title={isReadOnlyIssue ? 'Pozrieť výdaj' : 'Zmeniť výdaj'}
+                                title={canChangeIssue ? 'Zmeniť výdaj' : 'Pozrieť výdaj'}
                               >
-                                {isReadOnlyIssue ? 'i' : 'Z'}
+                                {canChangeIssue ? 'Z' : 'i'}
                               </button>
                               {!isReadOnlyIssue && (
                                 <button
