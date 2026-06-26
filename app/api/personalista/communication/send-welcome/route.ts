@@ -13,6 +13,16 @@ function text(value: any) {
   return String(value || '').trim()
 }
 
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = []
+
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size))
+  }
+
+  return chunks
+}
+
 function languageValue(value: any) {
   return text(value).toUpperCase() === 'EN' ? 'EN' : 'SK'
 }
@@ -93,6 +103,76 @@ async function getCurrentRegistrationGroupUserIds(registrationGroupId: string) {
   return Array.from(userIds)
 }
 
+async function getAllWelcomeCandidateUsers() {
+  const pageSize = 1000
+  const users: any[] = []
+  let from = 0
+
+  while (true) {
+    const { data, error } = await supabaseServer
+      .from('users')
+      .select('id, meno, priezvisko, email, qr_code, registration_group_id')
+      .eq('aktivny', 'ANO')
+      .not('email', 'is', null)
+      .order('registration_group_id', { ascending: true })
+      .order('priezvisko', { ascending: true })
+      .order('meno', { ascending: true })
+      .range(from, from + pageSize - 1)
+
+    if (error) throw error
+
+    const rows = data || []
+    users.push(...rows)
+
+    if (rows.length < pageSize) break
+    from += pageSize
+  }
+
+  return users
+}
+
+async function getWelcomeCandidateUsersByIds(userIds: string[]) {
+  const users: any[] = []
+
+  for (const chunk of chunkArray(userIds, 500)) {
+    const { data, error } = await supabaseServer
+      .from('users')
+      .select('id, meno, priezvisko, email, qr_code, registration_group_id')
+      .in('id', chunk)
+      .eq('aktivny', 'ANO')
+      .not('email', 'is', null)
+      .order('priezvisko', { ascending: true })
+      .order('meno', { ascending: true })
+
+    if (error) throw error
+
+    users.push(...(data || []))
+  }
+
+  return users
+}
+
+async function getSentWelcomeUserIds(userIds: string[]) {
+  const sentUserIds = new Set<string>()
+
+  for (const chunk of chunkArray(userIds, 500)) {
+    const { data, error } = await supabaseServer
+      .from('personnel_email_log')
+      .select('user_id')
+      .in('user_id', chunk)
+      .eq('type', 'WELCOME_IMPORTED_USER')
+      .eq('status', 'SENT')
+
+    if (error) throw error
+
+    ;(data || []).forEach((row: any) => {
+      if (row.user_id) sentUserIds.add(row.user_id)
+    })
+  }
+
+  return sentUserIds
+}
+
 export async function POST(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser()
@@ -115,46 +195,21 @@ export async function POST(req: NextRequest) {
     const resend = body.resend === true
     const language = languageValue(body.language)
 
-    if (!registrationGroupId) {
-      return NextResponse.json({ error: 'Vyber registracnu skupinu.' }, { status: 400 })
-    }
-
-    const userIds = await getCurrentRegistrationGroupUserIds(registrationGroupId)
+    const scopedUserIds = registrationGroupId
+      ? await getCurrentRegistrationGroupUserIds(registrationGroupId)
+      : []
+    const users = registrationGroupId
+      ? await getWelcomeCandidateUsersByIds(scopedUserIds)
+      : await getAllWelcomeCandidateUsers()
+    const userIds = users.map((user: any) => user.id).filter(Boolean)
 
     if (userIds.length === 0) {
-      return NextResponse.json({ ok: true, sent: 0, failed: 0, total: 0 })
+      return NextResponse.json({ ok: true, sent: 0, failed: 0, total: 0, remaining: 0, batchSize: WELCOME_EMAIL_BATCH_SIZE })
     }
 
-    let sentUserIds = new Set<string>()
+    const sentUserIds = !resend ? await getSentWelcomeUserIds(userIds) : new Set<string>()
 
-    if (!resend) {
-      const { data: sentRows, error: sentError } = await supabaseServer
-        .from('personnel_email_log')
-        .select('user_id')
-        .in('user_id', userIds)
-        .eq('type', 'WELCOME_IMPORTED_USER')
-        .eq('status', 'SENT')
-
-      if (sentError) {
-        return NextResponse.json({ error: sentError.message }, { status: 500 })
-      }
-
-      sentUserIds = new Set((sentRows || []).map((row: any) => row.user_id).filter(Boolean))
-    }
-
-    const { data: users, error: usersError } = await supabaseServer
-      .from('users')
-      .select('id, meno, priezvisko, email, qr_code')
-      .in('id', userIds)
-      .eq('aktivny', 'ANO')
-      .not('email', 'is', null)
-      .order('priezvisko', { ascending: true })
-
-    if (usersError) {
-      return NextResponse.json({ error: usersError.message }, { status: 500 })
-    }
-
-    const pendingUsers = (users || [])
+    const pendingUsers = users
       .filter((user: any) => resend || !sentUserIds.has(user.id))
     const targetUsers = pendingUsers.slice(0, WELCOME_EMAIL_BATCH_SIZE)
     const loginUrl = `${process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin}/login`

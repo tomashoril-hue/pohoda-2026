@@ -455,6 +455,7 @@ export default function PersonalistaClient({
   const qrScannerCancelledRef = useRef(false)
   const qrScannerAttemptRef = useRef(0)
   const detailMessageRef = useRef<HTMLDivElement | null>(null)
+  const communicationAutoLoadedRef = useRef(false)
   const preservedDetailMessageRef = useRef<{
     userId: string
     message: string
@@ -674,11 +675,9 @@ export default function PersonalistaClient({
   }
 
   const loadCommunicationSummary = async (registrationGroupId: string, target: 'communication' | 'accessCodes') => {
-    if (!registrationGroupId) {
-      const setter = target === 'communication' ? setCommunicationMessage : setAccessCodesMessage
-      const typeSetter = target === 'communication' ? setCommunicationMessageType : setAccessCodesMessageType
-      setter('Vyber registracnu skupinu.')
-      typeSetter('error')
+    if (target === 'accessCodes' && !registrationGroupId) {
+      setAccessCodesMessage('Vyber registracnu skupinu.')
+      setAccessCodesMessageType('error')
       return null
     }
 
@@ -692,7 +691,10 @@ export default function PersonalistaClient({
     typeSetter('')
 
     try {
-      const res = await fetch(`/api/personalista/communication/summary?registrationGroupId=${encodeURIComponent(registrationGroupId)}`, {
+      const url = registrationGroupId
+        ? `/api/personalista/communication/summary?registrationGroupId=${encodeURIComponent(registrationGroupId)}`
+        : '/api/personalista/communication/summary'
+      const res = await fetch(url, {
         cache: 'no-store'
       })
       const json = await res.json().catch(() => ({}))
@@ -715,7 +717,7 @@ export default function PersonalistaClient({
       }
 
       summarySetter(summary)
-      messageSetter(`Nacitane: ${summary.group?.name || 'registracna skupina'}.`)
+      messageSetter(`Načítané: ${summary.group?.name || 'všetci aktívni ľudia'}.`)
       typeSetter('ok')
       return summary
     } catch (err) {
@@ -730,12 +732,6 @@ export default function PersonalistaClient({
   }
 
   const sendWelcomeEmailsForGroup = async () => {
-    if (!communicationGroupId) {
-      setCommunicationMessage('Vyber registracnu skupinu.')
-      setCommunicationMessageType('error')
-      return
-    }
-
     setCommunicationLoading(true)
     setCommunicationMessage('')
     setCommunicationMessageType('')
@@ -745,7 +741,7 @@ export default function PersonalistaClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          registrationGroupId: communicationGroupId,
+          registrationGroupId: '',
           resend: false,
           language: communicationLanguage
         })
@@ -763,7 +759,7 @@ export default function PersonalistaClient({
         (json.remaining ? ` Zostáva ešte: ${json.remaining}. Spusti odoslanie znova pre ďalšiu dávku.` : '')
       )
       setCommunicationMessageType(json.failed ? 'error' : 'ok')
-      await loadCommunicationSummary(communicationGroupId, 'communication')
+      await loadCommunicationSummary('', 'communication')
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setCommunicationMessage('Chyba spojenia so serverom: ' + message)
@@ -772,6 +768,18 @@ export default function PersonalistaClient({
       setCommunicationLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (personnelTool !== 'communication') {
+      communicationAutoLoadedRef.current = false
+      return
+    }
+
+    if (communicationAutoLoadedRef.current) return
+
+    communicationAutoLoadedRef.current = true
+    void loadCommunicationSummary('', 'communication')
+  }, [personnelTool])
 
   const sendAccessCodesForGroup = async () => {
     if (!accessCodesGroupId) {
@@ -3762,8 +3770,8 @@ export default function PersonalistaClient({
         <section style={styles.createPanel}>
           <div style={styles.createHeader}>
             <div>
-              <b>Komunikacia</b>
-              <span>Uvitanie posielaj az po kontrole importovanych ludi v Personalistike.</span>
+              <b>Komunikácia</b>
+              <span>Uvítacie e-maily sa posielajú postupne po dávkach 50 ľudí.</span>
             </div>
 
             <button
@@ -3777,26 +3785,6 @@ export default function PersonalistaClient({
           </div>
 
           <div style={styles.createGrid}>
-            <label style={styles.field}>
-              <span>Registracna skupina</span>
-              <select
-                value={communicationGroupId}
-                onChange={event => {
-                  setCommunicationGroupId(event.target.value)
-                  setCommunicationSummary(null)
-                  setCommunicationMessage('')
-                  setCommunicationMessageType('')
-                }}
-                style={styles.input}
-                disabled={communicationLoading}
-              >
-                <option value="">Vyber registracnu skupinu</option>
-                {registrationGroups.map(group => (
-                  <option key={group.id} value={group.id}>{group.name}</option>
-                ))}
-              </select>
-            </label>
-
             <label style={styles.field}>
               <span>Jazyk e-mailu</span>
               <select
@@ -3815,33 +3803,33 @@ export default function PersonalistaClient({
             <button
               type="button"
               style={styles.lightButton}
-              disabled={communicationLoading || !communicationGroupId}
-              onClick={() => void loadCommunicationSummary(communicationGroupId, 'communication')}
+              disabled={communicationLoading}
+              onClick={() => void loadCommunicationSummary('', 'communication')}
             >
-              Nacitat prehlad
+              Načítať stav
             </button>
 
             <button
               type="button"
               style={styles.confirmButton}
-              disabled={communicationLoading || !communicationGroupId || !communicationSummary?.welcomePending}
+              disabled={communicationLoading || !communicationSummary?.welcomePending}
               onClick={() => void sendWelcomeEmailsForGroup()}
             >
-              Poslat neposlane uvitacie e-maily
+              Odoslať ďalšiu dávku 50
             </button>
           </div>
 
           {communicationSummary && (
             <div style={styles.toolStatsGrid}>
-              <div style={styles.toolStat}><b>{communicationSummary.total}</b><span>Aktivni ludia</span></div>
+              <div style={styles.toolStat}><b>{communicationSummary.total}</b><span>Aktívni ľudia</span></div>
               <div style={styles.toolStat}><b>{communicationSummary.withEmail}</b><span>S e-mailom</span></div>
-              <div style={styles.toolStat}><b>{communicationSummary.welcomeSent}</b><span>Uvitaci odoslany</span></div>
-              <div style={styles.toolStatWarning}><b>{communicationSummary.welcomePending}</b><span>Caka na odoslanie</span></div>
+              <div style={styles.toolStat}><b>{communicationSummary.welcomeSent}</b><span>Uvítací odoslaný</span></div>
+              <div style={styles.toolStatWarning}><b>{communicationSummary.welcomePending}</b><span>Čaká na odoslanie</span></div>
             </div>
           )}
 
           <div style={styles.optionHint}>
-            Posiela sa najviac 200 e-mailov naraz. Ak ostanu dalsi neodoslani, klikni znova.
+            Systém vyberá čakajúcich ľudí naprieč registračnými skupinami. Schválené registrácie s už odoslaným e-mailom sa preskočia.
           </div>
 
           {communicationMessage && (

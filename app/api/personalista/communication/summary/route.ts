@@ -8,6 +8,40 @@ function text(value: any) {
   return String(value || '').trim()
 }
 
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = []
+
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size))
+  }
+
+  return chunks
+}
+
+async function getAllActiveUserIds() {
+  const pageSize = 1000
+  const userIds: string[] = []
+  let from = 0
+
+  while (true) {
+    const { data, error } = await supabaseServer
+      .from('users')
+      .select('id')
+      .eq('aktivny', 'ANO')
+      .range(from, from + pageSize - 1)
+
+    if (error) throw error
+
+    const rows = data || []
+    userIds.push(...rows.map((row: any) => row.id).filter(Boolean))
+
+    if (rows.length < pageSize) break
+    from += pageSize
+  }
+
+  return userIds
+}
+
 async function getCurrentRegistrationGroupUserIds(registrationGroupId: string) {
   const today = slovakiaDateIso(0)
 
@@ -50,6 +84,45 @@ async function getCurrentRegistrationGroupUserIds(registrationGroupId: string) {
   return Array.from(periodUserIds)
 }
 
+async function getActiveUsersByIds(userIds: string[]) {
+  const users: Array<{ id: string; email: string | null }> = []
+
+  for (const chunk of chunkArray(userIds, 500)) {
+    const { data, error } = await supabaseServer
+      .from('users')
+      .select('id, email')
+      .in('id', chunk)
+      .eq('aktivny', 'ANO')
+
+    if (error) throw error
+    users.push(...(data || []))
+  }
+
+  return users
+}
+
+async function getUserIdSetByChunks(table: string, userIds: string[], configure: (query: any) => any) {
+  const result = new Set<string>()
+
+  for (const chunk of chunkArray(userIds, 500)) {
+    const query = configure(
+      supabaseServer
+        .from(table)
+        .select('user_id')
+        .in('user_id', chunk)
+    )
+    const { data, error } = await query
+
+    if (error) throw error
+
+    ;(data || []).forEach((row: any) => {
+      if (row.user_id) result.add(row.user_id)
+    })
+  }
+
+  return result
+}
+
 export async function GET(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser()
@@ -66,82 +139,46 @@ export async function GET(req: NextRequest) {
 
     const registrationGroupId = text(req.nextUrl.searchParams.get('registrationGroupId'))
 
-    if (!registrationGroupId) {
-      return NextResponse.json({ error: 'Vyber registracnu skupinu.' }, { status: 400 })
+    let group: any = null
+    let userIds: string[] = []
+
+    if (registrationGroupId) {
+      const { data: groupRow, error: groupError } = await supabaseServer
+        .from('registration_groups')
+        .select('id, name')
+        .eq('id', registrationGroupId)
+        .maybeSingle()
+
+      if (groupError) {
+        return NextResponse.json({ error: groupError.message }, { status: 500 })
+      }
+
+      if (!groupRow) {
+        return NextResponse.json({ error: 'Registracna skupina neexistuje.' }, { status: 404 })
+      }
+
+      group = groupRow
+      userIds = await getCurrentRegistrationGroupUserIds(registrationGroupId)
+    } else {
+      userIds = await getAllActiveUserIds()
     }
 
-    const { data: group, error: groupError } = await supabaseServer
-      .from('registration_groups')
-      .select('id, name')
-      .eq('id', registrationGroupId)
-      .maybeSingle()
-
-    if (groupError) {
-      return NextResponse.json({ error: groupError.message }, { status: 500 })
-    }
-
-    if (!group) {
-      return NextResponse.json({ error: 'Registracna skupina neexistuje.' }, { status: 404 })
-    }
-
-    const userIds = await getCurrentRegistrationGroupUserIds(registrationGroupId)
-
-    const { data: users, error: usersError } = userIds.length > 0
-      ? await supabaseServer
-        .from('users')
-        .select('id, email')
-        .in('id', userIds)
-        .eq('aktivny', 'ANO')
-      : { data: [], error: null }
-
-    if (usersError) {
-      return NextResponse.json({ error: usersError.message }, { status: 500 })
-    }
-
-    const activeUsers = users || []
+    const activeUsers = userIds.length > 0 ? await getActiveUsersByIds(userIds) : []
     const activeUserIds = activeUsers.map((user: any) => user.id)
 
-    const { data: sentRows, error: sentError } = activeUserIds.length > 0
-      ? await supabaseServer
-        .from('personnel_email_log')
-        .select('user_id')
-        .in('user_id', activeUserIds)
+    const sentUserIds = activeUserIds.length > 0
+      ? await getUserIdSetByChunks('personnel_email_log', activeUserIds, query => query
         .eq('type', 'WELCOME_IMPORTED_USER')
-        .eq('status', 'SENT')
-      : { data: [], error: null }
-
-    if (sentError) {
-      return NextResponse.json({ error: sentError.message }, { status: 500 })
-    }
-
-    const { data: codeRows, error: codeError } = activeUserIds.length > 0
-      ? await supabaseServer
-        .from('user_access_codes')
-        .select('user_id')
-        .in('user_id', activeUserIds)
+        .eq('status', 'SENT'))
+      : new Set<string>()
+    const codeUserIds = activeUserIds.length > 0
+      ? await getUserIdSetByChunks('user_access_codes', activeUserIds, query => query
         .eq('active', true)
-        .not('access_code_plain', 'is', null)
-      : { data: [], error: null }
-
-    if (codeError) {
-      return NextResponse.json({ error: codeError.message }, { status: 500 })
-    }
-
-    const { data: qrRows, error: qrError } = activeUserIds.length > 0
-      ? await supabaseServer
-        .from('user_qr_codes')
-        .select('user_id')
-        .in('user_id', activeUserIds)
-        .eq('active', true)
-      : { data: [], error: null }
-
-    if (qrError) {
-      return NextResponse.json({ error: qrError.message }, { status: 500 })
-    }
-
-    const sentUserIds = new Set((sentRows || []).map((row: any) => row.user_id).filter(Boolean))
-    const codeUserIds = new Set((codeRows || []).map((row: any) => row.user_id).filter(Boolean))
-    const qrUserIds = new Set((qrRows || []).map((row: any) => row.user_id).filter(Boolean))
+        .not('access_code_plain', 'is', null))
+      : new Set<string>()
+    const qrUserIds = activeUserIds.length > 0
+      ? await getUserIdSetByChunks('user_qr_codes', activeUserIds, query => query.eq('active', true))
+      : new Set<string>()
     const withEmail = activeUsers.filter((user: any) => text(user.email)).length
 
     return NextResponse.json({
