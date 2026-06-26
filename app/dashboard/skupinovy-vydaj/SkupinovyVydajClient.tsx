@@ -3290,7 +3290,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                       onChange={event => searchFoodGroupMembers(event.target.value, foodGroupMemberOutsideMode ? 'outside' : 'group')}
                       placeholder={foodGroupMemberOutsideMode ? 'Zadaj aspoň 3 znaky mimo skupiny' : 'Hľadaj v aktuálnej skupine'}
                       style={styles.input}
-                      disabled={foodGroupsLoading}
+                      disabled={!selectedGroupId}
                     />
                   </label>
                   )}
@@ -3416,7 +3416,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                         onChange={event => searchFoodGroupPickupUsers(event.target.value, foodGroupPickupOutsideMode ? 'outside' : 'group')}
                         placeholder={foodGroupPickupOutsideMode ? 'Zadaj aspoň 3 znaky mimo skupiny' : 'Hľadaj v aktuálnej skupine'}
                         style={styles.input}
-                        disabled={foodGroupPickupLoading}
+                        disabled={!selectedGroupId}
                       />
                     </label>
                   )}
