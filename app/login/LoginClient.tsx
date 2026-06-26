@@ -157,25 +157,161 @@ export default function LoginPage({
   }
 
   return (
-    <main style={styles.page}>
-      <div style={styles.topBar}>
+    <main className="login-page" style={styles.page}>
+      <style>
+        {`
+          .login-page button,
+          .login-page a[href] {
+            touch-action: manipulation;
+            transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease, background 120ms ease;
+            -webkit-tap-highlight-color: rgba(86, 219, 63, 0.22);
+          }
+
+          .login-page button:not(:disabled):active,
+          .login-page a[href]:active {
+            transform: translate(2px, 2px) scale(0.98);
+            filter: brightness(0.94);
+            box-shadow: 2px 2px 0 #000 !important;
+          }
+
+          .login-method-button {
+            min-height: 42px;
+          }
+
+          @media (max-width: 520px) {
+            .login-page {
+              padding: 12px !important;
+            }
+
+            .login-top-bar {
+              margin-bottom: 10px !important;
+              gap: 8px !important;
+              align-items: flex-start !important;
+            }
+
+            .login-logo {
+              height: 38px !important;
+              max-width: 172px !important;
+            }
+
+            .login-top-controls {
+              gap: 6px !important;
+            }
+
+            .login-date {
+              display: none !important;
+            }
+
+            .login-card {
+              padding: 16px !important;
+              border-radius: 20px !important;
+              border-width: 3px !important;
+              box-shadow: 6px 6px 0 #000 !important;
+            }
+
+            .login-title {
+              font-size: 30px !important;
+              line-height: 0.95 !important;
+            }
+
+            .login-subtitle {
+              margin: 9px 0 14px !important;
+              font-size: 13px !important;
+              line-height: 1.28 !important;
+            }
+
+            .login-method-switch {
+              margin: 14px 0 12px !important;
+              padding: 4px !important;
+              gap: 5px !important;
+              border-width: 2px !important;
+            }
+
+            .login-method-button {
+              min-height: 34px !important;
+              padding: 8px 9px !important;
+              font-size: 12px !important;
+              line-height: 1.1 !important;
+            }
+
+            .login-input {
+              border-width: 2px !important;
+              border-radius: 13px !important;
+              padding: 11px 12px !important;
+              font-size: 14px !important;
+            }
+
+            .login-code-input {
+              border-width: 2px !important;
+              border-radius: 13px !important;
+              padding: 10px 12px !important;
+              font-size: 22px !important;
+              letter-spacing: 5px !important;
+            }
+
+            .login-button,
+            .login-secondary-button {
+              margin-top: 13px !important;
+              padding: 12px 14px !important;
+              font-size: 15px !important;
+              border-width: 2px !important;
+            }
+
+            .login-register-link {
+              margin-top: 12px !important;
+              font-size: 13px !important;
+            }
+
+            .login-access-box {
+              padding: 12px !important;
+              border-radius: 16px !important;
+              border-width: 2px !important;
+              gap: 9px !important;
+            }
+
+            .login-access-title {
+              font-size: 18px !important;
+            }
+
+            .login-access-text {
+              font-size: 12px !important;
+              line-height: 1.25 !important;
+            }
+
+            .login-error,
+            .login-success {
+              margin-top: 12px !important;
+              padding: 12px !important;
+              border-radius: 15px !important;
+              border-width: 2px !important;
+              font-size: 13px !important;
+            }
+
+            .login-message-title {
+              font-size: 18px !important;
+            }
+          }
+        `}
+      </style>
+
+      <div className="login-top-bar" style={styles.topBar}>
         <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
-          <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
+          <img className="login-logo" src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
         </a>
-        <div style={styles.topControls}>
+        <div className="login-top-controls" style={styles.topControls}>
           <LanguageSwitcher language={language} compact />
-          <div style={styles.date}>8. & 9. - 11. 7. 2026</div>
+          <div className="login-date" style={styles.date}>8. & 9. - 11. 7. 2026</div>
         </div>
       </div>
 
-      <section style={styles.card}>
-        <div style={styles.badge}>{copy.login}</div>
-        <h1 style={styles.title}>{copy.welcomeBack}</h1>
+      <section className="login-card" style={styles.card}>
+        <h1 className="login-title" style={styles.title}>{copy.welcomeBack}</h1>
 
         {!sent ? (
           <>
-            <div style={styles.methodSwitch}>
+            <div className="login-method-switch" style={styles.methodSwitch}>
               <button
+                className="login-method-button"
                 type="button"
                 style={{
                   ...styles.methodButton,
@@ -190,6 +326,7 @@ export default function LoginPage({
               </button>
 
               <button
+                className="login-method-button"
                 type="button"
                 style={{
                   ...styles.methodButton,
@@ -206,9 +343,10 @@ export default function LoginPage({
 
             {loginMethod === 'email' ? (
               <form action="/api/auth/login/request" method="post" onSubmit={handleLogin}>
-                <p style={styles.subtitle}>{copy.loginIntro}</p>
+                <p className="login-subtitle" style={styles.subtitle}>{copy.loginIntro}</p>
 
                 <input
+                  className="login-input"
                   style={styles.input}
                   placeholder={copy.email}
                   value={email}
@@ -220,6 +358,7 @@ export default function LoginPage({
                 />
 
                 <button
+                  className="login-button"
                   type="submit"
                   style={{
                     ...styles.button,
@@ -231,17 +370,18 @@ export default function LoginPage({
                   {loading ? copy.sending : copy.sendLogin}
                 </button>
 
-                <Link href="/register" style={styles.registerLink}>
+                <Link className="login-register-link" href="/register" style={styles.registerLink}>
                   {copy.noRegistration}
                 </Link>
               </form>
             ) : (
-              <form onSubmit={handleAccessCodeLogin} style={styles.accessBox}>
-                <h2 style={styles.accessTitle}>{copy.accessCode}</h2>
-                <p style={styles.accessText}>{copy.accessIntro}</p>
+              <form className="login-access-box" onSubmit={handleAccessCodeLogin} style={styles.accessBox}>
+                <h2 className="login-access-title" style={styles.accessTitle}>{copy.accessCode}</h2>
+                <p className="login-access-text" style={styles.accessText}>{copy.accessIntro}</p>
 
                 <div style={styles.accessGrid}>
                   <input
+                    className="login-input"
                     style={styles.input}
                     placeholder={copy.firstName}
                     value={accessMeno}
@@ -249,6 +389,7 @@ export default function LoginPage({
                     autoComplete="given-name"
                   />
                   <input
+                    className="login-input"
                     style={styles.input}
                     placeholder={copy.lastName}
                     value={accessPriezvisko}
@@ -258,6 +399,7 @@ export default function LoginPage({
                 </div>
 
                 <input
+                  className="login-code-input"
                   style={styles.codeInput}
                   placeholder="00000000"
                   value={accessCode}
@@ -269,6 +411,7 @@ export default function LoginPage({
                 />
 
                 <button
+                  className="login-button"
                   type="submit"
                   style={{
                     ...styles.button,
@@ -284,11 +427,11 @@ export default function LoginPage({
               </form>
             )}
 
-            {error && <div style={styles.error}>{error}</div>}
+            {error && <div className="login-error" style={styles.error}>{error}</div>}
           </>
         ) : (
-          <div style={styles.success}>
-            <h2 style={styles.messageTitle}>{isEnglish ? 'E-mail sent' : 'E-mail bol odoslaný'}</h2>
+          <div className="login-success" style={styles.success}>
+            <h2 className="login-message-title" style={styles.messageTitle}>{isEnglish ? 'E-mail sent' : 'E-mail bol odoslaný'}</h2>
             <p>
               {isEnglish ? 'We sent a sign-in link and a 6-digit code to ' : 'Na adresu '}
               <b>{cleanEmail}</b>
@@ -303,6 +446,7 @@ export default function LoginPage({
             <form action="/api/auth/login/code" method="post" onSubmit={handleCodeLogin}>
               <input type="hidden" name="email" value={cleanEmail} />
               <input
+                className="login-code-input"
                 style={styles.codeInput}
                 placeholder="000000"
                 value={code}
@@ -316,6 +460,7 @@ export default function LoginPage({
               />
 
               <button
+                className="login-button"
                 type="submit"
                 style={{
                   ...styles.button,
@@ -331,11 +476,11 @@ export default function LoginPage({
               </button>
             </form>
 
-            <button style={styles.secondaryButton} onClick={resetLogin} type="button">
+            <button className="login-secondary-button" style={styles.secondaryButton} onClick={resetLogin} type="button">
               {isEnglish ? 'Use another e-mail' : 'Zadať iný e-mail'}
             </button>
 
-            {error && <div style={styles.error}>{error}</div>}
+            {error && <div className="login-error" style={styles.error}>{error}</div>}
           </div>
         )}
       </section>
