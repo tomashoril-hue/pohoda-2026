@@ -194,6 +194,10 @@ export default function LoginPage({
               max-width: 172px !important;
             }
 
+            .login-logo-group {
+              gap: 0 !important;
+            }
+
             .login-top-controls {
               gap: 6px !important;
             }
@@ -295,12 +299,15 @@ export default function LoginPage({
       </style>
 
       <div className="login-top-bar" style={styles.topBar}>
-        <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
-          <img className="login-logo" src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
-        </a>
+        <div className="login-logo-group" style={styles.logoGroup}>
+          <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
+            <img className="login-logo" src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
+          </a>
+          <div className="login-date" style={styles.date}>8. & 9. - 11. 7. 2026</div>
+        </div>
+
         <div className="login-top-controls" style={styles.topControls}>
           <LanguageSwitcher language={language} compact />
-          <div className="login-date" style={styles.date}>8. & 9. - 11. 7. 2026</div>
         </div>
       </div>
 
@@ -508,6 +515,12 @@ const styles: Record<string, CSSProperties> = {
     height: 54,
     maxWidth: 260,
     objectFit: 'contain'
+  },
+  logoGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 14,
+    minWidth: 0
   },
   topControls: {
     display: 'flex',
