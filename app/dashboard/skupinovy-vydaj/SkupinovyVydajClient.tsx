@@ -267,6 +267,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const [selectedFoodGroupId, setSelectedFoodGroupId] = useState('')
   const [foodGroupsLoading, setFoodGroupsLoading] = useState(false)
   const [foodGroupModalOpen, setFoodGroupModalOpen] = useState(false)
+  const [foodGroupModalStep, setFoodGroupModalStep] = useState<'MEMBERS' | 'PICKUP'>('MEMBERS')
   const [foodGroupEditId, setFoodGroupEditId] = useState('')
   const [foodGroupName, setFoodGroupName] = useState('')
   const [foodGroupMemberIds, setFoodGroupMemberIds] = useState<string[]>([])
@@ -320,6 +321,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const foodGroupMemberGroupMode = foodGroupMemberMode === 'group'
   const foodGroupMemberOutsideMode = foodGroupMemberMode === 'outside'
   const foodGroupMemberQrMode = foodGroupMemberMode === 'qr'
+  const foodGroupModalMembersStep = foodGroupModalStep === 'MEMBERS'
+  const foodGroupModalPickupStep = foodGroupModalStep === 'PICKUP'
   const foodGroupPickupGroupMode = foodGroupPickupMode === 'group'
   const foodGroupPickupOutsideMode = foodGroupPickupMode === 'outside'
   const foodGroupPickupQrMode = foodGroupPickupMode === 'qr'
@@ -796,6 +799,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setFoodGroupName(selected?.name || '')
     setFoodGroupMemberIds([])
     setFoodGroupMembers([])
+    setFoodGroupModalStep('MEMBERS')
     setFoodGroupMemberMode('group')
     setFoodGroupSearchQuery('')
     setFoodGroupSearchResults([])
@@ -859,6 +863,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     if (foodGroupsLoading) return
     foodGroupSearchRequestRef.current += 1
     setFoodGroupModalOpen(false)
+    setFoodGroupModalStep('MEMBERS')
     setFoodGroupEditId('')
     setFoodGroupName('')
     setFoodGroupMemberIds([])
@@ -872,6 +877,21 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setFoodGroupPickupQuery('')
     setFoodGroupPickupResults([])
     setFoodGroupMessage('')
+  }
+
+  function continueFoodGroupModal() {
+    if (!foodGroupName.trim()) {
+      setFoodGroupMessage('Zadaj názov stravovacej skupiny.')
+      setFoodGroupMessageType('error')
+      return
+    }
+
+    setFoodGroupMessage('')
+    setFoodGroupModalStep('PICKUP')
+
+    if (foodGroupPickupMode === 'group') {
+      void searchFoodGroupPickupUsers('', 'group')
+    }
   }
 
   function toggleFoodGroupMember(user: SearchUser) {
@@ -2937,7 +2957,16 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                         Vyber skupinu pre tento výdaj. Členov aj oprávnených prevziať upravíš cez tlačidlo Upraviť.
                       </div>
                     </div>
-                    {selectedFoodGroupId && (
+                    <div style={styles.modalHeaderActions}>
+                      <button
+                        type="button"
+                        onClick={() => openFoodGroupModal('')}
+                        style={styles.smallButtonWhite}
+                        disabled={foodGroupsLoading || issueLoading}
+                      >
+                        Nová
+                      </button>
+                      {selectedFoodGroupId && (
                       <button
                         type="button"
                         onClick={() => openFoodGroupModal(selectedFoodGroupId)}
@@ -2946,15 +2975,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                       >
                         Upraviť
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => openFoodGroupModal('')}
-                      style={styles.smallButtonWhite}
-                      disabled={foodGroupsLoading || issueLoading}
-                    >
-                      Nová
-                    </button>
+                      )}
+                    </div>
                   </div>
 
                   {foodGroupsLoading && <div style={styles.emptyBox}>Načítavam stravovacie skupiny...</div>}
@@ -3143,7 +3165,11 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
               <div style={styles.qrModalHeader}>
                 <div style={styles.modalTitleBlock}>
                   <b>Stravovacia skupina</b>
-                  <span>{foodGroupEditId ? foodGroupName : selectedGroup.name}</span>
+                  <span>
+                    {foodGroupModalPickupStep
+                      ? 'Oprávnení prevziať'
+                      : foodGroupEditId ? foodGroupName : selectedGroup.name}
+                  </span>
                 </div>
 
                 <button
@@ -3172,6 +3198,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     </label>
                   )}
 
+                  {foodGroupModalMembersStep ? (
+                    <>
                   <div style={{ ...styles.segment, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
                     <button
                       type="button"
@@ -3288,6 +3316,9 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                       })
                     )}
                   </div>
+                    </>
+                  ) : (
+                    <>
                   <div style={styles.pickupStepCard}>
                     <div style={styles.pickupStepInfo}>
                       <b>Oprávnení prevziať</b>
@@ -3414,6 +3445,8 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                       })
                     )}
                   </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -3423,14 +3456,35 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     {foodGroupMessage}
                   </div>
                 )}
-                <button
-                  type="button"
-                  onClick={saveFoodGroup}
-                  disabled={foodGroupsLoading || foodGroupPickupLoading || !foodGroupName.trim()}
-                  style={styles.primaryButton}
-                >
-                  {foodGroupsLoading ? 'Ukladám...' : `Uložiť skupinu (${foodGroupMemberIds.length})`}
-                </button>
+                {foodGroupModalMembersStep ? (
+                  <button
+                    type="button"
+                    onClick={continueFoodGroupModal}
+                    disabled={foodGroupsLoading}
+                    style={styles.primaryButton}
+                  >
+                    Ďalej
+                  </button>
+                ) : (
+                  <div style={styles.modalFooterActions}>
+                    <button
+                      type="button"
+                      onClick={() => setFoodGroupModalStep('MEMBERS')}
+                      disabled={foodGroupsLoading || foodGroupPickupLoading}
+                      style={styles.secondaryButton}
+                    >
+                      Späť
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveFoodGroup}
+                      disabled={foodGroupsLoading || foodGroupPickupLoading || !foodGroupName.trim()}
+                      style={styles.primaryButton}
+                    >
+                      {foodGroupsLoading ? 'Ukladám...' : `Uložiť skupinu (${foodGroupMemberIds.length})`}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -4267,6 +4321,11 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 12,
     display: 'grid',
     gridTemplateColumns: '1fr auto',
+    gap: 8
+  },
+  modalFooterActions: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(90px, 0.35fr) minmax(0, 1fr)',
     gap: 8
   },
   primaryButton: {
