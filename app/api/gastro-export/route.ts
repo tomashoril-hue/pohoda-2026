@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 type MealCode = 'OBED' | 'VECERA'
@@ -193,6 +194,9 @@ function registrationGroupForDate(user: any, periods: any[], date: string) {
 
 export async function GET(req: NextRequest) {
   try {
+    const ipLimit = checkRateLimit(req, 'gastro-export', 120, 10 * 60 * 1000)
+    if (!ipLimit.ok) return rateLimitResponse(ipLimit, 'Prilis vela exportov. Skuste znova neskor.')
+
     const expectedToken = cleanText(process.env.GASTRO_EXPORT_TOKEN)
 
     if (!expectedToken) {

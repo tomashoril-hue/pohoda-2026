@@ -1,7 +1,18 @@
 import { sendAppEmail } from '@/lib/email'
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 
 export async function POST(req: Request) {
   try {
+    const expectedToken = process.env.INTERNAL_EMAIL_TOKEN || ''
+    const requestToken = req.headers.get('x-internal-email-token') || ''
+
+    if (!expectedToken || requestToken !== expectedToken) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const limit = checkRateLimit(req, 'send-login-email-internal', 30, 60 * 1000)
+    if (!limit.ok) return rateLimitResponse(limit)
+
     const { email, meno, loginUrl, loginCode } = await req.json()
 
     const codeBlock = loginCode

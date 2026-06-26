@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { loadMenuSelectionData } from '@/lib/menuData'
 import { createMenuKioskToken } from '@/lib/menuKioskToken'
+import { checkActorRateLimit, checkRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function cleanQrText(value: any) {
@@ -95,11 +96,17 @@ async function findPersonByQr(qrCode: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    const ipLimit = checkRateLimit(req, 'menu-kiosk-scan', 180, 60 * 1000)
+    if (!ipLimit.ok) return rateLimitResponse(ipLimit, 'Prilis vela skenov. Chvilu pockajte.')
+
     const access = await requireMenuKioskAccess()
 
     if (!access.ok) {
       return NextResponse.json({ error: access.error }, { status: access.status })
     }
+
+    const actorLimit = checkActorRateLimit(access.actor.id, 'menu-kiosk-scan', 300, 60 * 1000)
+    if (!actorLimit.ok) return rateLimitResponse(actorLimit, 'Prilis vela skenov. Chvilu pockajte.')
 
     const body = await req.json()
     const qrCode = cleanQrText(body.qrCode)

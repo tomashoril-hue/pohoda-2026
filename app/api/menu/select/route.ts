@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { checkActorRateLimit, checkRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function normalizeChoice(value: unknown) {
@@ -47,12 +48,18 @@ function defaultDeadlineIso(datum: string, typJedla: string) {
   return bratislavaLocalToUtcIso(previousDate, typJedla === 'OBED' ? 16 : 17)
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const ipLimit = checkRateLimit(req, 'menu-select', 120, 10 * 60 * 1000)
+  if (!ipLimit.ok) return rateLimitResponse(ipLimit, 'Prilis vela zmien vyberu. Skuste znova neskor.')
+
   const user = await getCurrentUser()
 
   if (!user) {
     return NextResponse.json({ error: 'Nie si prihlásený.' }, { status: 401 })
   }
+
+  const actorLimit = checkActorRateLimit(user.id, 'menu-select', 60, 10 * 60 * 1000)
+  if (!actorLimit.ok) return rateLimitResponse(actorLimit, 'Prilis vela zmien vyberu. Skuste znova neskor.')
 
   const access = await getGlobalAccess(user.id)
   const isOnlyMenuKiosk =

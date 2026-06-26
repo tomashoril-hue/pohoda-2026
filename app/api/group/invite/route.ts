@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { getCurrentUser } from '@/lib/auth'
 import { canManageGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
 import { sendAppEmail } from '@/lib/email'
+import { checkActorRateLimit, checkValueRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function POST(req: NextRequest) {
@@ -13,6 +14,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Nie ste prihlásený.' }, { status: 401 })
     }
 
+    const actorLimit = checkActorRateLimit(user.id, 'group-invite-email', 10, 10 * 60 * 1000)
+    if (!actorLimit.ok) return rateLimitResponse(actorLimit, 'Prilis vela pozvanok. Skuste znova neskor.')
+
     const body = await req.json()
     const email = String(body.email || '').trim().toLowerCase()
     const requestedGroupId = String(body.groupId || body.group_id || '').trim()
@@ -20,6 +24,9 @@ export async function POST(req: NextRequest) {
     if (!email) {
       return NextResponse.json({ error: 'Zadajte e-mail.' }, { status: 400 })
     }
+
+    const emailLimit = checkValueRateLimit('group-invite-recipient', email, 5, 30 * 60 * 1000)
+    if (!emailLimit.ok) return rateLimitResponse(emailLimit, 'Na tento e-mail bolo odoslanych prilis vela pozvanok.')
 
     if (email === String(user.email || '').toLowerCase()) {
       return NextResponse.json({ error: 'Nemôžete pozvať sám seba.' }, { status: 400 })

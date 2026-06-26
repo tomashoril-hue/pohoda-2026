@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { slovakiaDateIso } from '@/lib/date'
 import { sendAppEmail } from '@/lib/email'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { checkActorRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function text(value: any) {
@@ -763,6 +764,9 @@ export async function POST(req: NextRequest) {
     if (!access.canUsePersonalista) {
       return NextResponse.json({ error: 'Nemate opravnenie.' }, { status: 403 })
     }
+
+    const sendLimit = checkActorRateLimit(currentUser.id, 'personalista-access-codes-email', 5, 10 * 60 * 1000)
+    if (!sendLimit.ok) return rateLimitResponse(sendLimit, 'Prilis vela odoslanych exportov. Skuste znova neskor.')
 
     const body = await req.json().catch(() => ({}))
     const recipientEmail = emailValue(body.email)

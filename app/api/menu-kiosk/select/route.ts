@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { verifyMenuKioskToken } from '@/lib/menuKioskToken'
+import { checkActorRateLimit, checkRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function normalizeChoice(value: unknown) {
@@ -66,11 +67,17 @@ async function requireMenuKioskAccess() {
 
 export async function POST(req: NextRequest) {
   try {
+    const ipLimit = checkRateLimit(req, 'menu-kiosk-select', 120, 60 * 1000)
+    if (!ipLimit.ok) return rateLimitResponse(ipLimit, 'Prilis vela zmien. Chvilu pockajte.')
+
     const access = await requireMenuKioskAccess()
 
     if (!access.ok) {
       return NextResponse.json({ error: access.error }, { status: access.status })
     }
+
+    const actorLimit = checkActorRateLimit(access.actor.id, 'menu-kiosk-select', 240, 60 * 1000)
+    if (!actorLimit.ok) return rateLimitResponse(actorLimit, 'Prilis vela zmien. Chvilu pockajte.')
 
     const body = await req.json()
     const token = String(body.token || '').trim()

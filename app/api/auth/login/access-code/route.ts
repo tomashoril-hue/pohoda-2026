@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hashAccessCode, isValidAccessCodeFormat, normalizeAccessCode, normalizeAccessName } from '@/lib/accessCode'
+import { checkRateLimit, checkValueRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { createSessionResponse } from '@/lib/sessionResponse'
 import { supabaseServer } from '@/lib/supabaseServer'
 
@@ -11,12 +12,20 @@ function text(value: any) {
 
 export async function POST(req: NextRequest) {
   try {
+    const ipLimit = checkRateLimit(req, 'auth-access-code', 50, 10 * 60 * 1000)
+    if (!ipLimit.ok) return rateLimitResponse(ipLimit, 'Prilis vela pokusov. Skuste znova neskor.')
+
     const body = await req.json()
     const meno = text(body.meno)
     const priezvisko = text(body.priezvisko)
     const code = normalizeAccessCode(body.code)
     const menoKey = normalizeAccessName(meno)
     const priezviskoKey = normalizeAccessName(priezvisko)
+    const nameLimit = checkValueRateLimit('auth-access-code-name', `${menoKey}:${priezviskoKey}`, 20, 10 * 60 * 1000)
+
+    if (!nameLimit.ok) {
+      return rateLimitResponse(nameLimit, 'Prilis vela pokusov pre toto meno. Skuste znova neskor.')
+    }
 
     if (!meno || !priezvisko) {
       return NextResponse.json({ error: 'Zadaj meno aj priezvisko.' }, { status: 400 })

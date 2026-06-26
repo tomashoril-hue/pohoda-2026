@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { checkActorRateLimit, checkRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 import {
   cleanText,
@@ -291,6 +292,9 @@ function addQrIndexRows({
 
 export async function GET(req: NextRequest) {
   try {
+    const ipLimit = checkRateLimit(req, 'offline-snapshot', 60, 10 * 60 * 1000)
+    if (!ipLimit.ok) return rateLimitResponse(ipLimit, 'Prilis vela stahovani offline dat. Skuste znova neskor.')
+
     const actor = await getCurrentUser()
 
     if (!actor) {
@@ -302,6 +306,9 @@ export async function GET(req: NextRequest) {
     if (!access.canPrepareOfflineIssue) {
       return NextResponse.json({ error: 'Nemas opravnenie stiahnut offline data.' }, { status: 403 })
     }
+
+    const actorLimit = checkActorRateLimit(actor.id, 'offline-snapshot', 30, 10 * 60 * 1000)
+    if (!actorLimit.ok) return rateLimitResponse(actorLimit, 'Prilis vela stahovani offline dat. Skuste znova neskor.')
 
     const date = normalizeDate(req.nextUrl.searchParams.get('date'))
     const meal = normalizeMeal(req.nextUrl.searchParams.get('meal'))

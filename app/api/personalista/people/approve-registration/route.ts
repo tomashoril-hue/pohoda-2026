@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { slovakiaDateIso } from '@/lib/date'
 import { sendAppEmail } from '@/lib/email'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { checkActorRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function escapeHtml(value: any) {
@@ -27,6 +28,9 @@ export async function POST(req: NextRequest) {
     if (!access.canUsePersonalista) {
       return NextResponse.json({ error: 'Nemáš oprávnenie.' }, { status: 403 })
     }
+
+    const approveLimit = checkActorRateLimit(actor.id, 'approve-registration-email', 60, 10 * 60 * 1000)
+    if (!approveLimit.ok) return rateLimitResponse(approveLimit, 'Prilis vela schvaleni. Skuste znova neskor.')
 
     const body = await req.json()
     const userId = String(body.userId || '').trim()

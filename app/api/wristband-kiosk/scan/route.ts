@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { checkActorRateLimit, checkRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function cleanText(value: any) {
@@ -258,11 +259,17 @@ async function findPersonByPreviousQrOwner(qrCode: string, userId: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    const ipLimit = checkRateLimit(req, 'wristband-kiosk-scan', 180, 60 * 1000)
+    if (!ipLimit.ok) return rateLimitResponse(ipLimit, 'Prilis vela skenov. Chvilu pockajte.')
+
     const access = await requireKioskAccess()
 
     if (!access.ok) {
       return NextResponse.json({ error: access.error }, { status: access.status })
     }
+
+    const actorLimit = checkActorRateLimit(access.actor.id, 'wristband-kiosk-scan', 300, 60 * 1000)
+    if (!actorLimit.ok) return rateLimitResponse(actorLimit, 'Prilis vela skenov. Chvilu pockajte.')
 
     const body = await req.json()
     const mode = cleanText(body.mode).toUpperCase()

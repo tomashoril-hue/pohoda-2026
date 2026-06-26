@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { checkActorRateLimit, checkRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 import {
   cleanText,
@@ -27,6 +28,9 @@ async function changedCount(label: string, createQuery: () => any) {
 
 export async function GET(req: NextRequest) {
   try {
+    const ipLimit = checkRateLimit(req, 'offline-snapshot-check', 180, 10 * 60 * 1000)
+    if (!ipLimit.ok) return rateLimitResponse(ipLimit)
+
     const actor = await getCurrentUser()
 
     if (!actor) {
@@ -37,6 +41,9 @@ export async function GET(req: NextRequest) {
     if (!access.canPrepareOfflineIssue) {
       return NextResponse.json({ error: 'Nemáš oprávnenie kontrolovať offline dáta.' }, { status: 403 })
     }
+
+    const actorLimit = checkActorRateLimit(actor.id, 'offline-snapshot-check', 120, 10 * 60 * 1000)
+    if (!actorLimit.ok) return rateLimitResponse(actorLimit)
 
     const date = normalizeDate(req.nextUrl.searchParams.get('date'))
     const meal = normalizeMeal(req.nextUrl.searchParams.get('meal'))

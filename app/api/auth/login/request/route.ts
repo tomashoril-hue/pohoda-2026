@@ -1,11 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
+import { sendAppEmail } from '@/lib/email'
 import { createLoginCode, hashLoginCode } from '@/lib/loginCode'
 import { isFormSubmission, readLoginBody, redirectToLogin } from '@/lib/loginForm'
+import { checkRateLimit, checkValueRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
+
+function loginEmailHtml(meno: string, loginUrl: string, loginCode: string) {
+  return `
+    <h2>Prihlasenie</h2>
+    <p>Dobry den${meno ? `, ${meno}` : ''},</p>
+    <p>Klikni na tlacidlo pre prihlasenie:</p>
+    <p><a href="${loginUrl}" style="font-weight:bold;">Prihlasit sa</a></p>
+    <p>Alebo otvor aplikaciu a zadaj prihlasovaci kod:</p>
+    <p style="font-size:28px;font-weight:bold;letter-spacing:6px;margin:12px 0;">${loginCode}</p>
+    <p>Link aj kod su jednorazove a platia kratky cas.</p>
+  `
+}
 
 export async function POST(req: NextRequest) {
   const formSubmission = isFormSubmission(req)
+  const ipLimit = checkRateLimit(req, 'auth-login-request', 20, 10 * 60 * 1000)
+
+  if (!ipLimit.ok) {
+    return rateLimitResponse(ipLimit, 'Prilis vela pokusov o prihlasenie. Skuste znova neskor.')
+  }
+
   const body = await readLoginBody(req, formSubmission)
   const email = String(body.email || '').trim().toLowerCase()
 
@@ -15,6 +35,12 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Chýba e-mail.' }, { status: 400 })
+  }
+
+  const emailLimit = checkValueRateLimit('auth-login-request-email', email, 5, 10 * 60 * 1000)
+
+  if (!emailLimit.ok) {
+    return rateLimitResponse(emailLimit, 'Prilis vela prihlasovacich e-mailov. Skuste znova neskor.')
   }
 
   const { data: user, error: userError } = await supabaseServer
@@ -95,20 +121,15 @@ export async function POST(req: NextRequest) {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin
   const loginUrl = `${baseUrl}/login/confirm?token=${token}`
 
-  const emailRes = await fetch(`${req.nextUrl.origin}/api/send-login-email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: user.email,
-      meno: user.meno,
-      loginUrl,
-      loginCode
+  try {
+    await sendAppEmail({
+      from: 'POHODA 2026 <registracia@pohodapass.sk>',
+      to: user.email,
+      subject: 'Prihlasenie do systemu - POHODA PASS',
+      html: loginEmailHtml(user.meno || '', loginUrl, loginCode),
+      text: `Dobry den ${user.meno || ''}, prihlasenie: ${loginUrl}\nPrihlasovaci kod: ${loginCode}`
     })
-  })
-
-  const emailJson = await emailRes.json().catch(() => ({}))
-
-  if (!emailRes.ok || emailJson.error) {
+  } catch {
     if (formSubmission) {
       return redirectToLogin(req, {
         email,

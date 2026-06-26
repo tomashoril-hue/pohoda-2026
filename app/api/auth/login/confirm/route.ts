@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { createSessionResponse } from '@/lib/sessionResponse'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 export async function GET(req: NextRequest) {
+  const ipLimit = checkRateLimit(req, 'auth-login-confirm', 60, 10 * 60 * 1000)
+  if (!ipLimit.ok) return rateLimitResponse(ipLimit, 'Prilis vela pokusov. Skuste znova neskor.')
+
   const token = req.nextUrl.searchParams.get('token')
 
   if (!token) {

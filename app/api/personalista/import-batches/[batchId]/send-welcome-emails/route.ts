@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { sendAppEmail } from '@/lib/email'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { checkActorRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function text(value: any) {
@@ -46,6 +47,9 @@ export async function POST(
     if (!access.canUsePersonalista) {
       return NextResponse.json({ error: 'Nemate opravnenie.' }, { status: 403 })
     }
+
+    const sendLimit = checkActorRateLimit(currentUser.id, 'import-welcome-email', 4, 10 * 60 * 1000)
+    if (!sendLimit.ok) return rateLimitResponse(sendLimit, 'Prilis vela hromadnych e-mailov. Skuste znova neskor.')
 
     const { batchId } = await params
     const body = await req.json().catch(() => ({}))

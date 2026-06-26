@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { getLegacyBulkIssueEnabled } from '@/lib/appSettings'
 import { canIssueForGroupByRole, getGlobalAccess } from '@/lib/globalRoles'
+import { checkActorRateLimit, checkRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 function clean(value: any) {
@@ -645,12 +646,18 @@ export async function POST(req: NextRequest) {
   })
 
   try {
+    const ipLimit = checkRateLimit(req, 'food-issue-scan', 360, 60 * 1000)
+    if (!ipLimit.ok) return rateLimitResponse(ipLimit, 'Prilis vela skenov. Chvilu pockajte.')
+
     const actor = await getCurrentUser()
     markPhase('authMs')
 
     if (!actor) {
       return NextResponse.json({ error: 'Nie si prihlásený.' }, { status: 401 })
     }
+
+    const actorLimit = checkActorRateLimit(actor.id, 'food-issue-scan', 720, 60 * 1000)
+    if (!actorLimit.ok) return rateLimitResponse(actorLimit, 'Prilis vela skenov. Chvilu pockajte.')
 
     const body = await req.json()
     markPhase('parseMs')

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { checkActorRateLimit, checkRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import {
   cleanText,
   entitlementOk,
@@ -525,6 +526,9 @@ async function processEvent(event: OfflineSyncEvent, actorId: string): Promise<E
 
 export async function POST(req: NextRequest) {
   try {
+    const ipLimit = checkRateLimit(req, 'offline-sync', 60, 10 * 60 * 1000)
+    if (!ipLimit.ok) return rateLimitResponse(ipLimit, 'Prilis vela synchronizacii. Skuste znova neskor.')
+
     const actor = await getCurrentUser()
 
     if (!actor) {
@@ -535,6 +539,9 @@ export async function POST(req: NextRequest) {
     if (!access.canPrepareOfflineIssue) {
       return NextResponse.json({ error: 'Nemáš oprávnenie synchronizovať offline výdaj.' }, { status: 403 })
     }
+
+    const actorLimit = checkActorRateLimit(actor.id, 'offline-sync', 30, 10 * 60 * 1000)
+    if (!actorLimit.ok) return rateLimitResponse(actorLimit, 'Prilis vela synchronizacii. Skuste znova neskor.')
 
     const body = await req.json().catch(() => null)
     const rawEvents = Array.isArray(body?.events) ? body.events : []

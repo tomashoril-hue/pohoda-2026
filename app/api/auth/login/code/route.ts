@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { hashLoginCode, isValidLoginCodeFormat, normalizeLoginCode } from '@/lib/loginCode'
 import { isFormSubmission, readLoginBody, redirectToLogin } from '@/lib/loginForm'
+import { checkRateLimit, checkValueRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { createSessionResponse } from '@/lib/sessionResponse'
 import { supabaseServer } from '@/lib/supabaseServer'
 
@@ -8,6 +9,12 @@ const MAX_LOGIN_CODE_ATTEMPTS = 5
 
 export async function POST(req: NextRequest) {
   const formSubmission = isFormSubmission(req)
+  const ipLimit = checkRateLimit(req, 'auth-login-code', 40, 10 * 60 * 1000)
+
+  if (!ipLimit.ok) {
+    return rateLimitResponse(ipLimit, 'Prilis vela pokusov. Skuste znova neskor.')
+  }
+
   const body = await readLoginBody(req, formSubmission)
   const email = String(body.email || '').trim().toLowerCase()
   const code = normalizeLoginCode(body.code)
@@ -21,6 +28,12 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Chýba e-mail.' }, { status: 400 })
+  }
+
+  const emailLimit = checkValueRateLimit('auth-login-code-email', email, 15, 10 * 60 * 1000)
+
+  if (!emailLimit.ok) {
+    return rateLimitResponse(emailLimit, 'Prilis vela pokusov pre tento e-mail. Skuste znova neskor.')
   }
 
   if (!isValidLoginCodeFormat(code)) {
