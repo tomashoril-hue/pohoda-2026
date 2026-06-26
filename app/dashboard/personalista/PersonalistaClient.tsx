@@ -3526,53 +3526,55 @@ export default function PersonalistaClient({
         ...styles.actionPanel,
         ...(isMobile ? styles.mobileActionStripPanel : {})
       }}>
-        <div style={styles.iconActionGroup}>
-          <button
-            type="button"
-            style={styles.iconActionButton}
-            title="Domov - posledné upravené osoby"
-            aria-label="Domov - posledné upravené osoby"
-            onClick={resetPersonalistaHome}
-          >
-            <HomeIcon />
-          </button>
+        <div style={styles.toolbarStartGroup}>
+          <div style={styles.iconActionGroup}>
+            <button
+              type="button"
+              style={styles.iconActionButton}
+              title="Domov - posledné upravené osoby"
+              aria-label="Domov - posledné upravené osoby"
+              onClick={resetPersonalistaHome}
+            >
+              <HomeIcon />
+            </button>
+
+            <button
+              type="button"
+              style={{
+                ...styles.iconActionButton,
+                opacity: refreshingPeople ? 0.65 : 1,
+                cursor: refreshingPeople ? 'wait' : 'pointer'
+              }}
+              title="Obnoviť personalistiku"
+              aria-label="Obnoviť personalistiku"
+              disabled={refreshingPeople}
+              onClick={refreshPersonalistaData}
+            >
+              <RefreshIcon />
+            </button>
+          </div>
 
           <button
             type="button"
             style={{
-              ...styles.iconActionButton,
-              opacity: refreshingPeople ? 0.65 : 1,
-              cursor: refreshingPeople ? 'wait' : 'pointer'
+              ...styles.primaryAction,
+              opacity: canManage ? 1 : 0.55,
+              cursor: canManage ? 'pointer' : 'not-allowed'
             }}
-            title="Obnoviť personalistiku"
-            aria-label="Obnoviť personalistiku"
-            disabled={refreshingPeople}
-            onClick={refreshPersonalistaData}
+            disabled={!canManage}
+            onClick={() => {
+              setCreateOpen(prev => !prev)
+              setRegistrationGroupsOpen(false)
+              setPrintQrOpen(false)
+              setQrRulesOpen(false)
+              setPersonnelTool('')
+              setCreateMessage('')
+              setCreateMessageType('')
+            }}
           >
-            <RefreshIcon />
+            Ručne pridať človeka
           </button>
         </div>
-
-        <button
-          type="button"
-          style={{
-            ...styles.primaryAction,
-            opacity: canManage ? 1 : 0.55,
-            cursor: canManage ? 'pointer' : 'not-allowed'
-          }}
-          disabled={!canManage}
-          onClick={() => {
-            setCreateOpen(prev => !prev)
-            setRegistrationGroupsOpen(false)
-            setPrintQrOpen(false)
-            setQrRulesOpen(false)
-            setPersonnelTool('')
-            setCreateMessage('')
-            setCreateMessageType('')
-          }}
-        >
-          Ručne pridať človeka
-        </button>
 
         <a
           href="/dashboard/personalista/blank-qr"
@@ -7419,6 +7421,12 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(118px, auto))',
     gap: 5
+  },
+  toolbarStartGroup: {
+    display: 'inline-flex',
+    alignItems: 'stretch',
+    gap: 0,
+    width: 'max-content'
   },
   iconActionGroup: {
     display: 'inline-flex',
