@@ -100,6 +100,13 @@ function defaultIssueTitle(_groupName: string, meal: MealSelection, sequence: nu
   return `${mealText} výdaj č. ${Math.max(1, sequence)}`
 }
 
+function foodGroupIssueTitle(meal: MealSelection, foodGroupName: string) {
+  if (!meal) return foodGroupName || ''
+
+  const mealText = meal === 'OBED' ? 'Obed' : 'Večera'
+  return `${mealText} výdaj - ${foodGroupName || 'stravovacia skupina'}`
+}
+
 function dateTimeLabel(value: string | null) {
   if (!value) return ''
 
@@ -1140,9 +1147,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
         throw new Error('Táto stravovacia skupina nemá pre tento výdaj žiadne vydateľné osoby.')
       }
 
-      const dailyIssues = await loadExistingIssuesFor(selectedGroupId, date, '')
-      const existingForMeal = dailyIssues.filter(issue => issue.meal === meal).length
-      const title = defaultIssueTitle(selectedGroup?.name || '', meal, existingForMeal + 1)
+      const title = foodGroupIssueTitle(meal, selectedFoodGroup?.name || '')
 
       const res = await fetch('/api/skupinovy-vydaj/issues', {
         method: 'POST',
@@ -2850,7 +2855,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
               <div style={styles.qrModalHeader}>
                 <div style={styles.modalTitleBlock}>
                   <b>Stravovacia skupina</b>
-                  <span>{selectedGroup.name}</span>
+                  <span>{foodGroupEditId ? foodGroupName : selectedGroup.name}</span>
                 </div>
 
                 <button
@@ -2865,17 +2870,19 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
 
               <div style={styles.modalScrollBody}>
                 <div style={styles.searchBox}>
-                  <label style={styles.field}>
-                    <span style={styles.label}>Názov skupiny</span>
-                    <input
-                      type="text"
-                      value={foodGroupName}
-                      onChange={event => setFoodGroupName(event.target.value)}
-                      placeholder="Napr. Amazonky menší tím"
-                      style={styles.input}
-                      disabled={foodGroupsLoading}
-                    />
-                  </label>
+                  {!foodGroupEditId && (
+                    <label style={styles.field}>
+                      <span style={styles.label}>Názov skupiny</span>
+                      <input
+                        type="text"
+                        value={foodGroupName}
+                        onChange={event => setFoodGroupName(event.target.value)}
+                        placeholder="Napr. Amazonky menší tím"
+                        style={styles.input}
+                        disabled={foodGroupsLoading}
+                      />
+                    </label>
+                  )}
 
                   <label style={styles.field}>
                     <span style={styles.label}>Pridať osobu</span>

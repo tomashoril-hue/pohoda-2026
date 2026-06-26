@@ -287,11 +287,13 @@ export async function POST(req: NextRequest) {
     await assertGroupAccess(actor.id, registrationGroupId)
 
     const payload: any = {
-      name,
       registration_group_id: registrationGroupId
     }
 
-    if (!foodGroupId) payload.created_by = actor.id
+    if (!foodGroupId) {
+      payload.name = name
+      payload.created_by = actor.id
+    }
 
     const { data: group, error: groupError } = foodGroupId
       ? await supabaseServer
