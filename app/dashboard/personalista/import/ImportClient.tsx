@@ -17,6 +17,7 @@ type ParsedRow = {
   email: string
   telefon: string
   typStravy: string
+  registrationGroupChoice: string
   registrationGroupId: string
   registrationGroupName: string
   validFrom: string
@@ -39,6 +40,9 @@ type BulkEdit = {
   assignQr: '' | 'true' | 'false'
   generateAccessCode: '' | 'true' | 'false'
 }
+
+const REGISTRATION_GROUP_UNRESOLVED = '__UNRESOLVED__'
+const REGISTRATION_GROUP_NONE = '__NO_REGISTRATION_GROUP__'
 
 function normalizeKey(value: string) {
   return String(value || '')
@@ -266,8 +270,20 @@ export default function ImportClient({
 
       const next = { ...row, ...patch }
 
-      if (patch.registrationGroupId !== undefined) {
-        next.registrationGroupName = registrationGroupById.get(patch.registrationGroupId)?.name || ''
+      if (patch.registrationGroupChoice !== undefined || patch.registrationGroupId !== undefined) {
+        const selection = patch.registrationGroupChoice !== undefined
+          ? patch.registrationGroupChoice
+          : (patch.registrationGroupId || REGISTRATION_GROUP_UNRESOLVED)
+
+        next.registrationGroupChoice = selection
+
+        if (selection === REGISTRATION_GROUP_NONE || selection === REGISTRATION_GROUP_UNRESOLVED) {
+          next.registrationGroupId = ''
+          next.registrationGroupName = ''
+        } else {
+          next.registrationGroupId = selection
+          next.registrationGroupName = registrationGroupById.get(selection)?.name || ''
+        }
       }
 
       if (next.status === 'OK') return next
@@ -275,6 +291,9 @@ export default function ImportClient({
       if (!next.meno || !next.priezvisko) {
         next.status = 'SKIP'
         next.message = 'Chyba meno alebo priezvisko.'
+      } else if (next.registrationGroupChoice === REGISTRATION_GROUP_UNRESOLVED) {
+        next.status = 'ERROR'
+        next.message = 'Vyber registračnú skupinu alebo Bez registračnej skupiny.'
       } else if (!next.validFrom || !next.validTo || next.validTo < next.validFrom) {
         next.status = 'ERROR'
         next.message = 'Neplatne datumy od/do.'
@@ -332,6 +351,7 @@ export default function ImportClient({
         ? registrationGroupById.get(defaultRegistrationGroupId)
         : null
       const registrationGroup = matchedRegistrationGroups[0] || fallbackRegistrationGroup || null
+      const registrationGroupChoice = registrationGroup?.id || REGISTRATION_GROUP_UNRESOLVED
 
       const meno = firstValue(raw, ['meno', 'krstne_meno', 'first_name'])
       const priezvisko = firstValue(raw, ['priezvisko', 'surname', 'last_name'])
@@ -346,15 +366,18 @@ export default function ImportClient({
       if (!meno || !priezvisko) {
         status = 'SKIP'
         rowMessage = 'Chyba meno alebo priezvisko.'
+      } else if (requestedRegistrationGroups.length > 1) {
+        status = 'ERROR'
+        rowMessage = 'V súbore je viac skupín. Vyber jednu skupinu alebo Bez registračnej skupiny.'
+      } else if (requestedRegistrationGroups.length === 1 && matchedRegistrationGroups.length === 0) {
+        status = 'ERROR'
+        rowMessage = 'Skupina zo súboru sa nenašla. Vyber registračnú skupinu alebo Bez registračnej skupiny.'
+      } else if (registrationGroupChoice === REGISTRATION_GROUP_UNRESOLVED) {
+        status = 'ERROR'
+        rowMessage = 'Vyber registračnú skupinu alebo Bez registračnej skupiny.'
       } else if (!obed && !vecera) {
         status = 'SKIP'
         rowMessage = 'Bez naroku na obed alebo veceru.'
-      } else if (requestedRegistrationGroups.length > 1) {
-        status = 'SKIP'
-        rowMessage = 'Pouzi iba jednu registracnu skupinu.'
-      } else if (requestedRegistrationGroups.length === 1 && matchedRegistrationGroups.length === 0) {
-        status = 'SKIP'
-        rowMessage = 'Registracna skupina sa nenasla.'
       }
 
       return {
@@ -365,6 +388,7 @@ export default function ImportClient({
         email: firstValue(raw, ['email', 'e_mail', 'mail']),
         telefon: firstValue(raw, ['telefon', 'telefón', 'phone', 'tel']),
         typStravy: normalizeFood(firstValue(raw, ['typ_stravy', 'strava', 'jedlo', 'food'])),
+        registrationGroupChoice,
         registrationGroupId: registrationGroup?.id || '',
         registrationGroupName: registrationGroup?.name || '',
         validFrom,
@@ -386,6 +410,13 @@ export default function ImportClient({
   const runImport = async () => {
     const activeRows = rows
     const readyRows = activeRows.filter(row => row.status === 'READY')
+    const unresolvedRows = activeRows.filter(row => row.status !== 'OK' && row.registrationGroupChoice === REGISTRATION_GROUP_UNRESOLVED)
+
+    if (unresolvedRows.length > 0) {
+      setMessage(`Najprv vyber registračnú skupinu alebo Bez registračnej skupiny v ${unresolvedRows.length} riadkoch.`)
+      setMessageType('error')
+      return
+    }
 
     if (readyRows.length === 0) {
       setMessage('Nie je co importovat.')
@@ -502,8 +533,9 @@ export default function ImportClient({
       const patch: Partial<ParsedRow> = {}
 
       if (bulkEdit.registrationGroupId) {
-        patch.registrationGroupId = bulkEdit.registrationGroupId
-        patch.registrationGroupName = registrationGroupById.get(bulkEdit.registrationGroupId)?.name || ''
+        patch.registrationGroupChoice = bulkEdit.registrationGroupId
+        patch.registrationGroupId = bulkEdit.registrationGroupId === REGISTRATION_GROUP_NONE ? '' : bulkEdit.registrationGroupId
+        patch.registrationGroupName = registrationGroupById.get(patch.registrationGroupId || '')?.name || ''
       }
 
       if (bulkEdit.validFrom) patch.validFrom = bulkEdit.validFrom
@@ -513,7 +545,25 @@ export default function ImportClient({
       if (bulkEdit.assignQr) patch.assignQr = bulkEdit.assignQr === 'true'
       if (bulkEdit.generateAccessCode) patch.generateAccessCode = bulkEdit.generateAccessCode === 'true'
 
-      return { ...row, ...patch, status: 'READY', message: '' }
+      const next = { ...row, ...patch }
+
+      if (!next.meno || !next.priezvisko) {
+        return { ...next, status: 'SKIP', message: 'Chyba meno alebo priezvisko.' }
+      }
+
+      if (next.registrationGroupChoice === REGISTRATION_GROUP_UNRESOLVED) {
+        return { ...next, status: 'ERROR', message: 'Vyber registračnú skupinu alebo Bez registračnej skupiny.' }
+      }
+
+      if (!next.validFrom || !next.validTo || next.validTo < next.validFrom) {
+        return { ...next, status: 'ERROR', message: 'Neplatne datumy od/do.' }
+      }
+
+      if (!next.obed && !next.vecera) {
+        return { ...next, status: 'SKIP', message: 'Bez naroku na obed alebo veceru.' }
+      }
+
+      return { ...next, status: 'READY', message: '' }
     }))
 
     setBulkEdit(emptyBulkEdit())
@@ -647,6 +697,7 @@ export default function ImportClient({
               <span>Registracna skupina</span>
               <select value={bulkEdit.registrationGroupId} onChange={event => setBulkEdit(prev => ({ ...prev, registrationGroupId: event.target.value }))} style={styles.input}>
                 <option value="">Bez zmeny</option>
+                <option value={REGISTRATION_GROUP_NONE}>Bez registračnej skupiny</option>
                 {registrationGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
               </select>
             </label>
@@ -715,8 +766,17 @@ export default function ImportClient({
                   <option value="VEGE">VEGE</option>
                   <option value="DIETA">DIETA</option>
                 </select>
-                <select value={row.registrationGroupId} onChange={event => updateRow(row.rowNumber, { registrationGroupId: event.target.value })} style={styles.smallInput} disabled={row.status === 'OK'}>
-                  <option value="">Bez registracnej skupiny</option>
+                <select
+                  value={row.registrationGroupChoice}
+                  onChange={event => updateRow(row.rowNumber, { registrationGroupChoice: event.target.value })}
+                  style={{
+                    ...styles.smallInput,
+                    ...(row.registrationGroupChoice === REGISTRATION_GROUP_UNRESOLVED ? styles.invalidInput : {})
+                  }}
+                  disabled={row.status === 'OK'}
+                >
+                  <option value={REGISTRATION_GROUP_UNRESOLVED}>Vyberte...</option>
+                  <option value={REGISTRATION_GROUP_NONE}>Bez registračnej skupiny</option>
                   {registrationGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
                 </select>
                 {compactDateInput(row.validFrom, value => updateRow(row.rowNumber, { validFrom: value }), row.status === 'OK')}
@@ -910,6 +970,11 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#fff',
     color: '#111827',
     outline: 'none'
+  },
+  invalidInput: {
+    borderColor: '#dc2626',
+    background: '#fef2f2',
+    color: '#7f1d1d'
   },
   compactDateInput: {
     width: '100%',
