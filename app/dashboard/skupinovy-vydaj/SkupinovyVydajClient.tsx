@@ -276,9 +276,6 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   const [foodGroupSearchResults, setFoodGroupSearchResults] = useState<SearchUser[]>([])
   const [foodGroupMessage, setFoodGroupMessage] = useState('')
   const [foodGroupMessageType, setFoodGroupMessageType] = useState<'ok' | 'error'>('ok')
-  const [foodGroupQrModalOpen, setFoodGroupQrModalOpen] = useState(false)
-  const [foodGroupPickupModalOpen, setFoodGroupPickupModalOpen] = useState(false)
-  const [foodGroupPickupGroup, setFoodGroupPickupGroup] = useState<FoodGroup | null>(null)
   const [foodGroupPickupMode, setFoodGroupPickupMode] = useState<FoodGroupMemberMode>('group')
   const [foodGroupPickupUserIds, setFoodGroupPickupUserIds] = useState<string[]>([])
   const [foodGroupPickupUsers, setFoodGroupPickupUsers] = useState<SearchUser[]>([])
@@ -802,6 +799,11 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setFoodGroupMemberMode('group')
     setFoodGroupSearchQuery('')
     setFoodGroupSearchResults([])
+    setFoodGroupPickupMode('group')
+    setFoodGroupPickupUserIds([])
+    setFoodGroupPickupUsers([])
+    setFoodGroupPickupQuery('')
+    setFoodGroupPickupResults([])
     setFoodGroupMessage('')
     setFoodGroupMessageType('ok')
     setFoodGroupModalOpen(true)
@@ -828,6 +830,21 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       const members: SearchUser[] = json.members || []
       setFoodGroupMembers(members)
       setFoodGroupMemberIds(members.map(member => member.id))
+      try {
+        const pickupParams = new URLSearchParams({
+          registrationGroupId: selectedGroupId,
+          foodGroupId: selected.id
+        })
+        const pickupRes = await fetch(`/api/skupinovy-vydaj/food-groups/pickup-users?${pickupParams.toString()}`)
+        const pickupJson = await pickupRes.json()
+        if (pickupRes.ok) {
+          setFoodGroupPickupUserIds(pickupJson.pickupUserIds || [])
+          setFoodGroupPickupUsers(pickupJson.pickupUsers || [])
+        }
+      } catch {
+        setFoodGroupPickupUserIds([])
+        setFoodGroupPickupUsers([])
+      }
     } catch (err: any) {
       setFoodGroupMessage(err?.message || 'Členov sa nepodarilo načítať.')
       setFoodGroupMessageType('error')
@@ -841,7 +858,6 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
   function closeFoodGroupModal() {
     if (foodGroupsLoading) return
     foodGroupSearchRequestRef.current += 1
-    setFoodGroupQrModalOpen(false)
     setFoodGroupModalOpen(false)
     setFoodGroupEditId('')
     setFoodGroupName('')
@@ -850,6 +866,11 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setFoodGroupMemberMode('group')
     setFoodGroupSearchQuery('')
     setFoodGroupSearchResults([])
+    setFoodGroupPickupMode('group')
+    setFoodGroupPickupUserIds([])
+    setFoodGroupPickupUsers([])
+    setFoodGroupPickupQuery('')
+    setFoodGroupPickupResults([])
     setFoodGroupMessage('')
   }
 
@@ -858,6 +879,18 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     setFoodGroupMemberIds(current => current.includes(user.id)
       ? current.filter(id => id !== user.id)
       : [...current, user.id])
+  }
+
+  function selectAllFoodGroupMembers() {
+    setFoodGroupMembers(current => mergeSearchUsers(current, foodGroupCandidateUsers))
+    setFoodGroupMemberIds(current => Array.from(new Set([
+      ...current,
+      ...foodGroupCandidateUsers.map(user => user.id)
+    ])))
+  }
+
+  function clearFoodGroupMembers() {
+    setFoodGroupMemberIds([])
   }
 
   function switchFoodGroupMemberMode(mode: FoodGroupMemberMode) {
@@ -966,58 +999,6 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     }
   }
 
-  function closeFoodGroupPickupModal() {
-    if (foodGroupPickupLoading) return
-    foodGroupPickupSearchRequestRef.current += 1
-    setFoodGroupPickupModalOpen(false)
-    setFoodGroupPickupGroup(null)
-    setFoodGroupPickupMode('group')
-    setFoodGroupPickupUserIds([])
-    setFoodGroupPickupUsers([])
-    setFoodGroupPickupQuery('')
-    setFoodGroupPickupResults([])
-  }
-
-  async function openFoodGroupPickupModal(group: FoodGroup) {
-    if (!selectedGroupId) {
-      setFoodGroupMessage('Najprv vyber registračnú skupinu.')
-      setFoodGroupMessageType('error')
-      return
-    }
-
-    setFoodGroupPickupGroup(group)
-    setFoodGroupPickupMode('group')
-    setFoodGroupPickupUserIds([])
-    setFoodGroupPickupUsers([])
-    setFoodGroupPickupQuery('')
-    setFoodGroupPickupResults([])
-    setFoodGroupMessage('')
-    setFoodGroupMessageType('ok')
-    setFoodGroupPickupModalOpen(true)
-    setFoodGroupPickupLoading(true)
-
-    try {
-      const params = new URLSearchParams({
-        registrationGroupId: selectedGroupId,
-        foodGroupId: group.id
-      })
-      const res = await fetch(`/api/skupinovy-vydaj/food-groups/pickup-users?${params.toString()}`)
-      const json = await res.json()
-
-      if (!res.ok) throw new Error(json.error || 'Oprávnených prevziať sa nepodarilo načítať.')
-
-      setFoodGroupPickupUserIds(json.pickupUserIds || [])
-      setFoodGroupPickupUsers(json.pickupUsers || [])
-    } catch (err: any) {
-      setFoodGroupMessage(err?.message || 'Oprávnených prevziať sa nepodarilo načítať.')
-      setFoodGroupMessageType('error')
-    } finally {
-      setFoodGroupPickupLoading(false)
-    }
-
-    void searchFoodGroupPickupUsers('', 'group')
-  }
-
   function switchFoodGroupPickupMode(mode: FoodGroupMemberMode) {
     foodGroupPickupSearchRequestRef.current += 1
     setFoodGroupPickupMode(mode)
@@ -1082,6 +1063,18 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       : [...current, user.id])
   }
 
+  function selectAllFoodGroupPickupUsers() {
+    setFoodGroupPickupUsers(current => mergeSearchUsers(current, foodGroupPickupCandidateUsers))
+    setFoodGroupPickupUserIds(current => Array.from(new Set([
+      ...current,
+      ...foodGroupPickupCandidateUsers.map(user => user.id)
+    ])))
+  }
+
+  function clearFoodGroupPickupUsers() {
+    setFoodGroupPickupUserIds([])
+  }
+
   async function addFoodGroupPickupUserByQr(qrCode: string) {
     if (!selectedGroupId) {
       return {
@@ -1131,39 +1124,6 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     }
   }
 
-  async function saveFoodGroupPickupUsers() {
-    if (!selectedGroupId || !foodGroupPickupGroup) return
-
-    setFoodGroupPickupLoading(true)
-    setFoodGroupMessage('')
-
-    try {
-      const res = await fetch('/api/skupinovy-vydaj/food-groups/pickup-users', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          registrationGroupId: selectedGroupId,
-          foodGroupId: foodGroupPickupGroup.id,
-          pickupUserIds: foodGroupPickupUserIds
-        })
-      })
-      const json = await res.json()
-
-      if (!res.ok) throw new Error(json.error || 'Oprávnených prevziať sa nepodarilo uložiť.')
-
-      setFoodGroupPickupUsers(json.pickupUsers || foodGroupPickupUsers)
-      setFoodGroupPickupUserIds(json.pickupUserIds || foodGroupPickupUserIds)
-      setFoodGroupPickupModalOpen(false)
-      setFoodGroupMessage(json.message || 'Oprávnení prevziať boli uložení.')
-      setFoodGroupMessageType('ok')
-    } catch (err: any) {
-      setFoodGroupMessage(err?.message || 'Oprávnených prevziať sa nepodarilo uložiť.')
-      setFoodGroupMessageType('error')
-    } finally {
-      setFoodGroupPickupLoading(false)
-    }
-  }
-
   async function saveFoodGroup() {
     if (!selectedGroupId) return
     if (!foodGroupName.trim()) {
@@ -1189,6 +1149,22 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
       const json = await res.json()
 
       if (!res.ok) throw new Error(json.error || 'Stravovaciu skupinu sa nepodarilo uložiť.')
+
+      const savedGroupId = json.group?.id || foodGroupEditId
+      if (savedGroupId) {
+        const pickupRes = await fetch('/api/skupinovy-vydaj/food-groups/pickup-users', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            registrationGroupId: selectedGroupId,
+            foodGroupId: savedGroupId,
+            pickupUserIds: foodGroupPickupUserIds
+          })
+        })
+        const pickupJson = await pickupRes.json()
+
+        if (!pickupRes.ok) throw new Error(pickupJson.error || 'Oprávnených prevziať sa nepodarilo uložiť.')
+      }
 
       setFoodGroups(json.groups || [])
       setSelectedFoodGroupId(json.group?.id || selectedFoodGroupId)
@@ -1809,6 +1785,23 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
     } else {
       setPendingPickupSearchUsers(current => mergeSearchUsers(current, [user]))
     }
+  }
+
+  function selectAllPickupCandidates() {
+    setPendingPickupUserIds(current => Array.from(new Set([
+      ...current,
+      ...pickupCandidateUsers.map(user => user.id)
+    ])))
+
+    if (pickupSearchOutside || pickupQrMode) {
+      setPendingPickupExternalUsers(current => mergeSearchUsers(current, pickupCandidateUsers))
+    } else {
+      setPendingPickupSearchUsers(current => mergeSearchUsers(current, pickupCandidateUsers))
+    }
+  }
+
+  function clearPickupCandidates() {
+    setPendingPickupUserIds([])
   }
 
   async function addPickupUserByQr(qrCode: string) {
@@ -2916,7 +2909,7 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   }}
                   disabled={issueLoading}
                 >
-                  <b>Moje stravovacie skupiny</b>
+                  <b>Stravovacie skupiny</b>
                   <span>Uložené vlastné zoznamy</span>
                 </button>
 
@@ -2939,11 +2932,21 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                 <div style={styles.sourceFoodGroupBox}>
                   <div style={styles.issueSourceHeader}>
                     <div>
-                      <b>Moje stravovacie skupiny</b>
+                      <b>Stravovacie skupiny</b>
                       <div style={styles.emptyInlineText}>
-                        Vyber skupinu pre tento výdaj. Členov upravíš cez tlačidlo Z.
+                        Vyber skupinu pre tento výdaj. Členov aj oprávnených prevziať upravíš cez tlačidlo Upraviť.
                       </div>
                     </div>
+                    {selectedFoodGroupId && (
+                      <button
+                        type="button"
+                        onClick={() => openFoodGroupModal(selectedFoodGroupId)}
+                        style={styles.smallButtonWhite}
+                        disabled={foodGroupsLoading || issueLoading}
+                      >
+                        Upraviť
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => openFoodGroupModal('')}
@@ -2985,32 +2988,6 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                             </button>
 
                             <div style={styles.foodGroupCardActions}>
-                              <button
-                                type="button"
-                                onClick={event => {
-                                  event.stopPropagation()
-                                  void openFoodGroupModal(group.id)
-                                }}
-                                style={styles.smallEditButton}
-                                disabled={foodGroupsLoading || issueLoading}
-                                title="Upraviť skupinu"
-                                aria-label="Upraviť skupinu"
-                              >
-                                Z
-                              </button>
-                              <button
-                                type="button"
-                                onClick={event => {
-                                  event.stopPropagation()
-                                  void openFoodGroupPickupModal(group)
-                                }}
-                                style={styles.smallEditButton}
-                                disabled={foodGroupsLoading || issueLoading}
-                                title="Oprávnení prevziať"
-                                aria-label="Oprávnení prevziať"
-                              >
-                                P
-                              </button>
                               <button
                                 type="button"
                                 onClick={event => {
@@ -3246,16 +3223,26 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   </label>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => setFoodGroupQrModalOpen(true)}
-                    style={{ ...styles.darkButton, display: 'none' }}
-                    disabled={foodGroupsLoading}
-                  >
-                    Pridať osobu cez QR
-                  </button>
-
                   {foodGroupsLoading && <div style={styles.emptyBox}>Načítavam...</div>}
+
+                  <div style={styles.toolbarLeft}>
+                    <button
+                      type="button"
+                      onClick={selectAllFoodGroupMembers}
+                      disabled={foodGroupsLoading || foodGroupCandidateUsers.length === 0}
+                      style={styles.bulkButton}
+                    >
+                      Označiť všetko
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearFoodGroupMembers}
+                      disabled={foodGroupsLoading || foodGroupMemberIds.length === 0}
+                      style={styles.bulkButton}
+                    >
+                      Odznačiť všetko
+                    </button>
+                  </div>
 
                   {foodGroupMemberQrMode && (
                     <QrCameraScanner
@@ -3301,52 +3288,11 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                       })
                     )}
                   </div>
-                </div>
-              </div>
-
-              <div style={styles.modalFooter}>
-                {foodGroupMessage && (
-                  <div style={foodGroupMessageType === 'ok' ? styles.feedbackOkCompact : styles.feedbackErrorCompact}>
-                    {foodGroupMessage}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={saveFoodGroup}
-                  disabled={foodGroupsLoading || !foodGroupName.trim()}
-                  style={styles.primaryButton}
-                >
-                  {foodGroupsLoading ? 'Ukladám...' : `Uložiť skupinu (${foodGroupMemberIds.length})`}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {foodGroupPickupModalOpen && foodGroupPickupGroup && (
-          <div style={styles.modalOverlay} onClick={closeFoodGroupPickupModal}>
-            <div style={styles.peopleModal} onClick={event => event.stopPropagation()}>
-              <div style={styles.qrModalHeader}>
-                <div style={styles.modalTitleBlock}>
-                  <b>Oprávnení prevziať</b>
-                  <span>{foodGroupPickupGroup.name}</span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={closeFoodGroupPickupModal}
-                  style={styles.qrCloseButton}
-                  disabled={foodGroupPickupLoading}
-                >
-                  x
-                </button>
-              </div>
-
-              <div style={styles.modalScrollBody}>
-                <div style={styles.searchBox}>
-                  <div style={styles.peopleSectionHeader}>
-                    <b>Oprávnení prevziať</b>
-                    <span>{foodGroupPickupUserIds.length} označených / {foodGroupPickupCandidateUsers.length} v zozname</span>
+                  <div style={styles.pickupStepCard}>
+                    <div style={styles.pickupStepInfo}>
+                      <b>Oprávnení prevziať</b>
+                      <span>{foodGroupPickupUserIds.length} označených / {foodGroupPickupCandidateUsers.length} v zozname</span>
+                    </div>
                   </div>
 
                   <div style={{ ...styles.segment, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
@@ -3400,14 +3346,33 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                     </label>
                   )}
 
+                  {foodGroupPickupLoading && <div style={styles.emptyBox}>Načítavam...</div>}
+
+                  <div style={styles.toolbarLeft}>
+                    <button
+                      type="button"
+                      onClick={selectAllFoodGroupPickupUsers}
+                      disabled={foodGroupPickupLoading || foodGroupPickupCandidateUsers.length === 0}
+                      style={styles.bulkButton}
+                    >
+                      Označiť všetko
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearFoodGroupPickupUsers}
+                      disabled={foodGroupPickupLoading || foodGroupPickupUserIds.length === 0}
+                      style={styles.bulkButton}
+                    >
+                      Odznačiť všetko
+                    </button>
+                  </div>
+
                   {foodGroupPickupQrMode && (
                     <QrCameraScanner
                       disabled={foodGroupPickupLoading || !selectedGroupId}
                       onScan={addFoodGroupPickupUserByQr}
                     />
                   )}
-
-                  {foodGroupPickupLoading && <div style={styles.emptyBox}>Načítavam...</div>}
 
                   <div style={styles.searchResults}>
                     {foodGroupPickupCandidateUsers.length === 0 ? (
@@ -3453,42 +3418,20 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
               </div>
 
               <div style={styles.modalFooter}>
+                {foodGroupMessage && (
+                  <div style={foodGroupMessageType === 'ok' ? styles.feedbackOkCompact : styles.feedbackErrorCompact}>
+                    {foodGroupMessage}
+                  </div>
+                )}
                 <button
                   type="button"
-                  onClick={saveFoodGroupPickupUsers}
-                  disabled={foodGroupPickupLoading}
+                  onClick={saveFoodGroup}
+                  disabled={foodGroupsLoading || foodGroupPickupLoading || !foodGroupName.trim()}
                   style={styles.primaryButton}
                 >
-                  {foodGroupPickupLoading ? 'Ukladám...' : `Uložiť oprávnených (${foodGroupPickupUserIds.length})`}
+                  {foodGroupsLoading ? 'Ukladám...' : `Uložiť skupinu (${foodGroupMemberIds.length})`}
                 </button>
               </div>
-            </div>
-          </div>
-        )}
-
-        {foodGroupQrModalOpen && (
-          <div style={styles.modalOverlay} onClick={() => setFoodGroupQrModalOpen(false)}>
-            <div style={styles.qrModal} onClick={event => event.stopPropagation()}>
-              <div style={styles.qrModalHeader}>
-                <div style={styles.modalTitleBlock}>
-                  <b>Pridať do stravovacej skupiny</b>
-                  <span>Skenuj QR osoby. Po načítaní sa pridá do zoznamu členov.</span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setFoodGroupQrModalOpen(false)}
-                  style={styles.qrCloseButton}
-                  disabled={foodGroupsLoading}
-                >
-                  x
-                </button>
-              </div>
-
-              <QrCameraScanner
-                disabled={foodGroupsLoading || !selectedGroupId}
-                onScan={addFoodGroupMemberByQr}
-              />
             </div>
           </div>
         )}
@@ -3771,6 +3714,25 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
                   )}
 
                   {pickupLoading && <div style={styles.emptyBox}>Vyhľadávam...</div>}
+
+                  <div style={styles.toolbarLeft}>
+                    <button
+                      type="button"
+                      onClick={selectAllPickupCandidates}
+                      disabled={issueLoading || issueReadOnly || pickupCandidateUsers.length === 0}
+                      style={styles.bulkButton}
+                    >
+                      Označiť všetko
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearPickupCandidates}
+                      disabled={issueLoading || issueReadOnly || pendingPickupUserIds.length === 0}
+                      style={styles.bulkButton}
+                    >
+                      Odznačiť všetko
+                    </button>
+                  </div>
 
                   <div style={styles.searchResults}>
                     {pickupCandidateUsers.length === 0 ? (
