@@ -14,8 +14,22 @@
 --
 -- It keeps their app_user_roles rows, but removes their operational data
 -- such as QR assignments, entitlements, meal selections and registration groups.
+--
+-- It also deletes the old QR pool and creates 5000 new VOLNY QR codes.
+-- Safety: this script requires backup_pre_cleanup_20260626 to exist.
 
 begin;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.schemata
+    where schema_name = 'backup_pre_cleanup_20260626'
+  ) then
+    raise exception 'Cleanup aborted: run 20260626_create_pre_cleanup_backup.sql first.';
+  end if;
+end $$;
 
 create temp table _pohoda_cleanup_keep_emails(email text primary key) on commit drop;
 
@@ -129,15 +143,50 @@ where user_id not in (select id from _pohoda_cleanup_keep_users);
 delete from public.users
 where id not in (select id from _pohoda_cleanup_keep_users);
 
--- Return the whole QR pool to a clean free state.
-update public.qr_codes
-set
-  status = 'VOLNY',
-  assigned_user_id = null,
-  assigned_at = null
-where status is distinct from 'VOLNY'
-   or assigned_user_id is not null
-   or assigned_at is not null;
+-- Replace the whole QR pool with 5000 fresh free QR codes.
+delete from public.qr_codes;
+
+create temp table _pohoda_new_qr_codes (
+  code text primary key
+) on commit drop;
+
+insert into _pohoda_new_qr_codes (code)
+select code
+from (
+  select upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8)) as code
+  from generate_series(1, 7000)
+) generated
+group by code
+order by code
+limit 5000;
+
+do $$
+declare
+  v_new_qr_count integer;
+begin
+  select count(*) into v_new_qr_count from _pohoda_new_qr_codes;
+
+  if v_new_qr_count <> 5000 then
+    raise exception 'Cleanup aborted: expected 5000 newly generated QR codes, got %.', v_new_qr_count;
+  end if;
+end $$;
+
+insert into public.qr_codes (
+  id,
+  code,
+  status,
+  assigned_user_id,
+  assigned_at,
+  created_at
+)
+select
+  gen_random_uuid(),
+  code,
+  'VOLNY',
+  null,
+  null,
+  now()
+from _pohoda_new_qr_codes;
 
 commit;
 
