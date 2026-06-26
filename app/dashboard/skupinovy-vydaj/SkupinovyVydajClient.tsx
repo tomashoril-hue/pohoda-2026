@@ -1325,7 +1325,20 @@ export default function SkupinovyVydajClient({ initialDate, minEditableDate, gro
 
   function addIssuePerson(person: IssuePerson) {
     setIssuePeople(current => {
-      if (current.some(item => item.id === person.id)) return current
+      if (current.some(item => item.id === person.id)) {
+        return current.map(item => {
+          if (item.id !== person.id) return item
+
+          return {
+            ...item,
+            ...person,
+            issueStatus: person.issueStatus,
+            issueStatusLabel: person.issueStatusLabel,
+            itemStatus: person.itemStatus ?? item.itemStatus
+          }
+        })
+      }
+
       return [...current, person]
     })
     if (!isIssuePersonReady(person)) return
