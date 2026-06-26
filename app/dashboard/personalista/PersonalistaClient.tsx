@@ -577,6 +577,8 @@ export default function PersonalistaClient({
   const [registrationAssignmentForm, setRegistrationAssignmentForm] = useState({
     registrationGroupId: '',
     registrationGroupNote: '',
+    validFrom: isoDateOffset(0),
+    validTo: '',
     userIds: [] as string[]
   })
   const [calendarClaims, setCalendarClaims] = useState<Record<string, CalendarClaim>>({})
@@ -2576,9 +2578,24 @@ export default function PersonalistaClient({
       return
     }
 
+    if (!registrationAssignmentForm.validFrom) {
+      setRegistrationAssignmentMessage('Vyber datum od.')
+      setRegistrationAssignmentMessageType('error')
+      return
+    }
+
+    if (registrationAssignmentForm.validTo && registrationAssignmentForm.validTo < registrationAssignmentForm.validFrom) {
+      setRegistrationAssignmentMessage('Datum do nemoze byt pred datumom od.')
+      setRegistrationAssignmentMessageType('error')
+      return
+    }
+
     const groupName = selectedRegistrationAssignmentGroup?.name || 'vybrana registracna skupina'
+    const periodLabel = registrationAssignmentForm.validTo
+      ? `${registrationAssignmentForm.validFrom} - ${registrationAssignmentForm.validTo}`
+      : `${registrationAssignmentForm.validFrom} - bez konca`
     const ok = window.confirm(
-      `Priradit ${registrationAssignmentForm.userIds.length} osob do registracnej skupiny ${groupName}? Povodna registracna skupina sa im prepise.`
+      `Priradit ${registrationAssignmentForm.userIds.length} osob do registracnej skupiny ${groupName} na obdobie ${periodLabel}? Ak maju otvorene predchadzajuce zaradenie, ukonci sa den pred novym zaciatkom. Naroky sa nezmenia.`
     )
 
     if (!ok) return
@@ -2603,6 +2620,66 @@ export default function PersonalistaClient({
       }
 
       setRegistrationAssignmentMessage(json.message || 'Osoby boli priradene do registracnej skupiny.')
+      setRegistrationAssignmentMessageType('ok')
+      setRegistrationAssignmentForm(prev => ({
+        ...prev,
+        userIds: []
+      }))
+
+      setTimeout(() => {
+        router.refresh()
+      }, 650)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setRegistrationAssignmentMessage('Chyba spojenia so serverom: ' + message)
+      setRegistrationAssignmentMessageType('error')
+    } finally {
+      setRegistrationAssignmentLoading(false)
+    }
+  }
+
+  const clearSelectedRegistrationAssignments = async () => {
+    if (registrationAssignmentForm.userIds.length === 0) {
+      setRegistrationAssignmentMessage('Vyber aspon jednu osobu.')
+      setRegistrationAssignmentMessageType('error')
+      return
+    }
+
+    const typed = window.prompt(
+      `Tato akcia vymaze vsetky casove zaradenia v registracnych skupinach pre ${registrationAssignmentForm.userIds.length} vybranych osob.\n\nNaroky na stravu sa nezmenia.\n\nPre potvrdenie napis VYMAZAT`
+    )
+
+    if (typed === null) return
+
+    if (typed.trim().toUpperCase() !== 'VYMAZAT') {
+      setRegistrationAssignmentMessage('Potvrdenie nesedi. Vymazanie nebolo spustene.')
+      setRegistrationAssignmentMessageType('error')
+      return
+    }
+
+    setRegistrationAssignmentLoading(true)
+    setRegistrationAssignmentMessage('')
+    setRegistrationAssignmentMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/registration-groups/assign-people', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'CLEAR_PERIODS',
+          userIds: registrationAssignmentForm.userIds
+        })
+      })
+
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setRegistrationAssignmentMessage(json.error || 'Zaradenia sa nepodarilo vymazat.')
+        setRegistrationAssignmentMessageType('error')
+        return
+      }
+
+      setRegistrationAssignmentMessage(json.message || 'Zaradenia boli vymazane.')
       setRegistrationAssignmentMessageType('ok')
       setRegistrationAssignmentForm(prev => ({
         ...prev,
@@ -4282,8 +4359,8 @@ export default function PersonalistaClient({
         <section style={styles.createPanel}>
           <div style={styles.createHeader}>
             <div>
-              <b>Registracne skupiny</b>
-              <span>Vyber skupinu a spravuj ludi, naroky aj vytvorenie novej skupiny na jednom mieste.</span>
+              <b>Registračné skupiny</b>
+              <span>Najprv vyber skupinu. Zaradenia a nároky sú oddelené akcie, aby sa pri hromadnej práci nepomiešali.</span>
             </div>
 
             <button
@@ -4298,14 +4375,14 @@ export default function PersonalistaClient({
 
           <div style={styles.createGrid}>
             <label style={styles.field}>
-              <span>Vybrana registracna skupina</span>
+              <span>Vybraná registračná skupina</span>
               <select
                 value={bulkRegistrationEntitlementsForm.registrationGroupId}
                 onChange={event => selectManagedRegistrationGroup(event.target.value)}
                 style={styles.input}
                 disabled={registrationGroupLoading || registrationAssignmentLoading || bulkRegistrationEntitlementsLoading}
               >
-                <option value="">Vyber registracnu skupinu</option>
+                <option value="">Vyber registračnú skupinu</option>
                 {registrationGroups.map(group => (
                   <option key={group.id} value={group.id}>
                     {group.name}
@@ -4315,9 +4392,9 @@ export default function PersonalistaClient({
             </label>
 
             <div style={styles.optionBox}>
-              <div style={styles.optionTitle}>Prehlad</div>
+              <div style={styles.optionTitle}>Prehľad</div>
               <span style={styles.optionHint}>
-                Registracnych skupin: {registrationGroups.length}
+                Registračných skupín: {registrationGroups.length}
               </span>
               <span style={styles.optionHint}>
                 Osob vo vybranej skupine: {selectedBulkRegistrationGroupAllPeopleCount}
@@ -4330,7 +4407,7 @@ export default function PersonalistaClient({
               value={registrationGroupName}
               onChange={event => setRegistrationGroupName(event.target.value)}
               style={styles.input}
-              placeholder="Nazov novej registracnej skupiny"
+              placeholder="Názov novej registračnej skupiny"
               disabled={registrationGroupLoading}
             />
             <button
@@ -4360,21 +4437,49 @@ export default function PersonalistaClient({
             <div style={styles.registrationSectionHeader}>
               <span style={styles.registrationSectionBadgeBlue}>1</span>
               <div>
-                <b>Priradenie ludi</b>
-                <span>Vyber osoby a prirad ich do aktualnej registracnej skupiny.</span>
+                <b>Zaradenia osôb</b>
+                <span>Pridaj vybraným osobám časové zaradenie alebo im vymaž všetky registračné zaradenia. Nároky sa tu nemenia.</span>
               </div>
             </div>
 
-            <label style={styles.field}>
-              <span>Poznamka</span>
-              <input
-                value={registrationAssignmentForm.registrationGroupNote}
-                onChange={event => updateRegistrationAssignmentForm('registrationGroupNote', event.target.value)}
-                style={styles.input}
-                placeholder="Volitelne"
-                disabled={registrationAssignmentLoading || !registrationAssignmentForm.registrationGroupId}
-              />
-            </label>
+            <div style={styles.createGrid}>
+              <label style={styles.field}>
+                <span>Od</span>
+                <input
+                  type="date"
+                  value={registrationAssignmentForm.validFrom}
+                  onChange={event => updateRegistrationAssignmentForm('validFrom', event.target.value)}
+                  style={styles.input}
+                  disabled={registrationAssignmentLoading || !registrationAssignmentForm.registrationGroupId}
+                />
+              </label>
+
+              <label style={styles.field}>
+                <span>Do</span>
+                <input
+                  type="date"
+                  value={registrationAssignmentForm.validTo}
+                  onChange={event => updateRegistrationAssignmentForm('validTo', event.target.value)}
+                  style={styles.input}
+                  disabled={registrationAssignmentLoading || !registrationAssignmentForm.registrationGroupId}
+                />
+              </label>
+
+              <label style={styles.field}>
+                <span>Poznámka</span>
+                <input
+                  value={registrationAssignmentForm.registrationGroupNote}
+                  onChange={event => updateRegistrationAssignmentForm('registrationGroupNote', event.target.value)}
+                  style={styles.input}
+                  placeholder="Voliteľné"
+                  disabled={registrationAssignmentLoading || !registrationAssignmentForm.registrationGroupId}
+                />
+              </label>
+            </div>
+
+            <div style={styles.infoNotice}>
+              Ak necháš dátum <b>Do</b> prázdny, zaradenie ostane otvorené bez konca. Ak má osoba otvorené staršie zaradenie, systém ho ukončí deň pred novým dátumom <b>Od</b>. Pri inom konflikte sa nezmení nikto.
+            </div>
 
             <div style={styles.optionTitle}>
               Vybrane osoby ({registrationAssignmentForm.userIds.length})
@@ -4412,12 +4517,12 @@ export default function PersonalistaClient({
             )}
 
             <label style={styles.field}>
-              <span>Hladat osobu</span>
+              <span>Hľadať osobu</span>
               <input
                 value={registrationAssignmentSearch}
                 onChange={event => setRegistrationAssignmentSearch(event.target.value)}
                 style={styles.input}
-                placeholder="Meno, email alebo cast nazvu skupiny"
+                placeholder="Meno, email alebo časť názvu skupiny"
                 disabled={registrationAssignmentLoading || !registrationAssignmentForm.registrationGroupId}
               />
             </label>
@@ -4449,11 +4554,26 @@ export default function PersonalistaClient({
             <button
               type="button"
               style={styles.confirmButton}
-              disabled={registrationAssignmentLoading || !registrationAssignmentForm.registrationGroupId}
+              disabled={registrationAssignmentLoading || !registrationAssignmentForm.registrationGroupId || !registrationAssignmentForm.validFrom || registrationAssignmentForm.userIds.length === 0}
               onClick={saveRegistrationAssignment}
             >
-              {registrationAssignmentLoading ? 'Ukladam...' : 'Priradit vybranych'}
+              {registrationAssignmentLoading ? 'Ukladám...' : 'Pridať zaradenie'}
             </button>
+
+            <div style={styles.dangerSection}>
+              <div style={styles.optionTitle}>Nebezpečná akcia</div>
+              <span style={styles.optionHint}>
+                Vymaže všetky časové zaradenia vybraným osobám bez ohľadu na dátum. Nároky na stravu ostanú nezmenené.
+              </span>
+              <button
+                type="button"
+                style={styles.dangerButton}
+                disabled={registrationAssignmentLoading || registrationAssignmentForm.userIds.length === 0}
+                onClick={clearSelectedRegistrationAssignments}
+              >
+                Vymazať zaradenia vybraným ({registrationAssignmentForm.userIds.length})
+              </button>
+            </div>
 
             {registrationAssignmentMessage && (
               <div
@@ -7904,6 +8024,16 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 12,
     fontWeight: 800,
     color: '#6b7280'
+  },
+  infoNotice: {
+    border: '1px solid #fde68a',
+    borderRadius: 6,
+    background: '#fffbeb',
+    color: '#92400e',
+    padding: '7px 8px',
+    fontSize: 12,
+    lineHeight: 1.35,
+    fontWeight: 850
   },
   groupSelectRow: {
     display: 'grid',
