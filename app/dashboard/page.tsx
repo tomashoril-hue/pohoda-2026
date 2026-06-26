@@ -674,6 +674,10 @@ export default async function DashboardPage({
                 issuedRegistrationIssue,
                 language
               })
+              const pickupText = showBulkPickup
+                ? `${copy.pickedUpBy} ${issuedByName || '-'}${issuedTime ? `, ${issuedTime}` : ''}`
+                : ''
+              const statusLine = [state.label, state.detail, pickupText].filter(Boolean).join(' · ')
 
               return (
                 <div
@@ -726,19 +730,9 @@ export default async function DashboardPage({
                     <div style={styles.todayRowWide}>
                       <span>{copy.mealStatus}</span>
                       <b style={styles.todayStateInline}>
-                        {state.label}
+                        {statusLine}
                       </b>
                     </div>
-
-                    {showBulkPickup && (
-                      <div style={styles.todayRow}>
-                        <span>{copy.pickedUpBy}</span>
-                        <b>
-                          {issuedByName || '-'}
-                          {issuedTime ? `, ${issuedTime}` : ''}
-                        </b>
-                      </div>
-                    )}
                   </div>
                 </div>
               )
