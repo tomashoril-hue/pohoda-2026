@@ -1021,6 +1021,32 @@ export default function PersonalistaClient({
     })
   }
 
+  const applyUpdatedPersonEntitlements = (userId: string, entitlements: PersonEntitlement[]) => {
+    const safeEntitlements = entitlements
+      .map(item => ({
+        datum: item.datum,
+        obed: !!item.obed,
+        vecera: !!item.vecera
+      }))
+      .sort((a, b) => String(a.datum).localeCompare(String(b.datum)))
+    const lunchClaims = safeEntitlements.filter(item => item.obed).length
+    const dinnerClaims = safeEntitlements.filter(item => item.vecera).length
+
+    const updatePerson = (person: PersonItem): PersonItem => person.id === userId
+      ? {
+        ...person,
+        entitlements: safeEntitlements,
+        entitlementDays: safeEntitlements.length,
+        lunchClaims,
+        dinnerClaims,
+        mealClaims: lunchClaims + dinnerClaims
+      }
+      : person
+
+    setPeople(prev => prev.map(updatePerson))
+    setPendingReviewPeople(prev => prev.map(updatePerson))
+  }
+
   const reloadPersonDetail = async (userId: string) => {
     const res = await fetch(`/api/personalista/people/search?userId=${encodeURIComponent(userId)}`, {
       cache: 'no-store'
@@ -2088,6 +2114,10 @@ export default function PersonalistaClient({
       const successMessage = json.message || 'Zmena bola uložená.'
       setDetailMessage(successMessage)
       setDetailMessageType('ok')
+      if (Array.isArray(json.entitlements)) {
+        applyUpdatedPersonEntitlements(selectedPerson.id, json.entitlements)
+      }
+
       preservedDetailMessageRef.current = {
         userId: selectedPerson.id,
         message: successMessage,

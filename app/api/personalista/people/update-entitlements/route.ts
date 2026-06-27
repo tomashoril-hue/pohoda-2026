@@ -219,6 +219,24 @@ export async function POST(req: NextRequest) {
         }
       })
 
+    const { data: updatedEntitlements, error: updatedEntitlementsError } = await supabaseServer
+      .from('user_food_entitlements')
+      .select('datum, obed, vecera')
+      .eq('user_id', userId)
+      .order('datum', { ascending: true })
+
+    if (updatedEntitlementsError) {
+      return NextResponse.json({ error: updatedEntitlementsError.message }, { status: 500 })
+    }
+
+    const safeUpdatedEntitlements = (updatedEntitlements || []).map((row: any) => ({
+      datum: row.datum,
+      obed: !!row.obed,
+      vecera: !!row.vecera
+    }))
+    const updatedLunchClaims = safeUpdatedEntitlements.filter(item => item.obed).length
+    const updatedDinnerClaims = safeUpdatedEntitlements.filter(item => item.vecera).length
+
     return NextResponse.json({
       ok: true,
       days: dates.length,
@@ -228,6 +246,11 @@ export async function POST(req: NextRequest) {
       dinners: mode === 'DATES' && requestedDayClaims.length > 0
         ? requestedDayClaims.filter(item => item.vecera).length
         : mode !== 'CLEAR' && vecera ? dates.length : 0,
+      entitlements: safeUpdatedEntitlements,
+      entitlementDays: safeUpdatedEntitlements.length,
+      lunchClaims: updatedLunchClaims,
+      dinnerClaims: updatedDinnerClaims,
+      mealClaims: updatedLunchClaims + updatedDinnerClaims,
       message: mode === 'CLEAR' ? 'Naroky v obdobi boli vymazane.' : 'Naroky boli ulozene.'
     })
   } catch (err: any) {
