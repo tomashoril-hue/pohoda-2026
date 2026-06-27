@@ -1451,8 +1451,22 @@ export default function PersonalistaClient({
     }
 
     setEntitlementForm(nextEntitlementForm)
-    setCalendarClaims(calendarClaimsFromEntitlements(selectedPerson.entitlements))
-    setBulkEntitlementClaims({ obed: [], vecera: [] })
+    const baseCalendarClaims = calendarClaimsFromEntitlements(selectedPerson.entitlements)
+    const hasPendingEntitlements = pendingDates.some(date => !!baseCalendarClaims[date])
+    const pendingDefaultDates = hasPendingEntitlements ? [] : pendingDates.filter(date => !baseCalendarClaims[date])
+
+    pendingDefaultDates.forEach(date => {
+      baseCalendarClaims[date] = {
+        obed: true,
+        vecera: true
+      }
+    })
+
+    setCalendarClaims(baseCalendarClaims)
+    setBulkEntitlementClaims({
+      obed: pendingDefaultDates,
+      vecera: pendingDefaultDates
+    })
     setPendingReviewAction('')
 
     if (String(selectedPerson.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW') {
@@ -6191,20 +6205,24 @@ export default function PersonalistaClient({
                   <span
                     style={{
                       ...styles.statusBadge,
-                      background: String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? '#fee2e2' : '#dcfce7',
-                      color: String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? '#991b1b' : '#166534'
+                      background: selectedPersonPendingReview
+                        ? '#fef3c7'
+                        : String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO'
+                          ? '#fee2e2'
+                          : '#dcfce7',
+                      color: selectedPersonPendingReview
+                        ? '#92400e'
+                        : String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO'
+                          ? '#991b1b'
+                          : '#166534'
                     }}
                   >
-                    {String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? 'Blokovaný' : 'Aktívny'}
+                    {selectedPersonPendingReview ? 'Kontrola' : String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? 'Blokovaný' : 'Aktívny'}
                   </span>
 
                   <span style={styles.foodBadge}>
                     {foodLabel(selectedPerson.typStravy)}
                   </span>
-
-                  {String(selectedPerson.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW' && (
-                    <span style={styles.pendingBadge}>Na schvalenie</span>
-                  )}
 
                   {selectedPerson.globalRoles.map(role => (
                     <span key={role} style={styles.globalRoleBadge}>
@@ -6220,9 +6238,7 @@ export default function PersonalistaClient({
                     <div style={styles.pendingApprovalHeader}>
                       <div style={styles.pendingApprovalHeaderText}>
                         <b>Registrácia čaká na kontrolu</b>
-                        <span>Najprv nastav zaradenie od-do, potom skontroluj nároky a až nakoniec dokonči registráciu.</span>
                       </div>
-                      <span style={styles.pendingBadge}>Kontrola</span>
                     </div>
 
                     <div style={styles.pendingStepGrid}>
@@ -6232,7 +6248,6 @@ export default function PersonalistaClient({
                           style={styles.pendingStepTitleButton}
                           onClick={() => setPendingReviewOpenStep(1)}
                         >
-                          <span style={styles.pendingStepNumber}>1</span>
                           <b>Zaradenie</b>
                         </button>
 
@@ -6334,13 +6349,12 @@ export default function PersonalistaClient({
                               disabled={detailLoading || !registrationPeriodForm.registrationGroupId || !registrationPeriodForm.validFrom || !registrationPeriodForm.validTo}
                               onClick={() => void savePendingReviewRegistrationPeriod()}
                             >
-                              {pendingReviewAction === 'period' ? 'Ukladám...' : 'Uložiť zaradenie a pripraviť nároky'}
+                              {pendingReviewAction === 'period' ? 'Ukladám...' : 'Uložiť zaradenie'}
                             </button>
                         </>
                         ) : (
                           <div style={styles.pendingStepSummary}>
-                            <b>{pendingReviewBoundedPeriods.length > 0 ? `${pendingReviewBoundedPeriods.length} zaradení` : 'Zaradenie čaká'}</b>
-                            <span>{pendingReviewBoundedPeriods.length > 0 ? 'Klikni pre úpravu alebo pridanie ďalšieho obdobia.' : 'Najprv nastav registračnú skupinu a obdobie od-do.'}</span>
+                            <b>{pendingReviewBoundedPeriods.length > 0 ? `${pendingReviewBoundedPeriods.length} zaradení` : 'Čaká'}</b>
                           </div>
                         )}
                       </div>
@@ -6351,31 +6365,20 @@ export default function PersonalistaClient({
                           style={styles.pendingStepTitleButton}
                           onClick={() => setPendingReviewOpenStep(2)}
                         >
-                          <span style={styles.pendingStepNumber}>2</span>
-                          <b>Nároky na stravu</b>
+                          <b>Nároky</b>
                         </button>
 
                         {pendingReviewOpenStep === 2 ? (
                           <>
                         {pendingReviewBoundedPeriods.length === 0 ? (
-                          <div style={styles.optionHint}>Najprv ulož zaradenie s dátumom od-do.</div>
+                          <div style={styles.optionHint}>Zaradenie chýba.</div>
                         ) : (
                           <>
                             <div style={styles.pendingStepSummary}>
                               <b>{pendingReviewEntitlements.length > 0 ? 'Nároky uložené' : 'Nároky čakajú'}</b>
-                              <span>{pendingReviewEntitlements.length} dní v {pendingReviewBoundedPeriods.length} zaradeniach</span>
                             </div>
 
                             <div style={styles.calendarToolbar}>
-                              <button
-                                type="button"
-                                style={styles.lightButton}
-                                disabled={detailLoading}
-                                onClick={() => preparePendingReviewEntitlements(pendingReviewBoundedPeriods)}
-                              >
-                                Načítať podľa zaradenia
-                              </button>
-
                               <button
                                 type="button"
                                 style={styles.lightButton}
@@ -6464,7 +6467,6 @@ export default function PersonalistaClient({
                         ) : (
                           <div style={styles.pendingStepSummary}>
                             <b>{pendingReviewEntitlements.length > 0 ? 'Nároky uložené' : 'Nároky čakajú'}</b>
-                            <span>{pendingReviewBoundedPeriods.length === 0 ? 'Najprv dokonči zaradenie.' : `${pendingReviewEntitlements.length} dní pripravených v zaradeniach.`}</span>
                           </div>
                         )}
                       </div>
@@ -6475,7 +6477,6 @@ export default function PersonalistaClient({
                           style={styles.pendingStepTitleButton}
                           onClick={() => setPendingReviewOpenStep(3)}
                         >
-                          <span style={styles.pendingStepNumber}>3</span>
                           <b>Dokončenie</b>
                         </button>
 
@@ -6483,11 +6484,6 @@ export default function PersonalistaClient({
                           <>
                         <div style={styles.pendingStepSummary}>
                           <b>{pendingReviewCanFinish ? 'Pripravené na dokončenie' : 'Ešte nie je pripravené'}</b>
-                          <span>
-                            {pendingReviewCanFinish
-                              ? 'Zaradenie aj nároky sú uložené.'
-                              : 'Dokončiť pôjde až po uložení zaradenia a nárokov.'}
-                          </span>
                         </div>
 
                         <button
@@ -6506,7 +6502,6 @@ export default function PersonalistaClient({
                         ) : (
                           <div style={styles.pendingStepSummary}>
                             <b>{pendingReviewCanFinish ? 'Pripravené' : 'Ešte nie je pripravené'}</b>
-                            <span>{pendingReviewCanFinish ? 'Klikni pre dokončenie registrácie.' : 'Dokončenie bude dostupné po zaradení a nárokoch.'}</span>
                           </div>
                         )}
                       </div>
@@ -6529,7 +6524,7 @@ export default function PersonalistaClient({
 
                 <div style={styles.detailRow}>
                   <span>Stav</span>
-                  <b>{String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? 'Blokovaný' : 'Aktívny'}</b>
+                  <b>{selectedPersonPendingReview ? 'Kontrola' : String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? 'Blokovaný' : 'Aktívny'}</b>
                 </div>
 
                 <div style={styles.detailRow}>
