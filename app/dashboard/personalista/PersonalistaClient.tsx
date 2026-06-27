@@ -1009,6 +1009,10 @@ export default function PersonalistaClient({
 
   const replacePersonInList = (person: PersonItem) => {
     setPeople(prev => {
+      if (peopleScope === 'mine') {
+        return [person, ...prev.filter(item => item.id !== person.id)]
+      }
+
       let found = false
       const nextPeople = prev.map(item => {
         if (item.id !== person.id) return item
@@ -1024,6 +1028,10 @@ export default function PersonalistaClient({
 
       if (!personIsPending) {
         return prev.filter(item => item.id !== person.id)
+      }
+
+      if (peopleScope === 'mine') {
+        return [person, ...prev.filter(item => item.id !== person.id)]
       }
 
       let found = false
