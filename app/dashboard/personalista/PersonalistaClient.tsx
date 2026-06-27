@@ -578,6 +578,8 @@ export default function PersonalistaClient({
   const [detailMessage, setDetailMessage] = useState('')
   const [detailMessageType, setDetailMessageType] = useState<DetailMessageType>('')
   const [detailMessageMode, setDetailMessageMode] = useState<DetailMode>('')
+  const [pendingReviewOpenStep, setPendingReviewOpenStep] = useState<1 | 2 | 3>(1)
+  const [pendingReviewAction, setPendingReviewAction] = useState<'period' | 'prepare' | 'entitlements' | 'approve' | ''>('')
   const [createForm, setCreateForm] = useState({
     accountType: 'PERSON' as CreateAccountType,
     meno: '',
@@ -1243,7 +1245,8 @@ export default function PersonalistaClient({
   const isBulkRegistrationPeriodEdit = selectedRegistrationPeriodCount > 1
   const showMobilePersonDetail = isMobile && !!selectedPerson
   const foodGroupsVisible = true
-  const shouldShowDetailMessage = Boolean(detailMessage && detailMessageMode === detailMode)
+  const shouldShowPendingReviewMessage = Boolean(selectedPersonPendingReview && detailMessage && detailMessageMode === '')
+  const shouldShowDetailMessage = Boolean(detailMessage && detailMessageMode === detailMode && !shouldShowPendingReviewMessage)
   const printPersonHref = selectedPerson
     ? `/dashboard/personalista/print-qr?personId=${encodeURIComponent(selectedPerson.id)}`
     : ''
@@ -1450,6 +1453,21 @@ export default function PersonalistaClient({
     setEntitlementForm(nextEntitlementForm)
     setCalendarClaims(calendarClaimsFromEntitlements(selectedPerson.entitlements))
     setBulkEntitlementClaims({ obed: [], vecera: [] })
+    setPendingReviewAction('')
+
+    if (String(selectedPerson.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW') {
+      const boundedPeriods = boundedRegistrationPeriods(selectedPerson.registrationGroupPeriods)
+      const savedEntitlements = boundedPeriods.length > 0
+        ? selectedPerson.entitlements.filter(item => (
+          dateIsInRegistrationPeriods(item.datum, boundedPeriods) &&
+          (item.obed || item.vecera)
+        ))
+        : []
+
+      setPendingReviewOpenStep(boundedPeriods.length === 0 ? 1 : savedEntitlements.length === 0 ? 2 : 3)
+    } else {
+      setPendingReviewOpenStep(1)
+    }
 
     setQrForm({ qrCode: '' })
     setGroupForm({ groupId: '', role: 'MEMBER', newGroupName: '' })
@@ -2560,6 +2578,7 @@ export default function PersonalistaClient({
       obed: true,
       vecera: true
     })
+    setPendingReviewOpenStep(2)
     setDetailMode('')
     setDetailFeedback(`Nároky sú pripravené pre ${dates.length} dní. Skontroluj dni, obed a večeru, potom ulož nároky.`, 'ok', '')
   }
@@ -2596,6 +2615,8 @@ export default function PersonalistaClient({
       return
     }
 
+    setPendingReviewAction('period')
+
     const saved = await postDetailAction(
       '/api/personalista/people/registration-periods',
       {
@@ -2610,6 +2631,8 @@ export default function PersonalistaClient({
       '',
       registrationPeriodForm.periodId ? 'PATCH' : 'POST'
     )
+
+    setPendingReviewAction('')
 
     if (saved) {
       const selectedRegistrationGroup = registrationGroups.find(group => group.id === registrationPeriodForm.registrationGroupId) || null
@@ -2630,11 +2653,12 @@ export default function PersonalistaClient({
         ...selectedPerson,
         registrationGroupPeriods: nextPeriods
       }))
+      setPendingReviewOpenStep(2)
       preparePendingReviewEntitlements(nextPeriods)
     }
   }
 
-  const approveRegistration = () => {
+  const approveRegistration = async () => {
     if (!selectedPerson) return
 
     if (pendingReviewBoundedPeriods.length === 0) {
@@ -2650,7 +2674,9 @@ export default function PersonalistaClient({
     const ok = window.confirm('Dokončiť kontrolu registrácie a priradiť prvý voľný QR kód?')
     if (!ok) return
 
-    postDetailAction(
+    setPendingReviewAction('approve')
+
+    await postDetailAction(
       '/api/personalista/people/approve-registration',
       {
         userId: selectedPerson.id
@@ -2658,6 +2684,8 @@ export default function PersonalistaClient({
       'Registráciu sa nepodarilo dokončiť.',
       ''
     )
+
+    setPendingReviewAction('')
   }
 
   const createRegistrationGroup = async () => {
@@ -3123,7 +3151,7 @@ export default function PersonalistaClient({
     setDetailMode('entitlements')
   }
 
-  const saveSelectedEntitlementDates = () => {
+  const saveSelectedEntitlementDates = async () => {
     if (!selectedPerson) return
 
     const changedDates = visibleEntitlementCalendarDates.filter(date => {
@@ -3166,7 +3194,11 @@ export default function PersonalistaClient({
     const validFrom = changedDates[0]
     const validTo = changedDates[changedDates.length - 1]
 
-    postDetailAction(
+    if (selectedPersonPendingReview) {
+      setPendingReviewAction('entitlements')
+    }
+
+    const saved = await postDetailAction(
       '/api/personalista/people/update-entitlements',
       {
         userId: selectedPerson.id,
@@ -3178,6 +3210,11 @@ export default function PersonalistaClient({
       },
       'Nároky podľa kalendára sa nepodarilo uložiť.'
     )
+
+    if (selectedPersonPendingReview) {
+      setPendingReviewAction('')
+      if (saved) setPendingReviewOpenStep(3)
+    }
   }
 
   const updateGroupForm = (key: string, value: any) => {
@@ -6181,7 +6218,7 @@ export default function PersonalistaClient({
                 {selectedPersonPendingReview && (
                   <div style={styles.pendingApprovalBox}>
                     <div style={styles.pendingApprovalHeader}>
-                      <div>
+                      <div style={styles.pendingApprovalHeaderText}>
                         <b>Registrácia čaká na kontrolu</b>
                         <span>Najprv nastav zaradenie od-do, potom skontroluj nároky a až nakoniec dokonči registráciu.</span>
                       </div>
@@ -6190,11 +6227,17 @@ export default function PersonalistaClient({
 
                     <div style={styles.pendingStepGrid}>
                       <div style={styles.pendingStepBox}>
-                        <div style={styles.pendingStepTitle}>
+                        <button
+                          type="button"
+                          style={styles.pendingStepTitleButton}
+                          onClick={() => setPendingReviewOpenStep(1)}
+                        >
                           <span style={styles.pendingStepNumber}>1</span>
                           <b>Zaradenie</b>
-                        </div>
+                        </button>
 
+                        {pendingReviewOpenStep === 1 ? (
+                          <>
                         {pendingReviewBoundedPeriods.length > 0 && (
                           <div style={styles.pendingPeriodList}>
                             {pendingReviewBoundedPeriods.map(period => (
@@ -6231,7 +6274,6 @@ export default function PersonalistaClient({
                           </div>
                         )}
 
-                        <>
                             <div style={styles.detailEditGridWide}>
                               <label style={styles.field}>
                                 <span>Registračná skupina</span>
@@ -6292,17 +6334,29 @@ export default function PersonalistaClient({
                               disabled={detailLoading || !registrationPeriodForm.registrationGroupId || !registrationPeriodForm.validFrom || !registrationPeriodForm.validTo}
                               onClick={() => void savePendingReviewRegistrationPeriod()}
                             >
-                              {detailLoading ? 'Ukladám...' : 'Uložiť zaradenie a pripraviť nároky'}
+                              {pendingReviewAction === 'period' ? 'Ukladám...' : 'Uložiť zaradenie a pripraviť nároky'}
                             </button>
                         </>
+                        ) : (
+                          <div style={styles.pendingStepSummary}>
+                            <b>{pendingReviewBoundedPeriods.length > 0 ? `${pendingReviewBoundedPeriods.length} zaradení` : 'Zaradenie čaká'}</b>
+                            <span>{pendingReviewBoundedPeriods.length > 0 ? 'Klikni pre úpravu alebo pridanie ďalšieho obdobia.' : 'Najprv nastav registračnú skupinu a obdobie od-do.'}</span>
+                          </div>
+                        )}
                       </div>
 
                       <div style={styles.pendingStepBox}>
-                        <div style={styles.pendingStepTitle}>
+                        <button
+                          type="button"
+                          style={styles.pendingStepTitleButton}
+                          onClick={() => setPendingReviewOpenStep(2)}
+                        >
                           <span style={styles.pendingStepNumber}>2</span>
                           <b>Nároky na stravu</b>
-                        </div>
+                        </button>
 
+                        {pendingReviewOpenStep === 2 ? (
+                          <>
                         {pendingReviewBoundedPeriods.length === 0 ? (
                           <div style={styles.optionHint}>Najprv ulož zaradenie s dátumom od-do.</div>
                         ) : (
@@ -6402,18 +6456,31 @@ export default function PersonalistaClient({
                               disabled={detailLoading || visibleEntitlementCalendarDates.length === 0}
                               onClick={saveSelectedEntitlementDates}
                             >
-                              {detailLoading ? 'Ukladám...' : 'Uložiť nároky'}
+                              {pendingReviewAction === 'entitlements' ? 'Ukladám...' : 'Uložiť nároky'}
                             </button>
                           </>
+                        )}
+                          </>
+                        ) : (
+                          <div style={styles.pendingStepSummary}>
+                            <b>{pendingReviewEntitlements.length > 0 ? 'Nároky uložené' : 'Nároky čakajú'}</b>
+                            <span>{pendingReviewBoundedPeriods.length === 0 ? 'Najprv dokonči zaradenie.' : `${pendingReviewEntitlements.length} dní pripravených v zaradeniach.`}</span>
+                          </div>
                         )}
                       </div>
 
                       <div style={styles.pendingStepBox}>
-                        <div style={styles.pendingStepTitle}>
+                        <button
+                          type="button"
+                          style={styles.pendingStepTitleButton}
+                          onClick={() => setPendingReviewOpenStep(3)}
+                        >
                           <span style={styles.pendingStepNumber}>3</span>
                           <b>Dokončenie</b>
-                        </div>
+                        </button>
 
+                        {pendingReviewOpenStep === 3 ? (
+                          <>
                         <div style={styles.pendingStepSummary}>
                           <b>{pendingReviewCanFinish ? 'Pripravené na dokončenie' : 'Ešte nie je pripravené'}</b>
                           <span>
@@ -6431,12 +6498,32 @@ export default function PersonalistaClient({
                             cursor: detailLoading || !pendingReviewCanFinish ? 'not-allowed' : 'pointer'
                           }}
                           disabled={detailLoading || !pendingReviewCanFinish}
-                          onClick={approveRegistration}
+                          onClick={() => void approveRegistration()}
                         >
-                          {detailLoading ? 'Dokončujem...' : 'Dokončiť registráciu'}
+                          {pendingReviewAction === 'approve' ? 'Dokončujem...' : 'Dokončiť registráciu'}
                         </button>
+                          </>
+                        ) : (
+                          <div style={styles.pendingStepSummary}>
+                            <b>{pendingReviewCanFinish ? 'Pripravené' : 'Ešte nie je pripravené'}</b>
+                            <span>{pendingReviewCanFinish ? 'Klikni pre dokončenie registrácie.' : 'Dokončenie bude dostupné po zaradení a nárokoch.'}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
+
+                    {shouldShowPendingReviewMessage && (
+                      <div
+                        style={{
+                          ...styles.message,
+                          background: detailMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                          color: detailMessageType === 'ok' ? '#166534' : '#991b1b',
+                          borderColor: detailMessageType === 'ok' ? '#86efac' : '#fecaca'
+                        }}
+                      >
+                        {detailMessage}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -8375,6 +8462,11 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'flex-start',
     flexWrap: 'wrap'
   },
+  pendingApprovalHeaderText: {
+    display: 'grid',
+    gap: 3,
+    minWidth: 0
+  },
   pendingStepGrid: {
     display: 'grid',
     gap: 8
@@ -8396,6 +8488,20 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 13,
     fontWeight: 950,
     color: '#111827'
+  },
+  pendingStepTitleButton: {
+    width: '100%',
+    border: 0,
+    padding: 0,
+    background: 'transparent',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 7,
+    fontSize: 13,
+    fontWeight: 950,
+    color: '#111827',
+    textAlign: 'left',
+    cursor: 'pointer'
   },
   pendingStepNumber: {
     width: 22,
