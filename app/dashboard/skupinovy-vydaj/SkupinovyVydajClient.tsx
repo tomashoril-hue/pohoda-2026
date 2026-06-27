@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { appText, localeFor, type AppLanguage } from '@/lib/i18n'
+import { appText, type AppLanguage } from '@/lib/i18n'
 import QrCameraScanner from './QrCameraScanner'
 
 type MealType = 'OBED' | 'VECERA'
@@ -93,28 +93,28 @@ function fullDateLabel(value: string) {
   return `${day}-${month}-${year}`
 }
 
-function mealLabel(value: MealSelection) {
-  return MEAL_OPTIONS.find(option => option.value === value)?.label || 'Vyberte jedlo'
-}
-
 function localizedMealLabel(value: MealSelection, language: AppLanguage) {
   if (value === 'OBED') return language === 'EN' ? 'Lunch' : 'Obed'
   if (value === 'VECERA') return language === 'EN' ? 'Dinner' : 'Večera'
   return language === 'EN' ? 'Choose meal' : 'Vyberte jedlo'
 }
 
-function defaultIssueTitle(_groupName: string, meal: MealSelection, sequence: number) {
+function defaultIssueTitle(_groupName: string, meal: MealSelection, sequence: number, language: AppLanguage = 'SK') {
   if (!meal) return ''
 
-  const mealText = meal === 'OBED' ? 'Obed' : 'Večera'
-  return `${mealText} výdaj č. ${Math.max(1, sequence)}`
+  const mealText = localizedMealLabel(meal, language)
+  return language === 'EN'
+    ? `${mealText} issue no. ${Math.max(1, sequence)}`
+    : `${mealText} výdaj č. ${Math.max(1, sequence)}`
 }
 
-function foodGroupIssueTitle(meal: MealSelection, foodGroupName: string) {
+function foodGroupIssueTitle(meal: MealSelection, foodGroupName: string, language: AppLanguage = 'SK') {
   if (!meal) return foodGroupName || ''
 
-  const mealText = meal === 'OBED' ? 'Obed' : 'Večera'
-  return `${mealText} výdaj - ${foodGroupName || 'stravovacia skupina'}`
+  const mealText = localizedMealLabel(meal, language)
+  return language === 'EN'
+    ? `${mealText} issue - ${foodGroupName || 'meal group'}`
+    : `${mealText} výdaj - ${foodGroupName || 'stravovacia skupina'}`
 }
 
 function dateTimeLabel(value: string | null) {
@@ -156,33 +156,11 @@ function waitingInfo(validAfter: string | null, nowMs: number) {
   }
 }
 
-function sourceLabel(value: IssuePerson['source']) {
-  if (value === 'REGISTRATION_GROUP') return 'Skupina'
-  if (value === 'FOOD_GROUP') return 'Strav. skupina'
+function sourceLabel(value: IssuePerson['source'], language: AppLanguage = 'SK') {
+  if (value === 'REGISTRATION_GROUP') return language === 'EN' ? 'Group' : 'Skupina'
+  if (value === 'FOOD_GROUP') return language === 'EN' ? 'Meal group' : 'Strav. skupina'
   if (value === 'QR') return 'QR'
-  return 'Vyhladane'
-}
-
-function localizedDateTimeLabel(value: string | null, language: AppLanguage) {
-  if (!value) return ''
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-
-  return new Intl.DateTimeFormat(localeFor(language), {
-    timeZone: 'Europe/Bratislava',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(date)
-}
-
-function issueSourceLabel(value: IssueSourceMode, language: AppLanguage) {
-  if (value === 'REGISTRATION_GROUP') return language === 'EN' ? 'Registration group' : 'Registračná skupina'
-  if (value === 'FOOD_GROUP') return language === 'EN' ? 'Meal groups' : 'Stravovacie skupiny'
-  return language === 'EN' ? 'QR group' : 'Skupina QR'
+  return language === 'EN' ? 'Searched' : 'Vyhľadané'
 }
 
 function isIssuePersonReady(person: IssuePerson) {
@@ -253,6 +231,7 @@ function sameIds(a: string[], b: string[]) {
 export default function SkupinovyVydajClient({ language = 'SK', initialDate, minEditableDate, groups, delegatesByGroupId, canEditExistingIssues }: Props) {
   const copy = appText(language)
   const isEnglish = language === 'EN'
+  const t = (sk: string, en: string) => isEnglish ? en : sk
   const pageRef = useRef<HTMLElement | null>(null)
   const stableViewportHeightRef = useRef<number | null>(null)
   const delegateSearchRequestRef = useRef(0)
@@ -386,14 +365,14 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
             person.name,
             person.email,
             person.choice,
-            sourceLabel(person.source),
+            sourceLabel(person.source, language),
             person.issueStatusLabel || ''
           ].join(' ').toLowerCase().includes(query)
         })
       : issuePeople
 
     return [...filtered].sort(compareIssuePeople)
-  }, [issuePeople, issuePersonFilter, sourceMode])
+  }, [issuePeople, issuePersonFilter, language, sourceMode])
   const issuePickupCandidates = useMemo(() => {
     return selectedIssuablePeople.map(issuePersonToSearchUser)
   }, [selectedIssuablePeople])
@@ -725,7 +704,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     value: string,
     onChange: (value: string) => void,
     disabled: boolean,
-    placeholder = 'Vyber dátum'
+    placeholder = t('Vyber dátum', 'Choose date')
   ) => (
     <div style={styles.mobileDateControl}>
       <span style={styles.mobileDateValue}>
@@ -787,14 +766,14 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       const res = await fetch(`/api/skupinovy-vydaj/food-groups?${params.toString()}`)
       const json = await res.json()
 
-      if (!res.ok) throw new Error(json.error || 'Stravovacie skupiny sa nepodarilo načítať.')
+      if (!res.ok) throw new Error(json.error || t('Stravovacie skupiny sa nepodarilo načítať.', 'Meal groups could not be loaded.'))
 
       const nextGroups: FoodGroup[] = json.groups || []
       setFoodGroups(nextGroups)
       setSelectedFoodGroupId(current => nextGroups.some(group => group.id === current) ? current : '')
       return nextGroups
     } catch (err: any) {
-      setIssueMessage(err?.message || 'Stravovacie skupiny sa nepodarilo načítať.', 'error')
+      setIssueMessage(err?.message || t('Stravovacie skupiny sa nepodarilo načítať.', 'Meal groups could not be loaded.'), 'error')
       return []
     } finally {
       setFoodGroupsLoading(false)
@@ -813,7 +792,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     const res = await fetch(`/api/skupinovy-vydaj/food-groups?${params.toString()}`)
     const json = await res.json()
 
-    if (!res.ok) throw new Error(json.error || 'Ľudí zo stravovacej skupiny sa nepodarilo načítať.')
+    if (!res.ok) throw new Error(json.error || t('Ľudí zo stravovacej skupiny sa nepodarilo načítať.', 'People from the meal group could not be loaded.'))
 
     if (Array.isArray(json.groups)) setFoodGroups(json.groups)
     if (Array.isArray(json.members)) setFoodGroupMembers(json.members)
@@ -830,14 +809,14 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     const res = await fetch(`/api/skupinovy-vydaj/food-groups/pickup-users?${params.toString()}`)
     const json = await res.json()
 
-    if (!res.ok) throw new Error(json.error || 'Oprávnených prevziať sa nepodarilo načítať.')
+    if (!res.ok) throw new Error(json.error || t('Oprávnených prevziať sa nepodarilo načítať.', 'Pickup permissions could not be loaded.'))
 
     return (json.pickupUserIds || []) as string[]
   }
 
   async function openFoodGroupModal(groupId = selectedFoodGroupId) {
     if (!selectedGroupId) {
-      setIssueMessage('Najprv vyber registračnú skupinu.', 'error')
+      setIssueMessage(t('Najprv vyber registračnú skupinu.', 'Choose a registration group first.'), 'error')
       return
     }
 
@@ -936,7 +915,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
 
   function continueFoodGroupModal() {
     if (!foodGroupName.trim()) {
-      setFoodGroupMessage('Zadaj názov stravovacej skupiny.')
+      setFoodGroupMessage(t('Zadaj názov stravovacej skupiny.', 'Enter the meal group name.'))
       setFoodGroupMessageType('error')
       return
     }
@@ -1041,7 +1020,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     if (!selectedGroupId) {
       return {
         tone: 'error' as const,
-        message: 'Najprv vyber registračnú skupinu.'
+        message: t('Najprv vyber registračnú skupinu.', 'Choose a registration group first.')
       }
     }
 
@@ -1054,7 +1033,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       const json = await res.json()
 
       if (!res.ok || !json.user) {
-        const message = json.error || 'QR sa nepodarilo načítať.'
+        const message = json.error || t('QR sa nepodarilo načítať.', 'QR could not be loaded.')
         setFoodGroupMessage(message)
         setFoodGroupMessageType('error')
         return {
@@ -1067,7 +1046,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       setFoodGroupMembers(current => mergeSearchUsers(current, [user]))
       setFoodGroupMemberIds(current => current.includes(user.id) ? current : [...current, user.id])
 
-      const message = `${user.name || 'Osoba'} pridaná do stravovacej skupiny.`
+      const message = `${user.name || t('Osoba', 'Person')} ${t('pridaná do stravovacej skupiny.', 'added to the meal group.')}`
       setFoodGroupMessage(message)
       setFoodGroupMessageType('ok')
 
@@ -1178,7 +1157,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     if (!selectedGroupId) {
       return {
         tone: 'error' as const,
-        message: 'Najprv vyber registračnú skupinu.'
+        message: t('Najprv vyber registračnú skupinu.', 'Choose a registration group first.')
       }
     }
 
@@ -1191,7 +1170,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       const json = await res.json()
 
       if (!res.ok || !json.user) {
-        const message = json.error || 'QR sa nepodarilo načítať.'
+        const message = json.error || t('QR sa nepodarilo načítať.', 'QR could not be loaded.')
         setFoodGroupMessage(message)
         setFoodGroupMessageType('error')
         return {
@@ -1204,7 +1183,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       setFoodGroupPickupUsers(current => mergeSearchUsers(current, [user]))
       setFoodGroupPickupUserIds(current => current.includes(user.id) ? current : [...current, user.id])
 
-      const message = `${user.name || 'Osoba'} pridaná medzi oprávnených prevziať.`
+      const message = `${user.name || t('Osoba', 'Person')} ${t('pridaná medzi oprávnených prevziať.', 'added to people allowed for pickup.')}`
       setFoodGroupMessage(message)
       setFoodGroupMessageType('ok')
 
@@ -1226,7 +1205,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
   async function saveFoodGroup() {
     if (!selectedGroupId) return
     if (!foodGroupName.trim()) {
-      setFoodGroupMessage('Zadaj názov stravovacej skupiny.')
+      setFoodGroupMessage(t('Zadaj názov stravovacej skupiny.', 'Enter the meal group name.'))
       setFoodGroupMessageType('error')
       return
     }
@@ -1247,7 +1226,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       })
       const json = await res.json()
 
-      if (!res.ok) throw new Error(json.error || 'Stravovaciu skupinu sa nepodarilo uložiť.')
+      if (!res.ok) throw new Error(json.error || t('Stravovaciu skupinu sa nepodarilo uložiť.', 'Meal group could not be saved.'))
 
       const savedGroupId = json.group?.id || foodGroupEditId
       if (savedGroupId) {
@@ -1262,16 +1241,16 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
         })
         const pickupJson = await pickupRes.json()
 
-        if (!pickupRes.ok) throw new Error(pickupJson.error || 'Oprávnených prevziať sa nepodarilo uložiť.')
+        if (!pickupRes.ok) throw new Error(pickupJson.error || t('Oprávnených prevziať sa nepodarilo uložiť.', 'Pickup permissions could not be saved.'))
       }
 
       setFoodGroups(json.groups || [])
       setSelectedFoodGroupId(json.group?.id || selectedFoodGroupId)
-      setFoodGroupMessage(json.message || 'Stravovacia skupina bola uložená.')
+      setFoodGroupMessage(json.message || t('Stravovacia skupina bola uložená.', 'Meal group has been saved.'))
       setFoodGroupMessageType('ok')
       window.setTimeout(() => closeFoodGroupModal(), 350)
     } catch (err: any) {
-      setFoodGroupMessage(err?.message || 'Stravovaciu skupinu sa nepodarilo uložiť.')
+      setFoodGroupMessage(err?.message || t('Stravovaciu skupinu sa nepodarilo uložiť.', 'Meal group could not be saved.'))
       setFoodGroupMessageType('error')
     } finally {
       setFoodGroupsLoading(false)
@@ -1281,7 +1260,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
   async function deleteFoodGroup(group: FoodGroup) {
     if (!selectedGroupId || foodGroupsLoading) return
 
-    const ok = window.confirm(`Zrušiť stravovaciu skupinu "${group.name}"?`)
+    const ok = window.confirm(isEnglish ? `Delete meal group "${group.name}"?` : `Zrušiť stravovaciu skupinu "${group.name}"?`)
     if (!ok) return
 
     setFoodGroupsLoading(true)
@@ -1298,7 +1277,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       })
       const json = await res.json()
 
-      if (!res.ok) throw new Error(json.error || 'Stravovaciu skupinu sa nepodarilo zrušiť.')
+      if (!res.ok) throw new Error(json.error || t('Stravovaciu skupinu sa nepodarilo zrušiť.', 'Meal group could not be deleted.'))
 
       setFoodGroups(json.groups || [])
       if (selectedFoodGroupId === group.id) setSelectedFoodGroupId('')
@@ -1308,10 +1287,10 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
         setFoodGroupMemberIds([])
         setFoodGroupMembers([])
       }
-      setFoodGroupMessage(json.message || 'Stravovacia skupina bola zrušená.')
+      setFoodGroupMessage(json.message || t('Stravovacia skupina bola zrušená.', 'Meal group has been deleted.'))
       setFoodGroupMessageType('ok')
     } catch (err: any) {
-      setFoodGroupMessage(err?.message || 'Stravovaciu skupinu sa nepodarilo zrušiť.')
+      setFoodGroupMessage(err?.message || t('Stravovaciu skupinu sa nepodarilo zrušiť.', 'Meal group could not be deleted.'))
       setFoodGroupMessageType('error')
     } finally {
       setFoodGroupsLoading(false)
@@ -1340,7 +1319,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       const res = await fetch(`/api/skupinovy-vydaj/issues?${params.toString()}`)
       const json = await res.json()
 
-      if (!res.ok) throw new Error(json.error || 'Existujúce výdaje sa nepodarilo načítať.')
+      if (!res.ok) throw new Error(json.error || t('Existujúce výdaje sa nepodarilo načítať.', 'Existing issues could not be loaded.'))
 
       const issues: ExistingIssue[] = json.issues || []
       setExistingIssues(issues)
@@ -1354,7 +1333,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     if (!selectedGroupId || !date || confirmed) return
 
     void loadExistingIssuesFor(selectedGroupId, date, '').catch((err: any) => {
-      setIssueMessage(err?.message || 'Existujúce výdaje sa nepodarilo načítať.', 'error')
+      setIssueMessage(err?.message || t('Existujúce výdaje sa nepodarilo načítať.', 'Existing issues could not be loaded.'), 'error')
     })
   }, [selectedGroupId, date, confirmed])
 
@@ -1367,7 +1346,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     if (!selectedGroupId || !date) return
 
     if (readOnlyDate) {
-      setIssueMessage('Starší dátum je iba na prezeranie. Nový skupinový výdaj môžeš vytvoriť najskôr na dnešný dátum.', 'error')
+      setIssueMessage(t('Starší dátum je iba na prezeranie. Nový skupinový výdaj môžeš vytvoriť najskôr na dnešný dátum.', 'Older dates are read-only. You can create a new group issue from today at the earliest.'), 'error')
       return
     }
 
@@ -1390,12 +1369,12 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
         const res = await fetch(`/api/skupinovy-vydaj/options?${params.toString()}`)
         json = await res.json()
 
-        if (!res.ok) throw new Error(json.error || 'Ľudí sa nepodarilo načítať.')
+        if (!res.ok) throw new Error(json.error || t('Ľudí sa nepodarilo načítať.', 'People could not be loaded.'))
 
         people = json.people || []
         excludedCount = Number(json.plannedExcludedCount || 0)
       } else if (sourceMode === 'FOOD_GROUP') {
-        if (!selectedFoodGroupId) throw new Error('Vyber stravovaciu skupinu.')
+        if (!selectedFoodGroupId) throw new Error(t('Vyber stravovaciu skupinu.', 'Choose a meal group.'))
         people = await loadFoodGroupPeople(nextMeal)
       }
 
@@ -1415,19 +1394,23 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       setEditingIssueValidAfter(null)
       const dailyIssues = await loadExistingIssuesFor(selectedGroupId, date, '')
       const existingForMeal = dailyIssues.filter(issue => issue.meal === nextMeal).length
-      setIssueTitle(defaultIssueTitle(selectedGroup?.name || '', nextMeal, existingForMeal + 1))
+      setIssueTitle(defaultIssueTitle(selectedGroup?.name || '', nextMeal, existingForMeal + 1, language))
       setConfirmed(true)
       setPrepareSourceModalOpen(false)
       setIssueMessage(
         people.length
           ? excludedCount > 0
-            ? `Načítaných ${people.length} zvyšných vydateľných osôb. Ľudia už pripravení v inom skupinovom výdaji sú vynechaní.`
-            : `Načítaných ${people.length} aktuálne vydateľných osôb.`
-          : 'Pre tento výber nie je aktuálne nikto vydateľný.',
+            ? (isEnglish
+              ? `Loaded ${people.length} remaining issuable people. People already prepared in another group issue are skipped.`
+              : `Načítaných ${people.length} zvyšných vydateľných osôb. Ľudia už pripravení v inom skupinovom výdaji sú vynechaní.`)
+            : (isEnglish
+              ? `Loaded ${people.length} currently issuable people.`
+              : `Načítaných ${people.length} aktuálne vydateľných osôb.`)
+          : t('Pre tento výber nie je aktuálne nikto vydateľný.', 'There is currently nobody issuable for this selection.'),
         people.length ? 'ok' : 'error'
       )
     } catch (err: any) {
-      setIssueMessage(err?.message || 'Ľudí sa nepodarilo načítať.', 'error')
+      setIssueMessage(err?.message || t('Ľudí sa nepodarilo načítať.', 'People could not be loaded.'), 'error')
     } finally {
       setIssueLoading(false)
     }
@@ -1435,12 +1418,12 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
 
   function openPrepareSourceModal() {
     if (!selectedGroupId || !date || !meal) {
-      setIssueMessage('Najprv vyber dátum, registračnú skupinu a jedlo.', 'error')
+      setIssueMessage(t('Najprv vyber dátum, registračnú skupinu a jedlo.', 'Choose date, registration group and meal first.'), 'error')
       return
     }
 
     if (readOnlyDate) {
-      setIssueMessage('Starší dátum je iba na prezeranie.', 'error')
+      setIssueMessage(t('Starší dátum je iba na prezeranie.', 'Older date is read-only.'), 'error')
       return
     }
 
@@ -1473,7 +1456,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       }
 
       if (!selectedFoodGroupId) {
-        setFoodGroupMessage('Vyber stravovaciu skupinu.')
+        setFoodGroupMessage(t('Vyber stravovaciu skupinu.', 'Choose a meal group.'))
         setFoodGroupMessageType('error')
         return
       }
@@ -1507,10 +1490,10 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
         : issuablePeople.map(person => person.id)
 
       if (issuablePeople.length === 0) {
-        throw new Error('Táto stravovacia skupina nemá pre tento výdaj žiadne vydateľné osoby.')
+        throw new Error(t('Táto stravovacia skupina nemá pre tento výdaj žiadne vydateľné osoby.', 'This meal group has no issuable people for this issue.'))
       }
 
-      const title = foodGroupIssueTitle(meal, selectedFoodGroup?.name || '')
+      const title = foodGroupIssueTitle(meal, selectedFoodGroup?.name || '', language)
 
       const res = await fetch('/api/skupinovy-vydaj/issues', {
         method: 'POST',
@@ -1529,14 +1512,14 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       })
       const json = await res.json()
 
-      if (!res.ok) throw new Error(json.error || 'Skupinový výdaj sa nepodarilo vytvoriť.')
+      if (!res.ok) throw new Error(json.error || t('Skupinový výdaj sa nepodarilo vytvoriť.', 'Group issue could not be created.'))
 
       setPrepareSourceModalOpen(false)
       resetIssueState({ preserveMeal: true, clearExisting: false })
       await loadExistingIssuesFor(selectedGroupId, date, '')
-      setIssueMessage(json.message || `Skupinový výdaj bol vytvorený pre ${issuablePeople.length} osôb.`)
+      setIssueMessage(json.message || (isEnglish ? `Group issue was created for ${issuablePeople.length} people.` : `Skupinový výdaj bol vytvorený pre ${issuablePeople.length} osôb.`))
     } catch (err: any) {
-      const message = err?.message || 'Skupinový výdaj sa nepodarilo vytvoriť.'
+      const message = err?.message || t('Skupinový výdaj sa nepodarilo vytvoriť.', 'Group issue could not be created.')
       setFoodGroupMessage(message)
       setFoodGroupMessageType('error')
       setIssueMessage(message, 'error')
@@ -1566,7 +1549,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       const res = await fetch(`/api/skupinovy-vydaj/issues?${params.toString()}`)
       const json = await res.json()
 
-      if (!res.ok) throw new Error(json.error || 'Skupinový výdaj sa nepodarilo načítať.')
+      if (!res.ok) throw new Error(json.error || t('Skupinový výdaj sa nepodarilo načítať.', 'Group issue could not be loaded.'))
 
       const issue = json.issue
       const people: IssuePerson[] = (issue.people || []).filter((person: IssuePerson) => person.itemStatus !== 'REMOVED')
@@ -1593,11 +1576,11 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       setConfirmed(true)
       setIssueMessage(
         readOnlyDate || !hasEditablePeople
-          ? 'Skupinový výdaj je načítaný na prezeranie.'
-          : 'Skupinový výdaj je načítaný na úpravu.'
+          ? t('Skupinový výdaj je načítaný na prezeranie.', 'Group issue is loaded as read-only.')
+          : t('Skupinový výdaj je načítaný na úpravu.', 'Group issue is loaded for editing.')
       )
     } catch (err: any) {
-      setIssueMessage(err?.message || 'Skupinový výdaj sa nepodarilo načítať.', 'error')
+      setIssueMessage(err?.message || t('Skupinový výdaj sa nepodarilo načítať.', 'Group issue could not be loaded.'), 'error')
     } finally {
       setIssueLoading(false)
     }
@@ -1605,11 +1588,11 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
 
   async function cancelExistingIssue(issue: ExistingIssue) {
     if (readOnlyDate) {
-      setIssueMessage('Starší skupinový výdaj je možné iba prezerať.', 'error')
+      setIssueMessage(t('Starší skupinový výdaj je možné iba prezerať.', 'Older group issue is read-only.'), 'error')
       return
     }
 
-    const ok = window.confirm(`Zrušiť skupinový výdaj "${issue.title}"?`)
+    const ok = window.confirm(isEnglish ? `Cancel group issue "${issue.title}"?` : `Zrušiť skupinový výdaj "${issue.title}"?`)
     if (!ok) return
 
     setIssueLoading(true)
@@ -1623,13 +1606,13 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       })
       const json = await res.json()
 
-      if (!res.ok) throw new Error(json.error || 'Skupinový výdaj sa nepodarilo zrušiť.')
+      if (!res.ok) throw new Error(json.error || t('Skupinový výdaj sa nepodarilo zrušiť.', 'Group issue could not be cancelled.'))
 
       if (editingIssueId === issue.id) resetIssueState({ preserveMeal: true })
       await loadExistingIssuesFor(selectedGroupId, date, '')
-      setIssueMessage(json.message || 'Skupinový výdaj bol zrušený.')
+      setIssueMessage(json.message || t('Skupinový výdaj bol zrušený.', 'Group issue has been cancelled.'))
     } catch (err: any) {
-      setIssueMessage(err?.message || 'Skupinový výdaj sa nepodarilo zrušiť.', 'error')
+      setIssueMessage(err?.message || t('Skupinový výdaj sa nepodarilo zrušiť.', 'Group issue could not be cancelled.'), 'error')
     } finally {
       setIssueLoading(false)
     }
@@ -1640,15 +1623,15 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       return {
         tone: 'error' as const,
         message: issueFullyLocked
-          ? 'Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.'
-          : 'Starší skupinový výdaj je možné iba prezerať.'
+          ? t('Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.', 'No person can be edited in this group issue anymore.')
+          : t('Starší skupinový výdaj je možné iba prezerať.', 'Older group issue is read-only.')
       }
     }
 
     if (!selectedGroupId || !date || !meal) {
       return {
         tone: 'error' as const,
-        message: 'Najprv vyber registračnú skupinu, dátum a jedlo.'
+        message: t('Najprv vyber registračnú skupinu, dátum a jedlo.', 'Choose registration group, date and meal first.')
       }
     }
 
@@ -1665,7 +1648,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     const json = await res.json()
 
     if (!res.ok || !json.person) {
-      const message = json.error || 'QR sa nepodarilo pridat.'
+      const message = json.error || t('QR sa nepodarilo pridať.', 'QR could not be added.')
       setIssueMessage(message, 'error')
       return {
         tone: 'error' as const,
@@ -1676,8 +1659,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     addIssuePerson(json.person)
     const ready = isIssuePersonReady(json.person)
     const message = ready
-      ? `${json.person.name || 'Osoba'} pridaná cez QR.`
-      : `${json.person.name || 'Osoba'} pridaná cez QR, ale nie je vydateľná: ${json.person.issueStatusLabel || 'bez nároku'}.`
+      ? `${json.person.name || t('Osoba', 'Person')} ${t('pridaná cez QR.', 'added by QR.')}`
+      : `${json.person.name || t('Osoba', 'Person')} ${t('pridaná cez QR, ale nie je vydateľná:', 'added by QR, but is not issuable:')} ${json.person.issueStatusLabel || t('bez nároku', 'no entitlement')}.`
     setIssueMessage(message, ready ? 'ok' : 'error')
 
     return {
@@ -1746,30 +1729,30 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
 
   function confirmIssuePeople() {
     if (issueReadOnly) {
-      setIssueMessage(issueFullyLocked ? 'Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.' : 'Starší skupinový výdaj je možné iba prezerať.', 'error')
+      setIssueMessage(issueFullyLocked ? t('Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.', 'No person can be edited in this group issue anymore.') : t('Starší skupinový výdaj je možné iba prezerať.', 'Older group issue is read-only.'), 'error')
       return
     }
 
     if (selectedIssuablePeople.length === 0) {
-      setIssueMessage('Vyber aspoň jednu osobu.', 'error')
+      setIssueMessage(t('Vyber aspoň jednu osobu.', 'Select at least one person.'), 'error')
       return
     }
 
     setIssuePeopleConfirmed(true)
-    setIssueMessage('Osoby vo výdaji sú potvrdené. Teraz vyber, kto môže výdaj prevziať.')
+    setIssueMessage(t('Osoby vo výdaji sú potvrdené. Teraz vyber, kto môže výdaj prevziať.', 'People in the issue are confirmed. Now choose who can pick it up.'))
     openPickupModal()
   }
 
   function openMoveModal() {
     if (issueReadOnly) {
-      setIssueMessage(issueFullyLocked ? 'Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.' : 'Starší skupinový výdaj je možné iba prezerať.', 'error')
+      setIssueMessage(issueFullyLocked ? t('Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.', 'No person can be edited in this group issue anymore.') : t('Starší skupinový výdaj je možné iba prezerať.', 'Older group issue is read-only.'), 'error')
       return
     }
 
     if (!editingIssueId || selectedIssuePeople.length === 0) return
 
     if (selectedHasUnmovablePeople) {
-      setIssueMessage('Presunúť je možné iba osoby, ktoré ešte nemajú vydané jedlo.', 'error')
+      setIssueMessage(t('Presunúť je možné iba osoby, ktoré ešte nemajú vydané jedlo.', 'Only people without issued meal can be moved.'), 'error')
       return
     }
 
@@ -1800,15 +1783,15 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       })
       const json = await res.json()
 
-      if (!res.ok) throw new Error(json.error || 'Osoby sa nepodarilo presunúť.')
+      if (!res.ok) throw new Error(json.error || t('Osoby sa nepodarilo presunúť.', 'People could not be moved.'))
 
       const currentIssueId = editingIssueId
       closeMoveModal()
       await editExistingIssue(currentIssueId)
       await loadExistingIssuesFor(selectedGroupId, date, '')
-      setIssueMessage(json.message || 'Osoby boli presunuté.')
+      setIssueMessage(json.message || t('Osoby boli presunuté.', 'People have been moved.'))
     } catch (err: any) {
-      setIssueMessage(err?.message || 'Osoby sa nepodarilo presunúť.', 'error')
+      setIssueMessage(err?.message || t('Osoby sa nepodarilo presunúť.', 'People could not be moved.'), 'error')
     } finally {
       setIssueLoading(false)
     }
@@ -1911,15 +1894,15 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       return {
         tone: 'error' as const,
         message: issueFullyLocked
-          ? 'Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.'
-          : 'Starší skupinový výdaj je možné iba prezerať.'
+          ? t('Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.', 'No person can be edited in this group issue anymore.')
+          : t('Starší skupinový výdaj je možné iba prezerať.', 'Older group issue is read-only.')
       }
     }
 
     if (!selectedGroupId) {
       return {
         tone: 'error' as const,
-        message: 'Najprv vyber registračnú skupinu.'
+        message: t('Najprv vyber registračnú skupinu.', 'Choose a registration group first.')
       }
     }
 
@@ -1931,7 +1914,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     const json = await res.json()
 
     if (!res.ok || !json.user) {
-      const message = json.error || 'QR sa nepodarilo načítať.'
+      const message = json.error || t('QR sa nepodarilo načítať.', 'QR could not be loaded.')
       setIssueMessage(message, 'error')
       return {
         tone: 'error' as const,
@@ -1944,8 +1927,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     setPendingPickupExternalUsers(current => mergeSearchUsers(current, [user]))
 
     const message = pendingPickupUserIds.includes(user.id)
-      ? `${user.name || 'Osoba'} už je označená na prevzatie.`
-      : `${user.name || 'Osoba'} pridaná cez QR.`
+      ? `${user.name || t('Osoba', 'Person')} ${t('už je označená na prevzatie.', 'is already selected for pickup.')}`
+      : `${user.name || t('Osoba', 'Person')} ${t('pridaná cez QR.', 'added by QR.')}`
     setIssueMessage(message)
 
     return {
@@ -1956,12 +1939,12 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
 
   async function savePickupSelection() {
     if (issueReadOnly) {
-      setIssueMessage(issueFullyLocked ? 'Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.' : 'Starší skupinový výdaj je možné iba prezerať.', 'error')
+      setIssueMessage(issueFullyLocked ? t('Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.', 'No person can be edited in this group issue anymore.') : t('Starší skupinový výdaj je možné iba prezerať.', 'Older group issue is read-only.'), 'error')
       return
     }
 
     if (pendingPickupUserIds.length === 0) {
-      setIssueMessage('Pridaj aspoň jednu osobu oprávnenú prevziať výdaj.', 'error')
+      setIssueMessage(t('Pridaj aspoň jednu osobu oprávnenú prevziať výdaj.', 'Add at least one person allowed to pick up the issue.'), 'error')
       return
     }
 
@@ -1995,7 +1978,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       })
       const json = await res.json()
 
-      if (!res.ok) throw new Error(json.error || 'Oprávnených prevziať sa nepodarilo uložiť.')
+      if (!res.ok) throw new Error(json.error || t('Oprávnených prevziať sa nepodarilo uložiť.', 'Pickup permissions could not be saved.'))
 
       setPickupUsers(json.pickupUsers || nextUsers)
       setPickupUserIds(json.pickupUserIds || pendingPickupUserIds)
@@ -2004,9 +1987,9 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       setPickupResults([])
       setPendingPickupSearchUsers([])
       setPendingPickupExternalUsers([])
-      setIssueMessage(json.message || 'Oprávnení prevziať boli uložení.')
+      setIssueMessage(json.message || t('Oprávnení prevziať boli uložení.', 'Pickup permissions have been saved.'))
     } catch (err: any) {
-      setIssueMessage(err?.message || 'Oprávnených prevziať sa nepodarilo uložiť.', 'error')
+      setIssueMessage(err?.message || t('Oprávnených prevziať sa nepodarilo uložiť.', 'Pickup permissions could not be saved.'), 'error')
     } finally {
       setIssueLoading(false)
     }
@@ -2014,36 +1997,36 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
 
   async function saveIssue() {
     if (issueReadOnly) {
-      setIssueMessage(issueFullyLocked ? 'Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.' : 'Starší skupinový výdaj je možné iba prezerať.', 'error')
+      setIssueMessage(issueFullyLocked ? t('Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu.', 'No person can be edited in this group issue anymore.') : t('Starší skupinový výdaj je možné iba prezerať.', 'Older group issue is read-only.'), 'error')
       return
     }
 
     if (!selectedGroupId || !date || !meal || selectedIssuablePeople.length === 0) {
-      setIssueMessage('Vyber aspoň jednu osobu.', 'error')
+      setIssueMessage(t('Vyber aspoň jednu osobu.', 'Select at least one person.'), 'error')
       return
     }
 
     if (!editingIssueId && !issuePeopleConfirmed) {
-      setIssueMessage('Najprv potvrď osoby vo výdaji a potom vyber oprávnených prevziať.', 'error')
+      setIssueMessage(t('Najprv potvrď osoby vo výdaji a potom vyber oprávnených prevziať.', 'Confirm people in the issue first, then choose who can pick it up.'), 'error')
       return
     }
 
     if (pickupUserIds.length === 0) {
-      setIssueMessage('Pridaj aspoň jednu osobu oprávnenú prevziať výdaj.', 'error')
+      setIssueMessage(t('Pridaj aspoň jednu osobu oprávnenú prevziať výdaj.', 'Add at least one person allowed to pick up the issue.'), 'error')
       return
     }
 
     const title = issueTitle.trim()
 
     if (!title) {
-      setIssueMessage('Zadaj názov skupinového výdaja.', 'error')
+      setIssueMessage(t('Zadaj názov skupinového výdaja.', 'Enter the group issue name.'), 'error')
       return
     }
 
     const wasEditing = Boolean(editingIssueId)
 
     if (editWillResetWaiting) {
-      const ok = window.confirm('Uložením úprav sa skupinový výdaj znova aktivuje až o 15 minút. Pokračovať?')
+      const ok = window.confirm(t('Uložením úprav sa skupinový výdaj znova aktivuje až o 15 minút. Pokračovať?', 'Saving changes will activate the group issue again after 15 minutes. Continue?'))
       if (!ok) return
     }
 
@@ -2070,11 +2053,11 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       })
       const json = await res.json()
 
-      if (!res.ok) throw new Error(json.error || 'Skupinový výdaj sa nepodarilo uložiť.')
+      if (!res.ok) throw new Error(json.error || t('Skupinový výdaj sa nepodarilo uložiť.', 'Group issue could not be saved.'))
 
       const successMessage = json.message || (wasEditing
-        ? 'Skupinový výdaj bol upravený.'
-        : 'Skupinový výdaj bol vytvorený.')
+        ? t('Skupinový výdaj bol upravený.', 'Group issue has been updated.')
+        : t('Skupinový výdaj bol vytvorený.', 'Group issue has been created.'))
 
       setQrModalOpen(false)
 
@@ -2082,7 +2065,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       await loadExistingIssuesFor(selectedGroupId, date, '')
       setIssueMessage(successMessage)
     } catch (err: any) {
-      setIssueMessage(err?.message || 'Skupinový výdaj sa nepodarilo uložiť.', 'error')
+      setIssueMessage(err?.message || t('Skupinový výdaj sa nepodarilo uložiť.', 'Group issue could not be saved.'), 'error')
     } finally {
       setIssueLoading(false)
     }
@@ -2175,7 +2158,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
         })
         const json = await res.json()
 
-        if (!res.ok) throw new Error(json.error || 'Poverenú osobu sa nepodarilo odobrať.')
+        if (!res.ok) throw new Error(json.error || t('Poverenú osobu sa nepodarilo odobrať.', 'Delegated person could not be removed.'))
         latestDelegates = json.delegates || latestDelegates
       }
 
@@ -2192,7 +2175,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
         })
         const json = await res.json()
 
-        if (!res.ok) throw new Error(json.error || 'Poverenú osobu sa nepodarilo pridať.')
+        if (!res.ok) throw new Error(json.error || t('Poverenú osobu sa nepodarilo pridať.', 'Delegated person could not be added.'))
         latestDelegates = json.delegates || latestDelegates
       }
 
@@ -2207,7 +2190,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       setPendingDelegateExternalUsers([])
       setMessage(`Uložené. Pridané: ${usersToAdd.length}, odobraté: ${delegatesToRemove.length}.`)
     } catch (err: any) {
-      setMessage(err?.message || 'Poverené osoby sa nepodarilo uložiť.', 'error')
+      setMessage(err?.message || t('Poverené osoby sa nepodarilo uložiť.', 'Delegated people could not be saved.'), 'error')
     } finally {
       setLoading(false)
     }
@@ -2296,7 +2279,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
         </header>
 
         {groups.length === 0 ? (
-          <div style={styles.messageError}>Nemáte pridelenú registračnú skupinu pre skupinový výdaj.</div>
+          <div style={styles.messageError}>{t('Nemáte pridelenú registračnú skupinu pre skupinový výdaj.', 'You do not have an assigned registration group for group issue.')}</div>
         ) : (
           <div className="group-issue-layout" style={styles.layout}>
             {confirmed && (
@@ -2345,8 +2328,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       type="button"
                       onClick={backIssueEditorToSource}
                       style={styles.iconBackButton}
-                      title="Späť"
-                      aria-label="Späť"
+                      title={copy.back}
+                      aria-label={copy.back}
                     >
                       ←
                     </button>
@@ -2355,8 +2338,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       type="button"
                       onClick={closeIssueEditor}
                       style={styles.qrCloseButton}
-                      title="Zatvoriť"
-                      aria-label="Zatvoriť"
+                      title={t('Zatvoriť', 'Close')}
+                      aria-label={t('Zatvoriť', 'Close')}
                     >
                       x
                     </button>
@@ -2366,7 +2349,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                 <div style={styles.issueEditorBody}>
                 {readOnlyDate && (
                   <div style={styles.readOnlyNotice}>
-                    Starší dátum je iba na prezeranie. Vytvoriť alebo upraviť skupinový výdaj môžeš najskôr na dnešný dátum.
+                    {t('Starší dátum je iba na prezeranie. Vytvoriť alebo upraviť skupinový výdaj môžeš najskôr na dnešný dátum.', 'Older dates are read-only. You can create or edit a group issue from today at the earliest.')}
                   </div>
                 )}
 
@@ -2374,9 +2357,9 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                   <div style={styles.issueSourcePanel}>
                     <div style={styles.issueSourceHeader}>
                       <div>
-                        <b>{selectedFoodGroup?.name || 'Stravovacia skupina'}</b>
+                        <b>{selectedFoodGroup?.name || t('Stravovacia skupina', 'Meal group')}</b>
                         <div style={styles.emptyInlineText}>
-                          {selectedFoodGroup ? `${selectedFoodGroup.memberCount} osôb v skupine` : 'Vybraná stravovacia skupina'}
+                          {selectedFoodGroup ? `${selectedFoodGroup.memberCount} ${t('osôb v skupine', 'people in group')}` : t('Vybraná stravovacia skupina', 'Selected meal group')}
                         </div>
                       </div>
                       <button
@@ -2385,7 +2368,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                         style={styles.smallButtonWhite}
                         disabled={issueLoading || issueReadOnly || foodGroupsLoading}
                       >
-                        Spravovať
+                        {t('Spravovať', 'Manage')}
                       </button>
                     </div>
                   </div>
@@ -2393,20 +2376,20 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
 
                 {issueFullyLocked && (
                   <div style={styles.readOnlyNotice}>
-                    Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu. Výdaj je iba na prezeranie.
+                    {t('Z tohto skupinového výdaja už nie je možné upraviť žiadnu osobu. Výdaj je iba na prezeranie.', 'No person can be edited in this group issue anymore. The issue is read-only.')}
                   </div>
                 )}
 
                 {editingWaitingInfo && (
                   <div style={styles.waitingNotice}>
-                    <b>{editingWaitingInfo.active ? `Začne platiť o ${editingWaitingInfo.countdown}` : 'Platnosť je aktívna'}</b>
-                    <span>Platí od: {editingWaitingInfo.startsAt}</span>
+                    <b>{editingWaitingInfo.active ? `${t('Začne platiť o', 'Starts in')} ${editingWaitingInfo.countdown}` : t('Platnosť je aktívna', 'Validity is active')}</b>
+                    <span>{t('Platí od:', 'Valid from:')} {editingWaitingInfo.startsAt}</span>
                   </div>
                 )}
 
                 {editWillResetWaiting && (
                   <div style={styles.resetWaitingNotice}>
-                    Uložením úprav sa tento skupinový výdaj znova aktivuje až o 15 minút.
+                    {t('Uložením úprav sa tento skupinový výdaj znova aktivuje až o 15 minút.', 'Saving changes will activate this group issue again after 15 minutes.')}
                   </div>
                 )}
 
@@ -2512,9 +2495,9 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
 
                 <div style={styles.issuePeopleList}>
                   {issuePeople.length === 0 ? (
-                    <div style={styles.emptyBox}>Pre tento dátum a jedlo nie je aktuálne nikto vydateľný.</div>
+                    <div style={styles.emptyBox}>{t('Pre tento dátum a jedlo nie je aktuálne nikto vydateľný.', 'There is currently nobody issuable for this date and meal.')}</div>
                   ) : filteredIssuePeople.length === 0 ? (
-                    <div style={styles.emptyBox}>Nič sa nenašlo.</div>
+                    <div style={styles.emptyBox}>{t('Nič sa nenašlo.', 'Nothing found.')}</div>
                   ) : (
                     filteredIssuePeople.map(person => {
                       const selected = selectedIssueUserIds.includes(person.id)
@@ -2547,9 +2530,9 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                           <div className="issue-person-meta" style={styles.personMeta}>
                             <span style={styles.choicePill}>{person.choice}</span>
                             <span style={ready ? styles.statusPillReady : styles.statusPillWarning}>
-                              {person.issueStatusLabel || (ready ? 'Pripravene' : 'Nevydatelne')}
+                              {person.issueStatusLabel || (ready ? t('Pripravené', 'Ready') : t('Nevydateľné', 'Not issuable'))}
                             </span>
-                            <span style={styles.sourcePill}>{sourceLabel(person.source)}</span>
+                            <span style={styles.sourcePill}>{sourceLabel(person.source, language)}</span>
                           </div>
                         </div>
                       )
@@ -2612,7 +2595,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       <span>
                         MASO {createdIssue.summary?.MASO || 0} / VEGE {createdIssue.summary?.VEGE || 0} / DIETA {createdIssue.summary?.DIETA || 0} / SPOLU {createdIssue.summary?.SPOLU || 0}
                       </span>
-                      {createdIssue.status === 'WAITING' && <span>Platnosť začne o 15 minút.</span>}
+                      {createdIssue.status === 'WAITING' && <span>{t('Platnosť začne o 15 minút.', 'Validity starts in 15 minutes.')}</span>}
                     </div>
                   )}
                 </div>
@@ -2625,20 +2608,20 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
               {!confirmed && (
               <section style={{ ...styles.panel, order: 1 }}>
                 <div style={styles.panelHeaderRow}>
-                  <div style={styles.panelTitle}>Výber výdaja</div>
-                  <span style={styles.kicker}>Krok 1</span>
+                  <div style={styles.panelTitle}>{t('Výber výdaja', 'Issue selection')}</div>
+                  <span style={styles.kicker}>{t('Krok 1', 'Step 1')}</span>
                 </div>
 
                 <div style={styles.formGrid}>
                   <div style={styles.field}>
-                    <span>Registracna skupina</span>
+                    <span>{t('Registračná skupina', 'Registration group')}</span>
                     <select
                       value={selectedGroupId}
                       onChange={event => selectRegistrationGroup(event.target.value)}
                       disabled={issueLoading}
                       style={styles.input}
                     >
-                      <option value="">Vyberte</option>
+                      <option value="">{t('Vyberte', 'Choose')}</option>
                       {groups.map(group => (
                         <option key={group.id} value={group.id}>
                           {group.name}
@@ -2652,7 +2635,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                         onClick={() => setGroupPickerOpen(current => !current)}
                         style={styles.groupPickerButton}
                       >
-                        <span>{selectedGroup?.name || 'Vyberte'}</span>
+                        <span>{selectedGroup?.name || t('Vyberte', 'Choose')}</span>
                         <b>{groupPickerOpen ? '^' : 'v'}</b>
                       </button>
 
@@ -2662,7 +2645,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                             type="search"
                             value={groupQuery}
                             onChange={event => setGroupQuery(event.target.value)}
-                            placeholder="Hľadať registračnú skupinu"
+                            placeholder={t('Hľadať registračnú skupinu', 'Search registration group')}
                             style={styles.filterInput}
                           />
 
@@ -2700,12 +2683,12 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                         resetIssueState({ preserveMeal: true })
                       },
                       issueLoading,
-                      'Vyber dátum'
+                      t('Vyber dátum', 'Choose date')
                     )}
                   </label>
 
                   <label style={{ ...styles.field, display: 'none' }}>
-                    <span>Zdroj ľudí</span>
+                    <span>{t('Zdroj ľudí', 'People source')}</span>
                     <select
                       value={sourceMode}
                       onChange={event => {
@@ -2715,15 +2698,15 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       disabled={issueLoading}
                       style={styles.input}
                     >
-                      <option value="REGISTRATION_GROUP">Registračná skupina</option>
-                      <option value="FOOD_GROUP">Stravovacia skupina</option>
-                      <option value="ONE_OFF">Jednorazový výdaj cez QR</option>
+                      <option value="REGISTRATION_GROUP">{t('Registračná skupina', 'Registration group')}</option>
+                      <option value="FOOD_GROUP">{t('Stravovacia skupina', 'Meal group')}</option>
+                      <option value="ONE_OFF">{t('Jednorazový výdaj cez QR', 'One-off QR issue')}</option>
                     </select>
                   </label>
 
                   {false && sourceMode === 'FOOD_GROUP' && (
                     <label style={{ ...styles.field, display: 'none' }}>
-                      <span>Stravovacia skupina</span>
+                      <span>{t('Stravovacia skupina', 'Meal group')}</span>
                       <select
                         value={selectedFoodGroupId}
                         onChange={event => {
@@ -2733,7 +2716,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                         disabled={issueLoading || foodGroupsLoading}
                         style={styles.input}
                       >
-                        <option value="">Vyber stravovaciu skupinu</option>
+                        <option value="">{t('Vyber stravovaciu skupinu', 'Choose meal group')}</option>
                         {foodGroups.map(group => (
                           <option key={group.id} value={group.id}>
                             {group.name} ({group.memberCount})
@@ -2744,7 +2727,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                   )}
 
                   <label style={styles.field}>
-                    <span>Jedlo pre nový výdaj</span>
+                    <span>{t('Jedlo pre nový výdaj', 'Meal for new issue')}</span>
                     <select
                       value={meal}
                       onChange={event => {
@@ -2754,10 +2737,10 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       disabled={issueLoading}
                       style={styles.input}
                     >
-                      <option value="">Vyberte</option>
+                      <option value="">{t('Vyberte', 'Choose')}</option>
                       {MEAL_OPTIONS.map(option => (
                         <option key={option.value} value={option.value}>
-                          {option.label}
+                          {localizedMealLabel(option.value, language)}
                         </option>
                       ))}
                     </select>
@@ -2767,8 +2750,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                 {false && selectedGroupId && (
                   <div style={styles.delegateSummaryCard}>
                     <div style={styles.delegateSummaryText}>
-                      <b>Stravovacie skupiny</b>
-                      <span>{foodGroups.length} zoznamov pre túto registračnú skupinu</span>
+                      <b>{t('Stravovacie skupiny', 'Meal groups')}</b>
+                      <span>{foodGroups.length} {t('zoznamov pre túto registračnú skupinu', 'lists for this registration group')}</span>
                     </div>
 
                     <button
@@ -2777,7 +2760,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       style={styles.smallButtonWhite}
                       disabled={foodGroupsLoading}
                     >
-                      Spravovať
+                      {t('Spravovať', 'Manage')}
                     </button>
                   </div>
                 )}
@@ -2785,8 +2768,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                 {selectedGroup?.canManageDelegates && (
                   <div style={styles.delegateSummaryCard}>
                     <div style={styles.delegateSummaryText}>
-                      <b>Poverené osoby pre túto skupinu</b>
-                      <span>{delegates.length} osôb</span>
+                      <b>{t('Poverené osoby pre túto skupinu', 'Delegated people for this group')}</b>
+                      <span>{delegates.length} {t('osôb', 'people')}</span>
                     </div>
 
                     <button
@@ -2794,7 +2777,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       onClick={openDelegateModal}
                       style={styles.smallButtonWhite}
                     >
-                      Spravovať
+                      {t('Spravovať', 'Manage')}
                     </button>
                   </div>
                 )}
@@ -2805,7 +2788,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                 <section style={{ ...styles.panel, order: 3 }}>
                   <div style={styles.delegateHeader}>
                     <div>
-                      <h2 style={styles.delegateTitle}>Výdaje pre deň</h2>
+                      <h2 style={styles.delegateTitle}>{t('Výdaje pre deň', 'Issues for the day')}</h2>
                       <p style={styles.delegateHint}>{selectedGroup?.name || '-'} / {fullDateLabel(date)}</p>
                     </div>
                     <span style={styles.countBadge}>{existingIssues.length}</span>
@@ -2813,14 +2796,14 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
 
                   {readOnlyDate && (
                     <div style={styles.readOnlyNotice}>
-                      Starší dátum je iba na prezeranie. Existujúce výdaje môžeš otvoriť, ale nie upravovať.
+                      {t('Starší dátum je iba na prezeranie. Existujúce výdaje môžeš otvoriť, ale nie upravovať.', 'Older dates are read-only. You can open existing issues, but not edit them.')}
                     </div>
                   )}
 
                   {existingLoading ? (
-                    <div style={styles.emptyBox}>Načítavam existujúce výdaje...</div>
+                    <div style={styles.emptyBox}>{t('Načítavam existujúce výdaje...', 'Loading existing issues...')}</div>
                   ) : existingIssues.length === 0 ? (
-                    <div style={styles.emptyBox}>Pre tento deň zatiaľ nie je vytvorený žiadny výdaj.</div>
+                    <div style={styles.emptyBox}>{t('Pre tento deň zatiaľ nie je vytvorený žiadny výdaj.', 'No issue has been created for this day yet.')}</div>
                   ) : (
                     <div style={styles.existingIssuesList}>
                       {existingIssues.map(issue => {
@@ -2842,17 +2825,17 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                             <div style={styles.existingIssueInfo}>
                               <b>
                                 {issue.title}
-                                {fullyIssuedIssue && <span style={styles.issuedInlineStatus}> - vydané</span>}
+                                {fullyIssuedIssue && <span style={styles.issuedInlineStatus}> - {t('vydané', 'issued')}</span>}
                               </b>
                               <small>
-                                <span style={styles.mealBadge}>{mealLabel(issue.meal)}</span>
+                                <span style={styles.mealBadge}>{localizedMealLabel(issue.meal, language)}</span>
                                 MASO {issue.summary?.MASO || 0} / VEGE {issue.summary?.VEGE || 0} / DIETA {issue.summary?.DIETA || 0} / SPOLU {issue.summary?.SPOLU || 0}
                               </small>
                               {issueWaitingInfo && (
                                 <span style={styles.waitingInline}>
                                   {issueWaitingInfo.active
-                                    ? `Začne platiť o ${issueWaitingInfo.countdown}`
-                                    : 'Platnosť je aktívna'}
+                                    ? `${t('Začne platiť o', 'Starts in')} ${issueWaitingInfo.countdown}`
+                                    : t('Platnosť je aktívna', 'Validity is active')}
                                   {issueWaitingInfo.startsAt ? ` / ${issueWaitingInfo.startsAt}` : ''}
                                 </span>
                               )}
@@ -2864,7 +2847,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                                 onClick={() => editExistingIssue(issue.id)}
                                 disabled={issueLoading}
                                 style={styles.smallEditButton}
-                                title={canChangeIssue ? 'Zmeniť výdaj' : 'Pozrieť výdaj'}
+                                title={canChangeIssue ? t('Zmeniť výdaj', 'Edit issue') : t('Pozrieť výdaj', 'View issue')}
                               >
                                 {canChangeIssue ? 'Z' : 'i'}
                               </button>
@@ -2874,7 +2857,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                                   onClick={() => cancelExistingIssue(issue)}
                                   disabled={issueLoading}
                                   style={styles.smallRemoveButton}
-                                  title="Zrušiť výdaj"
+                                  title={t('Zrušiť výdaj', 'Cancel issue')}
                                 >
                                   x
                                 </button>
@@ -2888,7 +2871,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
 
                   <div style={styles.prepareActions}>
                     <label style={{ ...styles.field, display: 'none' }}>
-                      <span>Zdroj ľudí</span>
+                      <span>{t('Zdroj ľudí', 'People source')}</span>
                       <select
                         value={sourceMode}
                         onChange={event => {
@@ -2898,16 +2881,16 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                         disabled={issueLoading || readOnlyDate}
                         style={styles.input}
                       >
-                        <option value="REGISTRATION_GROUP">Registračná skupina</option>
-                        <option value="FOOD_GROUP">Stravovacia skupina</option>
-                        <option value="ONE_OFF">Jednorazový výdaj cez QR</option>
+                        <option value="REGISTRATION_GROUP">{t('Registračná skupina', 'Registration group')}</option>
+                        <option value="FOOD_GROUP">{t('Stravovacia skupina', 'Meal group')}</option>
+                        <option value="ONE_OFF">{t('Jednorazový výdaj cez QR', 'One-off QR issue')}</option>
                       </select>
                     </label>
 
                     {false && sourceMode === 'FOOD_GROUP' && (
                       <div style={styles.prepareFoodGroupRow}>
                         <label style={{ ...styles.field, flex: 1 }}>
-                          <span>Stravovacia skupina</span>
+                          <span>{t('Stravovacia skupina', 'Meal group')}</span>
                           <select
                             value={selectedFoodGroupId}
                             onChange={event => {
@@ -2917,7 +2900,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                             disabled={issueLoading || readOnlyDate || foodGroupsLoading}
                             style={styles.input}
                           >
-                            <option value="">Vyber stravovaciu skupinu</option>
+                            <option value="">{t('Vyber stravovaciu skupinu', 'Choose meal group')}</option>
                             {foodGroups.map(group => (
                               <option key={group.id} value={group.id}>
                                 {group.name} ({group.memberCount})
@@ -2932,7 +2915,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                           style={styles.smallButtonWhite}
                           disabled={issueLoading || readOnlyDate || foodGroupsLoading}
                         >
-                          Spravovať
+                          {t('Spravovať', 'Manage')}
                         </button>
                       </div>
                     )}
@@ -2944,12 +2927,12 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       style={{ ...styles.primaryButton, alignSelf: 'end', width: '100%' }}
                     >
                       {issueLoading
-                        ? 'Načítavam...'
+                        ? t('Načítavam...', 'Loading...')
                         : readOnlyDate
-                          ? 'Starší dátum je iba na prezeranie'
+                          ? t('Starší dátum je iba na prezeranie', 'Older date is read-only')
                           : false
-                            ? 'Vyber stravovaciu skupinu'
-                            : meal ? 'Pripraviť nový výdaj' : 'Vyber jedlo pre nový výdaj'}
+                            ? t('Vyber stravovaciu skupinu', 'Choose meal group')
+                            : meal ? t('Pripraviť nový výdaj', 'Prepare new issue') : t('Vyber jedlo pre nový výdaj', 'Choose meal for new issue')}
                     </button>
                   </div>
 
@@ -3025,7 +3008,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                   disabled={issueLoading}
                 >
                   <b>{isEnglish ? 'QR group' : 'Skupina QR'}</b>
-                  <span>Vytvoríš skenovaním</span>
+                  <span>{t('Vytvoríš skenovaním', 'Create by scanning')}</span>
                 </button>
               </div>
               )}
@@ -3034,9 +3017,12 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                 <div style={styles.sourceFoodGroupBox}>
                   <div style={styles.issueSourceHeader}>
                     <div>
-                      <b>Stravovacie skupiny</b>
+                      <b>{t('Stravovacie skupiny', 'Meal groups')}</b>
                       <div style={styles.emptyInlineText}>
-                        Vyber skupinu pre tento výdaj. Členov aj oprávnených prevziať upravíš cez tlačidlo Upraviť.
+                        {t(
+                          'Vyber skupinu pre tento výdaj. Členov aj oprávnených prevziať upravíš cez tlačidlo Upraviť.',
+                          'Choose a meal group for this issue. Edit members and pickup permissions with the Edit button.'
+                        )}
                       </div>
                     </div>
                     <div style={styles.modalHeaderActions}>
@@ -3046,7 +3032,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                         style={styles.smallButtonWhite}
                         disabled={foodGroupsLoading || issueLoading}
                       >
-                        Nová
+                        {t('Nová', 'New')}
                       </button>
                       {selectedFoodGroupId && (
                       <button
@@ -3055,16 +3041,16 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                         style={styles.smallButtonWhite}
                         disabled={foodGroupsLoading || issueLoading}
                       >
-                        Upraviť
+                        {t('Upraviť', 'Edit')}
                       </button>
                       )}
                     </div>
                   </div>
 
-                  {foodGroupsLoading && <div style={styles.emptyBox}>Načítavam stravovacie skupiny...</div>}
+                  {foodGroupsLoading && <div style={styles.emptyBox}>{t('Načítavam stravovacie skupiny...', 'Loading meal groups...')}</div>}
 
                   {!foodGroupsLoading && foodGroups.length === 0 ? (
-                    <div style={styles.emptyBox}>Zatiaľ nie je vytvorená žiadna stravovacia skupina.</div>
+                    <div style={styles.emptyBox}>{t('Zatiaľ nie je vytvorená žiadna stravovacia skupina.', 'No meal group has been created yet.')}</div>
                   ) : (
                     <div style={styles.foodGroupCardGrid}>
                       {foodGroups.map(group => {
@@ -3088,7 +3074,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                               disabled={issueLoading || foodGroupsLoading}
                             >
                               <b>{group.name}</b>
-                              <span>{group.memberCount} osôb</span>
+                              <span>{group.memberCount} {t('osôb', 'people')}</span>
                             </button>
 
                             <div style={styles.foodGroupCardActions}>
@@ -3100,8 +3086,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                                 }}
                                 style={styles.smallRemoveButton}
                                 disabled={foodGroupsLoading || issueLoading}
-                                title="Zrušiť skupinu"
-                                aria-label="Zrušiť skupinu"
+                                title={t('Zrušiť skupinu', 'Delete group')}
+                                aria-label={t('Zrušiť skupinu', 'Delete group')}
                               >
                                 x
                               </button>
@@ -3128,10 +3114,10 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                   style={styles.primaryButton}
                 >
                   {issueLoading
-                    ? 'Načítavam...'
+                    ? t('Načítavam...', 'Loading...')
                     : sourceMode === 'FOOD_GROUP' && prepareSourceStep === 'DETAIL'
-                      ? 'Príprava výdaja'
-                      : 'Pokračovať'}
+                      ? t('Príprava výdaja', 'Prepare issue')
+                      : t('Pokračovať', 'Continue')}
                 </button>
               </div>
             </div>
@@ -3143,8 +3129,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
             <div style={styles.qrModal} onClick={event => event.stopPropagation()}>
               <div style={styles.qrModalHeader}>
                 <div style={styles.modalTitleBlock}>
-                  <b>Pridať cez QR</b>
-                  <span>Skenujte QR kódy postupne. Osoby sa budú pridávať do pripravovaného výdaja.</span>
+                  <b>{t('Pridať cez QR', 'Add by QR')}</b>
+                  <span>{t('Skenujte QR kódy postupne. Osoby sa budú pridávať do pripravovaného výdaja.', 'Scan QR codes one by one. People will be added to the prepared issue.')}</span>
                 </div>
 
                 <button
@@ -3170,8 +3156,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
             <div style={styles.peopleModal} onClick={event => event.stopPropagation()}>
               <div style={styles.qrModalHeader}>
                 <div style={styles.modalTitleBlock}>
-                  <b>Presunúť označených</b>
-                  <span>{selectedMovableIssuePeople.length} osôb / {mealLabel(meal)} / {fullDateLabel(date)}</span>
+                  <b>{t('Presunúť označených', 'Move selected')}</b>
+                  <span>{selectedMovableIssuePeople.length} {t('osôb', 'people')} / {localizedMealLabel(meal, language)} / {fullDateLabel(date)}</span>
                 </div>
 
                 <button
@@ -3187,12 +3173,12 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
               <div style={styles.modalScrollBody}>
                 <div style={styles.searchBox}>
                   <div style={styles.peopleSectionHeader}>
-                    <b>Cieľový výdaj</b>
-                    <span>{moveTargetIssues.length} možností</span>
+                    <b>{t('Cieľový výdaj', 'Target issue')}</b>
+                    <span>{moveTargetIssues.length} {t('možností', 'options')}</span>
                   </div>
 
                   {moveTargetIssues.length === 0 ? (
-                    <div style={styles.emptyBox}>Pre tento dátum a jedlo neexistuje iný skupinový výdaj.</div>
+                    <div style={styles.emptyBox}>{t('Pre tento dátum a jedlo neexistuje iný skupinový výdaj.', 'There is no other group issue for this date and meal.')}</div>
                   ) : (
                     <div style={styles.searchResults}>
                       {moveTargetIssues.map(issue => {
@@ -3234,7 +3220,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                   disabled={issueLoading || !moveTargetIssueId || selectedMovableIssuePeople.length === 0}
                   style={styles.primaryButton}
                 >
-                  {issueLoading ? 'Presúvam...' : `Presunúť (${selectedMovableIssuePeople.length})`}
+                  {issueLoading ? t('Presúvam...', 'Moving...') : `${t('Presunúť', 'Move')} (${selectedMovableIssuePeople.length})`}
                 </button>
               </div>
             </div>
@@ -3246,10 +3232,10 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
             <div style={styles.peopleModal} onClick={event => event.stopPropagation()}>
               <div style={styles.qrModalHeader}>
                 <div style={styles.modalTitleBlock}>
-                  <b>Stravovacia skupina</b>
+                  <b>{t('Stravovacia skupina', 'Meal group')}</b>
                   <span>
                     {foodGroupModalPickupStep
-                      ? 'Oprávnení prevziať'
+                      ? t('Oprávnení prevziať', 'Allowed to pick up')
                       : foodGroupEditId ? foodGroupName : selectedGroup.name}
                   </span>
                 </div>
@@ -3268,12 +3254,12 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                 <div style={styles.searchBox}>
                   {!foodGroupEditId && (
                     <label style={styles.field}>
-                      <span style={styles.label}>Názov skupiny</span>
+                      <span style={styles.label}>{t('Názov skupiny', 'Group name')}</span>
                       <input
                         type="text"
                         value={foodGroupName}
                         onChange={event => setFoodGroupName(event.target.value)}
-                        placeholder="Napr. Amazonky menší tím"
+                        placeholder={t('Napr. Amazonky menší tím', 'E.g. Amazonky smaller team')}
                         style={styles.input}
                         disabled={foodGroupsLoading}
                       />
@@ -3291,7 +3277,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                         ...(foodGroupMemberGroupMode ? styles.segmentButtonActive : {})
                       }}
                     >
-                      Zo skupiny
+                      {t('Zo skupiny', 'From group')}
                     </button>
 
                     <button
@@ -3302,7 +3288,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                         ...(foodGroupMemberOutsideMode ? styles.segmentButtonActive : {})
                       }}
                     >
-                      Mimo skupiny
+                      {t('Mimo skupiny', 'Outside group')}
                     </button>
 
                     <button
@@ -3320,20 +3306,20 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                   {(foodGroupMemberGroupMode || foodGroupMemberOutsideMode) && (
                   <label style={styles.field}>
                     <span style={styles.label}>
-                      {foodGroupMemberOutsideMode ? 'Vyhľadať mimo skupiny' : 'Vyhľadať v skupine'}
+                      {foodGroupMemberOutsideMode ? t('Vyhľadať mimo skupiny', 'Search outside group') : t('Vyhľadať v skupine', 'Search in group')}
                     </span>
                     <input
                       type="search"
                       value={foodGroupSearchQuery}
                       onChange={event => searchFoodGroupMembers(event.target.value, foodGroupMemberOutsideMode ? 'outside' : 'group')}
-                      placeholder={foodGroupMemberOutsideMode ? 'Zadaj aspoň 3 znaky mimo skupiny' : 'Hľadaj v aktuálnej skupine'}
+                      placeholder={foodGroupMemberOutsideMode ? t('Zadaj aspoň 3 znaky mimo skupiny', 'Enter at least 3 characters outside the group') : t('Hľadaj v aktuálnej skupine', 'Search in the current group')}
                       style={styles.input}
                       disabled={!selectedGroupId}
                     />
                   </label>
                   )}
 
-                  {foodGroupsLoading && <div style={styles.emptyBox}>Načítavam...</div>}
+                  {foodGroupsLoading && <div style={styles.emptyBox}>{t('Načítavam...', 'Loading...')}</div>}
 
                   <div style={styles.toolbarLeft}>
                     <button
@@ -3342,7 +3328,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       disabled={foodGroupsLoading || foodGroupCandidateUsers.length === 0}
                       style={styles.bulkButton}
                     >
-                      Označiť všetko
+                      {t('Označiť všetko', 'Select all')}
                     </button>
                     <button
                       type="button"
@@ -3350,7 +3336,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       disabled={foodGroupsLoading || foodGroupMemberIds.length === 0}
                       style={styles.bulkButton}
                     >
-                      Odznačiť všetko
+                      {t('Odznačiť všetko', 'Clear all')}
                     </button>
                   </div>
 
@@ -3363,7 +3349,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
 
                   <div style={styles.searchResults}>
                     {foodGroupCandidateUsers.length === 0 ? (
-                      <div style={styles.emptyBox}>Vyhľadaj osobu alebo uprav existujúcu skupinu.</div>
+                      <div style={styles.emptyBox}>{t('Vyhľadaj osobu alebo uprav existujúcu skupinu.', 'Search for a person or edit an existing group.')}</div>
                     ) : (
                       foodGroupCandidateUsers.map(user => {
                         const selected = foodGroupMemberIds.includes(user.id)
@@ -3389,7 +3375,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                               <b>{user.name}</b>
                               {user.email && <span>{user.email}</span>}
                               <small>
-                                {selected ? 'V skupine' : 'Kliknutím označíš'}
+                                {selected ? t('V skupine', 'In group') : t('Kliknutím označíš', 'Click to select')}
                                 {user.foodChoice ? ` · ${user.foodChoice}` : ''}
                               </small>
                             </span>
@@ -3403,8 +3389,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                     <>
                   <div style={styles.pickupStepCard}>
                     <div style={styles.pickupStepInfo}>
-                      <b>Oprávnení prevziať</b>
-                      <span>{foodGroupPickupUserIds.length} označených / {foodGroupPickupCandidateUsers.length} v zozname</span>
+                      <b>{t('Oprávnení prevziať', 'Allowed to pick up')}</b>
+                      <span>{foodGroupPickupUserIds.length} {t('označených', 'selected')} / {foodGroupPickupCandidateUsers.length} {t('v zozname', 'listed')}</span>
                     </div>
                   </div>
 
@@ -3417,7 +3403,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                         ...(foodGroupPickupGroupMode ? styles.segmentButtonActive : {})
                       }}
                     >
-                      Zo skupiny
+                      {t('Zo skupiny', 'From group')}
                     </button>
 
                     <button
@@ -3428,7 +3414,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                         ...(foodGroupPickupOutsideMode ? styles.segmentButtonActive : {})
                       }}
                     >
-                      Mimo skupiny
+                      {t('Mimo skupiny', 'Outside group')}
                     </button>
 
                     <button
@@ -3446,20 +3432,20 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                   {(foodGroupPickupGroupMode || foodGroupPickupOutsideMode) && (
                     <label style={styles.field}>
                       <span style={styles.label}>
-                        {foodGroupPickupOutsideMode ? 'Vyhľadať mimo skupiny' : 'Vyhľadať v skupine'}
+                        {foodGroupPickupOutsideMode ? t('Vyhľadať mimo skupiny', 'Search outside group') : t('Vyhľadať v skupine', 'Search in group')}
                       </span>
                       <input
                         type="search"
                         value={foodGroupPickupQuery}
                         onChange={event => searchFoodGroupPickupUsers(event.target.value, foodGroupPickupOutsideMode ? 'outside' : 'group')}
-                        placeholder={foodGroupPickupOutsideMode ? 'Zadaj aspoň 3 znaky mimo skupiny' : 'Hľadaj v aktuálnej skupine'}
+                        placeholder={foodGroupPickupOutsideMode ? t('Zadaj aspoň 3 znaky mimo skupiny', 'Enter at least 3 characters outside the group') : t('Hľadaj v aktuálnej skupine', 'Search in the current group')}
                         style={styles.input}
                         disabled={!selectedGroupId}
                       />
                     </label>
                   )}
 
-                  {foodGroupPickupLoading && <div style={styles.emptyBox}>Načítavam...</div>}
+                  {foodGroupPickupLoading && <div style={styles.emptyBox}>{t('Načítavam...', 'Loading...')}</div>}
 
                   <div style={styles.toolbarLeft}>
                     <button
@@ -3468,7 +3454,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       disabled={foodGroupPickupLoading || foodGroupPickupCandidateUsers.length === 0}
                       style={styles.bulkButton}
                     >
-                      Označiť všetko
+                      {t('Označiť všetko', 'Select all')}
                     </button>
                     <button
                       type="button"
@@ -3476,7 +3462,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       disabled={foodGroupPickupLoading || foodGroupPickupUserIds.length === 0}
                       style={styles.bulkButton}
                     >
-                      Odznačiť všetko
+                      {t('Odznačiť všetko', 'Clear all')}
                     </button>
                   </div>
 
@@ -3491,10 +3477,10 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                     {foodGroupPickupCandidateUsers.length === 0 ? (
                       <div style={styles.emptyBox}>
                         {foodGroupPickupQrMode
-                          ? 'Naskenuj QR osoby, ktorú chceš pridať medzi oprávnených prevziať.'
+                          ? t('Naskenuj QR osoby, ktorú chceš pridať medzi oprávnených prevziať.', 'Scan the QR code of the person you want to allow for pickup.')
                           : foodGroupPickupOutsideMode
-                            ? 'Pre vyhľadávanie mimo skupiny zadaj aspoň 3 znaky.'
-                            : 'V tejto registračnej skupine nie je nikto na výber.'}
+                            ? t('Pre vyhľadávanie mimo skupiny zadaj aspoň 3 znaky.', 'Enter at least 3 characters to search outside the group.')
+                            : t('V tejto registračnej skupine nie je nikto na výber.', 'There is nobody to choose from in this registration group.')}
                       </div>
                     ) : (
                       foodGroupPickupCandidateUsers.map(user => {
@@ -3520,7 +3506,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                             <span style={styles.resultText}>
                               <b>{user.name}</b>
                               {user.email && <span>{user.email}</span>}
-                              <small>{selected ? 'Oprávnený prevziať' : 'Kliknutím označíš'}</small>
+                              <small>{selected ? t('Oprávnený prevziať', 'Allowed to pick up') : t('Kliknutím označíš', 'Click to select')}</small>
                             </span>
                           </button>
                         )
@@ -3545,7 +3531,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                     disabled={foodGroupsLoading}
                     style={styles.primaryButton}
                   >
-                    ÄŽalej
+                    {t('Ďalej', 'Next')}
                   </button>
                 ) : (
                   <div style={styles.modalFooterActions}>
@@ -3555,7 +3541,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       disabled={foodGroupsLoading || foodGroupPickupLoading}
                       style={styles.secondaryButton}
                     >
-                      Späť
+                      {copy.back}
                     </button>
                     <button
                       type="button"
@@ -3563,7 +3549,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       disabled={foodGroupsLoading || foodGroupPickupLoading || !foodGroupName.trim()}
                       style={styles.primaryButton}
                     >
-                      {foodGroupsLoading ? 'Ukladám...' : `Uložiť skupinu (${foodGroupMemberIds.length})`}
+                      {foodGroupsLoading ? copy.saving : `${t('Uložiť skupinu', 'Save group')} (${foodGroupMemberIds.length})`}
                     </button>
                   </div>
                 )}
@@ -3577,7 +3563,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
             <div style={styles.peopleModal} onClick={event => event.stopPropagation()}>
               <div style={styles.qrModalHeader}>
                 <div style={styles.modalTitleBlock}>
-                  <b>Správa poverených osôb</b>
+                  <b>{t('Správa poverených osôb', 'Delegated people management')}</b>
                   <span>{selectedGroup.name}</span>
                 </div>
 
@@ -3593,15 +3579,15 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
 
               {!selectedGroup.canManageDelegates ? (
                 <div style={styles.modalScrollBody}>
-                  <div style={styles.infoBox}>Túto časť môže meniť iba manager registračnej skupiny.</div>
+                  <div style={styles.infoBox}>{t('Túto časť môže meniť iba manager registračnej skupiny.', 'Only a registration group manager can edit this section.')}</div>
                 </div>
               ) : (
                 <>
                   <div style={styles.modalScrollBody}>
                     <div style={styles.searchBox}>
                     <div style={styles.peopleSectionHeader}>
-                      <b>Poverené osoby</b>
-                      <span>{pendingDelegateUserIds.length} označených / {delegateCandidates.length} v zozname</span>
+                      <b>{t('Poverené osoby', 'Delegated people')}</b>
+                      <span>{pendingDelegateUserIds.length} {t('označených', 'selected')} / {delegateCandidates.length} {t('v zozname', 'listed')}</span>
                     </div>
 
                     {selectedGroup.canSearchAllDelegates && (
@@ -3618,7 +3604,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                             ...(!delegateSearchAll ? styles.segmentButtonActive : {})
                           }}
                         >
-                          Zo skupiny
+                          {t('Zo skupiny', 'From group')}
                         </button>
                         <button
                           type="button"
@@ -3631,45 +3617,45 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                             ...(delegateSearchAll ? styles.segmentButtonActive : {})
                           }}
                         >
-                          Mimo skupiny
+                          {t('Mimo skupiny', 'Outside group')}
                         </button>
                       </div>
                     )}
 
                     <label style={styles.field}>
                       <span style={styles.label}>
-                        {delegateSearchAll ? 'Vyhľadať mimo registračnej skupiny' : 'Vyhľadať v registračnej skupine'}
+                        {delegateSearchAll ? t('Vyhľadať mimo registračnej skupiny', 'Search outside registration group') : t('Vyhľadať v registračnej skupine', 'Search in registration group')}
                       </span>
                       <input
                         type="search"
                         value={searchQuery}
                         onChange={event => searchUsers(event.target.value)}
-                        placeholder={delegateSearchAll ? 'Zadaj aspoň 3 znaky mimo skupiny' : 'Zoznam skupiny alebo hľadaj od 3 znakov'}
+                        placeholder={delegateSearchAll ? t('Zadaj aspoň 3 znaky mimo skupiny', 'Enter at least 3 characters outside the group') : t('Zoznam skupiny alebo hľadaj od 3 znakov', 'Group list or search from 3 characters')}
                         style={styles.input}
                       />
                     </label>
 
                     <label style={styles.field}>
-                      <span style={styles.label}>Poznámka</span>
+                      <span style={styles.label}>{t('Poznámka', 'Note')}</span>
                       <input
                         type="text"
                         value={delegateNote}
                         onChange={event => setDelegateNote(event.target.value)}
-                        placeholder="Voliteľné"
+                        placeholder={t('Voliteľné', 'Optional')}
                         style={styles.input}
                       />
                     </label>
 
-                    {loading && <div style={styles.emptyBox}>Načítavam...</div>}
+                    {loading && <div style={styles.emptyBox}>{t('Načítavam...', 'Loading...')}</div>}
 
                     <div style={styles.searchResults}>
                       {!delegateListReady ? (
-                        <div style={styles.emptyBox}>Načítavam osoby zo skupiny...</div>
+                        <div style={styles.emptyBox}>{t('Načítavam osoby zo skupiny...', 'Loading people from the group...')}</div>
                       ) : delegateCandidates.length === 0 ? (
                         <div style={styles.emptyBox}>
                           {delegateSearchAll
-                            ? 'Pre vyhľadávanie mimo skupiny zadaj aspoň 3 znaky.'
-                            : 'V skupine nie je nikto ďalší na pridanie.'}
+                            ? t('Pre vyhľadávanie mimo skupiny zadaj aspoň 3 znaky.', 'Enter at least 3 characters to search outside the group.')
+                            : t('V skupine nie je nikto ďalší na pridanie.', 'There is nobody else to add in the group.')}
                         </div>
                       ) : (
                         delegateCandidates.map(user => {
@@ -3704,10 +3690,10 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                                 {user.email && <span>{user.email}</span>}
                                 <small>
                                   {delegateSearchAll
-                                    ? selected ? 'Už označený' : 'Kliknutím pridáš'
+                                    ? selected ? t('Už označený', 'Already selected') : t('Kliknutím pridáš', 'Click to add')
                                     : changed
-                                      ? selected ? 'Bude pridaný po uložení' : 'Bude odobratý po uložení'
-                                      : selected ? 'Poverený' : 'Kliknutím označíš'}
+                                      ? selected ? t('Bude pridaný po uložení', 'Will be added after saving') : t('Bude odobratý po uložení', 'Will be removed after saving')
+                                      : selected ? t('Poverený', 'Delegated') : t('Kliknutím označíš', 'Click to select')}
                                 </small>
                               </span>
                             </button>
@@ -3730,7 +3716,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       disabled={loading || !delegateListReady || !delegateSelectionChanged}
                       style={styles.primaryButton}
                     >
-                      {loading ? 'Ukladám...' : `Uložiť zmeny (${pendingDelegateUserIds.length})`}
+                      {loading ? copy.saving : `${t('Uložiť zmeny', 'Save changes')} (${pendingDelegateUserIds.length})`}
                     </button>
                   </div>
                 </>
@@ -3744,8 +3730,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
             <div style={styles.peopleModal} onClick={event => event.stopPropagation()}>
               <div style={styles.qrModalHeader}>
                 <div style={styles.modalTitleBlock}>
-                  <b>Oprávnení prevziať</b>
-                  <span>Osoby, ktoré môžu prevziať tento skupinový výdaj.</span>
+                  <b>{t('Oprávnení prevziať', 'Allowed to pick up')}</b>
+                  <span>{t('Osoby, ktoré môžu prevziať tento skupinový výdaj.', 'People who can pick up this group issue.')}</span>
                 </div>
 
                 <button
@@ -3761,8 +3747,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
               <div style={styles.modalScrollBody}>
                 <div style={styles.searchBox}>
                   <div style={styles.peopleSectionHeader}>
-                    <b>Oprávnení prevziať</b>
-                    <span>{pendingPickupUserIds.length} označených / {pickupCandidateUsers.length} v zozname</span>
+                    <b>{t('Oprávnení prevziať', 'Allowed to pick up')}</b>
+                    <span>{pendingPickupUserIds.length} {t('označených', 'selected')} / {pickupCandidateUsers.length} {t('v zozname', 'listed')}</span>
                   </div>
 
                   <div
@@ -3781,7 +3767,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                           ...(pickupMode === 'selected' ? styles.segmentButtonActive : {})
                         }}
                       >
-                        Vybratí
+                        {t('Vybratí', 'Selected')}
                       </button>
 
                       <button
@@ -3794,7 +3780,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                           ...(pickupMode === 'group' ? styles.segmentButtonActive : {})
                         }}
                       >
-                        Zo skupiny
+                        {t('Zo skupiny', 'From group')}
                       </button>
 
                       {selectedGroup?.canSearchAllDelegates && (
@@ -3808,7 +3794,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                             ...(pickupMode === 'outside' ? styles.segmentButtonActive : {})
                           }}
                         >
-                          Mimo skupiny
+                          {t('Mimo skupiny', 'Outside group')}
                         </button>
                       )}
 
@@ -3829,13 +3815,13 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                   {(pickupGroupMode || pickupSearchOutside) && (
                     <label style={styles.field}>
                       <span style={styles.label}>
-                        {pickupSearchOutside ? 'Vyhľadať mimo skupiny' : 'Vyhľadať v skupine'}
+                        {pickupSearchOutside ? t('Vyhľadať mimo skupiny', 'Search outside group') : t('Vyhľadať v skupine', 'Search in group')}
                       </span>
                       <input
                         type="search"
                         value={pickupQuery}
                         onChange={event => searchPickupUsers(event.target.value, pickupSearchOutside ? 'outside' : 'group')}
-                        placeholder={pickupSearchOutside ? 'Zadaj aspoň 3 znaky mimo skupiny' : 'Zadaj aspoň 3 znaky v skupine'}
+                        placeholder={pickupSearchOutside ? t('Zadaj aspoň 3 znaky mimo skupiny', 'Enter at least 3 characters outside the group') : t('Zadaj aspoň 3 znaky v skupine', 'Enter at least 3 characters in the group')}
                         style={styles.input}
                         disabled={issueLoading}
                       />
@@ -3849,7 +3835,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                     />
                   )}
 
-                  {pickupLoading && <div style={styles.emptyBox}>Vyhľadávam...</div>}
+                  {pickupLoading && <div style={styles.emptyBox}>{t('Vyhľadávam...', 'Searching...')}</div>}
 
                   <div style={styles.toolbarLeft}>
                     <button
@@ -3858,7 +3844,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       disabled={issueLoading || issueReadOnly || pickupCandidateUsers.length === 0}
                       style={styles.bulkButton}
                     >
-                      Označiť všetko
+                      {t('Označiť všetko', 'Select all')}
                     </button>
                     <button
                       type="button"
@@ -3866,7 +3852,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       disabled={issueLoading || issueReadOnly || pendingPickupUserIds.length === 0}
                       style={styles.bulkButton}
                     >
-                      Odznačiť všetko
+                      {t('Odznačiť všetko', 'Clear all')}
                     </button>
                   </div>
 
@@ -3874,14 +3860,14 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                     {pickupCandidateUsers.length === 0 ? (
                       <div style={styles.emptyBox}>
                         {pickupQrMode
-                          ? 'Naskenuj QR osoby, ktorú chceš pridať medzi oprávnených prevziať.'
+                          ? t('Naskenuj QR osoby, ktorú chceš pridať medzi oprávnených prevziať.', 'Scan the QR code of the person you want to allow for pickup.')
                           : pickupSearchOutside
-                            ? 'Pre vyhľadávanie mimo skupiny zadaj aspoň 3 znaky.'
+                            ? t('Pre vyhľadávanie mimo skupiny zadaj aspoň 3 znaky.', 'Enter at least 3 characters to search outside the group.')
                             : pickupGroupMode
                               ? sourceMode === 'REGISTRATION_GROUP'
-                                ? 'Zadaj aspoň 3 znaky a vyhľadaj osobu v skupine.'
-                                : 'V tejto skupine nie je nikto na výber.'
-                              : 'Najprv označ osoby vo výdaji.'}
+                                ? t('Zadaj aspoň 3 znaky a vyhľadaj osobu v skupine.', 'Enter at least 3 characters and search for a person in the group.')
+                                : t('V tejto skupine nie je nikto na výber.', 'There is nobody to choose from in this group.')
+                              : t('Najprv označ osoby vo výdaji.', 'Select people in the issue first.')}
                       </div>
                     ) : (
                       pickupCandidateUsers.map(user => {
@@ -3915,14 +3901,14 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                               {user.email && <span>{user.email}</span>}
                               <small>
                                 {pickupQrMode
-                                  ? selected ? 'Označený cez QR' : 'Kliknutím označíš'
+                                  ? selected ? t('Označený cez QR', 'Selected by QR') : t('Kliknutím označíš', 'Click to select')
                                   : pickupSearchOutside
-                                  ? selected ? 'Už označený' : 'Kliknutím pridáš'
+                                  ? selected ? t('Už označený', 'Already selected') : t('Kliknutím pridáš', 'Click to add')
                                   : pickupSelectedMode
-                                    ? selected ? 'Oprávnený' : 'Z osôb vo výdaji'
+                                    ? selected ? t('Oprávnený', 'Allowed') : t('Z osôb vo výdaji', 'From issue people')
                                   : changed
-                                    ? selected ? 'Bude pridaný po uložení' : 'Bude odobratý po uložení'
-                                    : selected ? 'Oprávnený' : 'Zo skupiny'}
+                                    ? selected ? t('Bude pridaný po uložení', 'Will be added after saving') : t('Bude odobratý po uložení', 'Will be removed after saving')
+                                    : selected ? t('Oprávnený', 'Allowed') : t('Zo skupiny', 'From group')}
                               </small>
                             </span>
                           </button>
@@ -3941,10 +3927,10 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                   style={styles.primaryButton}
                 >
                   {issueLoading
-                    ? 'Ukladám...'
+                    ? copy.saving
                     : editingIssueId
-                      ? `Uložiť zmeny (${pendingPickupUserIds.length})`
-                      : `Potvrdiť prevzatie (${pendingPickupUserIds.length})`}
+                      ? `${t('Uložiť zmeny', 'Save changes')} (${pendingPickupUserIds.length})`
+                      : `${t('Potvrdiť prevzatie', 'Confirm pickup')} (${pendingPickupUserIds.length})`}
                 </button>
               </div>
             </div>
