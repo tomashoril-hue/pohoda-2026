@@ -13,13 +13,7 @@ export default function ConfirmPage() {
 }
 
 function ConfirmLoading() {
-  return (
-    <main style={styles.page}>
-      <section style={styles.card}>
-        <p style={styles.status}>Načítavam potvrdenie...</p>
-      </section>
-    </main>
-  )
+  return <main style={styles.blankPage} aria-label="Spracovávam potvrdenie" />
 }
 
 function ConfirmContent() {
@@ -27,7 +21,7 @@ function ConfirmContent() {
   const params = useSearchParams()
   const token = params.get('token')
 
-  const [status, setStatus] = useState('Potvrdzujem registráciu...')
+  const [status, setStatus] = useState('')
   const [qrCode, setQrCode] = useState('')
   const [qrImage, setQrImage] = useState<string | null>(null)
   const [email, setEmail] = useState('')
@@ -42,7 +36,7 @@ function ConfirmContent() {
       }
 
       try {
-        const res = await fetch(`/api/auth/confirm?token=${token}`)
+        const res = await fetch(`/api/auth/confirm?token=${encodeURIComponent(token)}`)
         const json = await res.json()
 
         if (!res.ok || json.error) {
@@ -52,22 +46,19 @@ function ConfirmContent() {
         }
 
         const reviewStatus = String(json.reviewStatus || json.user?.review_status || 'APPROVED').toUpperCase()
-        const qr = json.qrCode || json.user?.qr_code
-        const mail = json.user?.email || ''
 
         if (reviewStatus !== 'APPROVED') {
-          setEmail(mail)
-          setStatus('E-mail je potvrdený. Registrácia čaká na schválenie personalistom.')
           router.replace('/pending-approval')
           return
         }
 
+        const qr = json.qrCode || json.user?.qr_code
+        const mail = json.user?.email || ''
         const qrImg = await QRCode.toDataURL(qr)
 
         setQrCode(qr)
         setQrImage(qrImg)
         setEmail(mail)
-
         setStatus('Registrácia potvrdená. Ste prihlásený.')
       } catch (err: any) {
         setStatus('Chyba: ' + err.message)
@@ -79,13 +70,17 @@ function ConfirmContent() {
     confirm()
   }, [router, token])
 
+  if (loading && !status && !qrImage) {
+    return <main style={styles.blankPage} aria-label="Spracovávam potvrdenie" />
+  }
+
   return (
     <main style={styles.page}>
       <div style={styles.topBar}>
         <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
           <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
         </a>
-        <div style={styles.date}>8. & 9. – 11. 7. 2026</div>
+        <div style={styles.date}>8. & 9. - 11. 7. 2026</div>
       </div>
 
       <section style={styles.card}>
@@ -94,7 +89,7 @@ function ConfirmContent() {
         <h1 style={styles.title}>POHODA 2026</h1>
         <h2 style={styles.subtitle}>Potvrdenie registrácie</h2>
 
-        <p style={styles.status}>{loading ? 'Spracovávam...' : status}</p>
+        {status && <p style={styles.status}>{status}</p>}
 
         {qrImage && (
           <div style={styles.qrBox}>
@@ -119,21 +114,16 @@ function ConfirmContent() {
             </div>
           </div>
         )}
-
-        {!loading && !qrImage && email && (
-          <div style={styles.qrBox}>
-            <p style={styles.email}>{email}</p>
-            <a href="/pending-approval" style={styles.link}>
-              <button style={styles.secondaryButton}>Zobraziť stav registrácie</button>
-            </a>
-          </div>
-        )}
       </section>
     </main>
   )
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  blankPage: {
+    minHeight: '100vh',
+    background: '#fff'
+  },
   page: {
     minHeight: '100vh',
     background:
