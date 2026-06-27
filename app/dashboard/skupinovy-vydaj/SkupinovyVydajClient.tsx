@@ -2768,7 +2768,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                 {selectedGroup?.canManageDelegates && (
                   <div style={styles.delegateSummaryCard}>
                     <div style={styles.delegateSummaryText}>
-                      <b>{t('Poverené osoby pre túto skupinu', 'Delegated people for this group')}</b>
+                      <b>{t('Poverené osoby, ktoré môžu vytvárať hromadný výdaj', 'Delegated people who can create bulk issues')}</b>
                       <span>{delegates.length} {t('osôb', 'people')}</span>
                     </div>
 
