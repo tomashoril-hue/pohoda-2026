@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import QRCode from 'qrcode'
 
 export default function ConfirmPage() {
@@ -23,6 +23,7 @@ function ConfirmLoading() {
 }
 
 function ConfirmContent() {
+  const router = useRouter()
   const params = useSearchParams()
   const token = params.get('token')
 
@@ -57,6 +58,7 @@ function ConfirmContent() {
         if (reviewStatus !== 'APPROVED') {
           setEmail(mail)
           setStatus('E-mail je potvrdený. Registrácia čaká na schválenie personalistom.')
+          router.replace('/pending-approval')
           return
         }
 
@@ -75,7 +77,7 @@ function ConfirmContent() {
     }
 
     confirm()
-  }, [token])
+  }, [router, token])
 
   return (
     <main style={styles.page}>
