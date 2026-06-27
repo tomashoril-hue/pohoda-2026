@@ -1,8 +1,37 @@
+import crypto from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { createAccessCode, hashAccessCode, normalizeAccessName } from '@/lib/accessCode'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
+
+type ImportResult = {
+  rowNumber: number
+  ok: boolean
+  status: 'OK' | 'ERROR'
+  userId?: string
+  accessCode?: string | null
+  message: string
+}
+
+type PreparedRow = {
+  rowNumber: number
+  userId: string
+  meno: string
+  priezvisko: string
+  email: string | null
+  telefon: string | null
+  typStravy: string
+  validFrom: string
+  validTo: string
+  dates: string[]
+  registrationGroupId: string | null
+  generateAccessCode: boolean
+  accessCodePlain: string | null
+  obed: boolean
+  vecera: boolean
+  assignQr: boolean
+}
 
 function normalizeText(value: any) {
   return String(value || '').trim()
@@ -18,7 +47,7 @@ function normalizeFood(value: any) {
 
   if (food === 'MASO') return 'MASO'
   if (food === 'VEGE') return 'VEGE'
-  if (food === 'DIETA' || food === 'DIĂ‰TA') return 'DIETA'
+  if (food === 'DIETA' || food === 'DIÉTA' || food === 'DIÄ‚â€°TA') return 'DIETA'
 
   return ''
 }
@@ -39,7 +68,7 @@ function dateRange(from: string, to: string) {
   return dates
 }
 
-function errorResult(rowNumber: number, message: string) {
+function errorResult(rowNumber: number, message: string): ImportResult {
   return {
     rowNumber,
     ok: false,
@@ -48,17 +77,45 @@ function errorResult(rowNumber: number, message: string) {
   }
 }
 
-async function createImportedPerson({
-  row,
-  currentUserId,
-  activeRegistrationGroupIds,
-  existingEmails
-}: {
-  row: any
-  currentUserId: string
-  activeRegistrationGroupIds: Set<string>
-  existingEmails: Set<string>
-}) {
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = []
+
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size))
+  }
+
+  return chunks
+}
+
+async function insertInChunks(table: string, rows: any[], size = 1000) {
+  for (const chunk of chunkArray(rows, size)) {
+    if (chunk.length === 0) continue
+
+    const { error } = await supabaseServer
+      .from(table)
+      .insert(chunk)
+
+    if (error) throw error
+  }
+}
+
+async function rollbackUsers(userIds: string[]) {
+  if (userIds.length === 0) return
+
+  for (const chunk of chunkArray(userIds, 200)) {
+    await supabaseServer
+      .from('users')
+      .delete()
+      .in('id', chunk)
+  }
+}
+
+function prepareRow(
+  row: any,
+  activeRegistrationGroupIds: Set<string>,
+  existingEmails: Set<string>,
+  duplicateImportEmails: Set<string>
+): { prepared?: PreparedRow; result?: ImportResult } {
   const rowNumber = Number(row.rowNumber || 0)
   const meno = normalizeText(row.meno)
   const priezvisko = normalizeText(row.priezvisko)
@@ -73,180 +130,39 @@ async function createImportedPerson({
   const vecera = !!row.vecera
   const assignQr = row.assignQr !== false
 
-  if (!meno || !priezvisko) return errorResult(rowNumber, 'Meno a priezvisko su povinne.')
-  if (!typStravy) return errorResult(rowNumber, 'Vyber typ stravy.')
-  if (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom) return errorResult(rowNumber, 'Zadaj platne obdobie prace.')
-  if (!obed && !vecera) return errorResult(rowNumber, 'Vyber aspon jeden narok na stravu.')
+  if (!meno || !priezvisko) return { result: errorResult(rowNumber, 'Meno a priezvisko su povinne.') }
+  if (!typStravy) return { result: errorResult(rowNumber, 'Vyber typ stravy.') }
+  if (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom) return { result: errorResult(rowNumber, 'Zadaj platne obdobie prace.') }
+  if (!obed && !vecera) return { result: errorResult(rowNumber, 'Vyber aspon jeden narok na stravu.') }
+  if (registrationGroupId && !activeRegistrationGroupIds.has(registrationGroupId)) return { result: errorResult(rowNumber, 'Registracna skupina neexistuje.') }
+  if (email && existingEmails.has(email)) return { result: errorResult(rowNumber, 'Pouzivatel s tymto emailom uz existuje.') }
+  if (email && duplicateImportEmails.has(email)) return { result: errorResult(rowNumber, 'Duplicita e-mailu v importovanom subore.') }
 
   const dates = dateRange(validFrom, validTo)
 
-  if (dates.length > 120) return errorResult(rowNumber, 'Obdobie moze mat najviac 120 dni.')
-  if (registrationGroupId && !activeRegistrationGroupIds.has(registrationGroupId)) return errorResult(rowNumber, 'Registracna skupina neexistuje.')
-  if (email && existingEmails.has(email)) return errorResult(rowNumber, 'Pouzivatel s tymto emailom uz existuje.')
+  if (dates.length > 120) return { result: errorResult(rowNumber, 'Obdobie moze mat najviac 120 dni.') }
 
-  const now = new Date().toISOString()
-  let assignedQrCode: string | null = null
-  let accessCodePlain: string | null = null
+  const accessCodePlain = generateAccessCode ? createAccessCode() : null
 
-  const { data: newUser, error: userError } = await supabaseServer
-    .from('users')
-    .insert({
+  return {
+    prepared: {
+      rowNumber,
+      userId: crypto.randomUUID(),
       meno,
       priezvisko,
       email,
       telefon,
-      typ_stravy: typStravy,
-      qr_code: null,
-      zdroj: 'PERSONALISTA',
-      aktivny: 'ANO',
-      registration_group_id: registrationGroupId,
-      manual_created_by: currentUserId,
-      updated_at: now
-    })
-    .select('id, meno, priezvisko, email')
-    .single()
-
-  if (userError || !newUser) {
-    return errorResult(rowNumber, userError?.message || 'Osobu sa nepodarilo vytvorit.')
-  }
-
-  const rollbackUser = async () => {
-    await supabaseServer.from('user_access_codes').delete().eq('user_id', newUser.id)
-    await supabaseServer.from('user_qr_codes').delete().eq('user_id', newUser.id)
-    await supabaseServer.from('users').delete().eq('id', newUser.id)
-  }
-
-  if (registrationGroupId) {
-    const { error } = await supabaseServer
-      .from('user_registration_group_periods')
-      .insert({
-        user_id: newUser.id,
-        registration_group_id: registrationGroupId,
-        valid_from: validFrom,
-        valid_to: validTo,
-        note: 'Zaradene pri importe osoby.',
-        created_by: currentUserId
-      })
-
-    if (error) {
-      await rollbackUser()
-      return errorResult(rowNumber, error.message)
-    }
-  }
-
-  const { error: workPeriodError } = await supabaseServer
-    .from('personnel_work_periods')
-    .insert({
-      user_id: newUser.id,
-      valid_from: validFrom,
-      valid_to: validTo,
-      source: 'MANUAL',
-      created_by: currentUserId,
-      updated_by: currentUserId
-    })
-
-  if (workPeriodError) {
-    await rollbackUser()
-    return errorResult(rowNumber, workPeriodError.message)
-  }
-
-  const { error: entitlementError } = await supabaseServer
-    .from('user_food_entitlements')
-    .insert(dates.map(datum => ({
-      user_id: newUser.id,
-      datum,
+      typStravy,
+      validFrom,
+      validTo,
+      dates,
+      registrationGroupId,
+      generateAccessCode,
+      accessCodePlain,
       obed,
       vecera,
-      source: 'PERSONALISTA',
-      created_by: currentUserId,
-      updated_by: currentUserId,
-      updated_at: now
-    })))
-
-  if (entitlementError) {
-    await rollbackUser()
-    return errorResult(rowNumber, entitlementError.message)
-  }
-
-  if (assignQr) {
-    const { data: assignedQrRows, error: assignQrError } = await supabaseServer
-      .rpc('assign_free_qr_to_user', {
-        p_user_id: newUser.id,
-        p_assigned_by: currentUserId,
-        p_note: 'Priradene z tabulky qr_codes pri importe osoby.'
-      })
-
-    if (assignQrError) {
-      await rollbackUser()
-      return errorResult(rowNumber, assignQrError.message || 'Volny QR kod sa nepodarilo priradit.')
+      assignQr
     }
-
-    const assignedQr = Array.isArray(assignedQrRows) ? assignedQrRows[0] : assignedQrRows
-
-    if (!assignedQr) {
-      await rollbackUser()
-      return errorResult(rowNumber, 'Nie je dostupny ziadny volny nepriradeny QR kod.')
-    }
-
-    assignedQrCode = assignedQr.qr_code
-  }
-
-  if (generateAccessCode) {
-    accessCodePlain = createAccessCode()
-
-    const { error: accessCodeError } = await supabaseServer
-      .from('user_access_codes')
-      .insert({
-        user_id: newUser.id,
-        code_hash: hashAccessCode(meno, priezvisko, accessCodePlain),
-        access_code_plain: accessCodePlain,
-        meno_key: normalizeAccessName(meno),
-        priezvisko_key: normalizeAccessName(priezvisko),
-        label: 'Importny pristupovy kod',
-        created_by: currentUserId
-      })
-
-    if (accessCodeError) {
-      await rollbackUser()
-      return errorResult(rowNumber, accessCodeError.message || 'Pristupovy kod sa nepodarilo vytvorit.')
-    }
-  }
-
-  await supabaseServer
-    .from('personnel_audit_log')
-    .insert({
-      actor_user_id: currentUserId,
-      target_user_id: newUser.id,
-      group_id: null,
-      action: 'PERSON_CREATED',
-      entity_table: 'users',
-      entity_id: newUser.id,
-      after_data: {
-        meno,
-        priezvisko,
-        email,
-        telefon,
-        typ_stravy: typStravy,
-        registration_group_id: registrationGroupId,
-        valid_from: validFrom,
-        valid_to: validTo,
-        obed,
-        vecera,
-        qr_assigned: !!assignedQrCode,
-        access_code_generated: !!accessCodePlain,
-        import_bulk: true
-      }
-    })
-
-  if (email) existingEmails.add(email)
-
-  return {
-    rowNumber,
-    ok: true,
-    status: 'OK',
-    userId: newUser.id,
-    accessCode: accessCodePlain,
-    message: 'Importovane.'
   }
 }
 
@@ -307,33 +223,186 @@ export async function POST(req: NextRequest) {
       seenImportEmails.add(email)
     })
 
-    const results = []
+    const results: ImportResult[] = []
+    const preparedRows: PreparedRow[] = []
 
-    for (const row of rows) {
-      const rowNumber = Number(row.rowNumber || 0)
-      const email = normalizeEmail(row.email)
+    rows.forEach((row: any) => {
+      const { prepared, result } = prepareRow(row, activeRegistrationGroupIds, existingEmails, duplicateImportEmails)
 
-      if (email && duplicateImportEmails.has(email)) {
-        results.push(errorResult(rowNumber, 'Duplicita e-mailu v importovanom subore.'))
-        continue
+      if (result) {
+        results.push(result)
+        return
       }
 
-      results.push(await createImportedPerson({
-        row,
-        currentUserId: currentUser.id,
-        activeRegistrationGroupIds,
-        existingEmails
-      }))
+      if (prepared) preparedRows.push(prepared)
+    })
+
+    if (preparedRows.length === 0) {
+      return NextResponse.json({
+        ok: false,
+        imported: 0,
+        failed: results.length,
+        results: results.sort((a, b) => a.rowNumber - b.rowNumber)
+      })
     }
 
-    const imported = results.filter(result => result.ok).length
-    const failed = results.length - imported
+    const now = new Date().toISOString()
+    const insertedUserIds = preparedRows.map(row => row.userId)
+
+    try {
+      await insertInChunks('users', preparedRows.map(row => ({
+        id: row.userId,
+        meno: row.meno,
+        priezvisko: row.priezvisko,
+        email: row.email,
+        telefon: row.telefon,
+        typ_stravy: row.typStravy,
+        qr_code: null,
+        zdroj: 'PERSONALISTA',
+        aktivny: 'ANO',
+        registration_group_id: row.registrationGroupId,
+        manual_created_by: currentUser.id,
+        updated_at: now
+      })), 300)
+
+      const registrationPeriodRows = preparedRows
+        .filter(row => row.registrationGroupId)
+        .map(row => ({
+          user_id: row.userId,
+          registration_group_id: row.registrationGroupId,
+          valid_from: row.validFrom,
+          valid_to: row.validTo,
+          note: 'Zaradene pri importe osoby.',
+          created_by: currentUser.id
+        }))
+
+      await insertInChunks('user_registration_group_periods', registrationPeriodRows, 500)
+
+      await insertInChunks('personnel_work_periods', preparedRows.map(row => ({
+        user_id: row.userId,
+        valid_from: row.validFrom,
+        valid_to: row.validTo,
+        source: 'MANUAL',
+        created_by: currentUser.id,
+        updated_by: currentUser.id
+      })), 500)
+
+      const entitlementRows = preparedRows.flatMap(row => (
+        row.dates.map(datum => ({
+          user_id: row.userId,
+          datum,
+          obed: row.obed,
+          vecera: row.vecera,
+          source: 'PERSONALISTA',
+          created_by: currentUser.id,
+          updated_by: currentUser.id,
+          updated_at: now
+        }))
+      ))
+
+      await insertInChunks('user_food_entitlements', entitlementRows, 1000)
+
+      const accessCodeRows = preparedRows
+        .filter(row => row.generateAccessCode && row.accessCodePlain)
+        .map(row => ({
+          user_id: row.userId,
+          code_hash: hashAccessCode(row.meno, row.priezvisko, row.accessCodePlain || ''),
+          access_code_plain: row.accessCodePlain,
+          meno_key: normalizeAccessName(row.meno),
+          priezvisko_key: normalizeAccessName(row.priezvisko),
+          label: 'Importny pristupovy kod',
+          created_by: currentUser.id
+        }))
+
+      await insertInChunks('user_access_codes', accessCodeRows, 500)
+
+      const qrUserIds = preparedRows
+        .filter(row => row.assignQr)
+        .map(row => row.userId)
+
+      let assignedQrByUserId = new Map<string, string>()
+
+      if (qrUserIds.length > 0) {
+        const { data: assignedQrRows, error: assignQrError } = await supabaseServer
+          .rpc('assign_free_qr_to_users_bulk', {
+            p_user_ids: qrUserIds,
+            p_assigned_by: currentUser.id,
+            p_note: 'Priradene z tabulky qr_codes pri importe osoby.'
+          })
+
+        if (assignQrError) {
+          const message = assignQrError.message.includes('NO_FREE_QR_AVAILABLE')
+            ? 'Nie je dostupny dostatocny pocet volnych QR kodov.'
+            : assignQrError.message
+          throw new Error(message)
+        }
+
+        assignedQrByUserId = new Map((assignedQrRows || []).map((row: any) => [row.user_id, row.qr_code]))
+      }
+
+      const auditRows = preparedRows.map(row => ({
+        actor_user_id: currentUser.id,
+        target_user_id: row.userId,
+        group_id: null,
+        action: 'PERSON_CREATED',
+        entity_table: 'users',
+        entity_id: row.userId,
+        after_data: {
+          meno: row.meno,
+          priezvisko: row.priezvisko,
+          email: row.email,
+          telefon: row.telefon,
+          typ_stravy: row.typStravy,
+          registration_group_id: row.registrationGroupId,
+          valid_from: row.validFrom,
+          valid_to: row.validTo,
+          obed: row.obed,
+          vecera: row.vecera,
+          qr_assigned: row.assignQr && assignedQrByUserId.has(row.userId),
+          access_code_generated: !!row.accessCodePlain,
+          import_bulk: true
+        }
+      }))
+
+      for (const chunk of chunkArray(auditRows, 500)) {
+        const { error: auditError } = await supabaseServer
+          .from('personnel_audit_log')
+          .insert(chunk)
+
+        if (auditError) {
+          console.warn('Failed to write import audit rows.', auditError)
+          break
+        }
+      }
+
+      preparedRows.forEach(row => {
+        results.push({
+          rowNumber: row.rowNumber,
+          ok: true,
+          status: 'OK',
+          userId: row.userId,
+          accessCode: row.accessCodePlain,
+          message: 'Importovane.'
+        })
+      })
+    } catch (err: any) {
+      await rollbackUsers(insertedUserIds)
+
+      const message = err?.message || 'Import zlyhal.'
+      preparedRows.forEach(row => {
+        results.push(errorResult(row.rowNumber, message))
+      })
+    }
+
+    const sortedResults = results.sort((a, b) => a.rowNumber - b.rowNumber)
+    const imported = sortedResults.filter(result => result.ok).length
+    const failed = sortedResults.length - imported
 
     return NextResponse.json({
       ok: failed === 0,
       imported,
       failed,
-      results
+      results: sortedResults
     })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Neznama chyba servera.' }, { status: 500 })
