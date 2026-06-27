@@ -1009,15 +1009,32 @@ export default function PersonalistaClient({
 
   const replacePersonInList = (person: PersonItem) => {
     setPeople(prev => {
-      const nextPeople = prev.filter(item => item.id !== person.id)
+      let found = false
+      const nextPeople = prev.map(item => {
+        if (item.id !== person.id) return item
 
-      return [person, ...nextPeople]
+        found = true
+        return person
+      })
+
+      return found ? nextPeople : [person, ...prev]
     })
     setPendingReviewPeople(prev => {
       const personIsPending = String(person.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
-      const nextPeople = prev.filter(item => item.id !== person.id)
 
-      return personIsPending ? [person, ...nextPeople] : nextPeople
+      if (!personIsPending) {
+        return prev.filter(item => item.id !== person.id)
+      }
+
+      let found = false
+      const nextPeople = prev.map(item => {
+        if (item.id !== person.id) return item
+
+        found = true
+        return person
+      })
+
+      return found ? nextPeople : [person, ...prev]
     })
   }
 
@@ -1064,6 +1081,9 @@ export default function PersonalistaClient({
     }
 
     replacePersonInList(person)
+    setSelectedPersonId(person.id)
+
+    return person as PersonItem
   }
 
   const displayPeople = statusFilter === 'PENDING_REVIEW' ? pendingReviewPeople : people
