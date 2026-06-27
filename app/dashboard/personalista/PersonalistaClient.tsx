@@ -502,7 +502,7 @@ export default function PersonalistaClient({
   const [peopleSearchLoading, setPeopleSearchLoading] = useState(false)
   const [peopleSearchMessage, setPeopleSearchMessage] = useState(initialPeopleSearchMessage)
   const [search, setSearch] = useState('')
-  const [groupFilter, setGroupFilter] = useState('ALL')
+  const [registrationGroupFilter, setRegistrationGroupFilter] = useState('ALL')
   const [foodFilter, setFoodFilter] = useState('ALL')
   const [qrFilter, setQrFilter] = useState('ALL')
   const [statusFilter, setStatusFilter] = useState('ALL')
@@ -691,9 +691,7 @@ export default function PersonalistaClient({
   const resetPersonalistaHome = () => {
     closeTopPanels()
     setSearch('')
-    setGroupFilter('ALL')
-    setFoodFilter('ALL')
-    setQrFilter('ALL')
+    setRegistrationGroupFilter('ALL')
     setStatusFilter('ALL')
     setSelectedPersonId('')
     setCurrentPage(1)
@@ -1365,6 +1363,8 @@ export default function PersonalistaClient({
 
   useEffect(() => {
     const q = search.trim()
+    const hasRegistrationGroupFilter = registrationGroupFilter !== 'ALL'
+    const isBlockedFilter = statusFilter === 'BLOCKED'
 
     if (statusFilter === 'PENDING_REVIEW') {
       setPeopleSearchLoading(false)
@@ -1372,14 +1372,14 @@ export default function PersonalistaClient({
       return
     }
 
-    if (!q) {
+    if (!q && !hasRegistrationGroupFilter && !isBlockedFilter) {
       setPeople(initialPeople)
       setPeopleSearchLoading(false)
       setPeopleSearchMessage(initialPeopleSearchMessage)
       return
     }
 
-    if (q.length < 2) {
+    if (q && q.length < 2 && !hasRegistrationGroupFilter && !isBlockedFilter) {
       setPeople(initialPeople)
       setPeopleSearchLoading(false)
       setPeopleSearchMessage('Napis aspon 2 znaky pre hladanie v celej databaze')
@@ -1392,7 +1392,13 @@ export default function PersonalistaClient({
       setPeopleSearchMessage('Hladam v databaze...')
 
       try {
-        const res = await fetch(`/api/personalista/people/search?q=${encodeURIComponent(q)}`)
+        const params = new URLSearchParams()
+
+        if (q.length >= 2) params.set('q', q)
+        if (hasRegistrationGroupFilter) params.set('registrationGroupId', registrationGroupFilter)
+        if (isBlockedFilter) params.set('status', 'BLOCKED')
+
+        const res = await fetch(`/api/personalista/people/search?${params.toString()}`)
         const json = await res.json().catch(() => ({}))
 
         if (cancelled) return
@@ -1403,7 +1409,14 @@ export default function PersonalistaClient({
         }
 
         setPeople(Array.isArray(json.people) ? json.people : [])
-        setPeopleSearchMessage(`Vysledky hladania: ${Array.isArray(json.people) ? json.people.length : 0}`)
+        if (isBlockedFilter) {
+          setPeopleSearchMessage(`Blokovaní: ${Array.isArray(json.people) ? json.people.length : 0}`)
+        } else if (hasRegistrationGroupFilter) {
+          const groupName = registrationGroups.find(group => group.id === registrationGroupFilter)?.name || 'registračná skupina'
+          setPeopleSearchMessage(`${groupName}: ${Array.isArray(json.people) ? json.people.length : 0}`)
+        } else {
+          setPeopleSearchMessage(`Vysledky hladania: ${Array.isArray(json.people) ? json.people.length : 0}`)
+        }
       } catch (err) {
         if (cancelled) return
 
@@ -1418,7 +1431,7 @@ export default function PersonalistaClient({
       cancelled = true
       window.clearTimeout(timeout)
     }
-  }, [search, initialPeople, initialPeopleSearchMessage, statusFilter, pendingReviewPeople.length])
+  }, [search, initialPeople, initialPeopleSearchMessage, registrationGroupFilter, registrationGroups, statusFilter, pendingReviewPeople.length])
 
   useEffect(() => {
     if (!selectedPerson) return
@@ -1531,18 +1544,8 @@ export default function PersonalistaClient({
         )
       })
       .filter(person => {
-        if (groupFilter === 'ALL') return true
-        if (groupFilter === 'UNGROUPED') return person.groups.length === 0
-        return person.groups.some(group => group.id === groupFilter)
-      })
-      .filter(person => {
-        if (foodFilter === 'ALL') return true
-        return foodLabel(person.typStravy) === foodFilter
-      })
-      .filter(person => {
-        if (qrFilter === 'ALL') return true
-        if (qrFilter === 'ACTIVE') return person.activeQrCount > 0
-        return person.activeQrCount === 0
+        if (registrationGroupFilter === 'ALL') return true
+        return person.registrationGroupId === registrationGroupFilter
       })
       .filter(person => {
         const blocked = String(person.aktivny || '').toUpperCase() !== 'ANO'
@@ -1556,11 +1559,11 @@ export default function PersonalistaClient({
       .sort((a, b) => {
         return (peopleOrderById.get(a.id) ?? 0) - (peopleOrderById.get(b.id) ?? 0)
       })
-  }, [displayPeople, peopleOrderById, search, groupFilter, foodFilter, qrFilter, statusFilter])
+  }, [displayPeople, peopleOrderById, search, registrationGroupFilter, statusFilter])
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [search, groupFilter, foodFilter, qrFilter, statusFilter, pageSize])
+  }, [search, registrationGroupFilter, statusFilter, pageSize])
 
   useEffect(() => {
     if (!displayPeople.length) {
@@ -3947,14 +3950,29 @@ export default function PersonalistaClient({
           onClick={() => {
             closeTopPanels()
             setSearch('')
-            setGroupFilter('ALL')
-            setFoodFilter('ALL')
-            setQrFilter('ALL')
+            setRegistrationGroupFilter('ALL')
             setStatusFilter('PENDING_REVIEW')
             setSelectedPersonId('')
           }}
         >
           Na schvalenie ({stats.pendingReview})
+        </button>
+
+        <button
+          type="button"
+          style={{
+            ...styles.lightButton,
+            ...styles.blockedButton
+          }}
+          onClick={() => {
+            closeTopPanels()
+            setSearch('')
+            setRegistrationGroupFilter('ALL')
+            setStatusFilter('BLOCKED')
+            setSelectedPersonId('')
+          }}
+        >
+          Blokovaní ({stats.blocked})
         </button>
 
         <button
@@ -5950,22 +5968,24 @@ export default function PersonalistaClient({
               autoComplete="off"
             />
 
-            {foodGroupsVisible && (
-              <select
-                value={groupFilter}
-                onChange={event => setGroupFilter(event.target.value)}
-                style={styles.select}
-              >
-                <option value="ALL">Vsetky stravovacie skupiny</option>
-                <option value="UNGROUPED">Bez skupiny</option>
-                {groups.map(group => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
-              </select>
-            )}
+            <select
+              value={registrationGroupFilter}
+              onChange={event => {
+                setRegistrationGroupFilter(event.target.value)
+                setStatusFilter('ALL')
+              }}
+              style={styles.select}
+            >
+              <option value="ALL">Všetky registračné skupiny</option>
+              {registrationGroups.map(group => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
 
+            {false && (
+              <>
             <select
               value={foodFilter}
               onChange={event => setFoodFilter(event.target.value)}
@@ -5998,6 +6018,8 @@ export default function PersonalistaClient({
               <option value="BLOCKED">Blokovaní</option>
               <option value="PENDING_REVIEW">Na schvalenie</option>
             </select>
+              </>
+            )}
           </section>
 
           <section style={styles.tableCard}>
@@ -9330,6 +9352,12 @@ const styles: Record<string, CSSProperties> = {
     color: '#92400e',
     borderColor: '#f59e0b',
     boxShadow: '0 0 0 2px rgba(245, 158, 11, 0.18)'
+  },
+  blockedButton: {
+    background: '#fee2e2',
+    color: '#991b1b',
+    borderColor: '#f87171',
+    boxShadow: '0 0 0 2px rgba(248, 113, 113, 0.18)'
   },
   qrScannerOverlay: {
     position: 'fixed',

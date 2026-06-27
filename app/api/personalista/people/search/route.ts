@@ -5,6 +5,7 @@ import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 const RESULT_LIMIT = 100
+const FILTERED_RESULT_LIMIT = 5000
 
 function cleanText(value: any) {
   return String(value || '').trim()
@@ -220,17 +221,76 @@ export async function GET(req: NextRequest) {
 
     const q = cleanText(req.nextUrl.searchParams.get('q'))
     const userId = cleanText(req.nextUrl.searchParams.get('userId'))
+    const registrationGroupId = cleanText(req.nextUrl.searchParams.get('registrationGroupId'))
+    const status = cleanText(req.nextUrl.searchParams.get('status')).toUpperCase()
     const query = q.replaceAll('%', '').replaceAll(',', ' ')
 
     if (userId && !isUuid(userId)) {
       return NextResponse.json({ error: 'Neplatna osoba.' }, { status: 400 })
     }
 
+    if (registrationGroupId && !isUuid(registrationGroupId)) {
+      return NextResponse.json({ error: 'Neplatna registracna skupina.' }, { status: 400 })
+    }
+
+    let registrationGroupUserIds: string[] | null = null
+
+    if (registrationGroupId) {
+      const today = slovakiaDateIso()
+      const [periodResult, profileGroupResult] = await Promise.all([
+        supabaseServer
+          .from('user_registration_group_periods')
+          .select('user_id')
+          .eq('registration_group_id', registrationGroupId)
+          .lte('valid_from', today)
+          .or(`valid_to.is.null,valid_to.gte.${today}`),
+        supabaseServer
+          .from('users')
+          .select('id')
+          .eq('registration_group_id', registrationGroupId)
+      ])
+
+      if (periodResult.error) {
+        return NextResponse.json({ error: periodResult.error.message }, { status: 500 })
+      }
+
+      if (profileGroupResult.error) {
+        return NextResponse.json({ error: profileGroupResult.error.message }, { status: 500 })
+      }
+
+      registrationGroupUserIds = Array.from(new Set(
+        [
+          ...(periodResult.data || []).map((row: any) => row.user_id),
+          ...(profileGroupResult.data || []).map((row: any) => row.id)
+        ].filter(Boolean)
+      ))
+
+      if (registrationGroupUserIds.length === 0) {
+        return NextResponse.json({
+          ok: true,
+          people: [],
+          mode: 'REGISTRATION_GROUP',
+          limit: FILTERED_RESULT_LIMIT
+        })
+      }
+    }
+
+    const filteredMode = Boolean(registrationGroupUserIds || status === 'BLOCKED')
     let usersQuery = supabaseServer
       .from('users')
       .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, account_type, registration_group_id, registration_group_note, review_status, updated_at, created_at')
-      .limit(RESULT_LIMIT)
+      .limit(filteredMode ? FILTERED_RESULT_LIMIT : RESULT_LIMIT)
     let mode = 'RECENT'
+
+    if (registrationGroupUserIds) {
+      usersQuery = usersQuery.in('id', registrationGroupUserIds)
+      mode = 'REGISTRATION_GROUP'
+    }
+
+    if (status === 'BLOCKED') {
+      usersQuery = usersQuery.neq('aktivny', 'ANO')
+      mode = registrationGroupUserIds ? 'REGISTRATION_GROUP_BLOCKED' : 'BLOCKED'
+    }
 
     if (userId) {
       usersQuery = usersQuery
@@ -246,8 +306,8 @@ export async function GET(req: NextRequest) {
       mode = 'SEARCH'
     } else {
       usersQuery = usersQuery
-        .order('updated_at', { ascending: false })
-        .order('created_at', { ascending: false })
+        .order(filteredMode ? 'priezvisko' : 'updated_at', { ascending: filteredMode })
+        .order(filteredMode ? 'meno' : 'created_at', { ascending: filteredMode })
     }
 
     const { data: usersData, error: usersError } = await usersQuery
@@ -428,7 +488,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       people,
       mode,
-      limit: RESULT_LIMIT
+      limit: filteredMode ? FILTERED_RESULT_LIMIT : RESULT_LIMIT
     })
   } catch (err: any) {
     return NextResponse.json(
