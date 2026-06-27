@@ -1009,19 +1009,7 @@ export default function PersonalistaClient({
 
   const replacePersonInList = (person: PersonItem) => {
     setPeople(prev => {
-      if (peopleScope === 'mine') {
-        return [person, ...prev.filter(item => item.id !== person.id)]
-      }
-
-      let found = false
-      const nextPeople = prev.map(item => {
-        if (item.id !== person.id) return item
-
-        found = true
-        return person
-      })
-
-      return found ? nextPeople : [person, ...prev]
+      return [person, ...prev.filter(item => item.id !== person.id)]
     })
     setPendingReviewPeople(prev => {
       const personIsPending = String(person.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
@@ -1030,19 +1018,7 @@ export default function PersonalistaClient({
         return prev.filter(item => item.id !== person.id)
       }
 
-      if (peopleScope === 'mine') {
-        return [person, ...prev.filter(item => item.id !== person.id)]
-      }
-
-      let found = false
-      const nextPeople = prev.map(item => {
-        if (item.id !== person.id) return item
-
-        found = true
-        return person
-      })
-
-      return found ? nextPeople : [person, ...prev]
+      return [person, ...prev.filter(item => item.id !== person.id)]
     })
   }
 
@@ -6093,9 +6069,41 @@ export default function PersonalistaClient({
                 <div style={styles.pendingApprovalBox}>
                   <b>Registracia caka na kontrolu</b>
                   <span>Skontroluj profil, vyber registracnu skupinu a schval registraciu. QR sa prideli automaticky.</span>
+                  <label style={styles.field}>
+                    <span>Registracna skupina</span>
+                    <select
+                      value={profileForm.registrationGroupId}
+                      onChange={event => updateProfileForm('registrationGroupId', event.target.value)}
+                      style={styles.input}
+                      disabled={detailLoading}
+                    >
+                      <option value="">Vyber registracnu skupinu</option>
+                      {registrationGroups.map(group => (
+                        <option key={group.id} value={group.id}>
+                          {group.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={styles.field}>
+                    <span>Poznamka</span>
+                    <input
+                      value={profileForm.registrationGroupNote}
+                      onChange={event => updateProfileForm('registrationGroupNote', event.target.value)}
+                      style={styles.input}
+                      disabled={detailLoading}
+                      autoComplete="off"
+                    />
+                  </label>
+
                   <button
                     type="button"
-                    style={styles.confirmButton}
+                    style={{
+                      ...styles.confirmButton,
+                      opacity: detailLoading || !profileForm.registrationGroupId ? 0.55 : 1,
+                      cursor: detailLoading || !profileForm.registrationGroupId ? 'not-allowed' : 'pointer'
+                    }}
                     disabled={detailLoading || !profileForm.registrationGroupId}
                     onClick={approveRegistration}
                   >
