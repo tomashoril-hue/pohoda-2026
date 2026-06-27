@@ -580,7 +580,6 @@ export default function PersonalistaClient({
   const [detailMessageMode, setDetailMessageMode] = useState<DetailMode>('')
   const [pendingReviewOpenStep, setPendingReviewOpenStep] = useState<1 | 2 | 3>(1)
   const [pendingReviewAction, setPendingReviewAction] = useState<'period' | 'prepare' | 'entitlements' | 'approve' | ''>('')
-  const [pendingReviewCalendarOpen, setPendingReviewCalendarOpen] = useState(false)
   const [createForm, setCreateForm] = useState({
     accountType: 'PERSON' as CreateAccountType,
     meno: '',
@@ -1469,7 +1468,6 @@ export default function PersonalistaClient({
       vecera: pendingDefaultDates
     })
     setPendingReviewAction('')
-    setPendingReviewCalendarOpen(false)
 
     if (String(selectedPerson.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW') {
       const boundedPeriods = boundedRegistrationPeriods(selectedPerson.registrationGroupPeriods)
@@ -2670,7 +2668,6 @@ export default function PersonalistaClient({
         registrationGroupPeriods: nextPeriods
       }))
       setPendingReviewOpenStep(2)
-      setPendingReviewCalendarOpen(false)
       preparePendingReviewEntitlements(nextPeriods)
     }
   }
@@ -3230,10 +3227,7 @@ export default function PersonalistaClient({
 
     if (selectedPersonPendingReview) {
       setPendingReviewAction('')
-      if (saved) {
-        setPendingReviewCalendarOpen(false)
-        setPendingReviewOpenStep(3)
-      }
+      if (saved) setPendingReviewOpenStep(3)
     }
   }
 
@@ -6248,70 +6242,52 @@ export default function PersonalistaClient({
                     </div>
 
                     <div style={styles.pendingStepGrid}>
-                      <div style={styles.pendingStepTabs}>
-                        {[
-                          { step: 1 as const, label: 'Zaradenie' },
-                          { step: 2 as const, label: 'Nároky' },
-                          { step: 3 as const, label: 'Dokončenie' }
-                        ].map(item => (
-                          <button
-                            key={item.step}
-                            type="button"
-                            style={{
-                              ...styles.pendingStepTab,
-                              ...(pendingReviewOpenStep === item.step ? styles.pendingStepTabActive : {})
-                            }}
-                            onClick={() => {
-                              setPendingReviewOpenStep(item.step)
-                              if (item.step !== 2) setPendingReviewCalendarOpen(false)
-                            }}
-                          >
-                            {item.label}
-                          </button>
-                        ))}
-                      </div>
+                      <div style={styles.pendingStepBox}>
+                        <button
+                          type="button"
+                          style={styles.pendingStepTitleButton}
+                          onClick={() => setPendingReviewOpenStep(1)}
+                        >
+                          <b>Zaradenie</b>
+                        </button>
 
-                      <div style={{
-                        ...styles.pendingWizardBody,
-                        ...(pendingReviewCalendarOpen ? styles.pendingWizardBodyExpanded : {})
-                      }}>
-                        {pendingReviewOpenStep === 1 && (
+                        {pendingReviewOpenStep === 1 ? (
                           <>
-                            {pendingReviewBoundedPeriods.length > 0 && (
-                              <div style={styles.pendingPeriodList}>
-                                {pendingReviewBoundedPeriods.map(period => (
-                                  <div key={period.id} style={styles.pendingPeriodRow}>
-                                    <div style={styles.registrationPeriodInfo}>
-                                      <b>{period.registrationGroupName || '-'}</b>
-                                      <span>{fullDateLabel(period.validFrom)} - {period.validTo ? fullDateLabel(period.validTo) : '-'}</span>
-                                      {period.note && <small>{period.note}</small>}
-                                    </div>
+                        {pendingReviewBoundedPeriods.length > 0 && (
+                          <div style={styles.pendingPeriodList}>
+                            {pendingReviewBoundedPeriods.map(period => (
+                              <div key={period.id} style={styles.pendingPeriodRow}>
+                                <div style={styles.registrationPeriodInfo}>
+                                  <b>{period.registrationGroupName || '-'}</b>
+                                  <span>{fullDateLabel(period.validFrom)} - {period.validTo ? fullDateLabel(period.validTo) : '-'}</span>
+                                  {period.note && <small>{period.note}</small>}
+                                </div>
 
-                                    <div style={styles.registrationPeriodActions}>
-                                      <button
-                                        type="button"
-                                        style={styles.smallEditButton}
-                                        disabled={detailLoading}
-                                        onClick={() => editPendingReviewRegistrationPeriod(period)}
-                                        title="Zmeniť zaradenie"
-                                      >
-                                        Z
-                                      </button>
+                                <div style={styles.registrationPeriodActions}>
+                                  <button
+                                    type="button"
+                                    style={styles.smallEditButton}
+                                    disabled={detailLoading}
+                                    onClick={() => editPendingReviewRegistrationPeriod(period)}
+                                    title="Zmenit zaradenie"
+                                  >
+                                    Z
+                                  </button>
 
-                                      <button
-                                        type="button"
-                                        style={styles.smallRemoveButton}
-                                        disabled={detailLoading}
-                                        onClick={() => deleteRegistrationGroupPeriod(period)}
-                                        title="Vymazať zaradenie"
-                                      >
-                                        x
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
+                                  <button
+                                    type="button"
+                                    style={styles.smallRemoveButton}
+                                    disabled={detailLoading}
+                                    onClick={() => deleteRegistrationGroupPeriod(period)}
+                                    title="Vymazat zaradenie"
+                                  >
+                                    x
+                                  </button>
+                                </div>
                               </div>
-                            )}
+                            ))}
+                          </div>
+                        )}
 
                             <div style={styles.detailEditGridWide}>
                               <label style={styles.field}>
@@ -6375,132 +6351,158 @@ export default function PersonalistaClient({
                             >
                               {pendingReviewAction === 'period' ? 'Ukladám...' : 'Uložiť zaradenie'}
                             </button>
-                          </>
+                        </>
+                        ) : (
+                          <div style={styles.pendingStepSummary}>
+                            <b>{pendingReviewBoundedPeriods.length > 0 ? `${pendingReviewBoundedPeriods.length} zaradení` : 'Čaká'}</b>
+                          </div>
                         )}
+                      </div>
 
-                        {pendingReviewOpenStep === 2 && (
-                          pendingReviewBoundedPeriods.length === 0 ? (
-                            <div style={styles.optionHint}>Zaradenie chýba.</div>
-                          ) : (
-                            <>
-                              {!pendingReviewCalendarOpen && (
-                                <div style={styles.pendingStepSummary}>
-                                  <b>{pendingReviewEntitlements.length > 0 ? 'Nároky uložené' : 'Podľa zaradenia'}</b>
-                                </div>
-                              )}
+                      <div style={styles.pendingStepBox}>
+                        <button
+                          type="button"
+                          style={styles.pendingStepTitleButton}
+                          onClick={() => setPendingReviewOpenStep(2)}
+                        >
+                          <b>Nároky</b>
+                        </button>
 
-                              <div style={styles.calendarToolbar}>
-                                <button
-                                  type="button"
-                                  style={styles.lightButton}
-                                  disabled={detailLoading}
-                                  onClick={() => setPendingReviewCalendarOpen(prev => !prev)}
-                                >
-                                  {pendingReviewCalendarOpen ? 'Skryť dni' : 'Upraviť dni'}
-                                </button>
-
-                                {pendingReviewCalendarOpen && (
-                                  <button
-                                    type="button"
-                                    style={styles.lightButton}
-                                    disabled={detailLoading}
-                                    onClick={clearEntitlementCalendarSelection}
-                                  >
-                                    Zrušiť výber dní
-                                  </button>
-                                )}
-                              </div>
-
-                              {pendingReviewCalendarOpen && (
-                                <div style={styles.entitlementCalendar}>
-                                  {visibleEntitlementCalendarDates.length === 0 ? (
-                                    <span style={styles.emptyGroupSelection}>Bez dní</span>
-                                  ) : (
-                                    visibleEntitlementCalendarDates.map(date => {
-                                      const saved = entitlementByDate.get(date)
-                                      const claim = calendarClaims[date] || { obed: false, vecera: false }
-                                      const selected = claim.obed || claim.vecera
-                                      const changed = saved
-                                        ? claim.obed !== saved.obed || claim.vecera !== saved.vecera
-                                        : selected
-
-                                      return (
-                                        <div
-                                          key={date}
-                                          style={{
-                                            ...styles.calendarDay,
-                                            ...styles.pendingCalendarDay,
-                                            ...(saved ? styles.calendarDaySaved : {}),
-                                            ...(selected ? styles.calendarDaySelected : {}),
-                                            ...(changed ? styles.calendarDayChanged : {})
-                                          }}
-                                        >
-                                          <b>{shortDateLabel(date)}</b>
-                                          <div style={styles.calendarMealButtons}>
-                                            <button
-                                              type="button"
-                                              style={{
-                                                ...styles.calendarMealButton,
-                                                ...styles.pendingCalendarMealButton,
-                                                ...(claim.obed ? styles.calendarMealButtonActive : {})
-                                              }}
-                                              disabled={detailLoading}
-                                              onClick={() => toggleEntitlementClaim(date, 'obed')}
-                                            >
-                                              O
-                                            </button>
-
-                                            <button
-                                              type="button"
-                                              style={{
-                                                ...styles.calendarMealButton,
-                                                ...styles.pendingCalendarMealButton,
-                                                ...(claim.vecera ? styles.calendarMealButtonActive : {})
-                                              }}
-                                              disabled={detailLoading}
-                                              onClick={() => toggleEntitlementClaim(date, 'vecera')}
-                                            >
-                                              V
-                                            </button>
-                                          </div>
-                                        </div>
-                                      )
-                                    })
-                                  )}
-                                </div>
-                              )}
-
-                              <button
-                                type="button"
-                                style={styles.confirmButton}
-                                disabled={detailLoading || visibleEntitlementCalendarDates.length === 0}
-                                onClick={saveSelectedEntitlementDates}
-                              >
-                                {pendingReviewAction === 'entitlements' ? 'Ukladám...' : 'Uložiť nároky'}
-                              </button>
-                            </>
-                          )
-                        )}
-
-                        {pendingReviewOpenStep === 3 && (
+                        {pendingReviewOpenStep === 2 ? (
+                          <>
+                        {pendingReviewBoundedPeriods.length === 0 ? (
+                          <div style={styles.optionHint}>Zaradenie chýba.</div>
+                        ) : (
                           <>
                             <div style={styles.pendingStepSummary}>
-                              <b>{pendingReviewCanFinish ? 'Pripravené na dokončenie' : 'Ešte nie je pripravené'}</b>
+                              <b>{pendingReviewEntitlements.length > 0 ? 'Nároky uložené' : 'Nároky čakajú'}</b>
+                            </div>
+
+                            <div style={styles.calendarToolbar}>
+                              <button
+                                type="button"
+                                style={styles.lightButton}
+                                disabled={detailLoading}
+                                onClick={clearEntitlementCalendarSelection}
+                              >
+                                Zrušiť výber dní
+                              </button>
+                            </div>
+
+                            <div style={styles.entitlementCalendar}>
+                              {visibleEntitlementCalendarDates.length === 0 ? (
+                                <span style={styles.emptyGroupSelection}>Načítaj nároky podľa zaradenia</span>
+                              ) : (
+                                visibleEntitlementCalendarDates.map(date => {
+                                  const saved = entitlementByDate.get(date)
+                                  const claim = calendarClaims[date] || { obed: false, vecera: false }
+                                  const selected = claim.obed || claim.vecera
+                                  const changed = saved
+                                    ? claim.obed !== saved.obed || claim.vecera !== saved.vecera
+                                    : selected
+
+                                  return (
+                                    <div
+                                      key={date}
+                                      style={{
+                                        ...styles.calendarDay,
+                                        ...(saved ? styles.calendarDaySaved : {}),
+                                        ...(selected ? styles.calendarDaySelected : {}),
+                                        ...(changed ? styles.calendarDayChanged : {})
+                                      }}
+                                    >
+                                      <b>{shortDateLabel(date)}</b>
+                                      <div style={styles.calendarMealButtons}>
+                                        <button
+                                          type="button"
+                                          style={{
+                                            ...styles.calendarMealButton,
+                                            ...(claim.obed ? styles.calendarMealButtonActive : {})
+                                          }}
+                                          disabled={detailLoading}
+                                          onClick={() => toggleEntitlementClaim(date, 'obed')}
+                                        >
+                                          O
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          style={{
+                                            ...styles.calendarMealButton,
+                                            ...(claim.vecera ? styles.calendarMealButtonActive : {})
+                                          }}
+                                          disabled={detailLoading}
+                                          onClick={() => toggleEntitlementClaim(date, 'vecera')}
+                                        >
+                                          V
+                                        </button>
+                                      </div>
+                                      {saved && (
+                                        <span style={styles.calendarSavedText}>
+                                          {saved.obed ? 'O' : '-'} / {saved.vecera ? 'V' : '-'}
+                                        </span>
+                                      )}
+                                      {changed && (
+                                        <span style={styles.calendarChangedText}>
+                                          Zmena
+                                        </span>
+                                      )}
+                                    </div>
+                                  )
+                                })
+                              )}
                             </div>
 
                             <button
                               type="button"
-                              style={{
-                                ...styles.confirmButton,
-                                opacity: detailLoading || !pendingReviewCanFinish ? 0.55 : 1,
-                                cursor: detailLoading || !pendingReviewCanFinish ? 'not-allowed' : 'pointer'
-                              }}
-                              disabled={detailLoading || !pendingReviewCanFinish}
-                              onClick={() => void approveRegistration()}
+                              style={styles.confirmButton}
+                              disabled={detailLoading || visibleEntitlementCalendarDates.length === 0}
+                              onClick={saveSelectedEntitlementDates}
                             >
-                              {pendingReviewAction === 'approve' ? 'Dokončujem...' : 'Dokončiť registráciu'}
+                              {pendingReviewAction === 'entitlements' ? 'Ukladám...' : 'Uložiť nároky'}
                             </button>
                           </>
+                        )}
+                          </>
+                        ) : (
+                          <div style={styles.pendingStepSummary}>
+                            <b>{pendingReviewEntitlements.length > 0 ? 'Nároky uložené' : 'Nároky čakajú'}</b>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={styles.pendingStepBox}>
+                        <button
+                          type="button"
+                          style={styles.pendingStepTitleButton}
+                          onClick={() => setPendingReviewOpenStep(3)}
+                        >
+                          <b>Dokončenie</b>
+                        </button>
+
+                        {pendingReviewOpenStep === 3 ? (
+                          <>
+                        <div style={styles.pendingStepSummary}>
+                          <b>{pendingReviewCanFinish ? 'Pripravené na dokončenie' : 'Ešte nie je pripravené'}</b>
+                        </div>
+
+                        <button
+                          type="button"
+                          style={{
+                            ...styles.confirmButton,
+                            opacity: detailLoading || !pendingReviewCanFinish ? 0.55 : 1,
+                            cursor: detailLoading || !pendingReviewCanFinish ? 'not-allowed' : 'pointer'
+                          }}
+                          disabled={detailLoading || !pendingReviewCanFinish}
+                          onClick={() => void approveRegistration()}
+                        >
+                          {pendingReviewAction === 'approve' ? 'Dokončujem...' : 'Dokončiť registráciu'}
+                        </button>
+                          </>
+                        ) : (
+                          <div style={styles.pendingStepSummary}>
+                            <b>{pendingReviewCanFinish ? 'Pripravené' : 'Ešte nie je pripravené'}</b>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -8464,44 +8466,6 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gap: 8
   },
-  pendingStepTabs: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-    gap: 6
-  },
-  pendingStepTab: {
-    border: '1px solid #e5e7eb',
-    borderRadius: 7,
-    padding: '8px 6px',
-    background: '#fff',
-    color: '#374151',
-    fontSize: 12,
-    fontWeight: 950,
-    cursor: 'pointer',
-    textAlign: 'center',
-    minWidth: 0
-  },
-  pendingStepTabActive: {
-    borderColor: '#7c3aed',
-    background: '#f5f3ff',
-    color: '#4c1d95',
-    boxShadow: '0 0 0 2px rgba(124, 58, 237, 0.12)'
-  },
-  pendingWizardBody: {
-    border: '1px solid #fcd34d',
-    borderRadius: 8,
-    padding: 8,
-    display: 'grid',
-    alignContent: 'start',
-    gap: 7,
-    background: '#fff',
-    color: '#374151',
-    minWidth: 0,
-    minHeight: 210
-  },
-  pendingWizardBodyExpanded: {
-    minHeight: 0
-  },
   pendingStepBox: {
     border: '1px solid #fcd34d',
     borderRadius: 8,
@@ -8571,16 +8535,6 @@ const styles: Record<string, CSSProperties> = {
     background: '#f9fafb',
     color: '#374151',
     minWidth: 0
-  },
-  pendingCalendarDay: {
-    padding: 5,
-    gap: 3,
-    fontSize: 10
-  },
-  pendingCalendarMealButton: {
-    minHeight: 25,
-    padding: '3px 5px',
-    fontSize: 10
   },
   detailHeaderBadges: {
     display: 'flex',
