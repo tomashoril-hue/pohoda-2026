@@ -291,6 +291,38 @@ function dateRangeIso(from: string, to: string) {
   return dates
 }
 
+function boundedRegistrationPeriods(periods: PersonRegistrationGroupPeriod[]) {
+  return sortRegistrationPeriods(periods).filter(period => !!period.validFrom && !!period.validTo && period.validTo >= period.validFrom)
+}
+
+function datesFromRegistrationPeriods(periods: PersonRegistrationGroupPeriod[]) {
+  const dates = new Set<string>()
+
+  boundedRegistrationPeriods(periods).forEach(period => {
+    dateRangeIso(period.validFrom, period.validTo || '').forEach(date => dates.add(date))
+  })
+
+  return Array.from(dates).sort()
+}
+
+function dateIsInRegistrationPeriods(date: string, periods: PersonRegistrationGroupPeriod[]) {
+  return boundedRegistrationPeriods(periods).some(period => date >= period.validFrom && date <= (period.validTo || period.validFrom))
+}
+
+function boundsFromDates(dates: string[], fallbackFrom: string, fallbackTo: string) {
+  if (dates.length === 0) {
+    return {
+      validFrom: fallbackFrom,
+      validTo: fallbackTo
+    }
+  }
+
+  return {
+    validFrom: dates[0],
+    validTo: dates[dates.length - 1]
+  }
+}
+
 function shortDateLabel(value: string) {
   const date = new Date(`${value}T12:00:00`)
 
@@ -1078,15 +1110,15 @@ export default function PersonalistaClient({
   const canUseSelectedPersonAccessCode = !!selectedPerson && (!selectedPersonIsTechnical || canAssignSensitiveRoles)
   const selectedPersonPendingReview = String(selectedPerson?.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
   const pendingReviewPeriods = sortRegistrationPeriods(selectedPerson?.registrationGroupPeriods || [])
-  const pendingReviewPeriod = pendingReviewPeriods.find(period => !!period.validFrom && !!period.validTo) || null
-  const pendingReviewEntitlements = pendingReviewPeriod
+  const pendingReviewBoundedPeriods = boundedRegistrationPeriods(pendingReviewPeriods)
+  const pendingReviewAssignmentDates = datesFromRegistrationPeriods(pendingReviewBoundedPeriods)
+  const pendingReviewEntitlements = pendingReviewBoundedPeriods.length > 0
     ? selectedPerson?.entitlements.filter(item => (
-      item.datum >= pendingReviewPeriod.validFrom &&
-      item.datum <= pendingReviewPeriod.validTo &&
+      dateIsInRegistrationPeriods(item.datum, pendingReviewBoundedPeriods) &&
       (item.obed || item.vecera)
     )) || []
     : []
-  const pendingReviewCanFinish = selectedPersonPendingReview && !!pendingReviewPeriod && pendingReviewEntitlements.length > 0
+  const pendingReviewCanFinish = selectedPersonPendingReview && pendingReviewBoundedPeriods.length > 0 && pendingReviewEntitlements.length > 0
 
   const loadAccessCode = async () => {
     if (!selectedPerson) return
@@ -1402,14 +1434,11 @@ export default function PersonalistaClient({
     setRegistrationGroupAccessForm({ registrationGroupId: '' })
     setSelectedRegistrationPeriodKeys([])
 
-    const pendingPeriod = String(selectedPerson.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
-      ? sortRegistrationPeriods(selectedPerson.registrationGroupPeriods).find(period => !!period.validFrom && !!period.validTo)
-      : null
-    const bounds = pendingPeriod
-      ? {
-        validFrom: pendingPeriod.validFrom,
-        validTo: pendingPeriod.validTo
-      }
+    const pendingDates = String(selectedPerson.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
+      ? datesFromRegistrationPeriods(selectedPerson.registrationGroupPeriods)
+      : []
+    const bounds = pendingDates.length > 0
+      ? boundsFromDates(pendingDates, fromDate, toDate)
       : entitlementBounds(selectedPerson.entitlements, fromDate, toDate)
     const nextEntitlementForm = {
       validFrom: bounds.validFrom,
@@ -1573,6 +1602,13 @@ export default function PersonalistaClient({
   const entitlementCalendarDates = useMemo(() => {
     return dateRangeIso(entitlementForm.validFrom, entitlementForm.validTo)
   }, [entitlementForm.validFrom, entitlementForm.validTo])
+  const visibleEntitlementCalendarDates = useMemo(() => {
+    if (selectedPersonPendingReview && pendingReviewAssignmentDates.length > 0) {
+      return pendingReviewAssignmentDates
+    }
+
+    return entitlementCalendarDates
+  }, [entitlementCalendarDates, pendingReviewAssignmentDates, selectedPersonPendingReview])
   const bulkRegistrationCalendarDates = useMemo(() => {
     return dateRangeIso(bulkRegistrationEntitlementsForm.validFrom, bulkRegistrationEntitlementsForm.validTo)
   }, [bulkRegistrationEntitlementsForm.validFrom, bulkRegistrationEntitlementsForm.validTo])
@@ -2315,6 +2351,22 @@ export default function PersonalistaClient({
     )
   }
 
+  const editPendingReviewRegistrationPeriod = (period: PersonRegistrationGroupPeriod) => {
+    setSelectedRegistrationPeriodKeys([])
+    setRegistrationPeriodForm({
+      periodId: period.id,
+      registrationGroupId: period.registrationGroupId,
+      validFrom: period.validFrom,
+      validTo: period.validTo || '',
+      note: period.note || ''
+    })
+    setDetailFeedback(
+      `Upravujes zaradenie ${period.registrationGroupName || '-'} (${fullDateLabel(period.validFrom)} - ${period.validTo ? fullDateLabel(period.validTo) : 'bez konca'}).`,
+      'ok',
+      ''
+    )
+  }
+
   const toggleRegistrationPeriodSelection = (row: RegistrationPeriodSelectionRow) => {
     const nextKeys = selectedRegistrationPeriodKeys.includes(row.key)
       ? selectedRegistrationPeriodKeys.filter(key => key !== row.key)
@@ -2472,13 +2524,15 @@ export default function PersonalistaClient({
     )
   }
 
-  const preparePendingReviewEntitlements = (period: { validFrom: string; validTo: string }) => {
-    if (!period.validFrom || !period.validTo || period.validTo < period.validFrom) {
+  const preparePendingReviewEntitlements = (periods: PersonRegistrationGroupPeriod[]) => {
+    const dates = datesFromRegistrationPeriods(periods)
+
+    if (dates.length === 0) {
       setDetailFeedback('Najprv ulož platné zaradenie od-do.', 'error', '')
       return
     }
 
-    const dates = dateRangeIso(period.validFrom, period.validTo)
+    const bounds = boundsFromDates(dates, fromDate, toDate)
     const nextCalendarClaims = { ...calendarClaims }
     const addedObed: string[] = []
     const addedVecera: string[] = []
@@ -2501,8 +2555,8 @@ export default function PersonalistaClient({
       vecera: Array.from(new Set([...prev.vecera, ...addedVecera]))
     }))
     setEntitlementForm({
-      validFrom: period.validFrom,
-      validTo: period.validTo,
+      validFrom: bounds.validFrom,
+      validTo: bounds.validTo,
       obed: true,
       vecera: true
     })
@@ -2528,11 +2582,25 @@ export default function PersonalistaClient({
       return
     }
 
+    if (registrationPeriodsOverlap(
+      selectedPerson.registrationGroupPeriods,
+      registrationPeriodForm.validFrom,
+      registrationPeriodForm.validTo,
+      registrationPeriodForm.periodId
+    )) {
+      setDetailFeedback(
+        'Obdobie sa prekryva s existujucim zaradenim. V jeden den moze platit iba jedna registracna skupina.',
+        'error',
+        ''
+      )
+      return
+    }
+
     const saved = await postDetailAction(
       '/api/personalista/people/registration-periods',
       {
         userId: selectedPerson.id,
-        periodId: '',
+        periodId: registrationPeriodForm.periodId,
         registrationGroupId: registrationPeriodForm.registrationGroupId,
         validFrom: registrationPeriodForm.validFrom,
         validTo: registrationPeriodForm.validTo,
@@ -2540,21 +2608,36 @@ export default function PersonalistaClient({
       },
       'Zaradenie pri kontrole registrácie sa nepodarilo uložiť.',
       '',
-      'POST'
+      registrationPeriodForm.periodId ? 'PATCH' : 'POST'
     )
 
     if (saved) {
-      preparePendingReviewEntitlements({
+      const selectedRegistrationGroup = registrationGroups.find(group => group.id === registrationPeriodForm.registrationGroupId) || null
+      const savedPeriod: PersonRegistrationGroupPeriod = {
+        id: registrationPeriodForm.periodId || `pending-${registrationPeriodForm.validFrom}-${registrationPeriodForm.registrationGroupId}`,
+        registrationGroupId: registrationPeriodForm.registrationGroupId,
+        registrationGroupName: selectedRegistrationGroup?.name || '',
         validFrom: registrationPeriodForm.validFrom,
-        validTo: registrationPeriodForm.validTo
-      })
+        validTo: registrationPeriodForm.validTo,
+        note: registrationPeriodForm.note
+      }
+      const nextPeriods = [
+        ...selectedPerson.registrationGroupPeriods.filter(period => period.id !== registrationPeriodForm.periodId),
+        savedPeriod
+      ]
+
+      setRegistrationPeriodForm(defaultRegistrationPeriodForm({
+        ...selectedPerson,
+        registrationGroupPeriods: nextPeriods
+      }))
+      preparePendingReviewEntitlements(nextPeriods)
     }
   }
 
   const approveRegistration = () => {
     if (!selectedPerson) return
 
-    if (!pendingReviewPeriod) {
+    if (pendingReviewBoundedPeriods.length === 0) {
       setDetailFeedback('Najprv ulož zaradenie do registračnej skupiny s dátumom od aj do.', 'error', '')
       return
     }
@@ -2932,7 +3015,7 @@ export default function PersonalistaClient({
   }
 
   const clearEntitlementCalendarSelection = () => {
-    const visibleDates = new Set(entitlementCalendarDates)
+    const visibleDates = new Set(visibleEntitlementCalendarDates)
 
     setBulkEntitlementClaims(prev => ({
       obed: prev.obed.filter(date => !visibleDates.has(date)),
@@ -2942,7 +3025,7 @@ export default function PersonalistaClient({
     setCalendarClaims(prev => {
       const next = { ...prev }
 
-      entitlementCalendarDates.forEach(date => {
+      visibleEntitlementCalendarDates.forEach(date => {
         delete next[date]
       })
 
@@ -3043,7 +3126,7 @@ export default function PersonalistaClient({
   const saveSelectedEntitlementDates = () => {
     if (!selectedPerson) return
 
-    const changedDates = entitlementCalendarDates.filter(date => {
+    const changedDates = visibleEntitlementCalendarDates.filter(date => {
       const saved = entitlementByDate.get(date) || { obed: false, vecera: false }
       const claim = calendarClaims[date] || { obed: false, vecera: false }
 
@@ -6112,14 +6195,43 @@ export default function PersonalistaClient({
                           <b>Zaradenie</b>
                         </div>
 
-                        {pendingReviewPeriod ? (
-                          <div style={styles.pendingStepSummary}>
-                            <b>{pendingReviewPeriod.registrationGroupName || '-'}</b>
-                            <span>{fullDateLabel(pendingReviewPeriod.validFrom)} - {fullDateLabel(pendingReviewPeriod.validTo)}</span>
-                            {pendingReviewPeriod.note && <small>{pendingReviewPeriod.note}</small>}
+                        {pendingReviewBoundedPeriods.length > 0 && (
+                          <div style={styles.pendingPeriodList}>
+                            {pendingReviewBoundedPeriods.map(period => (
+                              <div key={period.id} style={styles.pendingPeriodRow}>
+                                <div style={styles.registrationPeriodInfo}>
+                                  <b>{period.registrationGroupName || '-'}</b>
+                                  <span>{fullDateLabel(period.validFrom)} - {period.validTo ? fullDateLabel(period.validTo) : '-'}</span>
+                                  {period.note && <small>{period.note}</small>}
+                                </div>
+
+                                <div style={styles.registrationPeriodActions}>
+                                  <button
+                                    type="button"
+                                    style={styles.smallEditButton}
+                                    disabled={detailLoading}
+                                    onClick={() => editPendingReviewRegistrationPeriod(period)}
+                                    title="Zmenit zaradenie"
+                                  >
+                                    Z
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    style={styles.smallRemoveButton}
+                                    disabled={detailLoading}
+                                    onClick={() => deleteRegistrationGroupPeriod(period)}
+                                    title="Vymazat zaradenie"
+                                  >
+                                    x
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ) : (
-                          <>
+                        )}
+
+                        <>
                             <div style={styles.detailEditGridWide}>
                               <label style={styles.field}>
                                 <span>Registračná skupina</span>
@@ -6182,8 +6294,7 @@ export default function PersonalistaClient({
                             >
                               {detailLoading ? 'Ukladám...' : 'Uložiť zaradenie a pripraviť nároky'}
                             </button>
-                          </>
-                        )}
+                        </>
                       </div>
 
                       <div style={styles.pendingStepBox}>
@@ -6192,13 +6303,13 @@ export default function PersonalistaClient({
                           <b>Nároky na stravu</b>
                         </div>
 
-                        {!pendingReviewPeriod ? (
+                        {pendingReviewBoundedPeriods.length === 0 ? (
                           <div style={styles.optionHint}>Najprv ulož zaradenie s dátumom od-do.</div>
                         ) : (
                           <>
                             <div style={styles.pendingStepSummary}>
                               <b>{pendingReviewEntitlements.length > 0 ? 'Nároky uložené' : 'Nároky čakajú'}</b>
-                              <span>{pendingReviewEntitlements.length} dní v období {fullDateLabel(pendingReviewPeriod.validFrom)} - {fullDateLabel(pendingReviewPeriod.validTo)}</span>
+                              <span>{pendingReviewEntitlements.length} dní v {pendingReviewBoundedPeriods.length} zaradeniach</span>
                             </div>
 
                             <div style={styles.calendarToolbar}>
@@ -6206,7 +6317,7 @@ export default function PersonalistaClient({
                                 type="button"
                                 style={styles.lightButton}
                                 disabled={detailLoading}
-                                onClick={() => preparePendingReviewEntitlements(pendingReviewPeriod)}
+                                onClick={() => preparePendingReviewEntitlements(pendingReviewBoundedPeriods)}
                               >
                                 Načítať podľa zaradenia
                               </button>
@@ -6222,10 +6333,10 @@ export default function PersonalistaClient({
                             </div>
 
                             <div style={styles.entitlementCalendar}>
-                              {entitlementCalendarDates.length === 0 ? (
+                              {visibleEntitlementCalendarDates.length === 0 ? (
                                 <span style={styles.emptyGroupSelection}>Načítaj nároky podľa zaradenia</span>
                               ) : (
-                                entitlementCalendarDates.map(date => {
+                                visibleEntitlementCalendarDates.map(date => {
                                   const saved = entitlementByDate.get(date)
                                   const claim = calendarClaims[date] || { obed: false, vecera: false }
                                   const selected = claim.obed || claim.vecera
@@ -6288,7 +6399,7 @@ export default function PersonalistaClient({
                             <button
                               type="button"
                               style={styles.confirmButton}
-                              disabled={detailLoading || entitlementCalendarDates.length === 0}
+                              disabled={detailLoading || visibleEntitlementCalendarDates.length === 0}
                               onClick={saveSelectedEntitlementDates}
                             >
                               {detailLoading ? 'Ukladám...' : 'Uložiť nároky'}
@@ -6993,10 +7104,10 @@ export default function PersonalistaClient({
                   </div>
 
                   <div style={styles.entitlementCalendar}>
-                    {entitlementCalendarDates.length === 0 ? (
+                    {visibleEntitlementCalendarDates.length === 0 ? (
                       <span style={styles.emptyGroupSelection}>Vyber platné obdobie</span>
                     ) : (
-                      entitlementCalendarDates.map(date => {
+                      visibleEntitlementCalendarDates.map(date => {
                         const saved = entitlementByDate.get(date)
                         const claim = calendarClaims[date] || { obed: false, vecera: false }
                         const selected = claim.obed || claim.vecera
@@ -8307,6 +8418,22 @@ const styles: Record<string, CSSProperties> = {
     background: '#f9fafb',
     color: '#374151',
     overflowWrap: 'anywhere'
+  },
+  pendingPeriodList: {
+    display: 'grid',
+    gap: 6
+  },
+  pendingPeriodRow: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    padding: 7,
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    background: '#f9fafb',
+    color: '#374151',
+    minWidth: 0
   },
   detailHeaderBadges: {
     display: 'flex',
