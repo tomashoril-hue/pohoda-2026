@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
-import { slovakiaDateIso } from '@/lib/date'
 import { sendAppEmail } from '@/lib/email'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { createQrPngAttachment } from '@/lib/qrEmailAttachment'
@@ -14,6 +13,14 @@ function escapeHtml(value: any) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;')
+}
+
+function groupIsActive(period: any) {
+  const group = Array.isArray(period.registration_groups)
+    ? period.registration_groups[0]
+    : period.registration_groups
+
+  return group?.active !== false
 }
 
 export async function POST(req: NextRequest) {
@@ -31,15 +38,13 @@ export async function POST(req: NextRequest) {
     }
 
     const approveLimit = checkActorRateLimit(actor.id, 'approve-registration-email', 60, 10 * 60 * 1000)
-    if (!approveLimit.ok) return rateLimitResponse(approveLimit, 'Prilis vela schvaleni. Skuste znova neskor.')
+    if (!approveLimit.ok) return rateLimitResponse(approveLimit, 'Príliš veľa schválení. Skúste znova neskôr.')
 
     const body = await req.json()
     const userId = String(body.userId || '').trim()
-    const registrationGroupId = String(body.registrationGroupId || '').trim()
-    const registrationGroupNote = String(body.registrationGroupNote || '').trim() || null
 
-    if (!userId || !registrationGroupId) {
-      return NextResponse.json({ error: 'Vyber osobu a registračnú skupinu.' }, { status: 400 })
+    if (!userId) {
+      return NextResponse.json({ error: 'Vyber osobu.' }, { status: 400 })
     }
 
     const { data: user, error: userError } = await supabaseServer
@@ -60,6 +65,69 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Osoba už nečaká na schválenie.' }, { status: 409 })
     }
 
+    const { data: periods, error: periodsError } = await supabaseServer
+      .from('user_registration_group_periods')
+      .select(`
+        id,
+        registration_group_id,
+        valid_from,
+        valid_to,
+        note,
+        registration_groups (
+          id,
+          name,
+          active
+        )
+      `)
+      .eq('user_id', userId)
+      .order('valid_from', { ascending: true })
+
+    if (periodsError) {
+      return NextResponse.json({ error: periodsError.message }, { status: 500 })
+    }
+
+    const boundedPeriods = (periods || []).filter((period: any) => (
+      period.registration_group_id &&
+      period.valid_from &&
+      period.valid_to &&
+      period.valid_to >= period.valid_from &&
+      groupIsActive(period)
+    ))
+
+    if (boundedPeriods.length === 0) {
+      return NextResponse.json(
+        { error: 'Najprv ulož zaradenie do registračnej skupiny s dátumom od aj do.' },
+        { status: 409 }
+      )
+    }
+
+    const { data: entitlementRows, error: entitlementError } = await supabaseServer
+      .from('user_food_entitlements')
+      .select('datum, obed, vecera')
+      .eq('user_id', userId)
+
+    if (entitlementError) {
+      return NextResponse.json({ error: entitlementError.message }, { status: 500 })
+    }
+
+    const periodWithEntitlements = boundedPeriods.find((period: any) => (
+      (entitlementRows || []).some((entitlement: any) => (
+        entitlement.datum >= period.valid_from &&
+        entitlement.datum <= period.valid_to &&
+        (entitlement.obed || entitlement.vecera)
+      ))
+    ))
+
+    if (!periodWithEntitlements) {
+      return NextResponse.json(
+        { error: 'Najprv ulož nároky na stravu pre zadané zaradenie.' },
+        { status: 409 }
+      )
+    }
+
+    const registrationGroupId = periodWithEntitlements.registration_group_id
+    const registrationGroupNote = String(periodWithEntitlements.note || '').trim() || null
+
     const { data: qrRows, error: approveError } = await supabaseServer
       .rpc('approve_registration_user', {
         p_user_id: userId,
@@ -78,45 +146,7 @@ export async function POST(req: NextRequest) {
 
     const assigned = Array.isArray(qrRows) ? qrRows[0] : qrRows
     const qrCode = assigned?.qr_code || ''
-    const today = slovakiaDateIso()
-    let registrationPeriodCreated = false
     let emailSent = false
-
-    const { data: currentPeriod, error: currentPeriodError } = await supabaseServer
-      .from('user_registration_group_periods')
-      .select('id')
-      .eq('user_id', userId)
-      .lte('valid_from', today)
-      .or(`valid_to.is.null,valid_to.gte.${today}`)
-      .maybeSingle()
-
-    if (currentPeriodError) {
-      return NextResponse.json({ error: currentPeriodError.message }, { status: 500 })
-    }
-
-    if (!currentPeriod) {
-      const { error: periodError } = await supabaseServer
-        .from('user_registration_group_periods')
-        .insert({
-          user_id: userId,
-          registration_group_id: registrationGroupId,
-          valid_from: today,
-          valid_to: null,
-          note: registrationGroupNote,
-          created_by: actor.id
-        })
-
-      if (periodError) {
-        const overlaps = periodError.code === '23P01'
-          || periodError.message.toLowerCase().includes('no_overlap')
-
-        if (!overlaps) {
-          return NextResponse.json({ error: periodError.message }, { status: 500 })
-        }
-      } else {
-        registrationPeriodCreated = true
-      }
-    }
 
     if (user.email && qrCode) {
       try {
@@ -164,9 +194,11 @@ export async function POST(req: NextRequest) {
         entity_id: userId,
         after_data: {
           registration_group_id: registrationGroupId,
+          registration_period_id: periodWithEntitlements.id,
+          registration_period_valid_from: periodWithEntitlements.valid_from,
+          registration_period_valid_to: periodWithEntitlements.valid_to,
           qr_assigned: !!qrCode,
-          email_sent: emailSent,
-          registration_period_created: registrationPeriodCreated
+          email_sent: emailSent
         }
       })
 
@@ -174,8 +206,8 @@ export async function POST(req: NextRequest) {
       ok: true,
       emailSent,
       message: emailSent
-        ? 'Registrácia bola schválená. QR kód bol pridelený a odoslaný e-mailom.'
-        : 'Registrácia bola schválená a QR kód bol pridelený. E-mail sa nepodarilo odoslať.'
+        ? 'Registrácia bola dokončená. QR kód bol pridelený a odoslaný e-mailom.'
+        : 'Registrácia bola dokončená a QR kód bol pridelený. E-mail sa nepodarilo odoslať.'
     })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Neznáma chyba servera.' }, { status: 500 })

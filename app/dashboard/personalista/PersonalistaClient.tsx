@@ -1076,6 +1076,17 @@ export default function PersonalistaClient({
     : null
   const selectedPersonIsTechnical = String(selectedPerson?.accountType || '').toUpperCase() === 'TECHNICAL'
   const canUseSelectedPersonAccessCode = !!selectedPerson && (!selectedPersonIsTechnical || canAssignSensitiveRoles)
+  const selectedPersonPendingReview = String(selectedPerson?.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
+  const pendingReviewPeriods = sortRegistrationPeriods(selectedPerson?.registrationGroupPeriods || [])
+  const pendingReviewPeriod = pendingReviewPeriods.find(period => !!period.validFrom && !!period.validTo) || null
+  const pendingReviewEntitlements = pendingReviewPeriod
+    ? selectedPerson?.entitlements.filter(item => (
+      item.datum >= pendingReviewPeriod.validFrom &&
+      item.datum <= pendingReviewPeriod.validTo &&
+      (item.obed || item.vecera)
+    )) || []
+    : []
+  const pendingReviewCanFinish = selectedPersonPendingReview && !!pendingReviewPeriod && pendingReviewEntitlements.length > 0
 
   const loadAccessCode = async () => {
     if (!selectedPerson) return
@@ -1391,7 +1402,15 @@ export default function PersonalistaClient({
     setRegistrationGroupAccessForm({ registrationGroupId: '' })
     setSelectedRegistrationPeriodKeys([])
 
-    const bounds = entitlementBounds(selectedPerson.entitlements, fromDate, toDate)
+    const pendingPeriod = String(selectedPerson.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
+      ? sortRegistrationPeriods(selectedPerson.registrationGroupPeriods).find(period => !!period.validFrom && !!period.validTo)
+      : null
+    const bounds = pendingPeriod
+      ? {
+        validFrom: pendingPeriod.validFrom,
+        validTo: pendingPeriod.validTo
+      }
+      : entitlementBounds(selectedPerson.entitlements, fromDate, toDate)
     const nextEntitlementForm = {
       validFrom: bounds.validFrom,
       validTo: bounds.validTo,
@@ -2453,25 +2472,108 @@ export default function PersonalistaClient({
     )
   }
 
-  const approveRegistration = () => {
-    if (!selectedPerson) return
-
-    if (!profileForm.registrationGroupId) {
-      setDetailFeedback('Vyber registracnu skupinu.', 'error', detailMode || 'profile')
+  const preparePendingReviewEntitlements = (period: { validFrom: string; validTo: string }) => {
+    if (!period.validFrom || !period.validTo || period.validTo < period.validFrom) {
+      setDetailFeedback('Najprv ulož platné zaradenie od-do.', 'error', '')
       return
     }
 
-    const ok = window.confirm('Schvalit registraciu a priradit prvy volny QR kod?')
+    const dates = dateRangeIso(period.validFrom, period.validTo)
+    const nextCalendarClaims = { ...calendarClaims }
+    const addedObed: string[] = []
+    const addedVecera: string[] = []
+
+    dates.forEach(date => {
+      const current = nextCalendarClaims[date] || { obed: false, vecera: false }
+
+      if (!current.obed) addedObed.push(date)
+      if (!current.vecera) addedVecera.push(date)
+
+      nextCalendarClaims[date] = {
+        obed: true,
+        vecera: true
+      }
+    })
+
+    setCalendarClaims(nextCalendarClaims)
+    setBulkEntitlementClaims(prev => ({
+      obed: Array.from(new Set([...prev.obed, ...addedObed])),
+      vecera: Array.from(new Set([...prev.vecera, ...addedVecera]))
+    }))
+    setEntitlementForm({
+      validFrom: period.validFrom,
+      validTo: period.validTo,
+      obed: true,
+      vecera: true
+    })
+    setDetailMode('')
+    setDetailFeedback(`Nároky sú pripravené pre ${dates.length} dní. Skontroluj dni, obed a večeru, potom ulož nároky.`, 'ok', '')
+  }
+
+  const savePendingReviewRegistrationPeriod = async () => {
+    if (!selectedPerson) return
+
+    if (!registrationPeriodForm.registrationGroupId) {
+      setDetailFeedback('Vyber registračnú skupinu.', 'error', '')
+      return
+    }
+
+    if (!registrationPeriodForm.validFrom || !registrationPeriodForm.validTo) {
+      setDetailFeedback('Pri kontrole registrácie musí byť vyplnený dátum od aj dátum do.', 'error', '')
+      return
+    }
+
+    if (registrationPeriodForm.validTo < registrationPeriodForm.validFrom) {
+      setDetailFeedback('Dátum do nemôže byť pred dátumom od.', 'error', '')
+      return
+    }
+
+    const saved = await postDetailAction(
+      '/api/personalista/people/registration-periods',
+      {
+        userId: selectedPerson.id,
+        periodId: '',
+        registrationGroupId: registrationPeriodForm.registrationGroupId,
+        validFrom: registrationPeriodForm.validFrom,
+        validTo: registrationPeriodForm.validTo,
+        note: registrationPeriodForm.note
+      },
+      'Zaradenie pri kontrole registrácie sa nepodarilo uložiť.',
+      '',
+      'POST'
+    )
+
+    if (saved) {
+      preparePendingReviewEntitlements({
+        validFrom: registrationPeriodForm.validFrom,
+        validTo: registrationPeriodForm.validTo
+      })
+    }
+  }
+
+  const approveRegistration = () => {
+    if (!selectedPerson) return
+
+    if (!pendingReviewPeriod) {
+      setDetailFeedback('Najprv ulož zaradenie do registračnej skupiny s dátumom od aj do.', 'error', '')
+      return
+    }
+
+    if (pendingReviewEntitlements.length === 0) {
+      setDetailFeedback('Najprv ulož nároky na stravu pre zadané obdobie.', 'error', '')
+      return
+    }
+
+    const ok = window.confirm('Dokončiť kontrolu registrácie a priradiť prvý voľný QR kód?')
     if (!ok) return
 
     postDetailAction(
       '/api/personalista/people/approve-registration',
       {
-        userId: selectedPerson.id,
-        registrationGroupId: profileForm.registrationGroupId,
-        registrationGroupNote: profileForm.registrationGroupNote
+        userId: selectedPerson.id
       },
-      'Registraciu sa nepodarilo schvalit.'
+      'Registráciu sa nepodarilo dokončiť.',
+      ''
     )
   }
 
@@ -5993,6 +6095,240 @@ export default function PersonalistaClient({
               </div>
 
               <div style={styles.detailRows}>
+                {selectedPersonPendingReview && (
+                  <div style={styles.pendingApprovalBox}>
+                    <div style={styles.pendingApprovalHeader}>
+                      <div>
+                        <b>Registrácia čaká na kontrolu</b>
+                        <span>Najprv nastav zaradenie od-do, potom skontroluj nároky a až nakoniec dokonči registráciu.</span>
+                      </div>
+                      <span style={styles.pendingBadge}>Kontrola</span>
+                    </div>
+
+                    <div style={styles.pendingStepGrid}>
+                      <div style={styles.pendingStepBox}>
+                        <div style={styles.pendingStepTitle}>
+                          <span style={styles.pendingStepNumber}>1</span>
+                          <b>Zaradenie</b>
+                        </div>
+
+                        {pendingReviewPeriod ? (
+                          <div style={styles.pendingStepSummary}>
+                            <b>{pendingReviewPeriod.registrationGroupName || '-'}</b>
+                            <span>{fullDateLabel(pendingReviewPeriod.validFrom)} - {fullDateLabel(pendingReviewPeriod.validTo)}</span>
+                            {pendingReviewPeriod.note && <small>{pendingReviewPeriod.note}</small>}
+                          </div>
+                        ) : (
+                          <>
+                            <div style={styles.detailEditGridWide}>
+                              <label style={styles.field}>
+                                <span>Registračná skupina</span>
+                                <select
+                                  value={registrationPeriodForm.registrationGroupId}
+                                  onChange={event => updateRegistrationPeriodForm('registrationGroupId', event.target.value)}
+                                  style={styles.input}
+                                  disabled={detailLoading}
+                                >
+                                  <option value="">Vyber registračnú skupinu</option>
+                                  {registrationGroups.map(group => (
+                                    <option key={group.id} value={group.id}>
+                                      {group.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+
+                              <label style={styles.field}>
+                                <span>Od</span>
+                                {renderDateInput(
+                                  registrationPeriodForm.validFrom,
+                                  value => updateRegistrationPeriodForm('validFrom', value),
+                                  detailLoading,
+                                  'Vyber od'
+                                )}
+                              </label>
+
+                              <label style={styles.field}>
+                                <span>Do</span>
+                                {renderDateInput(
+                                  registrationPeriodForm.validTo,
+                                  value => updateRegistrationPeriodForm('validTo', value),
+                                  detailLoading,
+                                  'Vyber do'
+                                )}
+                              </label>
+
+                              <label style={styles.field}>
+                                <span>Poznámka</span>
+                                <input
+                                  value={registrationPeriodForm.note}
+                                  onChange={event => updateRegistrationPeriodForm('note', event.target.value)}
+                                  style={styles.input}
+                                  disabled={detailLoading}
+                                  autoComplete="off"
+                                />
+                              </label>
+                            </div>
+
+                            <button
+                              type="button"
+                              style={{
+                                ...styles.confirmButton,
+                                opacity: detailLoading || !registrationPeriodForm.registrationGroupId || !registrationPeriodForm.validFrom || !registrationPeriodForm.validTo ? 0.55 : 1,
+                                cursor: detailLoading || !registrationPeriodForm.registrationGroupId || !registrationPeriodForm.validFrom || !registrationPeriodForm.validTo ? 'not-allowed' : 'pointer'
+                              }}
+                              disabled={detailLoading || !registrationPeriodForm.registrationGroupId || !registrationPeriodForm.validFrom || !registrationPeriodForm.validTo}
+                              onClick={() => void savePendingReviewRegistrationPeriod()}
+                            >
+                              {detailLoading ? 'Ukladám...' : 'Uložiť zaradenie a pripraviť nároky'}
+                            </button>
+                          </>
+                        )}
+                      </div>
+
+                      <div style={styles.pendingStepBox}>
+                        <div style={styles.pendingStepTitle}>
+                          <span style={styles.pendingStepNumber}>2</span>
+                          <b>Nároky na stravu</b>
+                        </div>
+
+                        {!pendingReviewPeriod ? (
+                          <div style={styles.optionHint}>Najprv ulož zaradenie s dátumom od-do.</div>
+                        ) : (
+                          <>
+                            <div style={styles.pendingStepSummary}>
+                              <b>{pendingReviewEntitlements.length > 0 ? 'Nároky uložené' : 'Nároky čakajú'}</b>
+                              <span>{pendingReviewEntitlements.length} dní v období {fullDateLabel(pendingReviewPeriod.validFrom)} - {fullDateLabel(pendingReviewPeriod.validTo)}</span>
+                            </div>
+
+                            <div style={styles.calendarToolbar}>
+                              <button
+                                type="button"
+                                style={styles.lightButton}
+                                disabled={detailLoading}
+                                onClick={() => preparePendingReviewEntitlements(pendingReviewPeriod)}
+                              >
+                                Načítať podľa zaradenia
+                              </button>
+
+                              <button
+                                type="button"
+                                style={styles.lightButton}
+                                disabled={detailLoading}
+                                onClick={clearEntitlementCalendarSelection}
+                              >
+                                Zrušiť výber dní
+                              </button>
+                            </div>
+
+                            <div style={styles.entitlementCalendar}>
+                              {entitlementCalendarDates.length === 0 ? (
+                                <span style={styles.emptyGroupSelection}>Načítaj nároky podľa zaradenia</span>
+                              ) : (
+                                entitlementCalendarDates.map(date => {
+                                  const saved = entitlementByDate.get(date)
+                                  const claim = calendarClaims[date] || { obed: false, vecera: false }
+                                  const selected = claim.obed || claim.vecera
+                                  const changed = saved
+                                    ? claim.obed !== saved.obed || claim.vecera !== saved.vecera
+                                    : selected
+
+                                  return (
+                                    <div
+                                      key={date}
+                                      style={{
+                                        ...styles.calendarDay,
+                                        ...(saved ? styles.calendarDaySaved : {}),
+                                        ...(selected ? styles.calendarDaySelected : {}),
+                                        ...(changed ? styles.calendarDayChanged : {})
+                                      }}
+                                    >
+                                      <b>{shortDateLabel(date)}</b>
+                                      <div style={styles.calendarMealButtons}>
+                                        <button
+                                          type="button"
+                                          style={{
+                                            ...styles.calendarMealButton,
+                                            ...(claim.obed ? styles.calendarMealButtonActive : {})
+                                          }}
+                                          disabled={detailLoading}
+                                          onClick={() => toggleEntitlementClaim(date, 'obed')}
+                                        >
+                                          O
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          style={{
+                                            ...styles.calendarMealButton,
+                                            ...(claim.vecera ? styles.calendarMealButtonActive : {})
+                                          }}
+                                          disabled={detailLoading}
+                                          onClick={() => toggleEntitlementClaim(date, 'vecera')}
+                                        >
+                                          V
+                                        </button>
+                                      </div>
+                                      {saved && (
+                                        <span style={styles.calendarSavedText}>
+                                          {saved.obed ? 'O' : '-'} / {saved.vecera ? 'V' : '-'}
+                                        </span>
+                                      )}
+                                      {changed && (
+                                        <span style={styles.calendarChangedText}>
+                                          Zmena
+                                        </span>
+                                      )}
+                                    </div>
+                                  )
+                                })
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              style={styles.confirmButton}
+                              disabled={detailLoading || entitlementCalendarDates.length === 0}
+                              onClick={saveSelectedEntitlementDates}
+                            >
+                              {detailLoading ? 'Ukladám...' : 'Uložiť nároky'}
+                            </button>
+                          </>
+                        )}
+                      </div>
+
+                      <div style={styles.pendingStepBox}>
+                        <div style={styles.pendingStepTitle}>
+                          <span style={styles.pendingStepNumber}>3</span>
+                          <b>Dokončenie</b>
+                        </div>
+
+                        <div style={styles.pendingStepSummary}>
+                          <b>{pendingReviewCanFinish ? 'Pripravené na dokončenie' : 'Ešte nie je pripravené'}</b>
+                          <span>
+                            {pendingReviewCanFinish
+                              ? 'Zaradenie aj nároky sú uložené.'
+                              : 'Dokončiť pôjde až po uložení zaradenia a nárokov.'}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          style={{
+                            ...styles.confirmButton,
+                            opacity: detailLoading || !pendingReviewCanFinish ? 0.55 : 1,
+                            cursor: detailLoading || !pendingReviewCanFinish ? 'not-allowed' : 'pointer'
+                          }}
+                          disabled={detailLoading || !pendingReviewCanFinish}
+                          onClick={approveRegistration}
+                        >
+                          {detailLoading ? 'Dokončujem...' : 'Dokončiť registráciu'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div style={styles.detailRow}>
                   <span>Stav</span>
                   <b>{String(selectedPerson.aktivny || '').toUpperCase() !== 'ANO' ? 'Blokovaný' : 'Aktívny'}</b>
@@ -6064,53 +6400,6 @@ export default function PersonalistaClient({
               </div>
 
               <div style={styles.sectionTitle}>Akcie</div>
-
-              {String(selectedPerson.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW' && (
-                <div style={styles.pendingApprovalBox}>
-                  <b>Registracia caka na kontrolu</b>
-                  <span>Skontroluj profil, vyber registracnu skupinu a schval registraciu. QR sa prideli automaticky.</span>
-                  <label style={styles.field}>
-                    <span>Registracna skupina</span>
-                    <select
-                      value={profileForm.registrationGroupId}
-                      onChange={event => updateProfileForm('registrationGroupId', event.target.value)}
-                      style={styles.input}
-                      disabled={detailLoading}
-                    >
-                      <option value="">Vyber registracnu skupinu</option>
-                      {registrationGroups.map(group => (
-                        <option key={group.id} value={group.id}>
-                          {group.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label style={styles.field}>
-                    <span>Poznamka</span>
-                    <input
-                      value={profileForm.registrationGroupNote}
-                      onChange={event => updateProfileForm('registrationGroupNote', event.target.value)}
-                      style={styles.input}
-                      disabled={detailLoading}
-                      autoComplete="off"
-                    />
-                  </label>
-
-                  <button
-                    type="button"
-                    style={{
-                      ...styles.confirmButton,
-                      opacity: detailLoading || !profileForm.registrationGroupId ? 0.55 : 1,
-                      cursor: detailLoading || !profileForm.registrationGroupId ? 'not-allowed' : 'pointer'
-                    }}
-                    disabled={detailLoading || !profileForm.registrationGroupId}
-                    onClick={approveRegistration}
-                  >
-                    {detailLoading ? 'Schvalujem...' : 'Schvalit a priradit QR'}
-                  </button>
-                </div>
-              )}
 
               <div style={{
                 ...styles.detailActions,
@@ -6330,37 +6619,6 @@ export default function PersonalistaClient({
                       </select>
                     </label>
 
-                    {String(selectedPerson.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW' && (
-                      <>
-                        <label style={styles.field}>
-                          <span>Registracna skupina pri schvaleni</span>
-                          <select
-                            value={profileForm.registrationGroupId}
-                            onChange={event => updateProfileForm('registrationGroupId', event.target.value)}
-                            style={styles.input}
-                            disabled={detailLoading}
-                          >
-                            <option value="">Vyber registracnu skupinu</option>
-                            {registrationGroups.map(group => (
-                              <option key={group.id} value={group.id}>
-                                {group.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
-                        <label style={styles.field}>
-                          <span>Poznamka k registracnej skupine</span>
-                          <input
-                            value={profileForm.registrationGroupNote}
-                            onChange={event => updateProfileForm('registrationGroupNote', event.target.value)}
-                            style={styles.input}
-                            disabled={detailLoading}
-                            autoComplete="off"
-                          />
-                        </label>
-                      </>
-                    )}
                   </div>
 
                   <button
@@ -7998,6 +8256,57 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     background: '#fffbeb',
     color: '#92400e'
+  },
+  pendingApprovalHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 8,
+    alignItems: 'flex-start',
+    flexWrap: 'wrap'
+  },
+  pendingStepGrid: {
+    display: 'grid',
+    gap: 8
+  },
+  pendingStepBox: {
+    border: '1px solid #fcd34d',
+    borderRadius: 8,
+    padding: 8,
+    display: 'grid',
+    gap: 7,
+    background: '#fff',
+    color: '#374151',
+    minWidth: 0
+  },
+  pendingStepTitle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 7,
+    fontSize: 13,
+    fontWeight: 950,
+    color: '#111827'
+  },
+  pendingStepNumber: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#7c3aed',
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 950
+  },
+  pendingStepSummary: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    padding: 7,
+    display: 'grid',
+    gap: 3,
+    background: '#f9fafb',
+    color: '#374151',
+    overflowWrap: 'anywhere'
   },
   detailHeaderBadges: {
     display: 'flex',
