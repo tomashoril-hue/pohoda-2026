@@ -3,10 +3,10 @@ import { checkRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { attachPohodaSessionCookie, confirmRegistrationToken } from '@/lib/registrationConfirm'
 
 export async function GET(req: NextRequest) {
-  const ipLimit = checkRateLimit(req, 'auth-confirm-registration-redirect', 60, 10 * 60 * 1000)
+  const ipLimit = checkRateLimit(req, 'auth-confirm-registration', 60, 10 * 60 * 1000)
   if (!ipLimit.ok) return rateLimitResponse(ipLimit, 'Príliš veľa pokusov. Skúste znova neskôr.')
 
-  const token = req.nextUrl.searchParams.get('token')
+  const token = String(req.nextUrl.searchParams.get('token') || '').trim()
 
   if (!token) {
     return NextResponse.redirect(new URL('/register', req.url))
