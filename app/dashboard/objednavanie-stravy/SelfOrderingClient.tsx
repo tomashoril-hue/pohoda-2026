@@ -224,11 +224,11 @@ export default function SelfOrderingClient({
 
         @media (max-width: 560px) {
           .self-order-page {
-            padding: 12px !important;
+            padding: 10px !important;
           }
 
           .self-order-top {
-            margin-bottom: 10px !important;
+            margin-bottom: 8px !important;
             gap: 8px !important;
             align-items: flex-start !important;
           }
@@ -244,19 +244,17 @@ export default function SelfOrderingClient({
 
           .self-order-user {
             font-size: 11px !important;
-            padding: 6px 9px !important;
-            border-width: 2px !important;
+            padding: 5px 8px !important;
           }
 
           .self-order-card {
-            padding: 14px !important;
-            border-radius: 20px !important;
-            box-shadow: 6px 6px 0 #000 !important;
+            padding: 12px !important;
+            border-radius: 16px !important;
           }
 
           .self-order-title {
-            font-size: 30px !important;
-            line-height: 0.95 !important;
+            font-size: 25px !important;
+            line-height: 1 !important;
           }
 
           .self-order-food {
@@ -265,21 +263,21 @@ export default function SelfOrderingClient({
           }
 
           .self-order-food-button {
-            min-height: 48px !important;
-            padding: 7px 5px !important;
+            min-height: 38px !important;
+            padding: 5px 4px !important;
           }
 
           .self-order-calendar {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            gap: 8px !important;
+            grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+            gap: 6px !important;
           }
 
           .self-order-day {
-            padding: 8px !important;
+            padding: 6px !important;
           }
 
           .self-order-day-date {
-            font-size: 17px !important;
+            font-size: 14px !important;
           }
 
           .self-order-save {
@@ -403,14 +401,14 @@ export default function SelfOrderingClient({
 const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: '100vh',
-    background: 'linear-gradient(135deg, #7417e8 0%, #ed59dc 45%, #56db3f 100%)',
-    padding: 24,
+    background: 'linear-gradient(135deg, #f5f0ff 0%, #fff 45%, #eefce9 100%)',
+    padding: 18,
     fontFamily: 'Arial, Helvetica, sans-serif',
-    color: '#000'
+    color: '#141414'
   },
   topBar: {
-    maxWidth: 980,
-    margin: '0 auto 18px',
+    maxWidth: 760,
+    margin: '0 auto 12px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -423,17 +421,17 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0
   },
   logo: {
-    height: 54,
-    maxWidth: 260,
+    height: 46,
+    maxWidth: 220,
     objectFit: 'contain'
   },
   date: {
     background: '#000',
     color: '#fff',
     borderRadius: 999,
-    padding: '10px 18px',
+    padding: '8px 14px',
     fontWeight: 900,
-    fontSize: 18
+    fontSize: 14
   },
   topControls: {
     display: 'flex',
@@ -443,120 +441,124 @@ const styles: Record<string, CSSProperties> = {
     gap: 8
   },
   userBadge: {
-    border: '2px solid #000',
+    border: '1px solid #d7d3e8',
     borderRadius: 999,
     background: '#fff',
-    padding: '8px 12px',
+    padding: '7px 11px',
     fontSize: 12,
     fontWeight: 850,
-    boxShadow: '2px 2px 0 #000',
     maxWidth: 260,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap'
   },
   backButton: {
-    color: '#fff',
-    background: '#000',
-    border: '2px solid #000',
+    color: '#1f2937',
+    background: '#fff',
+    border: '1px solid #d7d3e8',
     borderRadius: 999,
-    padding: '8px 12px',
+    padding: '7px 11px',
     textDecoration: 'none',
     fontSize: 12,
-    fontWeight: 900,
-    boxShadow: '2px 2px 0 #000'
+    fontWeight: 900
   },
   card: {
-    maxWidth: 680,
+    maxWidth: 760,
     margin: '0 auto',
-    background: '#fff',
-    border: '4px solid #000',
-    borderRadius: 28,
-    padding: 22,
-    boxShadow: '10px 10px 0 #000',
+    background: 'rgba(255, 255, 255, 0.96)',
+    border: '1px solid #ded8f2',
+    borderRadius: 20,
+    padding: 16,
+    boxShadow: '0 18px 40px rgba(31, 24, 61, 0.16)',
     display: 'grid',
-    gap: 14
+    gap: 12
   },
   title: {
-    fontSize: 42,
+    fontSize: 34,
     lineHeight: 1,
     margin: 0,
     fontWeight: 950
   },
   compactBlock: {
     display: 'grid',
-    gap: 8
+    gap: 7
   },
   blockLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 950,
-    textTransform: 'uppercase'
+    textTransform: 'uppercase',
+    color: '#5b5870'
   },
   foodGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-    gap: 9
+    gap: 8
   },
   foodButton: {
-    border: '3px solid #000',
-    borderRadius: 14,
-    padding: '8px 7px',
-    background: '#fff',
-    minHeight: 54,
+    border: '1px solid #d7d3e8',
+    borderRadius: 12,
+    padding: '6px 7px',
+    background: '#fafafa',
+    minHeight: 42,
     display: 'grid',
     alignItems: 'center',
     justifyItems: 'center',
-    gap: 1,
+    gap: 0,
     fontFamily: 'Arial, Helvetica, sans-serif',
-    fontWeight: 950
+    fontWeight: 950,
+    color: '#211b35'
   },
   foodButtonActive: {
     background: '#56db3f',
-    boxShadow: '4px 4px 0 #000'
+    borderColor: '#2fb51b',
+    boxShadow: '0 6px 14px rgba(47, 181, 27, 0.24)'
   },
   calendarGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-    gap: 9
+    gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+    gap: 7
   },
   dayCard: {
-    border: '3px solid #000',
-    borderRadius: 16,
-    padding: 9,
-    background: '#f9fafb',
+    border: '1px solid #e1deea',
+    borderRadius: 12,
+    padding: 7,
+    background: '#fbfbfd',
     display: 'grid',
-    gap: 8
+    gap: 6,
+    minWidth: 0
   },
   dayHeader: {
-    display: 'flex',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: 8,
+    display: 'grid',
+    justifyItems: 'center',
+    gap: 1,
     fontWeight: 900,
-    fontSize: 12,
-    color: '#374151'
+    fontSize: 10,
+    color: '#6b667c',
+    textTransform: 'uppercase'
   },
   mealToggleRow: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
-    gap: 7
+    gap: 4
   },
   mealToggle: {
-    minHeight: 40,
-    border: '3px solid #000',
-    borderRadius: 12,
+    minHeight: 27,
+    border: '1px solid #d8d5e2',
+    borderRadius: 9,
     background: '#fff',
-    fontSize: 18,
+    fontSize: 12,
     fontWeight: 950,
-    fontFamily: 'Arial, Helvetica, sans-serif'
+    fontFamily: 'Arial, Helvetica, sans-serif',
+    color: '#312b46'
   },
   mealToggleActive: {
     background: '#56db3f',
-    boxShadow: '3px 3px 0 #000'
+    borderColor: '#2fb51b',
+    boxShadow: '0 4px 10px rgba(47, 181, 27, 0.22)'
   },
   mealTogglePressed: {
-    transform: 'translate(2px, 2px)',
-    boxShadow: '1px 1px 0 #000'
+    transform: 'translate(1px, 1px)',
+    boxShadow: '0 2px 5px rgba(47, 181, 27, 0.18)'
   },
   mealToggleDisabled: {
     opacity: 0.35,
@@ -569,19 +571,19 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: 'space-between',
     gap: 10,
     flexWrap: 'wrap',
-    borderTop: '2px solid #000',
-    paddingTop: 12
+    borderTop: '1px solid #ebe7f5',
+    paddingTop: 10
   },
   saveButton: {
-    border: '3px solid #000',
+    border: '1px solid #5b21b6',
     borderRadius: 999,
-    padding: '11px 18px',
+    padding: '10px 16px',
     background: '#7417e8',
     color: '#fff',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 950,
     fontFamily: 'Arial, Helvetica, sans-serif',
-    boxShadow: '4px 4px 0 #000'
+    boxShadow: '0 8px 18px rgba(116, 23, 232, 0.24)'
   },
   smallNote: {
     fontSize: 12,
@@ -589,9 +591,9 @@ const styles: Record<string, CSSProperties> = {
     color: '#374151'
   },
   message: {
-    border: '2px solid',
-    borderRadius: 14,
-    padding: 11,
+    border: '1px solid',
+    borderRadius: 12,
+    padding: 10,
     fontSize: 13,
     fontWeight: 900,
     lineHeight: 1.35
@@ -607,9 +609,9 @@ const styles: Record<string, CSSProperties> = {
     color: '#991b1b'
   },
   emptyBox: {
-    border: '2px dashed #d1d5db',
-    borderRadius: 14,
-    padding: 14,
+    border: '1px dashed #d1d5db',
+    borderRadius: 12,
+    padding: 12,
     color: '#6b7280',
     fontSize: 13,
     fontWeight: 850
