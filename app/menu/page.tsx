@@ -32,6 +32,7 @@ export default async function MenuPage() {
       menu={menuData.menu}
       selections={menuData.selections}
       deadlines={menuData.deadlines}
+      entitlements={menuData.entitlements}
     />
   )
 }

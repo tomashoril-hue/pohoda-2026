@@ -31,6 +31,7 @@ type PreparedRow = {
   obed: boolean
   vecera: boolean
   assignQr: boolean
+  selfOrdering: boolean
 }
 
 function normalizeText(value: any) {
@@ -114,14 +115,15 @@ function prepareRow(
   row: any,
   activeRegistrationGroupIds: Set<string>,
   existingEmails: Set<string>,
-  duplicateImportEmails: Set<string>
+  duplicateImportEmails: Set<string>,
+  selfOrderingImport: boolean
 ): { prepared?: PreparedRow; result?: ImportResult } {
   const rowNumber = Number(row.rowNumber || 0)
   const meno = normalizeText(row.meno)
   const priezvisko = normalizeText(row.priezvisko)
   const email = normalizeEmail(row.email)
   const telefon = normalizeText(row.telefon) || null
-  const typStravy = normalizeFood(row.typStravy)
+  const typStravy = selfOrderingImport ? normalizeFood(row.typStravy || 'MASO') : normalizeFood(row.typStravy)
   const validFrom = normalizeText(row.validFrom)
   const validTo = normalizeText(row.validTo)
   const registrationGroupId = normalizeText(row.registrationGroupId) || null
@@ -131,14 +133,16 @@ function prepareRow(
   const assignQr = row.assignQr !== false
 
   if (!meno || !priezvisko) return { result: errorResult(rowNumber, 'Meno a priezvisko su povinne.') }
+  if (!email) return { result: errorResult(rowNumber, 'E-mail je povinny.') }
   if (!typStravy) return { result: errorResult(rowNumber, 'Vyber typ stravy.') }
-  if (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom) return { result: errorResult(rowNumber, 'Zadaj platne obdobie prace.') }
-  if (!obed && !vecera) return { result: errorResult(rowNumber, 'Vyber aspon jeden narok na stravu.') }
+  if (selfOrderingImport && !registrationGroupId) return { result: errorResult(rowNumber, 'Registracna skupina je povinna.') }
+  if (!selfOrderingImport && (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom)) return { result: errorResult(rowNumber, 'Zadaj platne obdobie prace.') }
+  if (!selfOrderingImport && !obed && !vecera) return { result: errorResult(rowNumber, 'Vyber aspon jeden narok na stravu.') }
   if (registrationGroupId && !activeRegistrationGroupIds.has(registrationGroupId)) return { result: errorResult(rowNumber, 'Registracna skupina neexistuje.') }
   if (email && existingEmails.has(email)) return { result: errorResult(rowNumber, 'Pouzivatel s tymto emailom uz existuje.') }
   if (email && duplicateImportEmails.has(email)) return { result: errorResult(rowNumber, 'Duplicita e-mailu v importovanom subore.') }
 
-  const dates = dateRange(validFrom, validTo)
+  const dates = selfOrderingImport ? [] : dateRange(validFrom, validTo)
 
   if (dates.length > 120) return { result: errorResult(rowNumber, 'Obdobie moze mat najviac 120 dni.') }
 
@@ -161,7 +165,8 @@ function prepareRow(
       accessCodePlain,
       obed,
       vecera,
-      assignQr
+      assignQr,
+      selfOrdering: selfOrderingImport
     }
   }
 }
@@ -182,6 +187,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}))
     const rows = Array.isArray(body.rows) ? body.rows : []
+    const selfOrderingImport = body.selfOrdering === true
 
     if (rows.length === 0) {
       return NextResponse.json({ error: 'Nie je co importovat.' }, { status: 400 })
@@ -227,7 +233,7 @@ export async function POST(req: NextRequest) {
     const preparedRows: PreparedRow[] = []
 
     rows.forEach((row: any) => {
-      const { prepared, result } = prepareRow(row, activeRegistrationGroupIds, existingEmails, duplicateImportEmails)
+      const { prepared, result } = prepareRow(row, activeRegistrationGroupIds, existingEmails, duplicateImportEmails, selfOrderingImport)
 
       if (result) {
         results.push(result)
@@ -261,12 +267,15 @@ export async function POST(req: NextRequest) {
         zdroj: 'PERSONALISTA',
         aktivny: 'ANO',
         registration_group_id: row.registrationGroupId,
+        self_ordering_required: row.selfOrdering,
+        self_ordering_opened_at: null,
+        self_ordering_completed_at: null,
         manual_created_by: currentUser.id,
         updated_at: now
       })), 300)
 
       const registrationPeriodRows = preparedRows
-        .filter(row => row.registrationGroupId)
+        .filter(row => row.registrationGroupId && !row.selfOrdering)
         .map(row => ({
           user_id: row.userId,
           registration_group_id: row.registrationGroupId,
@@ -278,7 +287,7 @@ export async function POST(req: NextRequest) {
 
       await insertInChunks('user_registration_group_periods', registrationPeriodRows, 500)
 
-      await insertInChunks('personnel_work_periods', preparedRows.map(row => ({
+      await insertInChunks('personnel_work_periods', preparedRows.filter(row => !row.selfOrdering).map(row => ({
         user_id: row.userId,
         valid_from: row.validFrom,
         valid_to: row.validTo,
@@ -287,7 +296,7 @@ export async function POST(req: NextRequest) {
         updated_by: currentUser.id
       })), 500)
 
-      const entitlementRows = preparedRows.flatMap(row => (
+      const entitlementRows = preparedRows.filter(row => !row.selfOrdering).flatMap(row => (
         row.dates.map(datum => ({
           user_id: row.userId,
           datum,
@@ -301,6 +310,18 @@ export async function POST(req: NextRequest) {
       ))
 
       await insertInChunks('user_food_entitlements', entitlementRows, 1000)
+
+      const selfOrderingRoleRows = preparedRows
+        .filter(row => row.selfOrdering)
+        .map(row => ({
+          user_id: row.userId,
+          role: 'SAMOSTATNE_OBJEDNAVANIE_STRAVY',
+          active: true,
+          created_by: currentUser.id,
+          updated_at: now
+        }))
+
+      await insertInChunks('app_user_roles', selfOrderingRoleRows, 500)
 
       const accessCodeRows = preparedRows
         .filter(row => row.generateAccessCode && row.accessCodePlain)
@@ -360,6 +381,7 @@ export async function POST(req: NextRequest) {
           vecera: row.vecera,
           qr_assigned: row.assignQr && assignedQrByUserId.has(row.userId),
           access_code_generated: !!row.accessCodePlain,
+          self_ordering: row.selfOrdering,
           import_bulk: true
         }
       }))
@@ -382,7 +404,7 @@ export async function POST(req: NextRequest) {
           status: 'OK',
           userId: row.userId,
           accessCode: row.accessCodePlain,
-          message: 'Importovane.'
+          message: row.selfOrdering ? 'Importovane pre samostatne objednavanie stravy.' : 'Importovane.'
         })
       })
     } catch (err: any) {

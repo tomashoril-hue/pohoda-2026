@@ -42,5 +42,15 @@ export default async function DashboardLayout({
     redirect('/dashboard/vyber-stravy-kiosk')
   }
 
+  if (
+    access.isSelfOrderingMeal &&
+    user.self_ordering_required &&
+    !user.self_ordering_completed_at &&
+    pathname &&
+    pathname !== '/dashboard/objednavanie-stravy'
+  ) {
+    redirect('/dashboard/objednavanie-stravy')
+  }
+
   return children
 }

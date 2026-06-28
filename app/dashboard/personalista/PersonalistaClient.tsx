@@ -113,6 +113,10 @@ type CommunicationSummary = {
   withEmail: number
   welcomeSent: number
   welcomePending: number
+  selfOrderingTotal: number
+  selfOrderingWithEmail: number
+  selfOrderingSent: number
+  selfOrderingPending: number
   withAccessCode: number
   withQr: number
   group?: {
@@ -665,7 +669,8 @@ export default function PersonalistaClient({
     groupCreator: false,
     wristbandKiosk: false,
     menuKiosk: false,
-    offlineObsluha: false
+    offlineObsluha: false,
+    selfOrderingMeal: false
   })
   const [accessCodeLoading, setAccessCodeLoading] = useState(false)
   const [accessCodeLoaded, setAccessCodeLoaded] = useState(false)
@@ -743,6 +748,10 @@ export default function PersonalistaClient({
         withEmail: Number(json.withEmail || 0),
         welcomeSent: Number(json.welcomeSent || 0),
         welcomePending: Number(json.welcomePending || 0),
+        selfOrderingTotal: Number(json.selfOrderingTotal || 0),
+        selfOrderingWithEmail: Number(json.selfOrderingWithEmail || 0),
+        selfOrderingSent: Number(json.selfOrderingSent || 0),
+        selfOrderingPending: Number(json.selfOrderingPending || 0),
         withAccessCode: Number(json.withAccessCode || 0),
         withQr: Number(json.withQr || 0),
         group: json.group
@@ -795,6 +804,35 @@ export default function PersonalistaClient({
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setCommunicationMessage('Chyba spojenia so serverom: ' + message)
+      setCommunicationMessageType('error')
+    } finally {
+      setCommunicationLoading(false)
+    }
+  }
+
+  const sendSelfOrderingEmails = async () => {
+    setCommunicationLoading(true)
+    setCommunicationMessage('')
+    setCommunicationMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/communication/send-self-ordering', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          registrationGroupId: communicationGroupId || '',
+          language: communicationLanguage
+        })
+      })
+      const json = await res.json()
+
+      if (!res.ok || json.error) throw new Error(json.error || 'Odoslanie zlyhalo.')
+
+      setCommunicationMessage(`Samostatné objednávanie: odoslané ${json.sent}, chyby ${json.failed}, zostáva ${json.remaining}.`)
+      setCommunicationMessageType(json.failed ? 'error' : 'ok')
+      await loadCommunicationSummary('', 'communication')
+    } catch (err: any) {
+      setCommunicationMessage(err?.message || 'Odoslanie zlyhalo.')
       setCommunicationMessageType('error')
     } finally {
       setCommunicationLoading(false)
@@ -1512,7 +1550,8 @@ export default function PersonalistaClient({
       groupCreator: selectedPerson.globalRoles.includes('GROUP_CREATOR'),
       wristbandKiosk: selectedPerson.globalRoles.includes('WRISTBAND_KIOSK'),
       menuKiosk: selectedPerson.globalRoles.includes('MENU_KIOSK'),
-      offlineObsluha: selectedPerson.globalRoles.includes('OFFLINE_OBSLUHA')
+      offlineObsluha: selectedPerson.globalRoles.includes('OFFLINE_OBSLUHA'),
+      selfOrderingMeal: selectedPerson.globalRoles.includes('SAMOSTATNE_OBJEDNAVANIE_STRAVY')
     })
     const preservedMessage = preservedDetailMessageRef.current
 
@@ -3646,7 +3685,8 @@ export default function PersonalistaClient({
       ...(roleForm.groupCreator ? ['GROUP_CREATOR'] : []),
       ...(roleForm.wristbandKiosk ? ['WRISTBAND_KIOSK'] : []),
       ...(roleForm.menuKiosk ? ['MENU_KIOSK'] : []),
-      ...(roleForm.offlineObsluha ? ['OFFLINE_OBSLUHA'] : [])
+      ...(roleForm.offlineObsluha ? ['OFFLINE_OBSLUHA'] : []),
+      ...(roleForm.selfOrderingMeal ? ['SAMOSTATNE_OBJEDNAVANIE_STRAVY'] : [])
     ]
 
     postDetailAction(
@@ -4109,6 +4149,15 @@ export default function PersonalistaClient({
             >
               Odoslať ďalšiu dávku 50
             </button>
+
+            <button
+              type="button"
+              style={styles.confirmButtonPurple}
+              disabled={communicationLoading || !communicationSummary?.selfOrderingPending}
+              onClick={() => void sendSelfOrderingEmails()}
+            >
+              Samostatné objednávanie stravy
+            </button>
           </div>
 
           {communicationSummary && (
@@ -4117,6 +4166,9 @@ export default function PersonalistaClient({
               <div style={styles.toolStat}><b>{communicationSummary.withEmail}</b><span>S e-mailom</span></div>
               <div style={styles.toolStat}><b>{communicationSummary.welcomeSent}</b><span>Uvítací odoslaný</span></div>
               <div style={styles.toolStatWarning}><b>{communicationSummary.welcomePending}</b><span>Čaká na odoslanie</span></div>
+              <div style={styles.toolStatBlue}><b>{communicationSummary.selfOrderingTotal}</b><span>Samostatné objednávanie</span></div>
+              <div style={styles.toolStatGreen}><b>{communicationSummary.selfOrderingSent}</b><span>Objednávanie odoslané</span></div>
+              <div style={styles.toolStatWarning}><b>{communicationSummary.selfOrderingPending}</b><span>Objednávanie čaká</span></div>
             </div>
           )}
 
@@ -7529,6 +7581,20 @@ export default function PersonalistaClient({
                       />
                       <span>OFFLINE_OBSLUHA</span>
                     </label>
+
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={roleForm.selfOrderingMeal}
+                        onChange={event => setRoleForm(prev => ({
+                          ...prev,
+                          selfOrderingMeal: event.target.checked
+                        }))}
+                        disabled={detailLoading}
+                        style={styles.checkbox}
+                      />
+                      <span>Samostatné objednávanie stravy</span>
+                    </label>
                   </div>
 
                   <button
@@ -8699,6 +8765,26 @@ const styles: Record<string, CSSProperties> = {
     minHeight: 44,
     color: '#9a3412'
   },
+  toolStatBlue: {
+    border: '1px solid #bfdbfe',
+    borderRadius: 6,
+    background: '#eff6ff',
+    padding: '6px 8px',
+    display: 'grid',
+    gap: 2,
+    minHeight: 44,
+    color: '#1d4ed8'
+  },
+  toolStatGreen: {
+    border: '1px solid #bbf7d0',
+    borderRadius: 6,
+    background: '#f0fdf4',
+    padding: '6px 8px',
+    display: 'grid',
+    gap: 2,
+    minHeight: 44,
+    color: '#166534'
+  },
   managerResultList: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 190px), 1fr))',
@@ -9247,6 +9333,16 @@ const styles: Record<string, CSSProperties> = {
     background: '#22c55e',
     color: '#052e16',
     border: '1px solid #16a34a',
+    borderRadius: 5,
+    padding: '7px 9px',
+    fontSize: 12,
+    fontWeight: 950,
+    cursor: 'pointer'
+  },
+  confirmButtonPurple: {
+    background: '#7417e8',
+    color: '#fff',
+    border: '1px solid #4c1d95',
     borderRadius: 5,
     padding: '7px 9px',
     fontSize: 12,

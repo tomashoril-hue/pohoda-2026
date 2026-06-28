@@ -30,6 +30,12 @@ type Deadline = {
   locked: boolean
 }
 
+type Entitlement = {
+  datum: string
+  obed: boolean
+  vecera: boolean
+}
+
 type DeadlineState = {
   locked: boolean
   blockedByAdmin: boolean
@@ -73,6 +79,7 @@ export default function MenuClient({
   menu,
   selections,
   deadlines,
+  entitlements = null,
   submitUrl = '/api/menu/select',
   submitExtraBody,
   kioskMode = false,
@@ -91,6 +98,7 @@ export default function MenuClient({
   menu: MenuItem[]
   selections: Selection[]
   deadlines: Deadline[]
+  entitlements?: Entitlement[] | null
   submitUrl?: string
   submitExtraBody?: Record<string, string>
   kioskMode?: boolean
@@ -195,6 +203,13 @@ export default function MenuClient({
       localSelections.find((s) => s.datum === datum && s.typ_jedla === typ)
         ?.volba || null
     )
+  }
+
+  const hasMealEntitlement = (datum: string, typ: MealType) => {
+    if (!Array.isArray(entitlements)) return true
+
+    const entitlement = entitlements.find((item) => item.datum === datum)
+    return typ === 'OBED' ? !!entitlement?.obed : !!entitlement?.vecera
   }
 
   const formatDateLabel = (date: string) => {
@@ -328,6 +343,13 @@ export default function MenuClient({
       return
     }
 
+    if (!hasMealEntitlement(datum, typ)) {
+      setMessage(isEnglish
+        ? 'You do not have meal entitlement for this day.'
+        : 'Nemáš nárok na stravu pre tento deň.')
+      return
+    }
+
     const key = `${datum}-${typ}`
     const optionKey = `${key}-${volba}`
     setSavingKey(key)
@@ -406,6 +428,8 @@ export default function MenuClient({
     const noInterestSelected = selectedVariant === 'BEZ_ZAUJMU'
     const isSaving = savingKey === `${selectedDate}-${typ}`
     const state = getDeadlineState(selectedDate, typ)
+    const mealEntitlement = hasMealEntitlement(selectedDate, typ)
+    const mealDisabled = state.locked || !mealEntitlement
 
     return (
       <section
@@ -414,8 +438,8 @@ export default function MenuClient({
           borderRadius: 24,
           padding: 16,
           marginBottom: 18,
-          background: state.locked ? '#e8e8e8' : '#fff',
-          opacity: state.locked ? 0.88 : 1,
+          background: mealDisabled ? '#e8e8e8' : '#fff',
+          opacity: mealDisabled ? 0.88 : 1,
         }}
       >
         <div
@@ -438,7 +462,20 @@ export default function MenuClient({
               {typ === 'OBED' ? (isEnglish ? 'LUNCH' : 'OBED') : (isEnglish ? 'DINNER' : 'VEČERA')}
             </h2>
 
-            {state.deadlineText && (
+            {!mealEntitlement ? (
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 13,
+                  fontWeight: 900,
+                  color: '#b91c1c',
+                }}
+              >
+                {isEnglish
+                  ? 'You do not have meal entitlement for this day.'
+                  : 'Nemáš nárok na stravu pre tento deň.'}
+              </div>
+            ) : state.deadlineText && (
               <div
                 style={{
                   marginTop: 6,
@@ -454,7 +491,9 @@ export default function MenuClient({
           <div
             className={state.danger ? 'deadline-blink' : ''}
             style={{
-              background: state.locked
+              background: !mealEntitlement
+                ? '#b91c1c'
+                : state.locked
                 ? '#000'
                 : state.danger
                   ? '#ff2b2b'
@@ -465,7 +504,7 @@ export default function MenuClient({
                       : selected
                       ? '#56db3f'
                       : '#fff176',
-              color: state.locked || state.danger || noInterestSelected ? '#fff' : '#000',
+              color: !mealEntitlement || state.locked || state.danger || noInterestSelected ? '#fff' : '#000',
               border: '3px solid #000',
               borderRadius: 999,
               padding: '7px 13px',
@@ -475,7 +514,9 @@ export default function MenuClient({
               minWidth: 150,
             }}
           >
-            {state.locked
+            {!mealEntitlement
+              ? (isEnglish ? 'NO ENTITLEMENT' : 'BEZ NÁROKU')
+              : state.locked
               ? state.label
                 : state.showCountdown
                   ? `${isEnglish ? 'DEADLINE' : 'UZÁVIERKA'} ${state.countdown}`
@@ -503,7 +544,7 @@ export default function MenuClient({
               <button
                 key={item.id}
                 onClick={() => handleSelect(selectedDate, typ, item.varianta)}
-                disabled={isSaving || state.locked || !online}
+                disabled={isSaving || mealDisabled || !online}
                 style={{
                   textAlign: 'left',
                   minHeight: 150,
@@ -511,11 +552,11 @@ export default function MenuClient({
                   border: '3px solid #000',
                   borderRadius: 22,
                   background: isPressed ? '#fff176' : active ? '#56db3f' : '#fff',
-                  boxShadow: isPressed ? '2px 2px 0 #000' : active && !state.locked ? '6px 6px 0 #000' : 'none',
-                  cursor: state.locked || !online ? 'not-allowed' : isSaving ? 'wait' : 'pointer',
-                  opacity: (state.locked || !online) && !active ? 0.45 : 1,
+                  boxShadow: isPressed ? '2px 2px 0 #000' : active && !mealDisabled ? '6px 6px 0 #000' : 'none',
+                  cursor: mealDisabled || !online ? 'not-allowed' : isSaving ? 'wait' : 'pointer',
+                  opacity: (mealDisabled || !online) && !active ? 0.45 : 1,
                   fontFamily: 'Arial, Helvetica, sans-serif',
-                  filter: (state.locked || !online) && !active ? 'grayscale(1)' : 'none',
+                  filter: (mealDisabled || !online) && !active ? 'grayscale(1)' : 'none',
                   transform: isPressed ? 'translate(4px, 4px)' : 'translate(0, 0)',
                   transition: 'transform 120ms ease, box-shadow 120ms ease, background 120ms ease',
                 }}
@@ -582,7 +623,7 @@ export default function MenuClient({
               <button
                 key={`${typ}-bez-zaujmu`}
                 onClick={() => handleSelect(selectedDate, typ, 'BEZ_ZAUJMU')}
-                disabled={isSaving || state.locked || !online}
+                disabled={isSaving || mealDisabled || !online}
                 style={{
                   textAlign: 'left',
                   minHeight: 150,
@@ -590,11 +631,11 @@ export default function MenuClient({
                   border: '3px solid #000',
                   borderRadius: 22,
                   background: isPressed ? '#fff176' : active ? '#ff8a8a' : '#fff7ed',
-                  boxShadow: isPressed ? '2px 2px 0 #000' : active && !state.locked ? '6px 6px 0 #000' : 'none',
-                  cursor: state.locked || !online ? 'not-allowed' : isSaving ? 'wait' : 'pointer',
-                  opacity: (state.locked || !online) && !active ? 0.45 : 1,
+                  boxShadow: isPressed ? '2px 2px 0 #000' : active && !mealDisabled ? '6px 6px 0 #000' : 'none',
+                  cursor: mealDisabled || !online ? 'not-allowed' : isSaving ? 'wait' : 'pointer',
+                  opacity: (mealDisabled || !online) && !active ? 0.45 : 1,
                   fontFamily: 'Arial, Helvetica, sans-serif',
-                  filter: (state.locked || !online) && !active ? 'grayscale(1)' : 'none',
+                  filter: (mealDisabled || !online) && !active ? 'grayscale(1)' : 'none',
                   transform: isPressed ? 'translate(4px, 4px)' : 'translate(0, 0)',
                   transition: 'transform 120ms ease, box-shadow 120ms ease, background 120ms ease',
                 }}

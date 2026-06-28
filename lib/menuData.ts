@@ -21,7 +21,7 @@ export async function loadMenuSelectionData(userId: string, days = 6) {
   endDate.setDate(endDate.getDate() + days)
   const end = endDate.toISOString().slice(0, 10)
 
-  const [menuResult, selectionsResult, deadlinesResult] = await Promise.all([
+  const [menuResult, selectionsResult, deadlinesResult, entitlementsResult] = await Promise.all([
     supabaseServer
       .from('jedalny_listok')
       .select('*')
@@ -41,17 +41,25 @@ export async function loadMenuSelectionData(userId: string, days = 6) {
       .from('menu_deadlines')
       .select('datum, typ_jedla, deadline_at, locked')
       .gte('datum', today)
+      .lte('datum', end),
+    supabaseServer
+      .from('user_food_entitlements')
+      .select('datum, obed, vecera')
+      .eq('user_id', userId)
+      .gte('datum', today)
       .lte('datum', end)
   ])
 
   if (menuResult.error) throw new Error(menuResult.error.message)
   if (selectionsResult.error) throw new Error(selectionsResult.error.message)
   if (deadlinesResult.error) throw new Error(deadlinesResult.error.message)
+  if (entitlementsResult.error) throw new Error(entitlementsResult.error.message)
 
   return {
     today,
     menu: menuResult.data || [],
     selections: selectionsResult.data || [],
-    deadlines: deadlinesResult.data || []
+    deadlines: deadlinesResult.data || [],
+    entitlements: entitlementsResult.data || []
   }
 }

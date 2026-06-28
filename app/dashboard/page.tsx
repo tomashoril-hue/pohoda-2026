@@ -461,6 +461,7 @@ export default async function DashboardPage({
   const canOpenMenuKiosk = globalAccess.canUseMenuKiosk
   const canOpenOfflineIssue = globalAccess.canUseOfflineIssue
   const canOpenAccessCodesShare = canOpenPersonalista || managedRegistrationGroupIds.length > 0
+  const canOpenSelfOrdering = globalAccess.isSelfOrderingMeal
 
   const getSelection = (typJedla: string) => {
     return (selections || []).find((item: any) => item.typ_jedla === typJedla)
@@ -747,6 +748,12 @@ export default async function DashboardPage({
             <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>{copy.food}</span>
             <b className="dashboard-menu-title" style={styles.menuTileTitle}>{copy.mealSelection}</b>
           </a>
+          {canOpenSelfOrdering && (
+            <Link className="dashboard-menu-tile" href="/dashboard/objednavanie-stravy" style={{ ...styles.menuTile, ...styles.menuTilePink }}>
+              <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>{copy.food}</span>
+              <b className="dashboard-menu-title" style={styles.menuTileTitle}>{language === 'EN' ? 'Meal ordering' : 'Objednávanie stravy'}</b>
+            </Link>
+          )}
           <Link className="dashboard-menu-tile" href="/dashboard/naroky" style={{ ...styles.menuTile, ...styles.menuTileWhite }}>
             <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>{copy.overview}</span>
             <b className="dashboard-menu-title" style={styles.menuTileTitle}>{copy.foodEntitlements}</b>

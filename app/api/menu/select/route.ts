@@ -91,6 +91,23 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  const { data: entitlement, error: entitlementError } = await supabaseServer
+    .from('user_food_entitlements')
+    .select('obed, vecera')
+    .eq('user_id', user.id)
+    .eq('datum', datum)
+    .maybeSingle()
+
+  if (entitlementError) {
+    return NextResponse.json({ error: entitlementError.message }, { status: 500 })
+  }
+
+  const hasEntitlement = typ_jedla === 'OBED' ? !!entitlement?.obed : !!entitlement?.vecera
+
+  if (!hasEntitlement) {
+    return NextResponse.json({ error: 'Nemáš nárok na stravu pre tento deň.' }, { status: 403 })
+  }
+
   if (volba !== 'BEZ_ZAUJMU') {
     const { data: menuItem, error: menuError } = await supabaseServer
       .from('jedalny_listok')

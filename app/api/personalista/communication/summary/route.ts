@@ -123,6 +123,27 @@ async function getUserIdSetByChunks(table: string, userIds: string[], configure:
   return result
 }
 
+async function getSelfOrderingUserIds(candidateUserIds: string[]) {
+  const result = new Set<string>()
+
+  for (const chunk of chunkArray(candidateUserIds, 500)) {
+    const { data, error } = await supabaseServer
+      .from('app_user_roles')
+      .select('user_id')
+      .in('user_id', chunk)
+      .eq('role', 'SAMOSTATNE_OBJEDNAVANIE_STRAVY')
+      .eq('active', true)
+
+    if (error) throw error
+
+    ;(data || []).forEach((row: any) => {
+      if (row.user_id) result.add(row.user_id)
+    })
+  }
+
+  return result
+}
+
 export async function GET(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser()
@@ -180,6 +201,19 @@ export async function GET(req: NextRequest) {
       ? await getUserIdSetByChunks('user_qr_codes', activeUserIds, query => query.eq('active', true))
       : new Set<string>()
     const withEmail = activeUsers.filter((user: any) => text(user.email)).length
+    const selfOrderingUserIds = activeUserIds.length > 0
+      ? await getSelfOrderingUserIds(activeUserIds)
+      : new Set<string>()
+    const selfOrderingEmailUserIds = new Set(
+      activeUsers
+        .filter((user: any) => text(user.email) && selfOrderingUserIds.has(user.id))
+        .map((user: any) => user.id)
+    )
+    const selfOrderingSentUserIds = selfOrderingEmailUserIds.size > 0
+      ? await getUserIdSetByChunks('personnel_email_log', Array.from(selfOrderingEmailUserIds), query => query
+        .eq('type', 'SELF_ORDERING_INVITE')
+        .eq('status', 'SENT'))
+      : new Set<string>()
 
     return NextResponse.json({
       ok: true,
@@ -188,6 +222,10 @@ export async function GET(req: NextRequest) {
       withEmail,
       welcomeSent: sentUserIds.size,
       welcomePending: Math.max(0, withEmail - sentUserIds.size),
+      selfOrderingTotal: selfOrderingUserIds.size,
+      selfOrderingWithEmail: selfOrderingEmailUserIds.size,
+      selfOrderingSent: selfOrderingSentUserIds.size,
+      selfOrderingPending: Math.max(0, selfOrderingEmailUserIds.size - selfOrderingSentUserIds.size),
       withAccessCode: codeUserIds.size,
       withQr: qrUserIds.size
     })

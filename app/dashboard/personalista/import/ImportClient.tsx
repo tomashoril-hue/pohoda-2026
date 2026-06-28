@@ -195,6 +195,7 @@ export default function ImportClient({
   const [selectedRows, setSelectedRows] = useState<number[]>([])
   const [bulkEdit, setBulkEdit] = useState<BulkEdit>(emptyBulkEdit())
   const [activeTool, setActiveTool] = useState<'bulk' | ''>('')
+  const [selfOrderingImport, setSelfOrderingImport] = useState(false)
   const [tableRegistrationGroupFilterId, setTableRegistrationGroupFilterId] = useState('')
   const [loading, setLoading] = useState(false)
   const [activeAction, setActiveAction] = useState('')
@@ -294,10 +295,13 @@ export default function ImportClient({
       } else if (next.registrationGroupChoice === REGISTRATION_GROUP_UNRESOLVED) {
         next.status = 'ERROR'
         next.message = 'Vyber registračnú skupinu alebo Bez registračnej skupiny.'
-      } else if (!next.validFrom || !next.validTo || next.validTo < next.validFrom) {
+      } else if (selfOrderingImport && (next.registrationGroupChoice === REGISTRATION_GROUP_NONE || !next.registrationGroupId)) {
+        next.status = 'ERROR'
+        next.message = 'Pre samostatné objednávanie vyber registračnú skupinu.'
+      } else if (!selfOrderingImport && (!next.validFrom || !next.validTo || next.validTo < next.validFrom)) {
         next.status = 'ERROR'
         next.message = 'Neplatne datumy od/do.'
-      } else if (!next.obed && !next.vecera) {
+      } else if (!selfOrderingImport && !next.obed && !next.vecera) {
         next.status = 'SKIP'
         next.message = 'Bez naroku na obed alebo veceru.'
       } else {
@@ -375,7 +379,7 @@ export default function ImportClient({
       } else if (registrationGroupChoice === REGISTRATION_GROUP_UNRESOLVED) {
         status = 'ERROR'
         rowMessage = 'Vyber registračnú skupinu alebo Bez registračnej skupiny.'
-      } else if (!obed && !vecera) {
+      } else if (!selfOrderingImport && !obed && !vecera) {
         status = 'SKIP'
         rowMessage = 'Bez naroku na obed alebo veceru.'
       }
@@ -436,6 +440,7 @@ export default function ImportClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          selfOrdering: selfOrderingImport,
           rows: readyRows.map(row => ({
             rowNumber: row.rowNumber,
             meno: row.meno,
@@ -555,11 +560,11 @@ export default function ImportClient({
         return { ...next, status: 'ERROR', message: 'Vyber registračnú skupinu alebo Bez registračnej skupiny.' }
       }
 
-      if (!next.validFrom || !next.validTo || next.validTo < next.validFrom) {
+      if (!selfOrderingImport && (!next.validFrom || !next.validTo || next.validTo < next.validFrom)) {
         return { ...next, status: 'ERROR', message: 'Neplatne datumy od/do.' }
       }
 
-      if (!next.obed && !next.vecera) {
+      if (!selfOrderingImport && !next.obed && !next.vecera) {
         return { ...next, status: 'SKIP', message: 'Bez naroku na obed alebo veceru.' }
       }
 
@@ -614,6 +619,35 @@ export default function ImportClient({
             Nacitat subor
           </label>
         </div>
+
+        <label style={styles.checkboxCard}>
+          <input
+            type="checkbox"
+            checked={selfOrderingImport}
+            onChange={event => {
+              setSelfOrderingImport(event.target.checked)
+              setRows(current => current.map(row => {
+                if (row.status === 'OK') return row
+                if (event.target.checked && row.status !== 'SKIP') {
+                  if (row.registrationGroupChoice === REGISTRATION_GROUP_UNRESOLVED) {
+                    return { ...row, status: 'ERROR', message: 'Vyber registračnú skupinu.' }
+                  }
+                  if (row.registrationGroupChoice === REGISTRATION_GROUP_NONE || !row.registrationGroupId) {
+                    return { ...row, status: 'ERROR', message: 'Pre samostatné objednávanie vyber registračnú skupinu.' }
+                  }
+                  return { ...row, status: 'READY', message: '' }
+                }
+                if (!event.target.checked && (!row.obed && !row.vecera)) return { ...row, status: 'SKIP', message: 'Bez naroku na obed alebo veceru.' }
+                return row
+              }))
+            }}
+            disabled={loading}
+          />
+          <span>
+            <b>Samostatné objednávanie stravy</b>
+            <small>Import vytvorí ľudí s QR kódom a právom objednať si stravu. Nevytvára dátumy, zaradenia ani nároky.</small>
+          </span>
+        </label>
 
         <div style={styles.fileRow}>
           {sourceFileName && (
@@ -1071,6 +1105,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     fontWeight: 850,
     overflowWrap: 'anywhere'
+  },
+  checkboxCard: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 10,
+    border: '1px solid #c4b5fd',
+    borderRadius: 12,
+    padding: 12,
+    background: '#f5f3ff',
+    color: '#2e1065',
+    fontSize: 12,
+    fontWeight: 850
   },
   primaryButton: {
     border: '1px solid #16a34a',
