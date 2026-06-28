@@ -8,6 +8,7 @@ import { checkActorRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 const WELCOME_EMAIL_BATCH_SIZE = 50
+const EMAIL_SEND_CONCURRENCY = 5
 
 function text(value: any) {
   return String(value || '').trim()
@@ -21,6 +22,26 @@ function chunkArray<T>(items: T[], size: number) {
   }
 
   return chunks
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<R>
+) {
+  const results: R[] = []
+  let nextIndex = 0
+  const workerCount = Math.min(Math.max(1, concurrency), items.length)
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex
+      nextIndex += 1
+      results[currentIndex] = await worker(items[currentIndex])
+    }
+  }))
+
+  return results
 }
 
 function languageValue(value: any) {
@@ -213,13 +234,11 @@ export async function POST(req: NextRequest) {
       .filter((user: any) => resend || !sentUserIds.has(user.id))
     const targetUsers = pendingUsers.slice(0, WELCOME_EMAIL_BATCH_SIZE)
     const loginUrl = `${process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin}/login`
-    let sent = 0
-    let failed = 0
 
-    for (const user of targetUsers) {
+    const sendResults = await mapWithConcurrency(targetUsers, EMAIL_SEND_CONCURRENCY, async (user) => {
       const email = text(user.email).toLowerCase()
 
-      if (!email) continue
+      if (!email) return { sent: 0, failed: 0 }
 
       try {
         const qrAttachment = await createQrPngAttachment(user.qr_code || '', 'pohodapass-qr')
@@ -246,7 +265,7 @@ export async function POST(req: NextRequest) {
           sent_by: currentUser.id
         })
 
-        sent += 1
+        return { sent: 1, failed: 0 }
       } catch (err: any) {
         await supabaseServer.from('personnel_email_log').insert({
           user_id: user.id,
@@ -257,9 +276,11 @@ export async function POST(req: NextRequest) {
           sent_by: currentUser.id
         })
 
-        failed += 1
+        return { sent: 0, failed: 1 }
       }
-    }
+    })
+    const sent = sendResults.reduce((sum, result) => sum + result.sent, 0)
+    const failed = sendResults.reduce((sum, result) => sum + result.failed, 0)
 
     return NextResponse.json({
       ok: true,
