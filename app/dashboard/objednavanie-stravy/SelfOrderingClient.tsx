@@ -43,6 +43,15 @@ function mealShort(value: MealType) {
   return value === 'OBED' ? 'O' : 'V'
 }
 
+function HomeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+      <path d="M3.5 10.8 12 3.8l8.5 7v9.1a.9.9 0 0 1-.9.9h-5.1v-6.2h-5v6.2H4.4a.9.9 0 0 1-.9-.9v-9.1Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M2.5 11.6 12 3.8l9.5 7.8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function formatWeekday(value: string, language: AppLanguage) {
   return new Date(`${value}T12:00:00`).toLocaleDateString(localeFor(language), {
     weekday: 'short'
@@ -230,7 +239,7 @@ export default function SelfOrderingClient({
           .self-order-user {
             font-size: 10px !important;
             padding: 4px 7px !important;
-            max-width: 172px !important;
+            max-width: min(70vw, 300px) !important;
           }
 
           .self-order-card {
@@ -283,7 +292,9 @@ export default function SelfOrderingClient({
           <div className="self-order-date" style={styles.date}>8. & 9. - 11. 7. 2026</div>
         </div>
         <div style={styles.topControls}>
-          <Link href="/dashboard" style={styles.backButton}>{copy.back}</Link>
+          <Link href="/dashboard" style={styles.homeButton} title={copy.backToDashboard} aria-label={copy.backToDashboard}>
+            <HomeIcon />
+          </Link>
         </div>
       </div>
 
@@ -439,20 +450,24 @@ const styles: Record<string, CSSProperties> = {
     padding: '5px 9px',
     fontSize: 11,
     fontWeight: 850,
-    maxWidth: 238,
+    width: 'fit-content',
+    maxWidth: 'min(78vw, 420px)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap'
   },
-  backButton: {
+  homeButton: {
     color: '#1f2937',
     background: '#fff',
     border: '1px solid #d7d3e8',
-    borderRadius: 999,
-    padding: '7px 11px',
+    borderRadius: 12,
+    width: 38,
+    height: 38,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     textDecoration: 'none',
-    fontSize: 12,
-    fontWeight: 900
+    boxShadow: '0 6px 14px rgba(31, 24, 61, 0.14)'
   },
   card: {
     maxWidth: 760,
