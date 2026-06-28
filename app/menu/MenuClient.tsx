@@ -37,6 +37,13 @@ type Entitlement = {
   vecera: boolean
 }
 
+type CachedMenuSelections = {
+  version: 1
+  userId: string
+  savedAt: string
+  selections: Selection[]
+}
+
 type DeadlineState = {
   locked: boolean
   blockedByAdmin: boolean
@@ -70,6 +77,63 @@ function variantLabel(value: string | null | undefined, language: AppLanguage = 
 function noInterestLabel(meal: MealType, language: AppLanguage = 'SK') {
   if (language === 'EN') return meal === 'OBED' ? 'I do not want lunch' : 'I do not want dinner'
   return meal === 'OBED' ? 'Nemám záujem o obed' : 'Nemám záujem o večeru'
+}
+
+const menuSelectionsCacheKey = (userId: string) => `pohoda-pass:menu-selections:v1:${userId}`
+
+function normalizeSelectionsForCache(userId: string, input: Selection[]) {
+  const map = new Map<string, Selection>()
+
+  input.forEach((selection) => {
+    const typ = selection.typ_jedla === 'VECERA' ? 'VECERA' : selection.typ_jedla === 'OBED' ? 'OBED' : null
+    const volba = normalizeVariant(selection.volba)
+
+    if (!typ || !volba || !/^\d{4}-\d{2}-\d{2}$/.test(selection.datum)) return
+
+    map.set(`${selection.datum}-${typ}`, {
+      user_id: userId,
+      datum: selection.datum,
+      typ_jedla: typ,
+      volba,
+    })
+  })
+
+  return Array.from(map.values())
+    .sort((a, b) => `${a.datum}-${a.typ_jedla}`.localeCompare(`${b.datum}-${b.typ_jedla}`))
+    .slice(-120)
+}
+
+function readCachedMenuSelections(userId: string) {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const raw = window.localStorage.getItem(menuSelectionsCacheKey(userId))
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw) as Partial<CachedMenuSelections>
+    if (parsed.version !== 1 || parsed.userId !== userId || !Array.isArray(parsed.selections)) return null
+
+    return normalizeSelectionsForCache(userId, parsed.selections)
+  } catch {
+    return null
+  }
+}
+
+function writeCachedMenuSelections(userId: string, selections: Selection[]) {
+  if (typeof window === 'undefined') return
+
+  try {
+    const payload: CachedMenuSelections = {
+      version: 1,
+      userId,
+      savedAt: new Date().toISOString(),
+      selections: normalizeSelectionsForCache(userId, selections),
+    }
+
+    window.localStorage.setItem(menuSelectionsCacheKey(userId), JSON.stringify(payload))
+  } catch {
+    // Local cache is only a fallback for offline display.
+  }
 }
 
 function HomeIcon() {
@@ -146,6 +210,18 @@ export default function MenuClient({
 
     return () => clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    if (kioskMode || typeof navigator === 'undefined') return
+
+    if (navigator.onLine) {
+      writeCachedMenuSelections(userId, selections)
+      return
+    }
+
+    const cachedSelections = readCachedMenuSelections(userId)
+    if (cachedSelections) setLocalSelections(cachedSelections)
+  }, [kioskMode, selections, userId])
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') return
@@ -404,7 +480,7 @@ export default function MenuClient({
         (s) => !(s.datum === datum && s.typ_jedla === typ)
       )
 
-      return [
+      const nextSelections = [
         ...filtered,
         {
           user_id: userId,
@@ -413,6 +489,10 @@ export default function MenuClient({
           volba,
         },
       ]
+
+      if (!kioskMode) writeCachedMenuSelections(userId, nextSelections)
+
+      return nextSelections
     })
 
     setMessage(isEnglish ? 'Selection saved.' : 'Výber bol uložený.')
