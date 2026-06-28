@@ -241,9 +241,10 @@ export default function UpravaBrigadnikovClient({
         }
 
         @media (max-width: 720px) {
-          .brigadnici-page { padding: 12px !important; }
-          .brigadnici-card { padding: 16px !important; border-radius: 22px !important; box-shadow: 7px 7px 0 #000 !important; }
-          .brigadnici-title { font-size: 30px !important; }
+          .brigadnici-page { padding: 10px !important; }
+          .brigadnici-card { padding: 10px !important; border-radius: 8px !important; }
+          .brigadnici-header { padding: 14px !important; }
+          .brigadnici-title { font-size: 25px !important; }
           .brigadnici-grid { grid-template-columns: 1fr !important; }
           .brigadnici-actions { grid-template-columns: 1fr 1fr !important; }
           .brigadnici-person-row { grid-template-columns: 32px 1fr !important; }
@@ -252,7 +253,7 @@ export default function UpravaBrigadnikovClient({
       `}</style>
 
       <section className="brigadnici-card" style={styles.card}>
-        <header style={styles.header}>
+        <header className="brigadnici-header" style={styles.header}>
           <div>
             <div style={styles.kicker}>Registracne skupiny</div>
             <h1 className="brigadnici-title" style={styles.title}>Úprava brigádnikov</h1>
@@ -390,86 +391,95 @@ export default function UpravaBrigadnikovClient({
   )
 }
 
+const buttonBase: React.CSSProperties = {
+  minHeight: 38,
+  borderRadius: 6,
+  padding: '0 12px',
+  fontSize: 13,
+  fontWeight: 900,
+  fontFamily: 'Arial, Helvetica, sans-serif',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  textDecoration: 'none',
+  boxSizing: 'border-box'
+}
+
 const styles: Record<string, React.CSSProperties> = {
   page: {
-    minHeight: '100vh',
-    background: 'linear-gradient(135deg, #7417e8 0%, #ed59dc 45%, #56db3f 100%)',
-    padding: 24,
+    minHeight: '100dvh',
+    background: '#f3f4f6',
+    padding: 14,
     fontFamily: 'Arial, Helvetica, sans-serif',
-    color: '#000'
+    color: '#111827'
   },
   card: {
-    maxWidth: 980,
+    maxWidth: 1040,
+    width: '100%',
     margin: '0 auto',
     background: '#fff',
-    border: '4px solid #000',
-    borderRadius: 28,
-    padding: 26,
-    boxShadow: '12px 12px 0 #000',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 14,
     display: 'grid',
-    gap: 14
+    gap: 12,
+    boxSizing: 'border-box'
   },
   header: {
+    background: '#111827',
+    color: '#fff',
+    borderRadius: 8,
+    padding: 16,
     display: 'flex',
     justifyContent: 'space-between',
     gap: 16,
-    alignItems: 'flex-start'
+    alignItems: 'center',
+    flexWrap: 'wrap'
   },
   kicker: {
     fontSize: 12,
     fontWeight: 950,
-    textTransform: 'uppercase',
-    color: '#7417e8'
+    color: '#86efac'
   },
   title: {
     margin: '4px 0 0 0',
-    fontSize: 42,
-    lineHeight: 1,
+    fontSize: 30,
+    lineHeight: 1.05,
     fontWeight: 950
   },
   subtitle: {
     margin: '8px 0 0 0',
     maxWidth: 640,
-    fontSize: 14,
-    fontWeight: 800,
-    color: '#4b5563',
+    fontSize: 13,
+    fontWeight: 750,
+    color: '#d1d5db',
     lineHeight: 1.35
   },
   homeButton: {
-    minHeight: 42,
-    borderRadius: 999,
-    background: '#000',
-    color: '#56db3f',
-    border: '3px solid #000',
-    padding: '0 16px',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 13,
-    fontWeight: 950,
-    textDecoration: 'none',
-    boxShadow: '4px 4px 0 #000'
+    ...buttonBase,
+    background: '#fff',
+    color: '#111827',
+    border: '1px solid #e5e7eb'
   },
   settingsGrid: {
     display: 'grid',
     gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(3, minmax(140px, 1fr))',
-    gap: 10
+    gap: 8
   },
   field: {
     display: 'grid',
     gap: 5,
-    fontSize: 11,
-    fontWeight: 950,
-    textTransform: 'uppercase',
-    color: '#4b5563'
+    fontSize: 12,
+    fontWeight: 900,
+    color: '#334155'
   },
   input: {
-    minHeight: 42,
-    borderRadius: 12,
-    border: '3px solid #000',
-    padding: '0 11px',
+    minHeight: 38,
+    borderRadius: 6,
+    border: '1px solid #cbd5e1',
+    padding: '0 10px',
     fontSize: 14,
-    fontWeight: 850,
+    fontWeight: 800,
     background: '#fff',
     color: '#111827',
     boxSizing: 'border-box',
@@ -477,133 +487,126 @@ const styles: Record<string, React.CSSProperties> = {
   },
   claimBox: {
     display: 'flex',
-    gap: 10,
+    gap: 8,
     flexWrap: 'wrap',
     alignItems: 'center'
   },
   checkCard: {
-    minHeight: 42,
-    borderRadius: 14,
-    border: '3px solid #000',
-    padding: '0 14px',
+    minHeight: 38,
+    borderRadius: 6,
+    border: '1px solid #cbd5e1',
+    padding: '0 12px',
     display: 'inline-flex',
     alignItems: 'center',
     gap: 8,
-    fontSize: 14,
-    fontWeight: 950,
-    background: '#fef3c7'
+    fontSize: 13,
+    fontWeight: 900,
+    background: '#f8fafc',
+    color: '#111827'
   },
   summary: {
-    border: '3px solid #000',
-    borderRadius: 16,
-    padding: 12,
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 10,
     display: 'flex',
     flexWrap: 'wrap',
     gap: '8px 14px',
     alignItems: 'center',
-    background: '#f3f4f6',
+    background: '#f8fafc',
     fontSize: 13,
-    fontWeight: 850
+    fontWeight: 800,
+    color: '#334155'
   },
   message: {
-    border: '2px solid',
-    borderRadius: 12,
-    padding: 12,
+    border: '1px solid',
+    borderRadius: 8,
+    padding: 10,
     fontSize: 13,
-    fontWeight: 900
+    fontWeight: 850
   },
   actionBar: {
     display: 'grid',
     gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-    gap: 10
+    gap: 8
   },
   primaryButton: {
-    minHeight: 42,
-    borderRadius: 14,
-    border: '3px solid #000',
-    background: '#56db3f',
-    color: '#000',
-    fontSize: 13,
-    fontWeight: 950,
-    boxShadow: '4px 4px 0 #000'
+    ...buttonBase,
+    border: '1px solid #15803d',
+    background: '#16a34a',
+    color: '#fff'
   },
   lightButton: {
-    minHeight: 42,
-    borderRadius: 14,
-    border: '3px solid #000',
-    background: '#fff',
-    color: '#000',
-    fontSize: 13,
-    fontWeight: 950,
-    boxShadow: '4px 4px 0 #000'
+    ...buttonBase,
+    border: '1px solid #cbd5e1',
+    background: '#f8fafc',
+    color: '#111827'
   },
   dangerButton: {
-    minHeight: 42,
-    borderRadius: 14,
-    border: '3px solid #000',
-    background: '#f25be6',
-    color: '#000',
-    fontSize: 13,
-    fontWeight: 950,
-    boxShadow: '4px 4px 0 #000'
+    ...buttonBase,
+    border: '1px solid #fecaca',
+    background: '#fee2e2',
+    color: '#991b1b'
   },
   buttonPressed: {
-    transform: 'translate(2px, 2px) scale(0.98)',
-    boxShadow: '2px 2px 0 #000'
+    transform: 'scale(0.98)',
+    filter: 'brightness(0.96)'
   },
   peopleBox: {
     display: 'grid',
-    gap: 8,
+    gap: 6,
     maxHeight: 520,
     overflow: 'auto',
-    paddingRight: 3
+    paddingRight: 3,
+    overscrollBehavior: 'contain',
+    WebkitOverflowScrolling: 'touch'
   },
   personRow: {
     display: 'grid',
     gridTemplateColumns: '32px minmax(220px, 1fr) 180px',
     gap: 10,
     alignItems: 'center',
-    border: '2px solid #e5e7eb',
-    borderRadius: 14,
-    padding: 10,
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 9,
     background: '#fff',
     cursor: 'pointer'
   },
   personRowSelected: {
-    borderColor: '#7417e8',
-    background: '#f5f3ff'
+    borderColor: '#86efac',
+    background: '#f0fdf4'
   },
   personCheckbox: {
-    width: 20,
-    height: 20
+    width: 18,
+    height: 18
   },
   personMain: {
     display: 'grid',
     gap: 3,
     fontSize: 14,
-    fontWeight: 900
+    fontWeight: 850
   },
   personMeta: {
     display: 'grid',
     gap: 3,
     fontSize: 12,
-    fontWeight: 900,
-    color: '#4b5563'
+    fontWeight: 850,
+    color: '#64748b'
   },
   empty: {
-    border: '2px dashed #d1d5db',
-    borderRadius: 14,
-    padding: 18,
-    fontSize: 14,
-    fontWeight: 900,
-    color: '#6b7280',
+    border: '1px dashed #cbd5e1',
+    borderRadius: 8,
+    background: '#f8fafc',
+    padding: 14,
+    fontSize: 13,
+    fontWeight: 850,
+    color: '#64748b',
     textAlign: 'center'
   },
   selectedPreview: {
-    borderRadius: 14,
+    borderRadius: 8,
     background: '#111827',
     color: '#fff',
-    padding: 12,
+    padding: 10,
     fontSize: 12,
     fontWeight: 850,
     lineHeight: 1.35
