@@ -178,6 +178,8 @@ export default function SelfOrderingClient({
     }
   }
 
+  const hasLockedMeal = days.some(day => isMealLocked(day.datum, 'OBED') || isMealLocked(day.datum, 'VECERA'))
+
   return (
     <main className="self-order-page" style={styles.page}>
       <style>{`
@@ -357,7 +359,9 @@ export default function SelfOrderingClient({
           <button className="self-order-save" type="button" onClick={save} disabled={saving || days.length === 0} style={styles.saveButton}>
             {saving ? t('Ukladám...', 'Saving...') : t('Uložiť', 'Save')}
           </button>
-          <span style={styles.smallNote}>{t('Sivé dni alebo jedlá sú po uzávierke.', 'Grey days or meals are after the deadline.')}</span>
+          {hasLockedMeal && (
+            <span style={styles.smallNote}>{t('Sivé dni alebo jedlá sú po uzávierke.', 'Grey days or meals are after the deadline.')}</span>
+          )}
         </div>
 
         {message && (
