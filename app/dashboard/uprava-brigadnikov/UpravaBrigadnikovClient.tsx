@@ -40,6 +40,29 @@ function normalizeText(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
 }
 
+function isIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
+function dateRange(from: string, to: string) {
+  if (!isIsoDate(from) || !isIsoDate(to) || to < from) return []
+
+  const start = new Date(`${from}T00:00:00.000Z`)
+  const end = new Date(`${to}T00:00:00.000Z`)
+  const dates: string[] = []
+
+  for (const date = new Date(start); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
+    dates.push(`${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`)
+  }
+
+  return dates
+}
+
+function formatDateShort(value: string) {
+  const [, month, day] = value.split('-')
+  return `${Number(day)}.${Number(month)}.`
+}
+
 export default function UpravaBrigadnikovClient({
   groups,
   defaultFrom,
@@ -58,6 +81,8 @@ export default function UpravaBrigadnikovClient({
   const [validTo, setValidTo] = useState(defaultTo)
   const [obed, setObed] = useState(true)
   const [vecera, setVecera] = useState(false)
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [calendarDates, setCalendarDates] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -66,6 +91,8 @@ export default function UpravaBrigadnikovClient({
   const [activeAction, setActiveAction] = useState('')
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
+  const calendarSet = useMemo(() => new Set(calendarDates), [calendarDates])
+  const rangeDates = useMemo(() => dateRange(validFrom, validTo), [validFrom, validTo])
   const selectedGroup = groups.find(group => group.id === groupId)
 
   const filteredPeople = useMemo(() => {
@@ -128,6 +155,11 @@ export default function UpravaBrigadnikovClient({
     void loadPeople()
   }, [groupId])
 
+  useEffect(() => {
+    if (!calendarOpen) return
+    setCalendarDates(current => current.filter(date => rangeDates.includes(date)))
+  }, [calendarOpen, rangeDates])
+
   const buttonStyle = (base: React.CSSProperties, action: string, disabled = false) => ({
     ...base,
     ...(activeAction === action ? styles.buttonPressed : {}),
@@ -151,6 +183,22 @@ export default function UpravaBrigadnikovClient({
     setSelectedIds([])
   }
 
+  const openCalendar = () => {
+    setCalendarOpen(current => {
+      const next = !current
+      if (next && calendarDates.length === 0) setCalendarDates(rangeDates)
+      return next
+    })
+  }
+
+  const toggleCalendarDate = (date: string) => {
+    setCalendarDates(current => (
+      current.includes(date)
+        ? current.filter(item => item !== date)
+        : [...current, date].sort()
+    ))
+  }
+
   const submit = async (mode: 'SET' | 'CLEAR') => {
     if (!groupId) {
       setMessage('Chyba registracna skupina.')
@@ -166,6 +214,12 @@ export default function UpravaBrigadnikovClient({
 
     if (!validFrom || !validTo || validTo < validFrom) {
       setMessage('Zadaj platne datumy od/do.')
+      setMessageType('error')
+      return
+    }
+
+    if (calendarOpen && calendarDates.length === 0) {
+      setMessage('V kalendari vyber aspon jeden den.')
       setMessageType('error')
       return
     }
@@ -193,7 +247,8 @@ export default function UpravaBrigadnikovClient({
           validTo,
           mode,
           obed,
-          vecera
+          vecera,
+          selectedDates: calendarOpen ? calendarDates : undefined
         })
       })
       const json = await res.json().catch(() => ({ error: 'Server vratil neplatnu odpoved.' }))
@@ -324,7 +379,46 @@ export default function UpravaBrigadnikovClient({
           <button type="button" style={buttonStyle(styles.lightButton, 'reload', loading || saving)} onClick={loadPeople} disabled={loading || saving}>
             Obnovit
           </button>
+          <button type="button" style={buttonStyle(calendarOpen ? styles.secondaryButton : styles.lightButton, 'calendar', saving || rangeDates.length === 0)} onClick={openCalendar} disabled={saving || rangeDates.length === 0}>
+            Kalendar
+          </button>
         </div>
+
+        {calendarOpen && (
+          <section style={styles.calendarBox}>
+            <div style={styles.calendarToolbar}>
+              <b>Presne dni</b>
+              <span>{calendarDates.length} / {rangeDates.length}</span>
+              <button type="button" style={styles.tinyButton} onClick={() => setCalendarDates(rangeDates)} disabled={saving}>
+                Vsetky
+              </button>
+              <button type="button" style={styles.tinyButton} onClick={() => setCalendarDates([])} disabled={saving}>
+                Ziadny
+              </button>
+            </div>
+
+            <div style={styles.calendarGrid}>
+              {rangeDates.map(date => {
+                const selected = calendarSet.has(date)
+
+                return (
+                  <button
+                    key={date}
+                    type="button"
+                    style={{
+                      ...styles.calendarDay,
+                      ...(selected ? styles.calendarDaySelected : {})
+                    }}
+                    onClick={() => toggleCalendarDate(date)}
+                    disabled={saving}
+                  >
+                    {formatDateShort(date)}
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        )}
 
         <div style={styles.summary}>
           <b>{selectedGroup?.name || '-'}</b>
@@ -573,6 +667,12 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#f8fafc',
     color: '#111827'
   },
+  secondaryButton: {
+    ...buttonBase,
+    border: '1px solid #111827',
+    background: '#111827',
+    color: '#fff'
+  },
   dangerButton: {
     ...buttonBase,
     border: '1px solid #fecaca',
@@ -582,6 +682,53 @@ const styles: Record<string, React.CSSProperties> = {
   buttonPressed: {
     transform: 'scale(0.98)',
     filter: 'brightness(0.96)'
+  },
+  calendarBox: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    background: '#f8fafc',
+    padding: 10,
+    display: 'grid',
+    gap: 8
+  },
+  calendarToolbar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    color: '#334155',
+    fontSize: 12,
+    fontWeight: 850
+  },
+  tinyButton: {
+    minHeight: 28,
+    borderRadius: 6,
+    border: '1px solid #cbd5e1',
+    background: '#fff',
+    color: '#111827',
+    padding: '0 9px',
+    fontSize: 12,
+    fontWeight: 900
+  },
+  calendarGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+    gap: 5
+  },
+  calendarDay: {
+    minHeight: 34,
+    borderRadius: 6,
+    border: '1px solid #cbd5e1',
+    background: '#fff',
+    color: '#334155',
+    padding: 0,
+    fontSize: 11,
+    fontWeight: 900
+  },
+  calendarDaySelected: {
+    borderColor: '#16a34a',
+    background: '#dcfce7',
+    color: '#14532d'
   },
   peopleBox: {
     display: 'grid',

@@ -137,11 +137,18 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}))
     const registrationGroupId = cleanText(body.registrationGroupId)
-    const validFrom = cleanText(body.validFrom)
-    const validTo = cleanText(body.validTo)
+    const requestedValidFrom = cleanText(body.validFrom)
+    const requestedValidTo = cleanText(body.validTo)
     const mode = cleanText(body.mode).toUpperCase() || 'SET'
     const obed = body.obed === true
     const vecera = body.vecera === true
+    const selectedDates: string[] = Array.isArray(body.selectedDates)
+      ? Array.from(new Set<string>(
+        body.selectedDates
+          .map((item: any) => cleanText(item))
+          .filter((item: string) => Boolean(item))
+      )).sort()
+      : []
     const userIds: string[] = Array.isArray(body.userIds)
       ? Array.from(new Set<string>(
         body.userIds
@@ -151,9 +158,6 @@ export async function POST(req: NextRequest) {
       : []
 
     if (!registrationGroupId) return NextResponse.json({ error: 'Chyba registracna skupina.' }, { status: 400 })
-    if (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom) {
-      return NextResponse.json({ error: 'Zadaj platne datumy od/do.' }, { status: 400 })
-    }
     if (mode !== 'SET' && mode !== 'CLEAR') {
       return NextResponse.json({ error: 'Neplatny sposob upravy.' }, { status: 400 })
     }
@@ -163,11 +167,25 @@ export async function POST(req: NextRequest) {
     if (userIds.length === 0) return NextResponse.json({ error: 'Vyber aspon jednu osobu.' }, { status: 400 })
     if (userIds.length > 1000) return NextResponse.json({ error: 'Naraz je mozne upravit najviac 1000 osob.' }, { status: 400 })
 
+    if (selectedDates.some(date => !isIsoDate(date))) {
+      return NextResponse.json({ error: 'Kalendar obsahuje neplatny datum.' }, { status: 400 })
+    }
+
+    const dates = selectedDates.length > 0
+      ? selectedDates
+      : isIsoDate(requestedValidFrom) && isIsoDate(requestedValidTo) && requestedValidTo >= requestedValidFrom
+        ? dateRange(requestedValidFrom, requestedValidTo)
+        : []
+    const validFrom = dates[0] || ''
+    const validTo = dates[dates.length - 1] || ''
+
+    if (dates.length === 0 || !validFrom || !validTo) {
+      return NextResponse.json({ error: 'Zadaj platne datumy od/do.' }, { status: 400 })
+    }
+    if (dates.length > 370) return NextResponse.json({ error: 'Obdobie moze mat najviac 370 dni.' }, { status: 400 })
+
     const access = await assertAccess(actor.id, registrationGroupId)
     if ('error' in access) return NextResponse.json({ error: access.error }, { status: access.status })
-
-    const dates = dateRange(validFrom, validTo)
-    if (dates.length > 370) return NextResponse.json({ error: 'Obdobie moze mat najviac 370 dni.' }, { status: 400 })
 
     const { data: group, error: groupError } = await supabaseServer
       .from('registration_groups')
@@ -245,24 +263,28 @@ export async function POST(req: NextRequest) {
 
     const beforeRows: any[] = []
     for (const userIdChunk of chunk(userIds, 250)) {
-      const { data } = await supabaseServer
+      const query = supabaseServer
         .from('user_food_entitlements')
         .select('user_id, datum, obed, vecera, source')
         .in('user_id', userIdChunk)
-        .gte('datum', validFrom)
-        .lte('datum', validTo)
+
+      const { data } = selectedDates.length > 0
+        ? await query.in('datum', dates)
+        : await query.gte('datum', validFrom).lte('datum', validTo)
 
       beforeRows.push(...(data || []))
     }
 
     let deletedEntitlements = 0
     for (const userIdChunk of chunk(userIds, 250)) {
-      const { count, error } = await supabaseServer
+      const query = supabaseServer
         .from('user_food_entitlements')
         .delete({ count: 'exact' })
         .in('user_id', userIdChunk)
-        .gte('datum', validFrom)
-        .lte('datum', validTo)
+
+      const { count, error } = selectedDates.length > 0
+        ? await query.in('datum', dates)
+        : await query.gte('datum', validFrom).lte('datum', validTo)
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       deletedEntitlements += count || 0
@@ -296,9 +318,12 @@ export async function POST(req: NextRequest) {
 
     for (const user of users) {
       const userPeriods = periodsByUserId.get(user.id) || []
+      const shouldAdjustPeriods = mode === 'SET' || selectedDates.length === 0
       const sameGroupPeriods = userPeriods.filter(period => {
         return period.registration_group_id === registrationGroupId && periodOverlaps(period, validFrom, validTo)
       })
+
+      if (!shouldAdjustPeriods) continue
 
       if (mode === 'SET') {
         const mergedFrom = minIso([validFrom, ...sameGroupPeriods.map(period => period.valid_from)])
@@ -401,6 +426,7 @@ export async function POST(req: NextRequest) {
           users: users.length,
           valid_from: validFrom,
           valid_to: validTo,
+          selected_dates: selectedDates,
           mode,
           obed,
           vecera,
