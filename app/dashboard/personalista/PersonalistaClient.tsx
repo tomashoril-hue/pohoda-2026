@@ -530,11 +530,14 @@ export default function PersonalistaClient({
   const [peopleSearchMessage, setPeopleSearchMessage] = useState(initialPeopleSearchMessage)
   const [search, setSearch] = useState('')
   const [registrationGroupFilter, setRegistrationGroupFilter] = useState('ALL')
+  const [emailFilter, setEmailFilter] = useState('ALL')
   const [foodFilter, setFoodFilter] = useState('ALL')
   const [qrFilter, setQrFilter] = useState('ALL')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [pageSize, setPageSize] = useState(12)
   const [currentPage, setCurrentPage] = useState(1)
+  const [peopleTotal, setPeopleTotal] = useState(initialPeople.length)
+  const [serverPageCount, setServerPageCount] = useState(Math.max(1, Math.ceil(initialPeople.length / 12)))
   const [selectedPersonId, setSelectedPersonId] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [createLoading, setCreateLoading] = useState(false)
@@ -722,6 +725,9 @@ export default function PersonalistaClient({
     closeTopPanels()
     setSearch('')
     setRegistrationGroupFilter('ALL')
+    setEmailFilter('ALL')
+    setFoodFilter('ALL')
+    setQrFilter('ALL')
     setStatusFilter('ALL')
     setSelectedPersonId('')
     setCurrentPage(1)
@@ -1252,7 +1258,7 @@ export default function PersonalistaClient({
     return person as PersonItem
   }
 
-  const displayPeople = statusFilter === 'PENDING_REVIEW' ? pendingReviewPeople : people
+  const displayPeople = people
   const selectedPerson = selectedPersonId
     ? displayPeople.find(person => person.id === selectedPersonId) || null
     : null
@@ -1501,6 +1507,8 @@ export default function PersonalistaClient({
 
   useEffect(() => {
     setPeople(initialPeople)
+    setPeopleTotal(initialPeople.length)
+    setServerPageCount(Math.max(1, Math.ceil(initialPeople.length / 12)))
   }, [initialPeople])
 
   useEffect(() => {
@@ -1513,24 +1521,15 @@ export default function PersonalistaClient({
 
   useEffect(() => {
     const q = search.trim()
-    const hasRegistrationGroupFilter = registrationGroupFilter !== 'ALL'
-    const isBlockedFilter = statusFilter === 'BLOCKED'
+    const hasActiveFilters = (
+      registrationGroupFilter !== 'ALL' ||
+      emailFilter !== 'ALL' ||
+      foodFilter !== 'ALL' ||
+      qrFilter !== 'ALL' ||
+      statusFilter !== 'ALL'
+    )
 
-    if (statusFilter === 'PENDING_REVIEW') {
-      setPeopleSearchLoading(false)
-      setPeopleSearchMessage(`Ziadosti na schvalenie: ${pendingReviewPeople.length}`)
-      return
-    }
-
-    if (!q && !hasRegistrationGroupFilter && !isBlockedFilter) {
-      setPeople(initialPeople)
-      setPeopleSearchLoading(false)
-      setPeopleSearchMessage(initialPeopleSearchMessage)
-      return
-    }
-
-    if (q && q.length < 2 && !hasRegistrationGroupFilter && !isBlockedFilter) {
-      setPeople(initialPeople)
+    if (q && q.length < 2 && !hasActiveFilters) {
       setPeopleSearchLoading(false)
       setPeopleSearchMessage('Napis aspon 2 znaky pre hladanie v celej databaze')
       return
@@ -1545,10 +1544,17 @@ export default function PersonalistaClient({
         const params = new URLSearchParams()
 
         if (q.length >= 2) params.set('q', q)
-        if (hasRegistrationGroupFilter) params.set('registrationGroupId', registrationGroupFilter)
-        if (isBlockedFilter) params.set('status', 'BLOCKED')
+        if (registrationGroupFilter !== 'ALL') params.set('registrationGroupId', registrationGroupFilter)
+        if (emailFilter !== 'ALL') params.set('emailFilter', emailFilter)
+        if (foodFilter !== 'ALL') params.set('foodFilter', foodFilter)
+        if (qrFilter !== 'ALL') params.set('qrFilter', qrFilter)
+        if (statusFilter !== 'ALL') params.set('status', statusFilter)
+        params.set('page', String(currentPage))
+        params.set('pageSize', String(pageSize))
 
-        const res = await fetch(`/api/personalista/people/search?${params.toString()}`)
+        const res = await fetch(`/api/personalista/people/search?${params.toString()}`, {
+          cache: 'no-store'
+        })
         const json = await res.json().catch(() => ({}))
 
         if (cancelled) return
@@ -1558,15 +1564,16 @@ export default function PersonalistaClient({
           return
         }
 
-        setPeople(Array.isArray(json.people) ? json.people : [])
-        if (isBlockedFilter) {
-          setPeopleSearchMessage(`Blokovaní: ${Array.isArray(json.people) ? json.people.length : 0}`)
-        } else if (hasRegistrationGroupFilter) {
-          const groupName = registrationGroups.find(group => group.id === registrationGroupFilter)?.name || 'registračná skupina'
-          setPeopleSearchMessage(`${groupName}: ${Array.isArray(json.people) ? json.people.length : 0}`)
-        } else {
-          setPeopleSearchMessage(`Vysledky hladania: ${Array.isArray(json.people) ? json.people.length : 0}`)
-        }
+        const nextPeople = Array.isArray(json.people) ? json.people : []
+        const nextTotal = Number(json.total || nextPeople.length)
+        const nextPage = Number(json.page || currentPage)
+        const nextPageCount = Math.max(1, Number(json.pageCount || Math.ceil(nextTotal / pageSize) || 1))
+
+        setPeople(nextPeople)
+        setPeopleTotal(nextTotal)
+        setServerPageCount(nextPageCount)
+        if (nextPage !== currentPage) setCurrentPage(nextPage)
+        setPeopleSearchMessage(`Najdene: ${nextTotal}. Strana ${nextPage} / ${nextPageCount}`)
       } catch (err) {
         if (cancelled) return
 
@@ -1581,7 +1588,7 @@ export default function PersonalistaClient({
       cancelled = true
       window.clearTimeout(timeout)
     }
-  }, [search, initialPeople, initialPeopleSearchMessage, registrationGroupFilter, registrationGroups, statusFilter, pendingReviewPeople.length])
+  }, [search, registrationGroupFilter, emailFilter, foodFilter, qrFilter, statusFilter, currentPage, pageSize])
 
   useEffect(() => {
     if (!selectedPerson) return
@@ -1682,39 +1689,16 @@ export default function PersonalistaClient({
   }, [displayPeople])
 
   const filteredPeople = useMemo(() => {
-    const q = search.trim().toLowerCase()
-
     return displayPeople
-      .filter(person => {
-        if (!q) return true
-
-        return (
-          person.fullName.toLowerCase().includes(q) ||
-          person.email.toLowerCase().includes(q) ||
-          person.telefon.toLowerCase().includes(q)
-        )
-      })
-      .filter(person => {
-        if (registrationGroupFilter === 'ALL') return true
-        return person.registrationGroupId === registrationGroupFilter
-      })
-      .filter(person => {
-        const blocked = String(person.aktivny || '').toUpperCase() !== 'ANO'
-        const pendingReview = String(person.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
-
-        if (statusFilter === 'ALL') return true
-        if (statusFilter === 'PENDING_REVIEW') return pendingReview
-        if (statusFilter === 'BLOCKED') return blocked
-        return !blocked && !pendingReview
-      })
+      .slice()
       .sort((a, b) => {
         return (peopleOrderById.get(a.id) ?? 0) - (peopleOrderById.get(b.id) ?? 0)
       })
-  }, [displayPeople, peopleOrderById, search, registrationGroupFilter, statusFilter])
+  }, [displayPeople, peopleOrderById])
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [search, registrationGroupFilter, statusFilter, pageSize])
+  }, [search, registrationGroupFilter, emailFilter, foodFilter, qrFilter, statusFilter, pageSize])
 
   useEffect(() => {
     if (!displayPeople.length) {
@@ -1727,11 +1711,11 @@ export default function PersonalistaClient({
     }
   }, [displayPeople, selectedPersonId])
 
-  const pageCount = Math.max(1, Math.ceil(filteredPeople.length / pageSize))
+  const pageCount = serverPageCount
   const safeCurrentPage = Math.min(currentPage, pageCount)
   const pageStart = (safeCurrentPage - 1) * pageSize
-  const pageEnd = Math.min(pageStart + pageSize, filteredPeople.length)
-  const pagedPeople = filteredPeople.slice(pageStart, pageEnd)
+  const pageEnd = Math.min(pageStart + filteredPeople.length, peopleTotal)
+  const pagedPeople = filteredPeople
 
   const _stats = useMemo(() => {
     const activeQr = people.filter(person => person.activeQrCount > 0).length
@@ -6196,7 +6180,7 @@ export default function PersonalistaClient({
               ...(isMobile ? styles.mobileToolbarHint : styles.toolbarHint),
               ...peopleSearchHintStyle
             }}>
-              {peopleSearchLoading ? 'Hladam...' : peopleSearchMessage} · zobrazenych {people.length}
+              {peopleSearchLoading ? 'Hladam...' : peopleSearchMessage} · zobrazených {people.length} z {peopleTotal}
             </div>
 
             <input
@@ -6211,7 +6195,6 @@ export default function PersonalistaClient({
               value={registrationGroupFilter}
               onChange={event => {
                 setRegistrationGroupFilter(event.target.value)
-                setStatusFilter('ALL')
               }}
               style={styles.select}
             >
@@ -6223,8 +6206,17 @@ export default function PersonalistaClient({
               ))}
             </select>
 
-            {false && (
-              <>
+            <>
+            <select
+              value={emailFilter}
+              onChange={event => setEmailFilter(event.target.value)}
+              style={styles.select}
+            >
+              <option value="ALL">Všetky e-maily</option>
+              <option value="WITH">S e-mailom</option>
+              <option value="MISSING">Bez e-mailu</option>
+            </select>
+
             <select
               value={foodFilter}
               onChange={event => setFoodFilter(event.target.value)}
@@ -6233,8 +6225,8 @@ export default function PersonalistaClient({
               <option value="ALL">Všetka strava</option>
               <option value="MASO">MASO</option>
               <option value="VEGE">VEGE</option>
-              <option value="DIÉTA">DIÉTA</option>
-              <option value="NEZADANÉ">NEZADANÉ</option>
+              <option value="DIETA">DIÉTA</option>
+              <option value="NEZADANE">NEZADANÉ</option>
             </select>
 
             <select
@@ -6257,8 +6249,7 @@ export default function PersonalistaClient({
               <option value="BLOCKED">Blokovaní</option>
               <option value="PENDING_REVIEW">Na schvalenie</option>
             </select>
-              </>
-            )}
+            </>
           </section>
 
           <section style={styles.tableCard}>
@@ -6389,13 +6380,13 @@ export default function PersonalistaClient({
               })
             )}
 
-            {filteredPeople.length > 0 && (
+            {peopleTotal > 0 && (
               <div style={{
                 ...styles.paginationBar,
                 minWidth: tableMinWidth
               }}>
                 <span>
-                  {pageStart + 1}-{pageEnd} z {filteredPeople.length}
+                  {pageStart + 1}-{pageEnd} z {peopleTotal}
                 </span>
 
                 <select

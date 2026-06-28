@@ -4,7 +4,7 @@ import { slovakiaDateIso } from '@/lib/date'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
-const RESULT_LIMIT = 100
+const RESULT_LIMIT = 5000
 const FILTERED_RESULT_LIMIT = 5000
 
 function cleanText(value: any) {
@@ -223,6 +223,12 @@ export async function GET(req: NextRequest) {
     const userId = cleanText(req.nextUrl.searchParams.get('userId'))
     const registrationGroupId = cleanText(req.nextUrl.searchParams.get('registrationGroupId'))
     const status = cleanText(req.nextUrl.searchParams.get('status')).toUpperCase()
+    const emailFilter = cleanText(req.nextUrl.searchParams.get('emailFilter')).toUpperCase() || 'ALL'
+    const qrFilter = cleanText(req.nextUrl.searchParams.get('qrFilter')).toUpperCase() || 'ALL'
+    const foodFilter = cleanText(req.nextUrl.searchParams.get('foodFilter')).toUpperCase() || 'ALL'
+    const page = Math.max(1, Number(req.nextUrl.searchParams.get('page') || 1) || 1)
+    const pageSize = Math.min(100, Math.max(12, Number(req.nextUrl.searchParams.get('pageSize') || 50) || 50))
+    const paged = req.nextUrl.searchParams.has('page') || req.nextUrl.searchParams.has('pageSize')
     const query = q.replaceAll('%', '').replaceAll(',', ' ')
 
     if (userId && !isUuid(userId)) {
@@ -270,12 +276,16 @@ export async function GET(req: NextRequest) {
           ok: true,
           people: [],
           mode: 'REGISTRATION_GROUP',
-          limit: FILTERED_RESULT_LIMIT
+          limit: FILTERED_RESULT_LIMIT,
+          total: 0,
+          page,
+          pageSize,
+          pageCount: 1
         })
       }
     }
 
-    const filteredMode = Boolean(registrationGroupUserIds || status === 'BLOCKED')
+    const filteredMode = Boolean(registrationGroupUserIds || status || emailFilter !== 'ALL' || qrFilter !== 'ALL' || foodFilter !== 'ALL')
     let usersQuery = supabaseServer
       .from('users')
       .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, account_type, registration_group_id, registration_group_note, review_status, updated_at, created_at')
@@ -290,6 +300,17 @@ export async function GET(req: NextRequest) {
     if (status === 'BLOCKED') {
       usersQuery = usersQuery.neq('aktivny', 'ANO')
       mode = registrationGroupUserIds ? 'REGISTRATION_GROUP_BLOCKED' : 'BLOCKED'
+    } else if (status === 'PENDING_REVIEW') {
+      usersQuery = usersQuery.eq('review_status', 'PENDING_REVIEW')
+      mode = registrationGroupUserIds ? 'REGISTRATION_GROUP_PENDING_REVIEW' : 'PENDING_REVIEW'
+    } else if (status === 'ACTIVE') {
+      usersQuery = usersQuery.eq('aktivny', 'ANO')
+      mode = registrationGroupUserIds ? 'REGISTRATION_GROUP_ACTIVE' : 'ACTIVE'
+    }
+
+    if (foodFilter === 'MASO' || foodFilter === 'VEGE' || foodFilter === 'DIETA') {
+      usersQuery = usersQuery.eq('typ_stravy', foodFilter)
+      mode = mode === 'RECENT' ? 'FOOD_FILTER' : mode
     }
 
     if (userId) {
@@ -416,7 +437,7 @@ export async function GET(req: NextRequest) {
       globalRolesByUserId.set(row.user_id, list)
     })
 
-    const people = users.map((profile: any) => {
+    let people = users.map((profile: any) => {
       const rows = entitlementsByUserId.get(profile.id) || []
       const lunchClaims = rows.filter(row => row.obed).length
       const dinnerClaims = rows.filter(row => row.vecera).length
@@ -484,9 +505,35 @@ export async function GET(req: NextRequest) {
       }
     })
 
+    if (emailFilter === 'WITH') {
+      people = people.filter((person: any) => cleanText(person.email))
+    } else if (emailFilter === 'MISSING') {
+      people = people.filter((person: any) => !cleanText(person.email))
+    }
+
+    if (qrFilter === 'ACTIVE') {
+      people = people.filter((person: any) => person.activeQrCount > 0)
+    } else if (qrFilter === 'MISSING') {
+      people = people.filter((person: any) => person.activeQrCount <= 0)
+    }
+
+    if (foodFilter === 'NEZADANE') {
+      people = people.filter((person: any) => !cleanText(person.typStravy))
+    }
+
+    const total = people.length
+    const pageCount = Math.max(1, Math.ceil(total / pageSize))
+    const safePage = Math.min(page, pageCount)
+    const from = (safePage - 1) * pageSize
+    const pagePeople = paged ? people.slice(from, from + pageSize) : people
+
     return NextResponse.json({
       ok: true,
-      people,
+      people: pagePeople,
+      total,
+      page: safePage,
+      pageSize,
+      pageCount,
       mode,
       limit: filteredMode ? FILTERED_RESULT_LIMIT : RESULT_LIMIT
     })
