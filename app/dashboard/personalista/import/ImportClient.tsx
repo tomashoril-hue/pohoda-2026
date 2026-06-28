@@ -543,6 +543,15 @@ export default function ImportClient({
     })
   }
 
+  const removeRow = (rowNumber: number) => {
+    setRows(current => current.filter(row => row.rowNumber !== rowNumber))
+    setSelectedRows(current => current.filter(item => item !== rowNumber))
+    setActiveAction(`remove-row-${rowNumber}`)
+    window.setTimeout(() => setActiveAction(''), 250)
+    setMessage(`Riadok #${rowNumber} bol odstraneny z importu.`)
+    setMessageType('ok')
+  }
+
   const toggleAll = () => {
     setSelectedRows(current => {
       const selectedVisible = visibleEditableRows.filter(rowNumber => current.includes(rowNumber))
@@ -843,6 +852,7 @@ export default function ImportClient({
               <span>Pristupovy kod</span>
               <span>Stav</span>
               <span>Poznamka</span>
+              <span>Akcia</span>
             </div>
 
             {visibleRows.slice(0, 500).map(row => (
@@ -904,6 +914,18 @@ export default function ImportClient({
                 </span>
                 <span style={styles.noteCell}>
                   {row.message || ''}
+                </span>
+                <span style={styles.actionCell}>
+                  <button
+                    type="button"
+                    aria-label={`Odstranit riadok ${row.rowNumber}`}
+                    title="Odstranit riadok z importu"
+                    style={buttonStyle(styles.removeRowButton, `remove-row-${row.rowNumber}`, row.status === 'OK' || loading)}
+                    onClick={() => removeRow(row.rowNumber)}
+                    disabled={row.status === 'OK' || loading}
+                  >
+                    x
+                  </button>
                 </span>
               </div>
             ))}
@@ -1318,9 +1340,9 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center'
   },
   tableHeader: {
-    minWidth: 1760,
+    minWidth: 1816,
     display: 'grid',
-    gridTemplateColumns: '48px 112px 128px 210px 132px 76px 168px 124px 124px 48px 52px 42px 46px 86px 72px minmax(260px, 1fr)',
+    gridTemplateColumns: '48px 112px 128px 210px 132px 76px 168px 124px 124px 48px 52px 42px 46px 86px 72px minmax(260px, 1fr) 52px',
     gap: 4,
     padding: '7px 8px',
     background: '#eef2f7',
@@ -1331,9 +1353,9 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase'
   },
   tableRow: {
-    minWidth: 1760,
+    minWidth: 1816,
     display: 'grid',
-    gridTemplateColumns: '48px 112px 128px 210px 132px 76px 168px 124px 124px 48px 52px 42px 46px 86px 72px minmax(260px, 1fr)',
+    gridTemplateColumns: '48px 112px 128px 210px 132px 76px 168px 124px 124px 48px 52px 42px 46px 86px 72px minmax(260px, 1fr) 52px',
     gap: 4,
     padding: '6px 8px',
     borderBottom: '1px solid #f3f4f6',
@@ -1388,8 +1410,28 @@ const styles: Record<string, React.CSSProperties> = {
     overflowWrap: 'anywhere',
     lineHeight: 1.25
   },
+  actionCell: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 26
+  },
+  removeRowButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    border: '1px solid #fecaca',
+    background: '#fff1f2',
+    color: '#991b1b',
+    fontSize: 16,
+    lineHeight: 1,
+    fontWeight: 950,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   tableLimitNotice: {
-    minWidth: 1760,
+    minWidth: 1816,
     padding: '8px 10px',
     borderTop: '1px solid #e5e7eb',
     background: '#fffbeb',
