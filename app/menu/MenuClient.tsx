@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import Link from 'next/link'
 import { appText, localeFor, type AppLanguage } from '@/lib/i18n'
 
 type MealType = 'OBED' | 'VECERA'
@@ -69,6 +70,15 @@ function variantLabel(value: string | null | undefined, language: AppLanguage = 
 function noInterestLabel(meal: MealType, language: AppLanguage = 'SK') {
   if (language === 'EN') return meal === 'OBED' ? 'I do not want lunch' : 'I do not want dinner'
   return meal === 'OBED' ? 'Nemám záujem o obed' : 'Nemám záujem o večeru'
+}
+
+function HomeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+      <path d="M3.5 10.8 12 3.8l8.5 7v9.1a.9.9 0 0 1-.9.9h-5.1v-6.2h-5v6.2H4.4a.9.9 0 0 1-.9-.9v-9.1Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M2.5 11.6 12 3.8l9.5 7.8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
 }
 
 export default function MenuClient({
@@ -721,12 +731,12 @@ export default function MenuClient({
             animation: deadlinePulse 0.7s infinite;
           }
 
-          .menu-back-button {
+          .menu-home-button {
             transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
             -webkit-tap-highlight-color: rgba(86, 219, 63, 0.22);
           }
 
-          .menu-back-button:active {
+          .menu-home-button:active {
             transform: translate(3px, 3px) scale(0.96);
             box-shadow: 1px 1px 0 #000 !important;
             filter: brightness(0.94);
@@ -774,7 +784,7 @@ export default function MenuClient({
               display: none !important;
             }
 
-            .menu-back-button {
+            .menu-home-button {
               width: 38px !important;
               height: 38px !important;
               border-radius: 12px !important;
@@ -861,7 +871,7 @@ export default function MenuClient({
           maxWidth: 980,
           margin: '0 auto 14px auto',
           display: 'flex',
-          justifyContent: 'flex-start',
+          justifyContent: 'space-between',
           alignItems: 'flex-start',
           gap: 16,
         }}
@@ -897,6 +907,29 @@ export default function MenuClient({
             {isEnglish ? 'Today is' : 'Dnes je'} : {todayFullLabel()}
           </div>
         </div>
+        {!kioskMode && (
+          <Link
+            className="menu-home-button"
+            href="/dashboard"
+            aria-label={copy.backToDashboard}
+            title={copy.backToDashboard}
+            style={{
+              color: '#1f2937',
+              background: '#fff',
+              border: '1px solid #d7d3e8',
+              borderRadius: 12,
+              width: 38,
+              height: 38,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textDecoration: 'none',
+              boxShadow: '0 6px 14px rgba(31, 24, 61, 0.14)'
+            }}
+          >
+            <HomeIcon />
+          </Link>
+        )}
       </div>
 
       {topSlot}
@@ -934,33 +967,6 @@ export default function MenuClient({
           >
             {effectiveHeading}
           </h1>
-
-          {!kioskMode && (
-            <a
-              className="menu-back-button"
-              href="/dashboard"
-              aria-label={isEnglish ? 'Back to dashboard' : 'Späť na dashboard'}
-              title={isEnglish ? 'Back' : 'Späť'}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 999,
-                border: '3px solid #000',
-                background: '#fff',
-                color: '#000',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                textDecoration: 'none',
-                fontSize: 22,
-                fontWeight: 950,
-                boxShadow: '4px 4px 0 #000',
-                lineHeight: 1,
-              }}
-            >
-              ←
-            </a>
-          )}
         </div>
 
         {selectedPersonName && (
