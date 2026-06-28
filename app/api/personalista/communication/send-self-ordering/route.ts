@@ -37,6 +37,10 @@ function languageValue(value: any) {
   return text(value).toUpperCase() === 'EN' ? 'EN' : 'SK'
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}
+
 function selfOrderingEmailHtml({
   meno,
   email,
@@ -151,6 +155,30 @@ async function getSelfOrderingUsers(registrationGroupId: string) {
   return users
 }
 
+async function getSelfOrderingUserById(userId: string) {
+  const { data: roleRow, error: roleError } = await supabaseServer
+    .from('app_user_roles')
+    .select('user_id')
+    .eq('user_id', userId)
+    .eq('role', 'SAMOSTATNE_OBJEDNAVANIE_STRAVY')
+    .eq('active', true)
+    .maybeSingle()
+
+  if (roleError) throw roleError
+  if (!roleRow) return null
+
+  const { data: user, error: userError } = await supabaseServer
+    .from('users')
+    .select('id, meno, priezvisko, email, qr_code, registration_group_id')
+    .eq('id', userId)
+    .eq('aktivny', 'ANO')
+    .maybeSingle()
+
+  if (userError) throw userError
+
+  return user
+}
+
 async function getSentInviteUserIds(userIds: string[]) {
   const sent = new Set<string>()
 
@@ -186,17 +214,46 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Nemate opravnenie.' }, { status: 403 })
     }
 
-    const sendLimit = checkActorRateLimit(currentUser.id, 'personalista-self-ordering-email', 4, 10 * 60 * 1000)
-    if (!sendLimit.ok) return rateLimitResponse(sendLimit, 'Prilis vela hromadnych e-mailov. Skuste znova neskor.')
-
     const body = await req.json().catch(() => ({}))
     const registrationGroupId = text(body.registrationGroupId)
+    const userId = text(body.userId)
+    const resend = Boolean(body.resend)
     const language = languageValue(body.language)
-    const users = await getSelfOrderingUsers(registrationGroupId)
-    const userIds = users.map((user: any) => user.id).filter(Boolean)
-    const sentUserIds = await getSentInviteUserIds(userIds)
-    const pendingUsers = users.filter((user: any) => !sentUserIds.has(user.id))
-    const targetUsers = pendingUsers.slice(0, BATCH_SIZE)
+    let targetUsers: any[] = []
+    let pendingCount = 0
+
+    if (userId) {
+      if (!isUuid(userId)) {
+        return NextResponse.json({ error: 'Neplatna osoba.' }, { status: 400 })
+      }
+
+      const sendLimit = checkActorRateLimit(currentUser.id, 'personalista-self-ordering-email-resend', 12, 10 * 60 * 1000)
+      if (!sendLimit.ok) return rateLimitResponse(sendLimit, 'Prilis vela opakovanych e-mailov. Skuste znova neskor.')
+
+      const user = await getSelfOrderingUserById(userId)
+
+      if (!user) {
+        return NextResponse.json({ error: 'Osoba nema aktivne pravo Samostatne objednavanie stravy alebo nie je aktivna.' }, { status: 400 })
+      }
+
+      if (!text(user.email)) {
+        return NextResponse.json({ error: 'Osoba nema e-mail.' }, { status: 400 })
+      }
+
+      targetUsers = [user]
+      pendingCount = 1
+    } else {
+      const sendLimit = checkActorRateLimit(currentUser.id, 'personalista-self-ordering-email', 4, 10 * 60 * 1000)
+      if (!sendLimit.ok) return rateLimitResponse(sendLimit, 'Prilis vela hromadnych e-mailov. Skuste znova neskor.')
+
+      const users = await getSelfOrderingUsers(registrationGroupId)
+      const userIds = users.map((user: any) => user.id).filter(Boolean)
+      const sentUserIds = await getSentInviteUserIds(userIds)
+      const pendingUsers = users.filter((user: any) => !sentUserIds.has(user.id))
+      targetUsers = pendingUsers.slice(0, BATCH_SIZE)
+      pendingCount = pendingUsers.length
+    }
+
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin
     const faviconUrl = `${baseUrl}/favicon.ico`
     let sent = 0
@@ -212,6 +269,17 @@ export async function POST(req: NextRequest) {
       const loginUrl = `${baseUrl}/self-ordering-login?token=${token}`
 
       try {
+        if (resend) {
+          await supabaseServer
+            .from('self_ordering_login_tokens')
+            .update({
+              used_count: 1,
+              last_used_at: new Date().toISOString()
+            })
+            .eq('user_id', user.id)
+            .eq('used_count', 0)
+        }
+
         const { error: tokenError } = await supabaseServer
           .from('self_ordering_login_tokens')
           .insert({
@@ -273,7 +341,7 @@ export async function POST(req: NextRequest) {
       sent,
       failed,
       total: targetUsers.length,
-      remaining: Math.max(0, pendingUsers.length - targetUsers.length),
+      remaining: Math.max(0, pendingCount - targetUsers.length),
       batchSize: BATCH_SIZE
     })
   } catch (err: any) {

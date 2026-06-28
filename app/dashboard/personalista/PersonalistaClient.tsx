@@ -524,12 +524,14 @@ export default function PersonalistaClient({
   const [registrationGroupMessage, setRegistrationGroupMessage] = useState('')
   const [registrationGroupMessageType, setRegistrationGroupMessageType] = useState<'ok' | 'error' | ''>('')
   const [personnelTool, setPersonnelTool] = useState<PersonnelTool>('')
-  const [communicationGroupId, setCommunicationGroupId] = useState('')
   const [communicationLanguage, setCommunicationLanguage] = useState<CommunicationLanguage>('SK')
   const [communicationSummary, setCommunicationSummary] = useState<CommunicationSummary | null>(null)
   const [communicationLoading, setCommunicationLoading] = useState(false)
   const [communicationMessage, setCommunicationMessage] = useState('')
   const [communicationMessageType, setCommunicationMessageType] = useState<'ok' | 'error' | ''>('')
+  const [communicationPersonQuery, setCommunicationPersonQuery] = useState('')
+  const [communicationPersonResults, setCommunicationPersonResults] = useState<PersonItem[]>([])
+  const [communicationSelectedPerson, setCommunicationSelectedPerson] = useState<PersonItem | null>(null)
   const [accessCodesGroupId, setAccessCodesGroupId] = useState('')
   const [accessCodesEmail, setAccessCodesEmail] = useState('')
   const [accessCodesLanguage, setAccessCodesLanguage] = useState<CommunicationLanguage>('SK')
@@ -820,7 +822,7 @@ export default function PersonalistaClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          registrationGroupId: communicationGroupId || '',
+          registrationGroupId: '',
           language: communicationLanguage
         })
       })
@@ -831,6 +833,93 @@ export default function PersonalistaClient({
       setCommunicationMessage(`Samostatné objednávanie: odoslané ${json.sent}, chyby ${json.failed}, zostáva ${json.remaining}.`)
       setCommunicationMessageType(json.failed ? 'error' : 'ok')
       await loadCommunicationSummary('', 'communication')
+    } catch (err: any) {
+      setCommunicationMessage(err?.message || 'Odoslanie zlyhalo.')
+      setCommunicationMessageType('error')
+    } finally {
+      setCommunicationLoading(false)
+    }
+  }
+
+  const searchCommunicationPeople = async () => {
+    const query = communicationPersonQuery.trim()
+
+    if (query.length < 2) {
+      setCommunicationMessage('Zadaj aspon 2 znaky mena, priezviska alebo e-mailu.')
+      setCommunicationMessageType('error')
+      setCommunicationPersonResults([])
+      return
+    }
+
+    setCommunicationLoading(true)
+    setCommunicationMessage('')
+    setCommunicationMessageType('')
+    setCommunicationSelectedPerson(null)
+
+    try {
+      const res = await fetch(`/api/personalista/people/search?q=${encodeURIComponent(query)}`, {
+        cache: 'no-store'
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setCommunicationMessage(json.error || 'Vyhladavanie osoby zlyhalo.')
+        setCommunicationMessageType('error')
+        setCommunicationPersonResults([])
+        return
+      }
+
+      const results = Array.isArray(json.people) ? json.people : []
+      const candidates = results
+        .filter((person: PersonItem) => (
+          !!person.email &&
+          (person.globalRoles || []).includes('SAMOSTATNE_OBJEDNAVANIE_STRAVY') &&
+          String(person.aktivny || '').toUpperCase() === 'ANO'
+        ))
+        .slice(0, 12)
+
+      setCommunicationPersonResults(candidates)
+      setCommunicationMessage(candidates.length ? `Najdenych: ${candidates.length}.` : 'Nenasla sa osoba s e-mailom a pravom Samostatne objednavanie stravy.')
+      setCommunicationMessageType(candidates.length ? 'ok' : 'error')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setCommunicationMessage('Chyba spojenia so serverom: ' + message)
+      setCommunicationMessageType('error')
+      setCommunicationPersonResults([])
+    } finally {
+      setCommunicationLoading(false)
+    }
+  }
+
+  const resendSelfOrderingEmail = async () => {
+    if (!communicationSelectedPerson) {
+      setCommunicationMessage('Vyber osobu zo zoznamu.')
+      setCommunicationMessageType('error')
+      return
+    }
+
+    setCommunicationLoading(true)
+    setCommunicationMessage('')
+    setCommunicationMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/communication/send-self-ordering', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: communicationSelectedPerson.id,
+          resend: true,
+          language: communicationLanguage
+        })
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) throw new Error(json.error || 'Odoslanie zlyhalo.')
+      if (json.failed || !json.sent) throw new Error('E-mail sa nepodarilo odoslat.')
+
+      await loadCommunicationSummary('', 'communication')
+      setCommunicationMessage(`Odoslane znova: ${communicationSelectedPerson.fullName || communicationSelectedPerson.email}.`)
+      setCommunicationMessageType('ok')
     } catch (err: any) {
       setCommunicationMessage(err?.message || 'Odoslanie zlyhalo.')
       setCommunicationMessageType('error')
@@ -4158,6 +4247,77 @@ export default function PersonalistaClient({
             >
               Samostatné objednávanie stravy
             </button>
+          </div>
+
+          <div style={styles.communicationResendBox}>
+            <div style={styles.detailEditTitle}>Odoslat samostatne objednavanie znova</div>
+            <div style={styles.createGrid}>
+              <label style={styles.field}>
+                <span>Vyhladat osobu</span>
+                <input
+                  value={communicationPersonQuery}
+                  onChange={event => {
+                    setCommunicationPersonQuery(event.target.value)
+                    setCommunicationSelectedPerson(null)
+                    if (event.target.value.trim().length < 2) setCommunicationPersonResults([])
+                  }}
+                  style={styles.input}
+                  placeholder="Meno, priezvisko alebo e-mail"
+                  disabled={communicationLoading}
+                />
+              </label>
+            </div>
+
+            <div style={styles.toolActionRow}>
+              <button
+                type="button"
+                style={styles.lightButton}
+                disabled={communicationLoading || communicationPersonQuery.trim().length < 2}
+                onClick={() => void searchCommunicationPeople()}
+              >
+                {communicationLoading ? 'Pracujem...' : 'Vyhladat osobu'}
+              </button>
+
+              <button
+                type="button"
+                style={styles.confirmButtonPurple}
+                disabled={communicationLoading || !communicationSelectedPerson}
+                onClick={() => void resendSelfOrderingEmail()}
+              >
+                Odoslat znova
+              </button>
+
+              {communicationSelectedPerson && (
+                <span style={styles.optionHint}>
+                  {communicationSelectedPerson.fullName || 'Bez mena'} | {communicationSelectedPerson.email}
+                </span>
+              )}
+            </div>
+
+            {communicationPersonResults.length > 0 && (
+              <div style={styles.managerResultList}>
+                {communicationPersonResults.map(person => {
+                  const isSelected = communicationSelectedPerson?.id === person.id
+
+                  return (
+                    <button
+                      key={person.id}
+                      type="button"
+                      style={{
+                        ...styles.managerResultButton,
+                        ...(isSelected ? styles.managerResultButtonActive : {})
+                      }}
+                      disabled={communicationLoading}
+                      onClick={() => setCommunicationSelectedPerson(person)}
+                    >
+                      <b>{person.fullName || 'Bez mena'}</b>
+                      <span>{person.email || 'Bez e-mailu'}</span>
+                      <span>{person.registrationGroupName || 'Bez registracnej skupiny'}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           {communicationSummary && (
@@ -8739,6 +8899,14 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
     flexWrap: 'wrap',
     alignItems: 'center'
+  },
+  communicationResendBox: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    background: '#fbfbfd',
+    padding: 10,
+    display: 'grid',
+    gap: 8
   },
   toolStatsGrid: {
     display: 'grid',
