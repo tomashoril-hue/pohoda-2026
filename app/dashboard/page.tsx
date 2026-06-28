@@ -325,7 +325,7 @@ export default async function DashboardPage({
       .eq('datum', selectedDate),
     supabaseServer
       .from('jedalny_listok')
-      .select('typ_jedla, varianta, nazov, popis')
+      .select('id, datum, typ_jedla, varianta, nazov, popis, poradie')
       .eq('datum', selectedDate)
       .eq('aktivne', true)
       .order('typ_jedla', { ascending: true })
