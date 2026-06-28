@@ -28,6 +28,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/login?error=self-ordering-expired', req.url))
   }
 
+  if (Number(loginToken.used_count || 0) > 0) {
+    return NextResponse.redirect(new URL('/login?error=self-ordering-used', req.url))
+  }
+
   const { data: user, error: userError } = await supabaseServer
     .from('users')
     .select('id, aktivny, self_ordering_opened_at')
@@ -50,20 +54,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/login?error=self-ordering-role', req.url))
   }
 
-  await supabaseServer
+  const nowIso = new Date().toISOString()
+  const { data: consumedToken, error: consumeError } = await supabaseServer
     .from('self_ordering_login_tokens')
     .update({
-      used_count: Number(loginToken.used_count || 0) + 1,
-      last_used_at: new Date().toISOString()
+      used_count: 1,
+      last_used_at: nowIso
     })
     .eq('id', loginToken.id)
+    .eq('used_count', 0)
+    .gt('expires_at', nowIso)
+    .select('id')
+    .maybeSingle()
+
+  if (consumeError || !consumedToken) {
+    return NextResponse.redirect(new URL('/login?error=self-ordering-used', req.url))
+  }
 
   if (!user.self_ordering_opened_at) {
     await supabaseServer
       .from('users')
       .update({
-        self_ordering_opened_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        self_ordering_opened_at: nowIso,
+        updated_at: nowIso
       })
       .eq('id', user.id)
       .is('self_ordering_opened_at', null)

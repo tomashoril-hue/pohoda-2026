@@ -8,6 +8,7 @@ import { createSelfOrderingToken, hashSelfOrderingToken } from '@/lib/selfOrderi
 import { supabaseServer } from '@/lib/supabaseServer'
 
 const BATCH_SIZE = 50
+const SELF_ORDERING_TOKEN_DAYS = 7
 
 function text(value: any) {
   return String(value || '').trim()
@@ -38,12 +39,16 @@ function languageValue(value: any) {
 
 function selfOrderingEmailHtml({
   meno,
+  email,
   loginUrl,
+  siteUrl,
   language,
   faviconUrl
 }: {
   meno: string
+  email: string
   loginUrl: string
+  siteUrl: string
   language: 'SK' | 'EN'
   faviconUrl: string
 }) {
@@ -55,9 +60,9 @@ function selfOrderingEmailHtml({
         greeting: `Hello${meno ? `, ${meno}` : ''},`,
         intro: 'we have registered you in the PohodaPass meal system.',
         body: 'Please choose your default meal type and order lunches or dinners for the days when you want to use catering. After that, you can change your selections in the Meal selection section of the app.',
-        login: 'This link signs you in automatically. You can open it again from the same e-mail; if you sign in on another device later, use your e-mail address.',
+        login: `This button signs you in automatically once. It is valid for ${SELF_ORDERING_TOKEN_DAYS} days.`,
         button: 'Open PohodaPass',
-        fallback: 'If the button does not work, open this link:',
+        fallback: 'Or sign in at PohodaPass with your login e-mail:',
         footer: 'Your QR code is attached as a PNG file.'
       }
     : {
@@ -66,12 +71,14 @@ function selfOrderingEmailHtml({
         greeting: `Ahoj${meno ? `, ${meno}` : ''},`,
         intro: 'práve sme ťa registrovali do stravovacieho systému PohodaPass.',
         body: 'Prosím vyber si predvolený typ stravy a objednaj si obedy alebo večere na dni, počas ktorých chceš stravu využívať. Následne si v aplikácii môžeš cez Výber stravy meniť jedlo na každý deň.',
-        login: 'Tento link ťa automaticky prihlási. Môžeš ho z toho istého e-mailu otvoriť aj opakovane; pri neskoršom prihlásení na inom zariadení použi svoju e-mailovú adresu.',
+        login: `Toto tlačidlo ťa automaticky prihlási jednorazovo. Platí ${SELF_ORDERING_TOKEN_DAYS} dní.`,
         button: 'Otvoriť PohodaPass',
-        fallback: 'Ak tlačidlo nefunguje, otvor tento odkaz:',
+        fallback: 'Alebo sa prihlás na PohodaPass prihlasovacím e-mailom:',
         footer: 'Tvoj QR kód nájdeš aj v prílohe ako PNG súbor.'
       }
   const safeLoginUrl = htmlEscape(loginUrl)
+  const safeSiteUrl = htmlEscape(siteUrl)
+  const safeEmail = htmlEscape(email)
 
   return `
     <div style="font-family:Arial,Helvetica,sans-serif;background:#f6f2ff;padding:24px;color:#111;">
@@ -98,8 +105,9 @@ function selfOrderingEmailHtml({
         </p>
 
         <p style="font-size:13px;line-height:1.45;margin:18px 0 6px;color:#555;">${htmlEscape(copy.fallback)}</p>
-        <p style="font-size:13px;line-height:1.45;margin:0;word-break:break-all;">
-          <a href="${safeLoginUrl}" style="color:#7417e8;font-weight:900;">${safeLoginUrl}</a>
+        <p style="font-size:13px;line-height:1.45;margin:0;color:#333;">
+          <a href="${safeSiteUrl}" style="color:#7417e8;font-weight:900;">${safeSiteUrl}</a><br>
+          <span style="font-weight:900;">${safeEmail}</span>
         </p>
 
         <p style="font-size:12px;line-height:1.45;margin:20px 0 0;color:#666;">${htmlEscape(copy.footer)}</p>
@@ -200,7 +208,7 @@ export async function POST(req: NextRequest) {
 
       const token = createSelfOrderingToken()
       const expiresAt = new Date()
-      expiresAt.setDate(expiresAt.getDate() + 30)
+      expiresAt.setDate(expiresAt.getDate() + SELF_ORDERING_TOKEN_DAYS)
       const loginUrl = `${baseUrl}/self-ordering-login?token=${token}`
 
       try {
@@ -218,7 +226,9 @@ export async function POST(req: NextRequest) {
         const qrAttachment = await createQrPngAttachment(user.qr_code || '', 'pohodapass-qr')
         const html = selfOrderingEmailHtml({
           meno: user.meno || '',
+          email,
           loginUrl,
+          siteUrl: baseUrl,
           language,
           faviconUrl
         })
@@ -228,8 +238,8 @@ export async function POST(req: NextRequest) {
           subject: language === 'EN' ? 'PohodaPass meal ordering' : 'Objednávanie stravy PohodaPass',
           html,
           text: language === 'EN'
-            ? `Hello ${user.meno || ''}, we have registered you in PohodaPass. Open PohodaPass and order your meals: ${loginUrl}`
-            : `Ahoj ${user.meno || ''}, práve sme ťa registrovali do PohodaPass. Otvor PohodaPass a objednaj si stravu: ${loginUrl}`,
+            ? `Hello ${user.meno || ''}, we have registered you in PohodaPass. Use the Open PohodaPass button in this e-mail to order your meals. Or sign in at ${baseUrl} with your login e-mail: ${email}`
+            : `Ahoj ${user.meno || ''}, práve sme ťa registrovali do PohodaPass. Stravu si objednaj cez tlačidlo Otvoriť PohodaPass v tomto e-maile. Alebo sa prihlás na ${baseUrl} prihlasovacím e-mailom: ${email}`,
           attachments: qrAttachment ? [qrAttachment] : undefined
         })
 

@@ -5,6 +5,28 @@ import Link from 'next/link'
 import LanguageSwitcher from '@/components/LanguageSwitcher'
 import { appText, type AppLanguage } from '@/lib/i18n'
 
+function initialLoginErrorMessage(error: string, isEnglish: boolean) {
+  if (error === 'self-ordering-used') {
+    return isEnglish
+      ? 'This sign-in button has already been used. Sign in with your e-mail.'
+      : 'Toto prihlasovacie tlačidlo už bolo použité. Prihlás sa e-mailom.'
+  }
+
+  if (error === 'self-ordering-expired') {
+    return isEnglish
+      ? 'This sign-in button has expired. Sign in with your e-mail.'
+      : 'Toto prihlasovacie tlačidlo už expirovalo. Prihlás sa e-mailom.'
+  }
+
+  if (error === 'self-ordering-token' || error === 'self-ordering-role') {
+    return isEnglish
+      ? 'This sign-in button is not valid. Sign in with your e-mail.'
+      : 'Toto prihlasovacie tlačidlo nie je platné. Prihlás sa e-mailom.'
+  }
+
+  return error
+}
+
 export default function LoginPage({
   language = 'SK',
   initialEmail = '',
@@ -34,7 +56,7 @@ export default function LoginPage({
   const [codeLoading, setCodeLoading] = useState(false)
   const [accessLoading, setAccessLoading] = useState(false)
   const [sent, setSent] = useState(initialSent)
-  const [error, setError] = useState(initialError)
+  const [error, setError] = useState(initialLoginErrorMessage(initialError, isEnglish))
 
   const cleanEmail = email.trim().toLowerCase()
   const redirectAfterLogin = initialNext || '/dashboard'

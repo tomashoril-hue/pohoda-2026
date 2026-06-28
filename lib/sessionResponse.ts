@@ -2,11 +2,13 @@ import crypto from 'crypto'
 import { NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabaseServer'
 
+const SESSION_DAYS = 21
+
 export async function createSessionResponse(userId: string, redirectUrl?: URL) {
   const sessionToken = crypto.randomBytes(32).toString('hex')
 
   const expiresAt = new Date()
-  expiresAt.setDate(expiresAt.getDate() + 14)
+  expiresAt.setDate(expiresAt.getDate() + SESSION_DAYS)
 
   const { error: sessionError } = await supabaseServer
     .from('app_sessions')
@@ -30,7 +32,7 @@ export async function createSessionResponse(userId: string, redirectUrl?: URL) {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
-    maxAge: 60 * 60 * 24 * 14
+    maxAge: 60 * 60 * 24 * SESSION_DAYS
   })
 
   return response
