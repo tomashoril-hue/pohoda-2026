@@ -39,12 +39,6 @@ function foodLabel(value: FoodType, language: AppLanguage) {
   return 'VEGE'
 }
 
-function foodShort(value: FoodType) {
-  if (value === 'MASO') return 'M'
-  if (value === 'DIETA') return 'D'
-  return 'V'
-}
-
 function mealShort(value: MealType) {
   return value === 'OBED' ? 'O' : 'V'
 }
@@ -234,8 +228,9 @@ export default function SelfOrderingClient({
           }
 
           .self-order-user {
-            font-size: 11px !important;
-            padding: 5px 8px !important;
+            font-size: 10px !important;
+            padding: 4px 7px !important;
+            max-width: 172px !important;
           }
 
           .self-order-card {
@@ -279,13 +274,15 @@ export default function SelfOrderingClient({
 
       <div className="self-order-top" style={styles.topBar}>
         <div style={styles.logoGroup}>
-          <img className="self-order-logo" src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
+          <div style={styles.logoStack}>
+            <img className="self-order-logo" src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
+            <div className="self-order-user" style={styles.userBadge}>
+              {t('Prihlásený:', 'Signed in:')} <b>{userName || '-'}</b>
+            </div>
+          </div>
           <div className="self-order-date" style={styles.date}>8. & 9. - 11. 7. 2026</div>
         </div>
         <div style={styles.topControls}>
-          <div className="self-order-user" style={styles.userBadge}>
-            {t('Prihlásený:', 'Signed in:')} <b>{userName || '-'}</b>
-          </div>
           <Link href="/dashboard" style={styles.backButton}>{copy.back}</Link>
         </div>
       </div>
@@ -308,7 +305,6 @@ export default function SelfOrderingClient({
                   ...(selectedFood === food ? styles.foodButtonActive : {})
                 }}
               >
-                <span>{foodShort(food)}</span>
                 <b>{foodLabel(food, language)}</b>
               </button>
             ))}
@@ -410,6 +406,11 @@ const styles: Record<string, CSSProperties> = {
     gap: 14,
     minWidth: 0
   },
+  logoStack: {
+    display: 'grid',
+    gap: 5,
+    minWidth: 0
+  },
   logo: {
     height: 50,
     maxWidth: 238,
@@ -435,10 +436,10 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid #d7d3e8',
     borderRadius: 999,
     background: '#fff',
-    padding: '7px 11px',
-    fontSize: 12,
+    padding: '5px 9px',
+    fontSize: 11,
     fontWeight: 850,
-    maxWidth: 260,
+    maxWidth: 238,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap'
@@ -494,7 +495,6 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     alignItems: 'center',
     justifyItems: 'center',
-    gap: 0,
     fontFamily: 'Arial, Helvetica, sans-serif',
     fontWeight: 950,
     color: '#211b35'
