@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { createAccessCode, hashAccessCode, normalizeAccessName } from '@/lib/accessCode'
+import { slovakiaDateIso } from '@/lib/date'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
@@ -17,6 +18,7 @@ type ImportResult = {
 type PreparedRow = {
   rowNumber: number
   userId: string
+  isExistingUser: boolean
   meno: string
   priezvisko: string
   email: string | null
@@ -32,6 +34,12 @@ type PreparedRow = {
   vecera: boolean
   assignQr: boolean
   selfOrdering: boolean
+}
+
+type ExistingUser = {
+  id: string
+  email: string | null
+  qr_code: string | null
 }
 
 function normalizeText(value: any) {
@@ -88,6 +96,13 @@ function chunkArray<T>(items: T[], size: number) {
   return chunks
 }
 
+function periodOverlaps(period: any, validFrom: string, validTo: string | null) {
+  const existingTo = period.valid_to || '9999-12-31'
+  const newTo = validTo || '9999-12-31'
+
+  return validFrom <= existingTo && period.valid_from <= newTo
+}
+
 async function insertInChunks(table: string, rows: any[], size = 1000) {
   for (const chunk of chunkArray(rows, size)) {
     if (chunk.length === 0) continue
@@ -111,10 +126,61 @@ async function rollbackUsers(userIds: string[]) {
   }
 }
 
+async function refreshCurrentRegistrationGroups(userIds: string[]) {
+  const today = slovakiaDateIso()
+  const activeRows: any[] = []
+
+  for (const userIdChunk of chunkArray(userIds, 250)) {
+    const { data, error } = await supabaseServer
+      .from('user_registration_group_periods')
+      .select('id, user_id, registration_group_id, valid_from, valid_to, note')
+      .in('user_id', userIdChunk)
+      .lte('valid_from', today)
+      .or(`valid_to.is.null,valid_to.gte.${today}`)
+      .order('valid_from', { ascending: false })
+
+    if (error) throw error
+
+    activeRows.push(...(data || []))
+  }
+
+  const currentByUserId = new Map<string, any>()
+
+  activeRows.forEach(row => {
+    if (!currentByUserId.has(row.user_id)) currentByUserId.set(row.user_id, row)
+  })
+
+  for (const userIdChunk of chunkArray(userIds, 250)) {
+    const { error } = await supabaseServer
+      .from('users')
+      .update({
+        registration_group_id: null,
+        registration_group_note: null,
+        updated_at: new Date().toISOString()
+      })
+      .in('id', userIdChunk)
+
+    if (error) throw error
+  }
+
+  for (const [userId, period] of currentByUserId.entries()) {
+    const { error } = await supabaseServer
+      .from('users')
+      .update({
+        registration_group_id: period.registration_group_id,
+        registration_group_note: period.note || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
+
+    if (error) throw error
+  }
+}
+
 function prepareRow(
   row: any,
   activeRegistrationGroupIds: Set<string>,
-  existingEmails: Set<string>,
+  existingUsersByEmail: Map<string, ExistingUser>,
   duplicateImportEmails: Set<string>,
   selfOrderingImport: boolean
 ): { prepared?: PreparedRow; result?: ImportResult } {
@@ -143,7 +209,6 @@ function prepareRow(
   if (!selfOrderingImport && !obed && !vecera) return { result: errorResult(rowNumber, 'Vyber aspon jeden narok na stravu.') }
   if (selfOrderingImport && hasValidPeriod && !obed && !vecera) return { result: errorResult(rowNumber, 'Ak zadavas obdobie, vyber aspon jeden narok na stravu.') }
   if (registrationGroupId && !activeRegistrationGroupIds.has(registrationGroupId)) return { result: errorResult(rowNumber, 'Registracna skupina neexistuje.') }
-  if (email && existingEmails.has(email)) return { result: errorResult(rowNumber, 'Pouzivatel s tymto emailom uz existuje.') }
   if (email && duplicateImportEmails.has(email)) return { result: errorResult(rowNumber, 'Duplicita e-mailu v importovanom subore.') }
 
   const dates = (!selfOrderingImport || hasValidPeriod) ? dateRange(validFrom, validTo) : []
@@ -151,11 +216,13 @@ function prepareRow(
   if (dates.length > 120) return { result: errorResult(rowNumber, 'Obdobie moze mat najviac 120 dni.') }
 
   const accessCodePlain = generateAccessCode ? createAccessCode() : null
+  const existingUser = email ? existingUsersByEmail.get(email) || null : null
 
   return {
     prepared: {
       rowNumber,
-      userId: crypto.randomUUID(),
+      userId: existingUser?.id || crypto.randomUUID(),
+      isExistingUser: !!existingUser,
       meno,
       priezvisko,
       email,
@@ -165,11 +232,11 @@ function prepareRow(
       validTo,
       dates,
       registrationGroupId,
-      generateAccessCode,
-      accessCodePlain,
+      generateAccessCode: existingUser ? false : generateAccessCode,
+      accessCodePlain: existingUser ? null : accessCodePlain,
       obed,
       vecera,
-      assignQr,
+      assignQr: existingUser ? assignQr && !existingUser.qr_code : assignQr,
       selfOrdering: selfOrderingImport
     }
   }
@@ -216,7 +283,7 @@ export async function POST(req: NextRequest) {
     const { data: existingEmailRows, error: existingEmailError } = emails.length > 0
       ? await supabaseServer
         .from('users')
-        .select('email')
+        .select('id, email, qr_code')
         .in('email', emails)
       : { data: [], error: null }
 
@@ -224,7 +291,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: existingEmailError.message }, { status: 500 })
     }
 
-    const existingEmails = new Set((existingEmailRows || []).map((row: any) => normalizeEmail(row.email)).filter(Boolean) as string[])
+    const existingUsersByEmail = new Map<string, ExistingUser>()
+
+    ;(existingEmailRows || []).forEach((row: any) => {
+      const email = normalizeEmail(row.email)
+      if (!email) return
+
+      existingUsersByEmail.set(email, {
+        id: row.id,
+        email,
+        qr_code: row.qr_code || null
+      })
+    })
+
     const seenImportEmails = new Set<string>()
     const duplicateImportEmails = new Set<string>()
 
@@ -237,7 +316,7 @@ export async function POST(req: NextRequest) {
     const preparedRows: PreparedRow[] = []
 
     rows.forEach((row: any) => {
-      const { prepared, result } = prepareRow(row, activeRegistrationGroupIds, existingEmails, duplicateImportEmails, selfOrderingImport)
+      const { prepared, result } = prepareRow(row, activeRegistrationGroupIds, existingUsersByEmail, duplicateImportEmails, selfOrderingImport)
 
       if (result) {
         results.push(result)
@@ -246,6 +325,58 @@ export async function POST(req: NextRequest) {
 
       if (prepared) preparedRows.push(prepared)
     })
+
+    const periodRowsToCheck = preparedRows.filter(row => row.registrationGroupId && row.dates.length > 0)
+
+    if (periodRowsToCheck.length > 0) {
+      const uniqueUserIds = Array.from(new Set(periodRowsToCheck.map(row => row.userId)))
+      const existingPeriods: any[] = []
+
+      for (const userIdChunk of chunkArray(uniqueUserIds, 250)) {
+        const { data, error } = await supabaseServer
+          .from('user_registration_group_periods')
+          .select('id, user_id, registration_group_id, valid_from, valid_to')
+          .in('user_id', userIdChunk)
+          .order('valid_from', { ascending: true })
+
+        if (error) {
+          return NextResponse.json({ error: error.message }, { status: 500 })
+        }
+
+        existingPeriods.push(...(data || []))
+      }
+
+      const periodsByUserId = new Map<string, any[]>()
+
+      existingPeriods.forEach(period => {
+        const list = periodsByUserId.get(period.user_id) || []
+        list.push(period)
+        periodsByUserId.set(period.user_id, list)
+      })
+
+      const conflictingRowNumbers = new Set<number>()
+
+      periodRowsToCheck.forEach(row => {
+        const overlaps = (periodsByUserId.get(row.userId) || [])
+          .filter(period => periodOverlaps(period, row.validFrom, row.validTo))
+
+        if (overlaps.length === 0) return
+
+        conflictingRowNumbers.add(row.rowNumber)
+        const firstOverlap = overlaps[0]
+        const overlapTo = firstOverlap.valid_to || 'bez konca'
+        results.push(errorResult(
+          row.rowNumber,
+          `Obdobie sa prekryva s existujucim zaradenim (${firstOverlap.valid_from} - ${overlapTo}). Uprav datumy.`
+        ))
+      })
+
+      for (let index = preparedRows.length - 1; index >= 0; index -= 1) {
+        if (conflictingRowNumbers.has(preparedRows[index].rowNumber)) {
+          preparedRows.splice(index, 1)
+        }
+      }
+    }
 
     if (preparedRows.length === 0) {
       return NextResponse.json({
@@ -257,10 +388,12 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString()
-    const insertedUserIds = preparedRows.map(row => row.userId)
+    const newRows = preparedRows.filter(row => !row.isExistingUser)
+    const existingRows = preparedRows.filter(row => row.isExistingUser)
+    const insertedUserIds = newRows.map(row => row.userId)
 
     try {
-      await insertInChunks('users', preparedRows.map(row => ({
+      await insertInChunks('users', newRows.map(row => ({
         id: row.userId,
         meno: row.meno,
         priezvisko: row.priezvisko,
@@ -277,6 +410,22 @@ export async function POST(req: NextRequest) {
         manual_created_by: currentUser.id,
         updated_at: now
       })), 300)
+
+      const existingSelfOrderingRows = existingRows.filter(row => row.selfOrdering)
+
+      if (existingSelfOrderingRows.length > 0) {
+        for (const userIdChunk of chunkArray(existingSelfOrderingRows.map(row => row.userId), 250)) {
+          const { error: updateSelfOrderingError } = await supabaseServer
+            .from('users')
+            .update({
+              self_ordering_required: true,
+              updated_at: now
+            })
+            .in('id', userIdChunk)
+
+          if (updateSelfOrderingError) throw updateSelfOrderingError
+        }
+      }
 
       const registrationPeriodRows = preparedRows
         .filter(row => row.registrationGroupId && row.dates.length > 0)
@@ -313,7 +462,21 @@ export async function POST(req: NextRequest) {
         }))
       ))
 
+      for (const row of preparedRows.filter(item => item.dates.length > 0)) {
+        for (const dateChunk of chunkArray(row.dates, 120)) {
+          const { error: deleteEntitlementError } = await supabaseServer
+            .from('user_food_entitlements')
+            .delete()
+            .eq('user_id', row.userId)
+            .in('datum', dateChunk)
+
+          if (deleteEntitlementError) throw deleteEntitlementError
+        }
+      }
+
       await insertInChunks('user_food_entitlements', entitlementRows, 1000)
+
+      await refreshCurrentRegistrationGroups(Array.from(new Set(preparedRows.map(row => row.userId))))
 
       const selfOrderingRoleRows = preparedRows
         .filter(row => row.selfOrdering)
@@ -325,7 +488,15 @@ export async function POST(req: NextRequest) {
           updated_at: now
         }))
 
-      await insertInChunks('app_user_roles', selfOrderingRoleRows, 500)
+      if (selfOrderingRoleRows.length > 0) {
+        const { error: selfOrderingRoleError } = await supabaseServer
+          .from('app_user_roles')
+          .upsert(selfOrderingRoleRows, {
+            onConflict: 'user_id,role'
+          })
+
+        if (selfOrderingRoleError) throw selfOrderingRoleError
+      }
 
       const accessCodeRows = preparedRows
         .filter(row => row.generateAccessCode && row.accessCodePlain)
@@ -369,8 +540,8 @@ export async function POST(req: NextRequest) {
         actor_user_id: currentUser.id,
         target_user_id: row.userId,
         group_id: null,
-        action: 'PERSON_CREATED',
-        entity_table: 'users',
+        action: row.isExistingUser ? 'PERSON_IMPORT_PERIOD_ADDED' : 'PERSON_CREATED',
+        entity_table: row.isExistingUser ? 'user_registration_group_periods' : 'users',
         entity_id: row.userId,
         after_data: {
           meno: row.meno,
@@ -386,6 +557,7 @@ export async function POST(req: NextRequest) {
           qr_assigned: row.assignQr && assignedQrByUserId.has(row.userId),
           access_code_generated: !!row.accessCodePlain,
           self_ordering: row.selfOrdering,
+          existing_user: row.isExistingUser,
           import_bulk: true
         }
       }))
@@ -408,7 +580,9 @@ export async function POST(req: NextRequest) {
           status: 'OK',
           userId: row.userId,
           accessCode: row.accessCodePlain,
-          message: row.selfOrdering ? 'Importovane pre samostatne objednavanie stravy.' : 'Importovane.'
+          message: row.isExistingUser
+            ? 'Doplnene dalsie zaradenie existujucej osobe.'
+            : (row.selfOrdering ? 'Importovane pre samostatne objednavanie stravy.' : 'Importovane.')
         })
       })
     } catch (err: any) {

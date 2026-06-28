@@ -624,7 +624,7 @@ export default function ImportClient({
           <h1 style={styles.title}>Import Excel/CSV</h1>
           <p style={styles.subtitle}>
             CSV stlpce: meno, priezvisko, email, telefon, strava, skupina, od, do, obed, vecera, qr, kod.
-            Stlpec skupina je registracna skupina.
+            Stlpec skupina je registracna skupina. Ak e-mail uz existuje, import doplni dalsie zaradenie a naroky.
           </p>
         </div>
 
@@ -782,7 +782,7 @@ export default function ImportClient({
               style={buttonStyle(activeTool === 'bulk' ? styles.primaryButton : styles.lightButton, 'tool-bulk')}
               onClick={() => setActiveTool(value => value === 'bulk' ? '' : 'bulk')}
             >
-              Hromadna uprava oznacenych
+              Hromadna uprava / dalsie zaradenie
             </button>
           </div>
         </section>
@@ -790,7 +790,7 @@ export default function ImportClient({
 
       {rows.length > 0 && activeTool === 'bulk' && (
         <section style={styles.panel}>
-          <div style={styles.sectionTitle}>Hromadna uprava oznacenych</div>
+          <div style={styles.sectionTitle}>Hromadna uprava / dalsie zaradenie</div>
           <div style={styles.settingsGrid}>
             <label style={styles.field}>
               <span>Registracna skupina</span>
