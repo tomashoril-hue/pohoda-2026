@@ -131,18 +131,22 @@ function prepareRow(
   const obed = !!row.obed
   const vecera = !!row.vecera
   const assignQr = row.assignQr !== false
+  const hasAnyPeriodDate = !!validFrom || !!validTo
+  const hasValidPeriod = isIsoDate(validFrom) && isIsoDate(validTo) && validTo >= validFrom
 
   if (!meno || !priezvisko) return { result: errorResult(rowNumber, 'Meno a priezvisko su povinne.') }
   if (!email) return { result: errorResult(rowNumber, 'E-mail je povinny.') }
   if (!typStravy) return { result: errorResult(rowNumber, 'Vyber typ stravy.') }
   if (selfOrderingImport && !registrationGroupId) return { result: errorResult(rowNumber, 'Registracna skupina je povinna.') }
   if (!selfOrderingImport && (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom)) return { result: errorResult(rowNumber, 'Zadaj platne obdobie prace.') }
+  if (selfOrderingImport && hasAnyPeriodDate && !hasValidPeriod) return { result: errorResult(rowNumber, 'Ak zadavas obdobie, zadaj platne datumy od/do.') }
   if (!selfOrderingImport && !obed && !vecera) return { result: errorResult(rowNumber, 'Vyber aspon jeden narok na stravu.') }
+  if (selfOrderingImport && hasValidPeriod && !obed && !vecera) return { result: errorResult(rowNumber, 'Ak zadavas obdobie, vyber aspon jeden narok na stravu.') }
   if (registrationGroupId && !activeRegistrationGroupIds.has(registrationGroupId)) return { result: errorResult(rowNumber, 'Registracna skupina neexistuje.') }
   if (email && existingEmails.has(email)) return { result: errorResult(rowNumber, 'Pouzivatel s tymto emailom uz existuje.') }
   if (email && duplicateImportEmails.has(email)) return { result: errorResult(rowNumber, 'Duplicita e-mailu v importovanom subore.') }
 
-  const dates = selfOrderingImport ? [] : dateRange(validFrom, validTo)
+  const dates = (!selfOrderingImport || hasValidPeriod) ? dateRange(validFrom, validTo) : []
 
   if (dates.length > 120) return { result: errorResult(rowNumber, 'Obdobie moze mat najviac 120 dni.') }
 
@@ -275,7 +279,7 @@ export async function POST(req: NextRequest) {
       })), 300)
 
       const registrationPeriodRows = preparedRows
-        .filter(row => row.registrationGroupId && !row.selfOrdering)
+        .filter(row => row.registrationGroupId && row.dates.length > 0)
         .map(row => ({
           user_id: row.userId,
           registration_group_id: row.registrationGroupId,
@@ -287,7 +291,7 @@ export async function POST(req: NextRequest) {
 
       await insertInChunks('user_registration_group_periods', registrationPeriodRows, 500)
 
-      await insertInChunks('personnel_work_periods', preparedRows.filter(row => !row.selfOrdering).map(row => ({
+      await insertInChunks('personnel_work_periods', preparedRows.filter(row => row.dates.length > 0).map(row => ({
         user_id: row.userId,
         valid_from: row.validFrom,
         valid_to: row.validTo,
@@ -296,7 +300,7 @@ export async function POST(req: NextRequest) {
         updated_by: currentUser.id
       })), 500)
 
-      const entitlementRows = preparedRows.filter(row => !row.selfOrdering).flatMap(row => (
+      const entitlementRows = preparedRows.filter(row => row.dates.length > 0).flatMap(row => (
         row.dates.map(datum => ({
           user_id: row.userId,
           datum,

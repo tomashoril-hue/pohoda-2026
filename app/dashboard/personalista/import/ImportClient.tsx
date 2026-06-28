@@ -98,6 +98,21 @@ function parseDate(value: string, fallback: string) {
   return fallback
 }
 
+const dateFromKeys = ['od', 'valid_from', 'zaciatok', 'datum_od']
+const dateToKeys = ['do', 'valid_to', 'koniec', 'datum_do']
+
+function optionalImportedDate(row: ParsedRow, keys: string[]) {
+  return parseDate(firstValue(row.raw, keys), '')
+}
+
+function hasAnyPeriodDate(row: Pick<ParsedRow, 'validFrom' | 'validTo'>) {
+  return !!row.validFrom || !!row.validTo
+}
+
+function hasValidPeriod(row: Pick<ParsedRow, 'validFrom' | 'validTo'>) {
+  return !!row.validFrom && !!row.validTo && row.validTo >= row.validFrom
+}
+
 function detectDelimiter(line: string) {
   const candidates = [';', ',', '\t']
   let best = ';'
@@ -298,12 +313,18 @@ export default function ImportClient({
       } else if (selfOrderingImport && (next.registrationGroupChoice === REGISTRATION_GROUP_NONE || !next.registrationGroupId)) {
         next.status = 'ERROR'
         next.message = 'Pre samostatné objednávanie vyber registračnú skupinu.'
-      } else if (!selfOrderingImport && (!next.validFrom || !next.validTo || next.validTo < next.validFrom)) {
+      } else if (!selfOrderingImport && !hasValidPeriod(next)) {
         next.status = 'ERROR'
         next.message = 'Neplatne datumy od/do.'
+      } else if (selfOrderingImport && hasAnyPeriodDate(next) && !hasValidPeriod(next)) {
+        next.status = 'ERROR'
+        next.message = 'Ak zadavas obdobie, zadaj platne datumy od/do.'
       } else if (!selfOrderingImport && !next.obed && !next.vecera) {
         next.status = 'SKIP'
         next.message = 'Bez naroku na obed alebo veceru.'
+      } else if (selfOrderingImport && hasValidPeriod(next) && !next.obed && !next.vecera) {
+        next.status = 'ERROR'
+        next.message = 'Ak zadavas obdobie, vyber obed alebo veceru.'
       } else {
         next.status = 'READY'
         next.message = ''
@@ -359,8 +380,8 @@ export default function ImportClient({
 
       const meno = firstValue(raw, ['meno', 'krstne_meno', 'first_name'])
       const priezvisko = firstValue(raw, ['priezvisko', 'surname', 'last_name'])
-      const validFrom = parseDate(firstValue(raw, ['od', 'valid_from', 'zaciatok', 'datum_od']), defaultFrom)
-      const validTo = parseDate(firstValue(raw, ['do', 'valid_to', 'koniec', 'datum_do']), defaultTo)
+      const validFrom = parseDate(firstValue(raw, dateFromKeys), selfOrderingImport ? '' : defaultFrom)
+      const validTo = parseDate(firstValue(raw, dateToKeys), selfOrderingImport ? '' : defaultTo)
       const obed = boolValue(firstValue(raw, ['obed', 'lunch']), defaultObed)
       const vecera = boolValue(firstValue(raw, ['vecera', 'večera', 'dinner']), defaultVecera)
 
@@ -379,9 +400,18 @@ export default function ImportClient({
       } else if (registrationGroupChoice === REGISTRATION_GROUP_UNRESOLVED) {
         status = 'ERROR'
         rowMessage = 'Vyber registračnú skupinu alebo Bez registračnej skupiny.'
+      } else if (!selfOrderingImport && !hasValidPeriod({ validFrom, validTo })) {
+        status = 'ERROR'
+        rowMessage = 'Neplatne datumy od/do.'
+      } else if (selfOrderingImport && hasAnyPeriodDate({ validFrom, validTo }) && !hasValidPeriod({ validFrom, validTo })) {
+        status = 'ERROR'
+        rowMessage = 'Ak zadavas obdobie, zadaj platne datumy od/do.'
       } else if (!selfOrderingImport && !obed && !vecera) {
         status = 'SKIP'
         rowMessage = 'Bez naroku na obed alebo veceru.'
+      } else if (selfOrderingImport && hasValidPeriod({ validFrom, validTo }) && !obed && !vecera) {
+        status = 'ERROR'
+        rowMessage = 'Ak zadavas obdobie, vyber obed alebo veceru.'
       }
 
       return {
@@ -560,12 +590,20 @@ export default function ImportClient({
         return { ...next, status: 'ERROR', message: 'Vyber registračnú skupinu alebo Bez registračnej skupiny.' }
       }
 
-      if (!selfOrderingImport && (!next.validFrom || !next.validTo || next.validTo < next.validFrom)) {
+      if (!selfOrderingImport && !hasValidPeriod(next)) {
         return { ...next, status: 'ERROR', message: 'Neplatne datumy od/do.' }
+      }
+
+      if (selfOrderingImport && hasAnyPeriodDate(next) && !hasValidPeriod(next)) {
+        return { ...next, status: 'ERROR', message: 'Ak zadavas obdobie, zadaj platne datumy od/do.' }
       }
 
       if (!selfOrderingImport && !next.obed && !next.vecera) {
         return { ...next, status: 'SKIP', message: 'Bez naroku na obed alebo veceru.' }
+      }
+
+      if (selfOrderingImport && hasValidPeriod(next) && !next.obed && !next.vecera) {
+        return { ...next, status: 'ERROR', message: 'Ak zadavas obdobie, vyber obed alebo veceru.' }
       }
 
       return { ...next, status: 'READY', message: '' }
@@ -625,19 +663,46 @@ export default function ImportClient({
             type="checkbox"
             checked={selfOrderingImport}
             onChange={event => {
-              setSelfOrderingImport(event.target.checked)
+              const checked = event.target.checked
+              setSelfOrderingImport(checked)
               setRows(current => current.map(row => {
                 if (row.status === 'OK') return row
-                if (event.target.checked && row.status !== 'SKIP') {
-                  if (row.registrationGroupChoice === REGISTRATION_GROUP_UNRESOLVED) {
-                    return { ...row, status: 'ERROR', message: 'Vyber registračnú skupinu.' }
+                if (checked) {
+                  const next = {
+                    ...row,
+                    validFrom: optionalImportedDate(row, dateFromKeys),
+                    validTo: optionalImportedDate(row, dateToKeys)
                   }
-                  if (row.registrationGroupChoice === REGISTRATION_GROUP_NONE || !row.registrationGroupId) {
-                    return { ...row, status: 'ERROR', message: 'Pre samostatné objednávanie vyber registračnú skupinu.' }
+
+                  if (!next.meno || !next.priezvisko) {
+                    return { ...next, status: 'SKIP', message: 'Chyba meno alebo priezvisko.' }
                   }
-                  return { ...row, status: 'READY', message: '' }
+                  if (next.registrationGroupChoice === REGISTRATION_GROUP_UNRESOLVED) {
+                    return { ...next, status: 'ERROR', message: 'Vyber registracnu skupinu.' }
+                  }
+                  if (next.registrationGroupChoice === REGISTRATION_GROUP_NONE || !next.registrationGroupId) {
+                    return { ...next, status: 'ERROR', message: 'Pre samostatne objednavanie vyber registracnu skupinu.' }
+                  }
+                  if (hasAnyPeriodDate(next) && !hasValidPeriod(next)) {
+                    return { ...next, status: 'ERROR', message: 'Ak zadavas obdobie, zadaj platne datumy od/do.' }
+                  }
+                  if (hasValidPeriod(next) && !next.obed && !next.vecera) {
+                    return { ...next, status: 'ERROR', message: 'Ak zadavas obdobie, vyber obed alebo veceru.' }
+                  }
+                  return { ...next, status: 'READY', message: '' }
                 }
-                if (!event.target.checked && (!row.obed && !row.vecera)) return { ...row, status: 'SKIP', message: 'Bez naroku na obed alebo veceru.' }
+                if (!checked) {
+                  const next = {
+                    ...row,
+                    validFrom: row.validFrom || defaultFrom,
+                    validTo: row.validTo || defaultTo
+                  }
+
+                  if (!next.meno || !next.priezvisko) return { ...next, status: 'SKIP', message: 'Chyba meno alebo priezvisko.' }
+                  if (!hasValidPeriod(next)) return { ...next, status: 'ERROR', message: 'Neplatne datumy od/do.' }
+                  if (!next.obed && !next.vecera) return { ...next, status: 'SKIP', message: 'Bez naroku na obed alebo veceru.' }
+                  return { ...next, status: 'READY', message: '' }
+                }
                 return row
               }))
             }}
@@ -645,7 +710,7 @@ export default function ImportClient({
           />
           <span>
             <b>Samostatné objednávanie stravy</b>
-            <small>Import vytvorí ľudí s QR kódom a právom objednať si stravu. Nevytvára dátumy, zaradenia ani nároky.</small>
+            <small>Import vytvorí ľudí s QR kódom a právom objednať si stravu. Ak sú vyplnené dátumy od/do, vytvorí aj zaradenie a nároky.</small>
           </span>
         </label>
 
