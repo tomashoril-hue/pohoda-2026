@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { appText, localeFor, type AppLanguage } from '@/lib/i18n'
 
@@ -114,7 +114,7 @@ export default function SelfOrderingClient({
   const isEnglish = language === 'EN'
   const t = (sk: string, en: string) => isEnglish ? en : sk
   const [selectedFood, setSelectedFood] = useState<FoodType>(normalizeFood(defaultFood))
-  const [days, setDays] = useState<CalendarDay[]>(() => {
+  const initialDays = useMemo<CalendarDay[]>(() => {
     const entitlementByDate = new Map(entitlements.map(item => [item.datum, item]))
 
     return Array.from(new Set(menu.map(item => item.datum)))
@@ -127,13 +127,18 @@ export default function SelfOrderingClient({
           vecera: !!entitlement?.vecera
         }
       })
-  })
+  }, [entitlements, menu])
+  const [days, setDays] = useState<CalendarDay[]>(initialDays)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
   const [pressedKey, setPressedKey] = useState('')
   const grace = graceUntil(openedAt)
   const graceActive = grace ? Date.now() <= grace.getTime() : true
+
+  useEffect(() => {
+    setDays(initialDays)
+  }, [initialDays])
 
   const availableMeals = useMemo(() => {
     const keys = new Set<string>()

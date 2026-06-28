@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { requestLanguage } from '@/lib/i18nServer'
-import { todayBratislavaIsoDate } from '@/lib/menuData'
 import { supabaseServer } from '@/lib/supabaseServer'
 import SelfOrderingClient from './SelfOrderingClient'
 
@@ -17,28 +16,33 @@ export default async function SelfOrderingPage() {
     redirect('/dashboard')
   }
 
-  const today = todayBratislavaIsoDate()
-  const [menuResult, entitlementResult, deadlineResult] = await Promise.all([
-    supabaseServer
-      .from('jedalny_listok')
-      .select('datum, typ_jedla, varianta, nazov, popis, poradie')
-      .gte('datum', today)
-      .eq('aktivne', true)
-      .order('datum', { ascending: true })
-      .order('typ_jedla', { ascending: true })
-      .order('poradie', { ascending: true }),
-    supabaseServer
-      .from('user_food_entitlements')
-      .select('datum, obed, vecera')
-      .eq('user_id', user.id)
-      .gte('datum', today),
-    supabaseServer
-      .from('menu_deadlines')
-      .select('datum, typ_jedla, deadline_at, locked')
-      .gte('datum', today)
-  ])
+  const menuResult = await supabaseServer
+    .from('jedalny_listok')
+    .select('datum, typ_jedla, varianta, nazov, popis, poradie')
+    .eq('aktivne', true)
+    .order('datum', { ascending: true })
+    .order('typ_jedla', { ascending: true })
+    .order('poradie', { ascending: true })
 
   if (menuResult.error) throw new Error(menuResult.error.message)
+
+  const menuDates = Array.from(new Set((menuResult.data || []).map((item: any) => item.datum).filter(Boolean)))
+  const [entitlementResult, deadlineResult] = await Promise.all([
+    menuDates.length > 0
+      ? supabaseServer
+        .from('user_food_entitlements')
+        .select('datum, obed, vecera')
+        .eq('user_id', user.id)
+        .in('datum', menuDates)
+      : Promise.resolve({ data: [], error: null }),
+    menuDates.length > 0
+      ? supabaseServer
+        .from('menu_deadlines')
+        .select('datum, typ_jedla, deadline_at, locked')
+        .in('datum', menuDates)
+      : Promise.resolve({ data: [], error: null })
+  ])
+
   if (entitlementResult.error) throw new Error(entitlementResult.error.message)
   if (deadlineResult.error) throw new Error(deadlineResult.error.message)
 
