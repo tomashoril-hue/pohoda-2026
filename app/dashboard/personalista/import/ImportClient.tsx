@@ -830,6 +830,7 @@ export default function ImportClient({
         ) : (
           <>
             <div style={styles.tableHeader}>
+              <span style={styles.headerCheck}>Akcia</span>
               <span style={styles.headerCheck}>
                 <input
                   type="checkbox"
@@ -852,11 +853,22 @@ export default function ImportClient({
               <span>Pristupovy kod</span>
               <span>Stav</span>
               <span>Poznamka</span>
-              <span>Akcia</span>
             </div>
 
             {visibleRows.slice(0, 500).map(row => (
               <div key={row.rowNumber} style={styles.tableRow}>
+                <span style={styles.actionCell}>
+                  <button
+                    type="button"
+                    aria-label={`Odstranit riadok ${row.rowNumber}`}
+                    title="Odstranit riadok z importu"
+                    style={buttonStyle(styles.removeRowButton, `remove-row-${row.rowNumber}`, row.status === 'OK' || loading)}
+                    onClick={() => removeRow(row.rowNumber)}
+                    disabled={row.status === 'OK' || loading}
+                  >
+                    x
+                  </button>
+                </span>
                 <span>
                   <input
                     type="checkbox"
@@ -914,18 +926,6 @@ export default function ImportClient({
                 </span>
                 <span style={styles.noteCell}>
                   {row.message || ''}
-                </span>
-                <span style={styles.actionCell}>
-                  <button
-                    type="button"
-                    aria-label={`Odstranit riadok ${row.rowNumber}`}
-                    title="Odstranit riadok z importu"
-                    style={buttonStyle(styles.removeRowButton, `remove-row-${row.rowNumber}`, row.status === 'OK' || loading)}
-                    onClick={() => removeRow(row.rowNumber)}
-                    disabled={row.status === 'OK' || loading}
-                  >
-                    x
-                  </button>
                 </span>
               </div>
             ))}
