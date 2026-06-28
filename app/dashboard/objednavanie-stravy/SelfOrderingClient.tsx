@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { appText, localeFor, type AppLanguage } from '@/lib/i18n'
 
@@ -114,6 +113,7 @@ export default function SelfOrderingClient({
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
   const [pressedKey, setPressedKey] = useState('')
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
 
   useEffect(() => {
     setDays(initialDays)
@@ -122,6 +122,15 @@ export default function SelfOrderingClient({
   const initialDayByDate = useMemo(() => {
     return new Map(initialDays.map(day => [day.datum, day]))
   }, [initialDays])
+
+  const hasUnsavedChanges = useMemo(() => {
+    if (days.length !== initialDays.length) return true
+
+    return days.some(day => {
+      const initialDay = initialDayByDate.get(day.datum)
+      return !!initialDay?.obed !== day.obed || !!initialDay?.vecera !== day.vecera
+    })
+  }, [days, initialDayByDate, initialDays.length])
 
   const deadlineByKey = useMemo(() => {
     return new Map(deadlines.map(item => [`${item.datum}|${item.typ_jedla}`, item]))
@@ -195,7 +204,7 @@ export default function SelfOrderingClient({
     }
   }
 
-  const save = async () => {
+  const save = async (redirectAfterSave = true) => {
     setSaving(true)
     setMessage('')
     setMessageType('')
@@ -216,7 +225,8 @@ export default function SelfOrderingClient({
       } else {
         setMessage(t('Objednávka bola uložená.', 'Order has been saved.'))
         setMessageType('ok')
-        router.push('/dashboard')
+        if (redirectAfterSave) router.push('/dashboard')
+        return true
       }
     } catch (err: any) {
       setMessage(err?.message || t('Objednávku sa nepodarilo uložiť.', 'The order could not be saved.'))
@@ -224,6 +234,35 @@ export default function SelfOrderingClient({
     } finally {
       setSaving(false)
     }
+
+    return false
+  }
+
+  const goHome = async () => {
+    if (saving) return
+
+    if (!hasUnsavedChanges) {
+      router.push('/dashboard')
+      return
+    }
+
+    setShowLeaveConfirm(true)
+  }
+
+  const discardAndGoHome = () => {
+    setShowLeaveConfirm(false)
+    router.push('/dashboard')
+  }
+
+  const saveAndGoHome = async () => {
+    const saved = await save(false)
+    if (saved) {
+      setShowLeaveConfirm(false)
+      router.push('/dashboard')
+      return
+    }
+
+    setShowLeaveConfirm(false)
   }
 
   const hasLockedMeal = days.some(day => isMealLocked(day.datum, 'OBED') || isMealLocked(day.datum, 'VECERA'))
@@ -321,9 +360,9 @@ export default function SelfOrderingClient({
           <div className="self-order-date" style={styles.date}>8. & 9. - 11. 7. 2026</div>
         </div>
         <div style={styles.topControls}>
-          <Link href="/dashboard" style={styles.homeButton} title={copy.backToDashboard} aria-label={copy.backToDashboard}>
+          <button type="button" onClick={() => void goHome()} disabled={saving} style={styles.homeButton} title={copy.backToDashboard} aria-label={copy.backToDashboard}>
             <HomeIcon />
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -375,9 +414,6 @@ export default function SelfOrderingClient({
                   <div style={styles.mealToggleRow}>
                     {(['OBED', 'VECERA'] as MealType[]).map(meal => {
                       const active = meal === 'OBED' ? day.obed : day.vecera
-                      const initialDay = initialDayByDate.get(day.datum)
-                      const initialActive = meal === 'OBED' ? !!initialDay?.obed : !!initialDay?.vecera
-                      const changed = active !== initialActive
                       const locked = isMealLocked(day.datum, meal)
                       const disabled = saving || locked
                       const key = `${day.datum}-${meal}`
@@ -392,7 +428,6 @@ export default function SelfOrderingClient({
                           style={{
                             ...styles.mealToggle,
                             ...(active ? styles.mealToggleActive : {}),
-                            ...(changed ? styles.mealToggleChanged : {}),
                             ...(pressedKey === key ? styles.mealTogglePressed : {}),
                             ...(disabled ? styles.mealToggleDisabled : {})
                           }}
@@ -409,7 +444,7 @@ export default function SelfOrderingClient({
         </section>
 
         <div style={styles.footer}>
-          <button className="self-order-save" type="button" onClick={save} disabled={saving || days.length === 0} style={styles.saveButton}>
+          <button className="self-order-save" type="button" onClick={() => void save(true)} disabled={saving || days.length === 0} style={styles.saveButton}>
             {saving ? t('Ukladám...', 'Saving...') : t('Uložiť', 'Save')}
           </button>
           {hasLockedMeal && (
@@ -428,6 +463,30 @@ export default function SelfOrderingClient({
           </div>
         )}
       </section>
+
+      {showLeaveConfirm && (
+        <div style={styles.leaveOverlay} role="dialog" aria-modal="true" aria-labelledby="self-order-leave-title">
+          <div style={styles.leaveDialog}>
+            <div style={styles.leaveTitle} id="self-order-leave-title">
+              {t('Neuložené zmeny', 'Unsaved changes')}
+            </div>
+            <div style={styles.leaveText}>
+              {t('Chceš pred odchodom uložiť zmeny v objednávke?', 'Do you want to save your order changes before leaving?')}
+            </div>
+            <div style={styles.leaveActions}>
+              <button type="button" onClick={() => setShowLeaveConfirm(false)} disabled={saving} style={styles.leaveButtonMuted}>
+                {t('Ostať tu', 'Stay here')}
+              </button>
+              <button type="button" onClick={discardAndGoHome} disabled={saving} style={styles.leaveButtonSecondary}>
+                {t('Zahodiť', 'Discard')}
+              </button>
+              <button type="button" onClick={() => void saveAndGoHome()} disabled={saving} style={styles.leaveButtonPrimary}>
+                {saving ? t('Ukladám...', 'Saving...') : t('Uložiť', 'Save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
@@ -504,6 +563,8 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     textDecoration: 'none',
+    cursor: 'pointer',
+    fontFamily: 'Arial, Helvetica, sans-serif',
     boxShadow: '0 6px 14px rgba(31, 24, 61, 0.14)'
   },
   card: {
@@ -609,12 +670,6 @@ const styles: Record<string, CSSProperties> = {
     borderColor: '#2fb51b',
     boxShadow: '0 4px 10px rgba(47, 181, 27, 0.22)'
   },
-  mealToggleChanged: {
-    background: '#f59e0b',
-    borderColor: '#d97706',
-    color: '#111827',
-    boxShadow: '0 4px 10px rgba(245, 158, 11, 0.28)'
-  },
   mealTogglePressed: {
     transform: 'translate(1px, 1px)',
     boxShadow: '0 2px 5px rgba(47, 181, 27, 0.18)'
@@ -674,5 +729,71 @@ const styles: Record<string, CSSProperties> = {
     color: '#6b7280',
     fontSize: 13,
     fontWeight: 850
+  },
+  leaveOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(18, 12, 38, 0.42)',
+    display: 'grid',
+    placeItems: 'center',
+    padding: 16,
+    zIndex: 50
+  },
+  leaveDialog: {
+    width: 'min(92vw, 380px)',
+    border: '1px solid #ded8f2',
+    borderRadius: 18,
+    background: '#fff',
+    padding: 16,
+    boxShadow: '0 22px 60px rgba(31, 24, 61, 0.3)',
+    display: 'grid',
+    gap: 10
+  },
+  leaveTitle: {
+    fontSize: 18,
+    fontWeight: 950,
+    color: '#211b35'
+  },
+  leaveText: {
+    fontSize: 13,
+    lineHeight: 1.35,
+    fontWeight: 850,
+    color: '#4b5563'
+  },
+  leaveActions: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr 1fr',
+    gap: 8
+  },
+  leaveButtonMuted: {
+    border: '1px solid #d7d3e8',
+    borderRadius: 12,
+    background: '#fff',
+    color: '#211b35',
+    padding: '9px 8px',
+    fontSize: 12,
+    fontWeight: 950,
+    fontFamily: 'Arial, Helvetica, sans-serif'
+  },
+  leaveButtonSecondary: {
+    border: '1px solid #fecaca',
+    borderRadius: 12,
+    background: '#fee2e2',
+    color: '#991b1b',
+    padding: '9px 8px',
+    fontSize: 12,
+    fontWeight: 950,
+    fontFamily: 'Arial, Helvetica, sans-serif'
+  },
+  leaveButtonPrimary: {
+    border: '1px solid #5b21b6',
+    borderRadius: 12,
+    background: '#7417e8',
+    color: '#fff',
+    padding: '9px 8px',
+    fontSize: 12,
+    fontWeight: 950,
+    fontFamily: 'Arial, Helvetica, sans-serif',
+    boxShadow: '0 8px 18px rgba(116, 23, 232, 0.22)'
   }
 }
