@@ -97,12 +97,25 @@ export async function POST(req: NextRequest) {
     .filter((item: RequestedDay) => /^\d{4}-\d{2}-\d{2}$/.test(item.datum))
 
   const today = todayBratislavaIsoDate()
-  const maxDate = addDaysIso(today, 20)
+  const defaultMaxDate = addDaysIso(today, 20)
+  const { data: latestEntitlement, error: latestEntitlementError } = await supabaseServer
+    .from('user_food_entitlements')
+    .select('datum')
+    .eq('user_id', user.id)
+    .gte('datum', today)
+    .order('datum', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestEntitlementError) return NextResponse.json({ error: latestEntitlementError.message }, { status: 500 })
+
+  const latestEntitlementDate = latestEntitlement?.datum || ''
+  const maxDate = latestEntitlementDate > defaultMaxDate ? latestEntitlementDate : defaultMaxDate
   const dateList = Array.from(new Set(requestedDays.map(item => item.datum)))
     .filter(datum => datum >= today && datum <= maxDate)
 
   if (dateList.length === 0) {
-    return NextResponse.json({ error: 'Neplatné dni. Objednávať je možné najbližšie 3 týždne.' }, { status: 400 })
+    return NextResponse.json({ error: 'Neplatné dni.' }, { status: 400 })
   }
 
   const allowedDateSet = new Set(dateList)

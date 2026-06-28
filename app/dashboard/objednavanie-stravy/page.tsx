@@ -16,6 +16,13 @@ function dateRange(start: string, days: number) {
   return Array.from({ length: days }, (_, index) => addDaysIso(start, index))
 }
 
+function daysBetweenInclusive(start: string, end: string) {
+  const startDate = new Date(`${start}T12:00:00`)
+  const endDate = new Date(`${end}T12:00:00`)
+  const diff = Math.floor((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000))
+  return Math.max(1, diff + 1)
+}
+
 export default async function SelfOrderingPage() {
   const user = await getCurrentUser()
 
@@ -28,8 +35,21 @@ export default async function SelfOrderingPage() {
   }
 
   const today = todayBratislavaIsoDate()
-  const orderDates = dateRange(today, 21)
-  const endDate = orderDates[orderDates.length - 1]
+  const defaultEndDate = addDaysIso(today, 20)
+  const latestEntitlementResult = await supabaseServer
+    .from('user_food_entitlements')
+    .select('datum')
+    .eq('user_id', user.id)
+    .gte('datum', today)
+    .order('datum', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestEntitlementResult.error) throw new Error(latestEntitlementResult.error.message)
+
+  const latestEntitlementDate = latestEntitlementResult.data?.datum || ''
+  const endDate = latestEntitlementDate > defaultEndDate ? latestEntitlementDate : defaultEndDate
+  const orderDates = dateRange(today, daysBetweenInclusive(today, endDate))
   const [entitlementResult, deadlineResult] = await Promise.all([
     supabaseServer
       .from('user_food_entitlements')
