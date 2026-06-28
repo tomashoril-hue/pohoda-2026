@@ -16,6 +16,7 @@ function fullName(user: any) {
 
 const INITIAL_PEOPLE_LIMIT = 50
 const RECENT_USER_SELECT = 'id, meno, priezvisko, email, telefon, typ_stravy, aktivny, account_type, registration_group_id, registration_group_note, review_status, updated_at, created_at'
+const PERSON_ACCOUNT_TYPE = 'PERSON'
 
 type PersonalistaSearchParams = Promise<{
   scope?: string | string[]
@@ -230,6 +231,149 @@ async function fetchEntitlementsForUsers(userIds: string[]) {
   }
 }
 
+async function fetchAllRows(buildQuery: (from: number, to: number) => any) {
+  const pageSize = 1000
+  const rows: any[] = []
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await buildQuery(from, from + pageSize - 1)
+
+    if (error) return rows
+
+    rows.push(...(data || []))
+
+    if (!data || data.length < pageSize) return rows
+  }
+}
+
+function normalizeChoice(value: any) {
+  const text = String(value || '').trim().toUpperCase()
+
+  if (text === 'MASO') return 'MASO'
+  if (text === 'VEGE') return 'VEGE'
+  if (text === 'DIETA' || text === 'DIÉTA' || text === 'DIĂ‰TA') return 'DIETA'
+  if (text === 'BEZ_ZAUJMU') return 'BEZ_ZAUJMU'
+
+  return ''
+}
+
+function emptyMealStats() {
+  return {
+    total: 0,
+    MASO: 0,
+    VEGE: 0,
+    DIETA: 0
+  }
+}
+
+function isPersonAccount(row: any) {
+  const accountType = String(row?.account_type || PERSON_ACCOUNT_TYPE).toUpperCase()
+
+  return accountType !== 'TECHNICAL'
+}
+
+async function fetchPersonnelStats(today: string, activeRegistrationGroupCount: number) {
+  const [userRows, activeQrRows, entitlementRows] = await Promise.all([
+    fetchAllRows((from, to) => supabaseServer
+      .from('users')
+      .select('id, aktivny, account_type, review_status, typ_stravy, qr_code')
+      .range(from, to)
+    ),
+    fetchAllRows((from, to) => supabaseServer
+      .from('user_qr_codes')
+      .select('user_id, active')
+      .eq('active', true)
+      .range(from, to)
+    ),
+    fetchAllRows((from, to) => supabaseServer
+      .from('user_food_entitlements')
+      .select('user_id, datum, obed, vecera')
+      .eq('datum', today)
+      .range(from, to)
+    )
+  ])
+
+  const personUsers = userRows.filter(isPersonAccount)
+  const userById = new Map(personUsers.map((row: any) => [row.id, row]))
+  const activeUsers = personUsers.filter((row: any) => String(row.aktivny || '').toUpperCase() === 'ANO')
+  const activeUserIds = new Set(activeUsers.map((row: any) => row.id).filter(Boolean))
+  const activeQrUserIds = new Set<string>()
+
+  activeQrRows.forEach((row: any) => {
+    if (!row.user_id || !activeUserIds.has(row.user_id)) return
+
+    activeQrUserIds.add(row.user_id)
+  })
+
+  activeUsers.forEach((row: any) => {
+    if (!row.id || !row.qr_code) return
+
+    activeQrUserIds.add(row.id)
+  })
+
+  const todaysUserIds = Array.from(new Set(
+    entitlementRows.map((row: any) => row.user_id).filter(Boolean)
+  ))
+  const selectionRows: any[] = []
+
+  for (let index = 0; index < todaysUserIds.length; index += 400) {
+    const chunk = todaysUserIds.slice(index, index + 400)
+    selectionRows.push(...await fetchAllRows((from, to) => supabaseServer
+      .from('vyber_jedal')
+      .select('user_id, typ_jedla, volba')
+      .eq('datum', today)
+      .in('user_id', chunk)
+      .range(from, to)
+    ))
+  }
+
+  const selectionByKey = new Map(
+    selectionRows.map((row: any) => [`${row.user_id}|${String(row.typ_jedla || '').toUpperCase()}`, row])
+  )
+  const meals = {
+    obed: emptyMealStats(),
+    vecera: emptyMealStats()
+  }
+
+  entitlementRows.forEach((row: any) => {
+    const user = userById.get(row.user_id)
+
+    if (!user || String(user.aktivny || '').toUpperCase() !== 'ANO') return
+
+    ;([
+      ['OBED', 'obed', row.obed],
+      ['VECERA', 'vecera', row.vecera]
+    ] as const).forEach(([mealCode, mealKey, enabled]) => {
+      if (enabled !== true) return
+
+      const selection = selectionByKey.get(`${row.user_id}|${mealCode}`)
+      const choice = normalizeChoice(selection?.volba || user.typ_stravy)
+
+      if (choice === 'BEZ_ZAUJMU') return
+
+      meals[mealKey].total += 1
+
+      if (choice === 'MASO' || choice === 'VEGE' || choice === 'DIETA') {
+        meals[mealKey][choice] += 1
+      }
+    })
+  })
+
+  const pendingReview = personUsers.filter((row: any) => String(row.review_status || '').toUpperCase() === 'PENDING_REVIEW').length
+  const blocked = personUsers.filter((row: any) => String(row.aktivny || '').toUpperCase() !== 'ANO').length
+
+  return {
+    today,
+    activePeople: activeUsers.length,
+    activeQr: activeQrUserIds.size,
+    withoutQr: Math.max(0, activeUsers.length - activeQrUserIds.size),
+    registrationGroups: activeRegistrationGroupCount,
+    pendingReview,
+    blocked,
+    meals
+  }
+}
+
 async function fetchRegistrationGroupPeriodsForUsers(userIds: string[]) {
   const rows: any[] = []
   const pageSize = 1000
@@ -421,6 +565,7 @@ export default async function PersonalistaPage({
   const registrationGroupById = new Map(
     registrationGroups.map((group: any) => [group.id, group])
   )
+  const activeRegistrationGroups = registrationGroups.filter((group: any) => group.active)
 
   const { data: allGroupsData } = await supabaseServer
     .from('groups')
@@ -481,6 +626,7 @@ export default async function PersonalistaPage({
 
   const fromDate = isoDateOffset(0)
   const toDate = isoDateOffset(13)
+  const personnelStats = await fetchPersonnelStats(fromDate, activeRegistrationGroups.length)
 
   let qrRows: any[] = []
   let nfcRows: any[] = []
@@ -762,7 +908,8 @@ export default async function PersonalistaPage({
       people={people}
       pendingReviewPeople={pendingReviewPeople}
       groups={groups}
-      registrationGroups={registrationGroups.filter((group: any) => group.active)}
+      registrationGroups={activeRegistrationGroups}
+      personnelStats={personnelStats}
       qrWristbandRules={qrWristbandRules}
       fromDate={fromDate}
       toDate={toDate}

@@ -125,6 +125,27 @@ type CommunicationSummary = {
   }
 }
 
+type PersonnelMealStats = {
+  total: number
+  MASO: number
+  VEGE: number
+  DIETA: number
+}
+
+type PersonnelStats = {
+  today: string
+  activePeople: number
+  activeQr: number
+  withoutQr: number
+  registrationGroups: number
+  pendingReview: number
+  blocked: number
+  meals: {
+    obed: PersonnelMealStats
+    vecera: PersonnelMealStats
+  }
+}
+
 type RegistrationGroupManagerPerson = {
   id: string
   userId: string
@@ -449,6 +470,7 @@ export default function PersonalistaClient({
   pendingReviewPeople: initialPendingReviewPeople,
   groups,
   registrationGroups,
+  personnelStats,
   qrWristbandRules,
   fromDate,
   toDate,
@@ -466,6 +488,7 @@ export default function PersonalistaClient({
   pendingReviewPeople: PersonItem[]
   groups: GroupItem[]
   registrationGroups: RegistrationGroupItem[]
+  personnelStats: PersonnelStats
   qrWristbandRules: QrWristbandRules
   fromDate: string
   toDate: string
@@ -1710,7 +1733,7 @@ export default function PersonalistaClient({
   const pageEnd = Math.min(pageStart + pageSize, filteredPeople.length)
   const pagedPeople = filteredPeople.slice(pageStart, pageEnd)
 
-  const stats = useMemo(() => {
+  const _stats = useMemo(() => {
     const activeQr = people.filter(person => person.activeQrCount > 0).length
     const withoutQr = people.length - activeQr
     const blocked = people.filter(person => String(person.aktivny || '').toUpperCase() !== 'ANO').length
@@ -1733,6 +1756,7 @@ export default function PersonalistaClient({
       totalDays
     }
   }, [people, pendingReviewPeople.length])
+  const stats = personnelStats
 
   const selectedCreateGroups = useMemo(() => {
     return groups.filter(group => createForm.groupIds.includes(group.id))
@@ -3886,39 +3910,42 @@ export default function PersonalistaClient({
         ...(isMobile ? styles.mobileSummaryStrip : {})
       }}>
         <div style={styles.summaryCard}>
-          <b>{people.length}</b>
-          <span>{peopleScope === 'all' ? 'Posledne upraveni' : 'Moje upravy'}</span>
+          <b>{stats.meals.obed.total + stats.meals.vecera.total}</b>
+          <span>Dnešné nároky</span>
+          <small>Obed {stats.meals.obed.total} / Večer {stats.meals.vecera.total}</small>
+        </div>
+
+        <div style={styles.summaryCardOrange}>
+          <b>{stats.meals.obed.total}</b>
+          <span>Obed dnes</span>
+          <small>MASO {stats.meals.obed.MASO} / VEGE {stats.meals.obed.VEGE} / DIÉTA {stats.meals.obed.DIETA}</small>
+        </div>
+
+        <div style={styles.summaryCardPink}>
+          <b>{stats.meals.vecera.total}</b>
+          <span>Večera dnes</span>
+          <small>MASO {stats.meals.vecera.MASO} / VEGE {stats.meals.vecera.VEGE} / DIÉTA {stats.meals.vecera.DIETA}</small>
+        </div>
+
+        <div style={styles.summaryCardBlue}>
+          <b>{stats.activeQr}</b>
+          <span>Aktívne QR</span>
+          <small>Bez QR {stats.withoutQr}</small>
+        </div>
+
+        <div style={styles.summaryCardGreen}>
+          <b>{stats.registrationGroups}</b>
+          <span>Registračné skupiny</span>
+        </div>
+
+        <div style={styles.summaryCardYellow}>
+          <b>{stats.pendingReview}</b>
+          <span>Na schválenie</span>
         </div>
 
         <div style={styles.summaryCardRed}>
           <b>{stats.blocked}</b>
           <span>Blokovaní</span>
-        </div>
-
-        <div style={styles.summaryCardYellow}>
-          <b>{stats.pendingReview}</b>
-          <span>Na schvalenie</span>
-        </div>
-
-        <div style={styles.summaryCardBlue}>
-          <b>{groups.length}</b>
-          <span>Skupín</span>
-        </div>
-
-        <div style={styles.summaryCardGreen}>
-          <b>{stats.activeQr}</b>
-          <span>Aktívny QR</span>
-        </div>
-
-        <div style={styles.summaryCardOrange}>
-          <b>{stats.totalClaims}</b>
-          <span>Aktuálne nároky</span>
-          <small>{stats.totalLunches} obed / {stats.totalDinners} večera / {stats.totalDays} dní</small>
-        </div>
-
-        <div style={styles.summaryCardPink}>
-          <b>{stats.withDiet}</b>
-          <span>DIÉTA</span>
         </div>
       </section>
       )}
