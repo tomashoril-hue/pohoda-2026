@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { appText, localeFor, type AppLanguage } from '@/lib/i18n'
 
 type MealType = 'OBED' | 'VECERA'
@@ -91,6 +92,7 @@ export default function SelfOrderingClient({
   const copy = appText(language)
   const isEnglish = language === 'EN'
   const t = (sk: string, en: string) => isEnglish ? en : sk
+  const router = useRouter()
   const [selectedFood, setSelectedFood] = useState<FoodType>(normalizeFood(defaultFood))
   const initialDays = useMemo<CalendarDay[]>(() => {
     const entitlementByDate = new Map(entitlements.map(item => [item.datum, item]))
@@ -214,6 +216,7 @@ export default function SelfOrderingClient({
       } else {
         setMessage(t('Objednávka bola uložená.', 'Order has been saved.'))
         setMessageType('ok')
+        router.push('/dashboard')
       }
     } catch (err: any) {
       setMessage(err?.message || t('Objednávku sa nepodarilo uložiť.', 'The order could not be saved.'))
