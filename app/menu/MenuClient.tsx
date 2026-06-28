@@ -433,6 +433,7 @@ export default function MenuClient({
 
     return (
       <section
+        className="menu-meal-section"
         style={{
           border: '3px solid #000',
           borderRadius: 24,
@@ -443,6 +444,7 @@ export default function MenuClient({
         }}
       >
         <div
+          className="menu-meal-header"
           style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -453,6 +455,7 @@ export default function MenuClient({
         >
           <div>
             <h2
+              className="menu-meal-title"
               style={{
                 margin: 0,
                 fontSize: 26,
@@ -489,7 +492,7 @@ export default function MenuClient({
           </div>
 
           <div
-            className={state.danger ? 'deadline-blink' : ''}
+            className={`menu-meal-status ${state.danger ? 'deadline-blink' : ''}`}
             style={{
               background: !mealEntitlement
                 ? '#b91c1c'
@@ -529,6 +532,7 @@ export default function MenuClient({
         </div>
 
         <div
+          className="menu-options-grid"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
@@ -542,6 +546,7 @@ export default function MenuClient({
 
             return (
               <button
+                className="menu-option-card"
                 key={item.id}
                 onClick={() => handleSelect(selectedDate, typ, item.varianta)}
                 disabled={isSaving || mealDisabled || !online}
@@ -562,6 +567,7 @@ export default function MenuClient({
                 }}
               >
                 <div
+                  className="menu-option-badge"
                   style={{
                     display: 'inline-block',
                     background: item.varianta === 'MASO' ? '#000' : '#f25be6',
@@ -578,6 +584,7 @@ export default function MenuClient({
                 </div>
 
                 <div
+                  className="menu-option-title"
                   style={{
                     fontSize: 20,
                     fontWeight: 900,
@@ -589,6 +596,7 @@ export default function MenuClient({
                 </div>
 
                 <div
+                  className="menu-option-description"
                   style={{
                     fontSize: 14,
                     fontWeight: 700,
@@ -621,6 +629,7 @@ export default function MenuClient({
 
             return (
               <button
+                className="menu-option-card menu-no-interest-card"
                 key={`${typ}-bez-zaujmu`}
                 onClick={() => handleSelect(selectedDate, typ, 'BEZ_ZAUJMU')}
                 disabled={isSaving || mealDisabled || !online}
@@ -701,6 +710,7 @@ export default function MenuClient({
 
   return (
     <main
+      className="menu-page"
       style={{
         minHeight: '100vh',
         padding: 24,
@@ -732,10 +742,132 @@ export default function MenuClient({
             box-shadow: 1px 1px 0 #000 !important;
             filter: brightness(0.94);
           }
+
+          @media (max-width: 560px) {
+            .menu-page {
+              padding: 10px !important;
+            }
+
+            .menu-top {
+              margin-bottom: 8px !important;
+              gap: 8px !important;
+            }
+
+            .menu-logo {
+              height: 38px !important;
+              max-width: 172px !important;
+            }
+
+            .menu-today {
+              display: none !important;
+            }
+
+            .menu-card {
+              max-width: 100% !important;
+              padding: 12px !important;
+              border: 1px solid #ded8f2 !important;
+              border-radius: 16px !important;
+              box-shadow: 0 18px 44px rgba(31, 24, 61, 0.26) !important;
+            }
+
+            .menu-card-header {
+              margin-bottom: 8px !important;
+              align-items: center !important;
+            }
+
+            .menu-title {
+              font-size: 25px !important;
+              line-height: 1 !important;
+            }
+
+            .menu-description,
+            .menu-info-box {
+              display: none !important;
+            }
+
+            .menu-back-button {
+              width: 38px !important;
+              height: 38px !important;
+              border-radius: 12px !important;
+              border: 1px solid #d7d3e8 !important;
+              box-shadow: 0 6px 14px rgba(31, 24, 61, 0.14) !important;
+              font-size: 20px !important;
+            }
+
+            .menu-date-row {
+              gap: 6px !important;
+              padding-bottom: 8px !important;
+              margin-bottom: 10px !important;
+            }
+
+            .menu-date-button {
+              padding: 8px 11px !important;
+              border-width: 2px !important;
+              font-size: 12px !important;
+            }
+
+            .menu-meal-section {
+              padding: 10px !important;
+              margin-bottom: 10px !important;
+              border-width: 1px !important;
+              border-radius: 14px !important;
+            }
+
+            .menu-meal-header {
+              margin-bottom: 9px !important;
+              gap: 8px !important;
+              align-items: center !important;
+            }
+
+            .menu-meal-title {
+              font-size: 20px !important;
+              line-height: 1 !important;
+            }
+
+            .menu-meal-status {
+              min-width: 0 !important;
+              padding: 6px 9px !important;
+              border-width: 1px !important;
+              font-size: 11px !important;
+              max-width: 52vw !important;
+              white-space: normal !important;
+            }
+
+            .menu-options-grid {
+              grid-template-columns: 1fr !important;
+              gap: 8px !important;
+            }
+
+            .menu-option-card {
+              min-height: 0 !important;
+              padding: 10px !important;
+              border-width: 1px !important;
+              border-radius: 14px !important;
+              box-shadow: none !important;
+            }
+
+            .menu-option-badge {
+              padding: 4px 9px !important;
+              border-width: 1px !important;
+              font-size: 11px !important;
+              margin-bottom: 7px !important;
+            }
+
+            .menu-option-title {
+              font-size: 16px !important;
+              margin-bottom: 5px !important;
+            }
+
+            .menu-option-description {
+              font-size: 12px !important;
+              line-height: 1.25 !important;
+            }
+          }
         `}
       </style>
 
       <div
+        className="menu-top"
         style={{
           maxWidth: 980,
           margin: '0 auto 14px auto',
@@ -753,14 +885,15 @@ export default function MenuClient({
           }}
         >
           {kioskMode ? (
-            <img src="/pohoda-30.svg" alt="POHODA" style={{ height: 46 }} />
+            <img className="menu-logo" src="/pohoda-30.svg" alt="POHODA" style={{ height: 46 }} />
           ) : (
             <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
-              <img src="/pohoda-30.svg" alt="POHODA" style={{ height: 46 }} />
+              <img className="menu-logo" src="/pohoda-30.svg" alt="POHODA" style={{ height: 46 }} />
             </a>
           )}
 
           <div
+            className="menu-today"
             style={{
               background: '#000',
               color: '#fff',
@@ -780,6 +913,7 @@ export default function MenuClient({
       {topSlot}
 
       <div
+        className="menu-card"
         style={{
           maxWidth: 760,
           margin: '0 auto',
@@ -791,6 +925,7 @@ export default function MenuClient({
         }}
       >
         <div
+          className="menu-card-header"
           style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -801,6 +936,7 @@ export default function MenuClient({
           }}
         >
           <h1
+            className="menu-title"
             style={{
               margin: 0,
               fontSize: 34,
@@ -857,6 +993,7 @@ export default function MenuClient({
         )}
 
         <p
+          className="menu-description"
           style={{
             margin: '0 0 14px 0',
             fontSize: 16,
@@ -885,6 +1022,7 @@ export default function MenuClient({
         )}
 
         <div
+          className="menu-info-box"
           style={{
             margin: '0 0 20px 0',
             border: '3px solid #000',
@@ -915,6 +1053,7 @@ export default function MenuClient({
         </div>
 
         <div
+          className="menu-date-row"
           style={{
             display: 'flex',
             gap: 10,
@@ -928,6 +1067,7 @@ export default function MenuClient({
 
             return (
               <button
+                className="menu-date-button"
                 key={date}
                 onClick={() => {
                   onActivity?.()
