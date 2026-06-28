@@ -117,6 +117,10 @@ export default function SelfOrderingClient({
     setDays(initialDays)
   }, [initialDays])
 
+  const initialDayByDate = useMemo(() => {
+    return new Map(initialDays.map(day => [day.datum, day]))
+  }, [initialDays])
+
   const deadlineByKey = useMemo(() => {
     return new Map(deadlines.map(item => [`${item.datum}|${item.typ_jedla}`, item]))
   }, [deadlines])
@@ -368,6 +372,9 @@ export default function SelfOrderingClient({
                   <div style={styles.mealToggleRow}>
                     {(['OBED', 'VECERA'] as MealType[]).map(meal => {
                       const active = meal === 'OBED' ? day.obed : day.vecera
+                      const initialDay = initialDayByDate.get(day.datum)
+                      const initialActive = meal === 'OBED' ? !!initialDay?.obed : !!initialDay?.vecera
+                      const changed = active !== initialActive
                       const locked = isMealLocked(day.datum, meal)
                       const disabled = saving || locked
                       const key = `${day.datum}-${meal}`
@@ -382,6 +389,7 @@ export default function SelfOrderingClient({
                           style={{
                             ...styles.mealToggle,
                             ...(active ? styles.mealToggleActive : {}),
+                            ...(changed ? styles.mealToggleChanged : {}),
                             ...(pressedKey === key ? styles.mealTogglePressed : {}),
                             ...(disabled ? styles.mealToggleDisabled : {})
                           }}
@@ -597,6 +605,12 @@ const styles: Record<string, CSSProperties> = {
     background: '#56db3f',
     borderColor: '#2fb51b',
     boxShadow: '0 4px 10px rgba(47, 181, 27, 0.22)'
+  },
+  mealToggleChanged: {
+    background: '#f59e0b',
+    borderColor: '#d97706',
+    color: '#111827',
+    boxShadow: '0 4px 10px rgba(245, 158, 11, 0.28)'
   },
   mealTogglePressed: {
     transform: 'translate(1px, 1px)',
