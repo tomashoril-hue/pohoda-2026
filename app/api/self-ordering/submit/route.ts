@@ -6,19 +6,10 @@ import { checkActorRateLimit, checkRateLimit, rateLimitResponse } from '@/lib/ra
 import { supabaseServer } from '@/lib/supabaseServer'
 
 type MealType = 'OBED' | 'VECERA'
-type FoodType = 'MASO' | 'VEGE' | 'DIETA'
 type RequestedDay = {
   datum: string
   obed: boolean
   vecera: boolean
-}
-
-function normalizeFood(value: any): FoodType | null {
-  const normalized = String(value || '').trim().toUpperCase()
-  if (normalized === 'MASO') return 'MASO'
-  if (normalized === 'VEGE') return 'VEGE'
-  if (normalized === 'DIETA' || normalized === 'DIÉTA') return 'DIETA'
-  return null
 }
 
 function bratislavaLocalToUtcIso(datum: string, hour: number) {
@@ -77,12 +68,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}))
-  const defaultFood = normalizeFood(body.defaultFood)
   const days = Array.isArray(body.days) ? body.days : []
-
-  if (!defaultFood) {
-    return NextResponse.json({ error: 'Vyber predvolený typ stravy.' }, { status: 400 })
-  }
 
   if (days.length === 0 || days.length > 80) {
     return NextResponse.json({ error: 'Vyber aspoň jeden deň.' }, { status: 400 })
@@ -210,13 +196,6 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const selectionRows = finalRows.flatMap(row => {
-    const rows: any[] = []
-    if (row.obed) rows.push({ user_id: user.id, group_id: null, datum: row.datum, typ_jedla: 'OBED', volba: defaultFood, zdroj: 'USER' })
-    if (row.vecera) rows.push({ user_id: user.id, group_id: null, datum: row.datum, typ_jedla: 'VECERA', volba: defaultFood, zdroj: 'USER' })
-    return rows
-  })
-
   const selectionDeleteFilters = finalRows.flatMap(row => {
     const rows: Array<{ datum: string; typ: MealType }> = []
     if (!row.obed) rows.push({ datum: row.datum, typ: 'OBED' })
@@ -235,18 +214,9 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  if (selectionRows.length > 0) {
-    const { error } = await supabaseServer
-      .from('vyber_jedal')
-      .upsert(selectionRows, { onConflict: 'user_id,datum,typ_jedla' })
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
   const { error: userUpdateError } = await supabaseServer
     .from('users')
     .update({
-      typ_stravy: defaultFood,
       self_ordering_required: false,
       self_ordering_completed_at: user.self_ordering_completed_at || nowIso,
       updated_at: nowIso

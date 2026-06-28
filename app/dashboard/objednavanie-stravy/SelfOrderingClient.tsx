@@ -108,6 +108,7 @@ export default function SelfOrderingClient({
   }, [entitlements, orderDates])
   const [days, setDays] = useState<CalendarDay[]>(initialDays)
   const [saving, setSaving] = useState(false)
+  const [foodSaving, setFoodSaving] = useState<FoodType | null>(null)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
   const [pressedKey, setPressedKey] = useState('')
@@ -145,6 +146,49 @@ export default function SelfOrderingClient({
     }))
   }
 
+  const changeDefaultFood = async (food: FoodType) => {
+    if (food === selectedFood || saving || foodSaving) return
+
+    const confirmed = window.confirm(
+      t(
+        `Naozaj chceš zmeniť všetku objednanú stravu na ${foodLabel(food, language)}?`,
+        `Do you really want to change all ordered meals to ${foodLabel(food, language)}?`
+      )
+    )
+
+    if (!confirmed) return
+
+    setFoodSaving(food)
+    setMessage('')
+    setMessageType('')
+
+    try {
+      const res = await fetch('/api/self-ordering/default-food', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultFood: food })
+      })
+      const json = await res.json().catch(() => ({ error: t('Server nevrátil platnú odpoveď.', 'The server did not return a valid response.') }))
+
+      if (!res.ok || json.error) throw new Error(json.error || t('Predvolenú stravu sa nepodarilo uložiť.', 'Default meal could not be saved.'))
+
+      setSelectedFood(food)
+
+      if (Array.isArray(json.skipped) && json.skipped.length > 0) {
+        setMessage(`${t('Predvolená strava bola uložená. Niektoré jedlá sa nezmenili:', 'Default meal was saved. Some meals were not changed:')} ${json.skipped.join(', ')}`)
+        setMessageType('error')
+      } else {
+        setMessage(t('Predvolená strava bola uložená a objednané jedlá boli zmenené.', 'Default meal was saved and ordered meals were changed.'))
+        setMessageType('ok')
+      }
+    } catch (err: any) {
+      setMessage(err?.message || t('Predvolenú stravu sa nepodarilo uložiť.', 'Default meal could not be saved.'))
+      setMessageType('error')
+    } finally {
+      setFoodSaving(null)
+    }
+  }
+
   const save = async () => {
     setSaving(true)
     setMessage('')
@@ -154,10 +198,7 @@ export default function SelfOrderingClient({
       const res = await fetch('/api/self-ordering/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          defaultFood: selectedFood,
-          days
-        })
+        body: JSON.stringify({ days })
       })
       const json = await res.json().catch(() => ({ error: t('Server nevrátil platnú odpoveď.', 'The server did not return a valid response.') }))
 
@@ -290,14 +331,15 @@ export default function SelfOrderingClient({
                 key={food}
                 className="self-order-food-button"
                 type="button"
-                onClick={() => setSelectedFood(food)}
-                disabled={saving}
+                onClick={() => changeDefaultFood(food)}
+                disabled={saving || !!foodSaving}
                 style={{
                   ...styles.foodButton,
-                  ...(selectedFood === food ? styles.foodButtonActive : {})
+                  ...(selectedFood === food ? styles.foodButtonActive : {}),
+                  ...(foodSaving === food ? styles.foodButtonSaving : {})
                 }}
               >
-                <b>{foodLabel(food, language)}</b>
+                <b>{foodSaving === food ? t('Ukladám...', 'Saving...') : foodLabel(food, language)}</b>
               </button>
             ))}
           </div>
@@ -502,6 +544,12 @@ const styles: Record<string, CSSProperties> = {
     background: '#56db3f',
     borderColor: '#2fb51b',
     boxShadow: '0 6px 14px rgba(47, 181, 27, 0.24)'
+  },
+  foodButtonSaving: {
+    background: '#ede9fe',
+    borderColor: '#8b5cf6',
+    color: '#4c1d95',
+    cursor: 'wait'
   },
   calendarGrid: {
     display: 'grid',
