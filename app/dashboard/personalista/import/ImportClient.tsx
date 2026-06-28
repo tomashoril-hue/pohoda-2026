@@ -1342,7 +1342,7 @@ const styles: Record<string, React.CSSProperties> = {
   tableHeader: {
     minWidth: 1816,
     display: 'grid',
-    gridTemplateColumns: '48px 112px 128px 210px 132px 76px 168px 124px 124px 48px 52px 42px 46px 86px 72px minmax(260px, 1fr) 52px',
+    gridTemplateColumns: '52px 48px 112px 128px 210px 132px 76px 168px 124px 124px 48px 52px 42px 46px 86px 72px minmax(260px, 1fr)',
     gap: 4,
     padding: '7px 8px',
     background: '#eef2f7',
@@ -1355,7 +1355,7 @@ const styles: Record<string, React.CSSProperties> = {
   tableRow: {
     minWidth: 1816,
     display: 'grid',
-    gridTemplateColumns: '48px 112px 128px 210px 132px 76px 168px 124px 124px 48px 52px 42px 46px 86px 72px minmax(260px, 1fr) 52px',
+    gridTemplateColumns: '52px 48px 112px 128px 210px 132px 76px 168px 124px 124px 48px 52px 42px 46px 86px 72px minmax(260px, 1fr)',
     gap: 4,
     padding: '6px 8px',
     borderBottom: '1px solid #f3f4f6',
