@@ -678,20 +678,6 @@ export default function MenuClient({
                   {noInterestLabel(typ, language)}
                 </div>
 
-                <div
-                  className="menu-option-description"
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 700,
-                    lineHeight: 1.35,
-                    color: '#000',
-                  }}
-                >
-                  {isEnglish
-                    ? 'This meal will not be counted in the gastro table or in meal distribution.'
-                    : 'Toto jedlo sa nezapočíta do gastro tabuľky ani do výdaja.'}
-                </div>
-
                 {(active || isPressed) && (
                   <div
                     style={{
