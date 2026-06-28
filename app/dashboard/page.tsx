@@ -467,21 +467,26 @@ export default async function DashboardPage({
     return (selections || []).find((item: any) => item.typ_jedla === typJedla)
   }
 
-  const getMenuText = (typJedla: string, showDiet: boolean) => {
+  const getMenuDisplayItems = (typJedla: string, showDiet: boolean) => {
     const items = (menuItems || []).filter((item: any) => {
       const variant = String(item.varianta || '').trim().toUpperCase()
 
       return (
+        item.datum === selectedDate &&
         item.typ_jedla === typJedla &&
         (variant === 'MASO' || variant === 'VEGE' || (showDiet && isDietFood(variant)))
       )
     })
 
-    if (!items.length) return language === 'EN' ? 'Meal is not entered' : 'Jedlo nie je zadané'
+    if (!items.length) return []
 
     return items
-      .map((item: any) => `${menuVariantLabel(item.varianta, language)}: ${item.nazov}`)
-      .join('\n')
+      .sort((a: any, b: any) => (a.poradie || 0) - (b.poradie || 0))
+      .map((item: any) => ({
+        id: item.id,
+        label: menuVariantLabel(item.varianta, language),
+        name: item.nazov || (language === 'EN' ? 'Meal is not entered' : 'Jedlo nie je zadané')
+      }))
   }
 
   const getIssued = (typJedla: string) => {
@@ -539,7 +544,7 @@ export default async function DashboardPage({
       entitlement: entitlementLabel(entitlement?.obed, language),
       hasEntitlementRow,
       selection: obedSelection,
-      menuText: getMenuText('OBED', showDiet),
+      menuItems: getMenuDisplayItems('OBED', showDiet),
       issued: getIssued('OBED'),
       bulk: getBulk('OBED'),
       registrationBulk: getRegistrationBulk('OBED')
@@ -549,7 +554,7 @@ export default async function DashboardPage({
       entitlement: entitlementLabel(entitlement?.vecera, language),
       hasEntitlementRow,
       selection: veceraSelection,
-      menuText: getMenuText('VECERA', showDiet),
+      menuItems: getMenuDisplayItems('VECERA', showDiet),
       issued: getIssued('VECERA'),
       bulk: getBulk('VECERA'),
       registrationBulk: getRegistrationBulk('VECERA')
@@ -723,7 +728,20 @@ export default async function DashboardPage({
 
                     <div style={styles.todayRowWide}>
                       <span>{copy.meal}</span>
-                      <b style={styles.todayMenuText}>{meal.menuText}</b>
+                      {meal.menuItems.length > 0 ? (
+                        <div style={styles.todayMenuList}>
+                          {meal.menuItems.map((item: any) => (
+                            <div key={item.id} style={styles.todayMenuItem}>
+                              <span style={styles.todayMenuVariant}>{item.label}</span>
+                              <b style={styles.todayMenuName}>{item.name}</b>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <b style={styles.todayMenuName}>
+                          {language === 'EN' ? 'Meal is not entered' : 'Jedlo nie je zadané'}
+                        </b>
+                      )}
                     </div>
 
                     <div style={styles.todayRowWide}>
@@ -1119,10 +1137,39 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#000',
     fontSize: 14
   },
-  todayMenuText: {
+  todayMenuList: {
+    display: 'grid',
+    gap: 6
+  },
+  todayMenuItem: {
+    display: 'grid',
+    gridTemplateColumns: 'auto 1fr',
+    gap: 8,
+    alignItems: 'start',
+    minWidth: 0
+  },
+  todayMenuVariant: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 54,
+    border: '2px solid #000',
+    borderRadius: 999,
+    background: '#56db3f',
     color: '#000',
-    whiteSpace: 'pre-line',
-    lineHeight: 1.35
+    padding: '2px 7px',
+    fontSize: 10,
+    fontWeight: 950,
+    lineHeight: 1.1,
+    whiteSpace: 'nowrap'
+  },
+  todayMenuName: {
+    color: '#000',
+    lineHeight: 1.35,
+    fontSize: 14,
+    fontWeight: 900,
+    minWidth: 0,
+    overflowWrap: 'anywhere'
   },
   menuGrid: {
     marginTop: 26,
