@@ -109,9 +109,6 @@ export async function POST(req: NextRequest) {
   const allowedRequestedDays = requestedDays.filter(day => allowedDateSet.has(day.datum))
 
   const nowIso = new Date().toISOString()
-  const openedAt = user.self_ordering_opened_at ? new Date(user.self_ordering_opened_at) : new Date()
-  const graceUntil = new Date(openedAt.getTime() + 24 * 60 * 60 * 1000)
-  const ignoreDeadlines = Date.now() <= graceUntil.getTime()
 
   if (!user.self_ordering_opened_at) {
     await supabaseServer
@@ -157,15 +154,12 @@ export async function POST(req: NextRequest) {
       if (requested === current) continue
 
       const key = mealKey(day.datum, typ)
+      const deadline: any = deadlineByKey.get(key)
+      const effectiveDeadline = deadline?.deadline_at || defaultDeadlineIso(day.datum, typ)
 
-      if (!ignoreDeadlines) {
-        const deadline: any = deadlineByKey.get(key)
-        const effectiveDeadline = deadline?.deadline_at || defaultDeadlineIso(day.datum, typ)
-
-        if (deadline?.locked || Date.now() > new Date(effectiveDeadline).getTime()) {
-          skipped.push(`${day.datum} ${typ}: po uzávierke`)
-          continue
-        }
+      if (deadline?.locked || Date.now() > new Date(effectiveDeadline).getTime()) {
+        skipped.push(`${day.datum} ${typ}: po uzávierke`)
+        continue
       }
 
       const next = finalByDate.get(day.datum) || { datum: day.datum, obed: false, vecera: false }
@@ -251,8 +245,6 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     skipped,
-    ignoredDeadlines: ignoreDeadlines,
-    graceUntil: graceUntil.toISOString(),
     savedDates: entitlementRows.length
   })
 }

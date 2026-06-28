@@ -65,16 +65,6 @@ function formatDay(value: string) {
   })
 }
 
-function formatDateTime(value: string | null, language: AppLanguage) {
-  if (!value) return ''
-  return new Date(value).toLocaleString(localeFor(language), {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
-
 function bratislavaDefaultDeadline(datum: string, meal: MealType) {
   const d = new Date(`${datum}T12:00:00`)
   d.setDate(d.getDate() - 1)
@@ -82,16 +72,10 @@ function bratislavaDefaultDeadline(datum: string, meal: MealType) {
   return d
 }
 
-function graceUntil(openedAt: string | null) {
-  if (!openedAt) return null
-  return new Date(new Date(openedAt).getTime() + 24 * 60 * 60 * 1000)
-}
-
 export default function SelfOrderingClient({
   language = 'SK',
   userName,
   defaultFood,
-  openedAt,
   orderDates,
   entitlements,
   deadlines
@@ -99,7 +83,6 @@ export default function SelfOrderingClient({
   language?: AppLanguage
   userName: string
   defaultFood: string
-  openedAt: string | null
   completedAt: string | null
   orderDates: string[]
   entitlements: Entitlement[]
@@ -128,8 +111,6 @@ export default function SelfOrderingClient({
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
   const [pressedKey, setPressedKey] = useState('')
-  const grace = graceUntil(openedAt)
-  const graceActive = grace ? Date.now() <= grace.getTime() : true
 
   useEffect(() => {
     setDays(initialDays)
@@ -140,8 +121,6 @@ export default function SelfOrderingClient({
   }, [deadlines])
 
   const isMealLocked = (datum: string, meal: MealType) => {
-    if (graceActive) return false
-
     const deadline = deadlineByKey.get(`${datum}|${meal}`)
     if (deadline?.locked) return true
 
@@ -329,7 +308,14 @@ export default function SelfOrderingClient({
           ) : (
             <div className="self-order-calendar" style={styles.calendarGrid}>
               {days.map(day => (
-                <div key={day.datum} className="self-order-day" style={styles.dayCard}>
+                <div
+                  key={day.datum}
+                  className="self-order-day"
+                  style={{
+                    ...styles.dayCard,
+                    ...(isMealLocked(day.datum, 'OBED') && isMealLocked(day.datum, 'VECERA') ? styles.dayCardLocked : {})
+                  }}
+                >
                   <div style={styles.dayHeader}>
                     <span>{formatWeekday(day.datum, language)}</span>
                     <b className="self-order-day-date">{formatDay(day.datum)}</b>
@@ -371,13 +357,7 @@ export default function SelfOrderingClient({
           <button className="self-order-save" type="button" onClick={save} disabled={saving || days.length === 0} style={styles.saveButton}>
             {saving ? t('Ukladám...', 'Saving...') : t('Uložiť', 'Save')}
           </button>
-          {graceActive ? (
-            <span style={styles.smallNote}>
-              {grace ? `${t('Bez uzávierky do', 'No deadline until')} ${formatDateTime(grace.toISOString(), language)}` : t('Bez uzávierky pri prvom objednaní', 'No deadline for first ordering')}
-            </span>
-          ) : (
-            <span style={styles.smallNote}>{t('Platia štandardné uzávierky.', 'Standard deadlines apply.')}</span>
-          )}
+          <span style={styles.smallNote}>{t('Sivé dni alebo jedlá sú po uzávierke.', 'Grey days or meals are after the deadline.')}</span>
         </div>
 
         {message && (
@@ -532,6 +512,10 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gap: 6,
     minWidth: 0
+  },
+  dayCardLocked: {
+    background: '#f0f0f2',
+    opacity: 0.66
   },
   dayHeader: {
     display: 'grid',

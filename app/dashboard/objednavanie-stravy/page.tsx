@@ -54,7 +54,6 @@ export default async function SelfOrderingPage() {
       language={language}
       userName={`${user.meno || ''} ${user.priezvisko || ''}`.trim()}
       defaultFood={user.typ_stravy || ''}
-      openedAt={user.self_ordering_opened_at || null}
       completedAt={user.self_ordering_completed_at || null}
       orderDates={orderDates}
       entitlements={entitlementResult.data || []}
