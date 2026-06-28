@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import type { CSSProperties } from 'react'
 import { getCurrentUser } from '@/lib/auth'
 import { appText, localeFor } from '@/lib/i18n'
 import { requestLanguage } from '@/lib/i18nServer'
@@ -21,6 +22,15 @@ type CalendarDay = {
 
 const WEEKDAYS_SK = ['Po', 'Ut', 'St', 'Št', 'Pi', 'So', 'Ne']
 const WEEKDAYS_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+function HomeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+      <path d="M3.5 10.8 12 3.8l8.5 7v9.1a.9.9 0 0 1-.9.9h-5.1v-6.2h-5v6.2H4.4a.9.9 0 0 1-.9-.9v-9.1Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M2.5 11.6 12 3.8l9.5 7.8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
 
 function todayIsoDate() {
   const now = new Date()
@@ -154,48 +164,176 @@ export default async function FoodEntitlementsPage() {
   const dayCount = activeRows.length
 
   return (
-    <main style={styles.page}>
-      <div style={styles.topBar}>
-        <a href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
-          <img src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
-        </a>
-        <div style={styles.date}>8. & 9. - 11. 7. 2026</div>
+    <main className="entitlements-page" style={styles.page}>
+      <style>{`
+        .entitlements-page a[href],
+        .entitlements-page button {
+          touch-action: manipulation;
+          transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+          -webkit-tap-highlight-color: rgba(86, 219, 63, 0.22);
+        }
+
+        .entitlements-page a[href]:active,
+        .entitlements-page button:not(:disabled):active {
+          transform: translate(2px, 2px) scale(0.98);
+          filter: brightness(0.94);
+          box-shadow: 2px 2px 0 #000 !important;
+        }
+
+        @media (max-width: 560px) {
+          .entitlements-page {
+            padding: 10px !important;
+          }
+
+          .entitlements-top {
+            margin-bottom: 8px !important;
+            gap: 8px !important;
+            align-items: flex-start !important;
+          }
+
+          .entitlements-logo {
+            height: 38px !important;
+            max-width: 172px !important;
+          }
+
+          .entitlements-date {
+            display: none !important;
+          }
+
+          .entitlements-card {
+            padding: 12px !important;
+            border-radius: 16px !important;
+          }
+
+          .entitlements-title-row {
+            margin-bottom: 8px !important;
+          }
+
+          .entitlements-title {
+            font-size: 25px !important;
+            line-height: 1 !important;
+          }
+
+          .entitlements-name {
+            font-size: 12px !important;
+            margin: 5px 0 0 !important;
+          }
+
+          .entitlements-summary {
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 7px !important;
+            margin-top: 10px !important;
+          }
+
+          .entitlements-summary-box {
+            min-height: 54px !important;
+            padding: 7px 5px !important;
+            border-radius: 12px !important;
+          }
+
+          .entitlements-summary-box strong {
+            font-size: 20px !important;
+            line-height: 1 !important;
+          }
+
+          .entitlements-summary-box span {
+            font-size: 10px !important;
+            line-height: 1.1 !important;
+          }
+
+          .entitlements-legend {
+            margin-top: 10px !important;
+            gap: 7px !important;
+            font-size: 11px !important;
+          }
+
+          .entitlements-calendar-stack {
+            margin-top: 12px !important;
+            gap: 12px !important;
+          }
+
+          .entitlements-month {
+            padding: 10px !important;
+            border-radius: 14px !important;
+          }
+
+          .entitlements-month-title {
+            font-size: 18px !important;
+            margin-bottom: 9px !important;
+          }
+
+          .entitlements-weekdays {
+            gap: 4px !important;
+            font-size: 10px !important;
+          }
+
+          .entitlements-month-grid {
+            gap: 4px !important;
+          }
+
+          .entitlements-day {
+            min-height: 40px !important;
+            border-radius: 10px !important;
+            padding: 4px !important;
+            font-size: 12px !important;
+          }
+
+          .entitlements-tag {
+            width: 16px !important;
+            height: 16px !important;
+            border-width: 1px !important;
+            font-size: 9px !important;
+          }
+
+          .entitlements-range {
+            margin-top: 12px !important;
+            border-radius: 12px !important;
+            font-size: 11px !important;
+            padding: 8px 10px !important;
+          }
+        }
+      `}</style>
+
+      <div className="entitlements-top" style={styles.topBar}>
+        <Link href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}>
+          <img className="entitlements-logo" src="/pohoda-30.svg" alt="Pohoda 30" style={styles.logo} />
+        </Link>
+        <div style={styles.topActions}>
+          <div className="entitlements-date" style={styles.date}>8. & 9. - 11. 7. 2026</div>
+          <Link href="/dashboard" style={styles.homeButton} title={copy.backToDashboard} aria-label={copy.backToDashboard}>
+            <HomeIcon />
+          </Link>
+        </div>
       </div>
 
-      <section style={styles.card}>
-        <div style={styles.badge}>{copy.foodEntitlements}</div>
-
-        <div style={styles.titleRow}>
+      <section className="entitlements-card" style={styles.card}>
+        <div className="entitlements-title-row" style={styles.titleRow}>
           <div>
-            <h1 style={styles.title}>{copy.calendar}</h1>
-            <p style={styles.name}>
+            <h1 className="entitlements-title" style={styles.title}>{copy.foodEntitlements}</h1>
+            <p className="entitlements-name" style={styles.name}>
               {user.meno} {user.priezvisko}
             </p>
           </div>
-
-          <Link href="/dashboard" style={styles.backButton}>
-            {copy.back}
-          </Link>
         </div>
 
-        <div style={styles.summaryGrid}>
-          <div style={styles.summaryBox}>
+        <div className="entitlements-summary" style={styles.summaryGrid}>
+          <div className="entitlements-summary-box" style={styles.summaryBox}>
             <strong>{dayCount}</strong>
             <span>{copy.days}</span>
           </div>
 
-          <div style={styles.summaryBoxPink}>
+          <div className="entitlements-summary-box" style={styles.summaryBoxPink}>
             <strong>{lunchCount}</strong>
             <span>{copy.lunch}</span>
           </div>
 
-          <div style={styles.summaryBoxGreen}>
+          <div className="entitlements-summary-box" style={styles.summaryBoxGreen}>
             <strong>{dinnerCount}</strong>
             <span>{copy.dinner}</span>
           </div>
         </div>
 
-        <div style={styles.legend}>
+        <div className="entitlements-legend" style={styles.legend}>
           <span><b style={styles.lunchDot} /> {copy.lunch}</span>
           <span><b style={styles.dinnerDot} /> {copy.dinner}</span>
           <span><b style={styles.bothDot} /> {copy.lunchDinner}</span>
@@ -206,29 +344,30 @@ export default async function FoodEntitlementsPage() {
             {copy.noUpcomingEntitlements}
           </div>
         ) : (
-          <div style={styles.calendarStack}>
+          <div className="entitlements-calendar-stack" style={styles.calendarStack}>
             {monthKeys.map(({ year, month }) => {
               const days = buildMonth(year, month, rowsByDate)
 
               return (
-                <section key={`${year}-${month}`} style={styles.monthCard}>
-                  <h2 style={styles.monthTitle}>
+                <section className="entitlements-month" key={`${year}-${month}`} style={styles.monthCard}>
+                  <h2 className="entitlements-month-title" style={styles.monthTitle}>
                     {monthTitle(year, month, language)}
                   </h2>
 
-                  <div style={styles.weekdays}>
+                  <div className="entitlements-weekdays" style={styles.weekdays}>
                     {weekdays.map(day => (
                       <span key={day}>{day}</span>
                     ))}
                   </div>
 
-                  <div style={styles.monthGrid}>
+                  <div className="entitlements-month-grid" style={styles.monthGrid}>
                     {days.map((day, index) => {
                       const hasAny = day.obed || day.vecera
                       const hasBoth = day.obed && day.vecera
 
                       return (
                         <div
+                          className="entitlements-day"
                           key={day.iso || `empty-${index}`}
                           style={{
                             ...styles.dayCell,
@@ -242,8 +381,8 @@ export default async function FoodEntitlementsPage() {
                               <strong>{day.day}</strong>
                               {hasAny && (
                                 <div style={styles.mealTags}>
-                                  {day.obed && <span style={styles.lunchTag}>O</span>}
-                                  {day.vecera && <span style={styles.dinnerTag}>V</span>}
+                                  {day.obed && <span className="entitlements-tag" style={styles.lunchTag}>O</span>}
+                                  {day.vecera && <span className="entitlements-tag" style={styles.dinnerTag}>V</span>}
                                 </div>
                               )}
                             </>
@@ -259,7 +398,7 @@ export default async function FoodEntitlementsPage() {
         )}
 
         {activeRows.length > 0 && (
-          <div style={styles.rangeBox}>
+          <div className="entitlements-range" style={styles.rangeBox}>
             {language === 'EN' ? 'Displayed from' : 'Zobrazené od'} {formatDate(today, language)} {language === 'EN' ? 'to' : 'do'} {formatDate(lastEntitlementDate, language)}.
           </div>
         )}
@@ -268,207 +407,222 @@ export default async function FoodEntitlementsPage() {
   )
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: '100vh',
-    background: 'linear-gradient(135deg, #7417e8 0%, #ed59dc 45%, #56db3f 100%)',
-    padding: '24px',
+    background: 'linear-gradient(135deg, #7417e8 0%, #ed59dc 48%, #56db3f 100%)',
+    padding: 18,
     fontFamily: 'Arial, Helvetica, sans-serif',
-    color: '#000'
+    color: '#141414'
   },
   topBar: {
-    maxWidth: 980,
-    margin: '0 auto 24px auto',
+    maxWidth: 760,
+    margin: '0 auto 12px',
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 16
+  },
+  topActions: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 20
+    justifyContent: 'flex-end',
+    gap: 8,
+    flexWrap: 'wrap'
   },
   logo: {
-    height: 54,
-    maxWidth: 260,
-    objectFit: 'contain'
+    height: 50,
+    maxWidth: 238,
+    objectFit: 'contain',
+    filter: 'drop-shadow(0 2px 10px rgba(0, 0, 0, 0.22))'
   },
   date: {
     background: '#000',
     color: '#fff',
     borderRadius: 999,
-    padding: '10px 18px',
+    padding: '8px 14px',
     fontWeight: 900,
-    fontSize: 18
+    fontSize: 14
+  },
+  homeButton: {
+    color: '#1f2937',
+    background: '#fff',
+    border: '1px solid #d7d3e8',
+    borderRadius: 12,
+    width: 38,
+    height: 38,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textDecoration: 'none',
+    boxShadow: '0 6px 14px rgba(31, 24, 61, 0.14)'
   },
   card: {
-    maxWidth: 880,
+    maxWidth: 760,
     margin: '0 auto',
-    background: '#fff',
-    border: '4px solid #000',
-    borderRadius: 28,
-    padding: 32,
-    boxShadow: '12px 12px 0 #000'
-  },
-  badge: {
-    display: 'inline-block',
-    background: '#56db3f',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '8px 16px',
-    fontWeight: 900,
-    marginBottom: 20
+    background: 'rgba(255, 255, 255, 0.97)',
+    border: '1px solid #ded8f2',
+    borderRadius: 20,
+    padding: 16,
+    boxShadow: '0 18px 44px rgba(31, 24, 61, 0.26)'
   },
   titleRow: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 16
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 6
   },
   title: {
-    fontSize: 46,
+    fontSize: 34,
     lineHeight: 1,
     margin: 0,
     fontWeight: 950
   },
   name: {
-    fontSize: 24,
-    fontWeight: 900,
-    marginTop: 10
-  },
-  backButton: {
-    background: '#000',
-    color: '#fff',
-    border: '3px solid #000',
-    borderRadius: 999,
-    padding: '12px 18px',
-    fontWeight: 900,
-    textDecoration: 'none'
+    fontSize: 13,
+    fontWeight: 850,
+    margin: '7px 0 0',
+    color: '#5b5870'
   },
   summaryGrid: {
-    marginTop: 24,
+    marginTop: 12,
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-    gap: 12
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 8
   },
   summaryBox: {
-    border: '3px solid #000',
-    borderRadius: 20,
-    padding: 16,
-    background: '#fff',
+    border: '1px solid #ded8f2',
+    borderRadius: 12,
+    padding: '9px 8px',
+    background: '#fbfbfd',
     display: 'grid',
-    gap: 4,
-    justifyItems: 'center'
+    gap: 2,
+    justifyItems: 'center',
+    minHeight: 62,
+    fontWeight: 950
   },
   summaryBoxPink: {
-    border: '3px solid #000',
-    borderRadius: 20,
-    padding: 16,
-    background: '#f25be6',
+    border: '1px solid #e879f9',
+    borderRadius: 12,
+    padding: '9px 8px',
+    background: '#fdf4ff',
+    color: '#86198f',
     display: 'grid',
-    gap: 4,
-    justifyItems: 'center'
+    gap: 2,
+    justifyItems: 'center',
+    minHeight: 62,
+    fontWeight: 950
   },
   summaryBoxGreen: {
-    border: '3px solid #000',
-    borderRadius: 20,
-    padding: 16,
-    background: '#56db3f',
+    border: '1px solid #86efac',
+    borderRadius: 12,
+    padding: '9px 8px',
+    background: '#dcfce7',
+    color: '#166534',
     display: 'grid',
-    gap: 4,
-    justifyItems: 'center'
+    gap: 2,
+    justifyItems: 'center',
+    minHeight: 62,
+    fontWeight: 950
   },
   legend: {
-    marginTop: 18,
+    marginTop: 12,
     display: 'flex',
-    gap: 10,
+    gap: 8,
     flexWrap: 'wrap',
     alignItems: 'center',
-    fontWeight: 900
+    fontWeight: 900,
+    fontSize: 12,
+    color: '#374151'
   },
   lunchDot: {
     display: 'inline-block',
-    width: 13,
-    height: 13,
+    width: 10,
+    height: 10,
     borderRadius: 999,
     background: '#f25be6',
-    border: '2px solid #000',
     verticalAlign: 'middle'
   },
   dinnerDot: {
     display: 'inline-block',
-    width: 13,
-    height: 13,
+    width: 10,
+    height: 10,
     borderRadius: 999,
     background: '#56db3f',
-    border: '2px solid #000',
     verticalAlign: 'middle'
   },
   bothDot: {
     display: 'inline-block',
-    width: 13,
-    height: 13,
+    width: 10,
+    height: 10,
     borderRadius: 999,
     background: '#000',
-    border: '2px solid #000',
     verticalAlign: 'middle'
   },
   emptyBox: {
-    marginTop: 24,
-    border: '3px solid #000',
-    borderRadius: 20,
-    padding: 18,
-    background: '#f25be6',
-    fontSize: 18,
-    fontWeight: 900
+    marginTop: 14,
+    border: '1px dashed #d1d5db',
+    borderRadius: 12,
+    padding: 12,
+    background: '#fbfbfd',
+    color: '#6b7280',
+    fontSize: 13,
+    fontWeight: 850
   },
   calendarStack: {
-    marginTop: 22,
+    marginTop: 14,
     display: 'grid',
-    gap: 18
+    gap: 14
   },
   monthCard: {
-    border: '3px solid #000',
-    borderRadius: 24,
-    padding: 16,
-    background: '#fff'
+    border: '1px solid #e1deea',
+    borderRadius: 16,
+    padding: 12,
+    background: '#fbfbfd'
   },
   monthTitle: {
-    margin: '0 0 14px',
-    fontSize: 28,
+    margin: '0 0 10px',
+    fontSize: 22,
     fontWeight: 950,
     textTransform: 'capitalize'
   },
   weekdays: {
     display: 'grid',
     gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-    gap: 6,
+    gap: 5,
     marginBottom: 6,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 950,
-    textAlign: 'center'
+    textAlign: 'center',
+    color: '#6b667c'
   },
   monthGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
-    gap: 6
+    gap: 5
   },
   dayCell: {
-    minHeight: 58,
-    border: '2px solid #d1d5db',
-    borderRadius: 14,
-    padding: 7,
+    minHeight: 50,
+    border: '1px solid #e5e7eb',
+    borderRadius: 12,
+    padding: 6,
     display: 'grid',
     alignContent: 'space-between',
-    background: '#f8f8f8',
-    fontWeight: 900
+    background: '#fff',
+    fontWeight: 900,
+    color: '#312b46'
   },
   emptyDay: {
     borderColor: 'transparent',
     background: 'transparent'
   },
   activeDay: {
-    borderColor: '#000',
+    borderColor: '#c4b5fd',
     background: '#fff'
   },
   bothDay: {
-    boxShadow: 'inset 0 0 0 3px #000'
+    boxShadow: 'inset 0 0 0 2px #7417e8'
   },
   mealTags: {
     display: 'flex',
@@ -480,41 +634,43 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 0
   },
   lunchTag: {
-    width: 20,
-    height: 20,
+    width: 18,
+    height: 18,
     boxSizing: 'border-box',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
     background: '#f25be6',
-    border: '2px solid #000',
+    color: '#fff',
     borderRadius: 999,
     padding: 0,
-    fontSize: 11,
+    fontSize: 10,
+    fontWeight: 950,
     lineHeight: 1
   },
   dinnerTag: {
-    width: 20,
-    height: 20,
+    width: 18,
+    height: 18,
     boxSizing: 'border-box',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
     background: '#56db3f',
-    border: '2px solid #000',
+    color: '#111827',
     borderRadius: 999,
     padding: 0,
-    fontSize: 11,
+    fontSize: 10,
+    fontWeight: 950,
     lineHeight: 1
   },
   rangeBox: {
-    marginTop: 18,
-    background: '#000',
-    color: '#fff',
+    marginTop: 14,
+    background: '#f3f4f6',
+    color: '#374151',
     borderRadius: 999,
-    padding: '10px 14px',
+    padding: '8px 12px',
     display: 'inline-block',
-    fontSize: 13,
-    fontWeight: 900
+    fontSize: 12,
+    fontWeight: 850
   }
 }
