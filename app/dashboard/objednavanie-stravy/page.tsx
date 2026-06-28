@@ -2,8 +2,19 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { requestLanguage } from '@/lib/i18nServer'
+import { todayBratislavaIsoDate } from '@/lib/menuData'
 import { supabaseServer } from '@/lib/supabaseServer'
 import SelfOrderingClient from './SelfOrderingClient'
+
+function addDaysIso(date: string, days: number) {
+  const d = new Date(`${date}T12:00:00`)
+  d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+function dateRange(start: string, days: number) {
+  return Array.from({ length: days }, (_, index) => addDaysIso(start, index))
+}
 
 export default async function SelfOrderingPage() {
   const user = await getCurrentUser()
@@ -16,31 +27,21 @@ export default async function SelfOrderingPage() {
     redirect('/dashboard')
   }
 
-  const menuResult = await supabaseServer
-    .from('jedalny_listok')
-    .select('datum, typ_jedla, varianta, nazov, popis, poradie')
-    .eq('aktivne', true)
-    .order('datum', { ascending: true })
-    .order('typ_jedla', { ascending: true })
-    .order('poradie', { ascending: true })
-
-  if (menuResult.error) throw new Error(menuResult.error.message)
-
-  const menuDates = Array.from(new Set((menuResult.data || []).map((item: any) => item.datum).filter(Boolean)))
+  const today = todayBratislavaIsoDate()
+  const orderDates = dateRange(today, 21)
+  const endDate = orderDates[orderDates.length - 1]
   const [entitlementResult, deadlineResult] = await Promise.all([
-    menuDates.length > 0
-      ? supabaseServer
-        .from('user_food_entitlements')
-        .select('datum, obed, vecera')
-        .eq('user_id', user.id)
-        .in('datum', menuDates)
-      : Promise.resolve({ data: [], error: null }),
-    menuDates.length > 0
-      ? supabaseServer
-        .from('menu_deadlines')
-        .select('datum, typ_jedla, deadline_at, locked')
-        .in('datum', menuDates)
-      : Promise.resolve({ data: [], error: null })
+    supabaseServer
+      .from('user_food_entitlements')
+      .select('datum, obed, vecera')
+      .eq('user_id', user.id)
+      .gte('datum', today)
+      .lte('datum', endDate),
+    supabaseServer
+      .from('menu_deadlines')
+      .select('datum, typ_jedla, deadline_at, locked')
+      .gte('datum', today)
+      .lte('datum', endDate)
   ])
 
   if (entitlementResult.error) throw new Error(entitlementResult.error.message)
@@ -55,7 +56,7 @@ export default async function SelfOrderingPage() {
       defaultFood={user.typ_stravy || ''}
       openedAt={user.self_ordering_opened_at || null}
       completedAt={user.self_ordering_completed_at || null}
-      menu={menuResult.data || []}
+      orderDates={orderDates}
       entitlements={entitlementResult.data || []}
       deadlines={deadlineResult.data || []}
     />

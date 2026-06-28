@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
+import { todayBratislavaIsoDate } from '@/lib/menuData'
 import { checkActorRateLimit, checkRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
@@ -50,6 +51,12 @@ function mealKey(datum: string, typ: MealType) {
   return `${datum}|${typ}`
 }
 
+function addDaysIso(date: string, days: number) {
+  const d = new Date(`${date}T12:00:00`)
+  d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
 export async function POST(req: NextRequest) {
   const ipLimit = checkRateLimit(req, 'self-ordering-submit', 80, 10 * 60 * 1000)
   if (!ipLimit.ok) return rateLimitResponse(ipLimit, 'Prilis vela pokusov. Skuste znova neskor.')
@@ -89,11 +96,17 @@ export async function POST(req: NextRequest) {
     }))
     .filter((item: RequestedDay) => /^\d{4}-\d{2}-\d{2}$/.test(item.datum))
 
+  const today = todayBratislavaIsoDate()
+  const maxDate = addDaysIso(today, 20)
   const dateList = Array.from(new Set(requestedDays.map(item => item.datum)))
+    .filter(datum => datum >= today && datum <= maxDate)
 
   if (dateList.length === 0) {
-    return NextResponse.json({ error: 'Neplatné dni.' }, { status: 400 })
+    return NextResponse.json({ error: 'Neplatné dni. Objednávať je možné najbližšie 3 týždne.' }, { status: 400 })
   }
+
+  const allowedDateSet = new Set(dateList)
+  const allowedRequestedDays = requestedDays.filter(day => allowedDateSet.has(day.datum))
 
   const nowIso = new Date().toISOString()
   const openedAt = user.self_ordering_opened_at ? new Date(user.self_ordering_opened_at) : new Date()
@@ -108,12 +121,7 @@ export async function POST(req: NextRequest) {
       .is('self_ordering_opened_at', null)
   }
 
-  const [menuResult, deadlineResult, entitlementResult] = await Promise.all([
-    supabaseServer
-      .from('jedalny_listok')
-      .select('datum, typ_jedla, varianta, aktivne')
-      .in('datum', dateList)
-      .eq('aktivne', true),
+  const [deadlineResult, entitlementResult] = await Promise.all([
     supabaseServer
       .from('menu_deadlines')
       .select('datum, typ_jedla, deadline_at, locked')
@@ -125,17 +133,15 @@ export async function POST(req: NextRequest) {
       .in('datum', dateList)
   ])
 
-  if (menuResult.error) return NextResponse.json({ error: menuResult.error.message }, { status: 500 })
   if (deadlineResult.error) return NextResponse.json({ error: deadlineResult.error.message }, { status: 500 })
   if (entitlementResult.error) return NextResponse.json({ error: entitlementResult.error.message }, { status: 500 })
 
-  const menuKeys = new Set((menuResult.data || []).map((item: any) => mealKey(item.datum, item.typ_jedla)))
   const deadlineByKey = new Map((deadlineResult.data || []).map((item: any) => [mealKey(item.datum, item.typ_jedla), item]))
   const entitlementByDate = new Map((entitlementResult.data || []).map((item: any) => [item.datum, item]))
   const skipped: string[] = []
   const finalByDate = new Map<string, { datum: string; obed: boolean; vecera: boolean }>()
 
-  requestedDays.forEach(day => {
+  allowedRequestedDays.forEach(day => {
     const current: any = entitlementByDate.get(day.datum)
     finalByDate.set(day.datum, {
       datum: day.datum,
@@ -144,18 +150,13 @@ export async function POST(req: NextRequest) {
     })
   })
 
-  for (const day of requestedDays) {
+  for (const day of allowedRequestedDays) {
     for (const typ of ['OBED', 'VECERA'] as MealType[]) {
       const requested = typ === 'OBED' ? day.obed : day.vecera
       const current = !!(entitlementByDate.get(day.datum) as any)?.[typ === 'OBED' ? 'obed' : 'vecera']
       if (requested === current) continue
 
       const key = mealKey(day.datum, typ)
-
-      if (!menuKeys.has(key)) {
-        skipped.push(`${day.datum} ${typ}: jedlo nie je v jedálnom lístku`)
-        continue
-      }
 
       if (!ignoreDeadlines) {
         const deadline: any = deadlineByKey.get(key)

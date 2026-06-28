@@ -7,14 +7,6 @@ import { appText, localeFor, type AppLanguage } from '@/lib/i18n'
 type MealType = 'OBED' | 'VECERA'
 type FoodType = 'MASO' | 'VEGE' | 'DIETA'
 
-type MenuItem = {
-  datum: string
-  typ_jedla: MealType
-  varianta: FoodType
-  nazov: string
-  popis: string | null
-}
-
 type Entitlement = {
   datum: string
   obed: boolean
@@ -97,7 +89,7 @@ export default function SelfOrderingClient({
   userName,
   defaultFood,
   openedAt,
-  menu,
+  orderDates,
   entitlements,
   deadlines
 }: {
@@ -106,7 +98,7 @@ export default function SelfOrderingClient({
   defaultFood: string
   openedAt: string | null
   completedAt: string | null
-  menu: MenuItem[]
+  orderDates: string[]
   entitlements: Entitlement[]
   deadlines: Deadline[]
 }) {
@@ -117,7 +109,7 @@ export default function SelfOrderingClient({
   const initialDays = useMemo<CalendarDay[]>(() => {
     const entitlementByDate = new Map(entitlements.map(item => [item.datum, item]))
 
-    return Array.from(new Set(menu.map(item => item.datum)))
+    return Array.from(new Set(orderDates))
       .sort()
       .map(datum => {
         const entitlement = entitlementByDate.get(datum)
@@ -127,7 +119,7 @@ export default function SelfOrderingClient({
           vecera: !!entitlement?.vecera
         }
       })
-  }, [entitlements, menu])
+  }, [entitlements, orderDates])
   const [days, setDays] = useState<CalendarDay[]>(initialDays)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -139,12 +131,6 @@ export default function SelfOrderingClient({
   useEffect(() => {
     setDays(initialDays)
   }, [initialDays])
-
-  const availableMeals = useMemo(() => {
-    const keys = new Set<string>()
-    menu.forEach(item => keys.add(`${item.datum}|${item.typ_jedla}`))
-    return keys
-  }, [menu])
 
   const deadlineByKey = useMemo(() => {
     return new Map(deadlines.map(item => [`${item.datum}|${item.typ_jedla}`, item]))
@@ -164,7 +150,7 @@ export default function SelfOrderingClient({
   }
 
   const toggleMeal = (datum: string, meal: MealType) => {
-    if (!availableMeals.has(`${datum}|${meal}`) || isMealLocked(datum, meal)) return
+    if (isMealLocked(datum, meal)) return
 
     const key = `${datum}-${meal}`
     setPressedKey(key)
@@ -332,7 +318,7 @@ export default function SelfOrderingClient({
         <section style={styles.compactBlock}>
           <div style={styles.blockLabel}>{t('Vyber dni', 'Choose days')}</div>
           {days.length === 0 ? (
-            <div style={styles.emptyBox}>{t('Jedálny lístok zatiaľ nie je dostupný.', 'Menu is not available yet.')}</div>
+            <div style={styles.emptyBox}>{t('Nie sú dostupné dátumy na objednanie.', 'No dates are available for ordering.')}</div>
           ) : (
             <div className="self-order-calendar" style={styles.calendarGrid}>
               {days.map(day => (
@@ -345,9 +331,8 @@ export default function SelfOrderingClient({
                   <div style={styles.mealToggleRow}>
                     {(['OBED', 'VECERA'] as MealType[]).map(meal => {
                       const active = meal === 'OBED' ? day.obed : day.vecera
-                      const available = availableMeals.has(`${day.datum}|${meal}`)
                       const locked = isMealLocked(day.datum, meal)
-                      const disabled = saving || !available || locked
+                      const disabled = saving || locked
                       const key = `${day.datum}-${meal}`
 
                       return (
@@ -406,7 +391,7 @@ export default function SelfOrderingClient({
 const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: '100vh',
-    background: 'linear-gradient(135deg, #f5f0ff 0%, #fff 45%, #eefce9 100%)',
+    background: 'linear-gradient(135deg, #7417e8 0%, #ed59dc 48%, #56db3f 100%)',
     padding: 18,
     fontFamily: 'Arial, Helvetica, sans-serif',
     color: '#141414'
@@ -426,9 +411,10 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0
   },
   logo: {
-    height: 46,
-    maxWidth: 220,
-    objectFit: 'contain'
+    height: 50,
+    maxWidth: 238,
+    objectFit: 'contain',
+    filter: 'drop-shadow(0 2px 10px rgba(0, 0, 0, 0.22))'
   },
   date: {
     background: '#000',
@@ -470,11 +456,11 @@ const styles: Record<string, CSSProperties> = {
   card: {
     maxWidth: 760,
     margin: '0 auto',
-    background: 'rgba(255, 255, 255, 0.96)',
+    background: 'rgba(255, 255, 255, 0.97)',
     border: '1px solid #ded8f2',
     borderRadius: 20,
     padding: 16,
-    boxShadow: '0 18px 40px rgba(31, 24, 61, 0.16)',
+    boxShadow: '0 18px 44px rgba(31, 24, 61, 0.26)',
     display: 'grid',
     gap: 12
   },
