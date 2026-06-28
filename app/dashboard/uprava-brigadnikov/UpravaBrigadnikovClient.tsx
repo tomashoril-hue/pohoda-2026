@@ -224,6 +224,14 @@ export default function UpravaBrigadnikovClient({
         .brigadnici-page select,
         .brigadnici-page input {
           touch-action: manipulation;
+          min-width: 0;
+        }
+
+        .brigadnici-date-input::-webkit-calendar-picker-indicator {
+          width: 16px;
+          height: 16px;
+          padding: 0;
+          margin: 0;
         }
 
         .brigadnici-page button,
@@ -246,6 +254,7 @@ export default function UpravaBrigadnikovClient({
           .brigadnici-header { padding: 14px !important; }
           .brigadnici-title { font-size: 25px !important; }
           .brigadnici-grid { grid-template-columns: 1fr !important; }
+          .brigadnici-date-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
           .brigadnici-actions { grid-template-columns: 1fr 1fr !important; }
           .brigadnici-person-row { grid-template-columns: 32px 1fr !important; }
           .brigadnici-person-meta { grid-column: 2 !important; }
@@ -285,15 +294,17 @@ export default function UpravaBrigadnikovClient({
             </select>
           </label>
 
-          <label style={styles.field}>
-            <span>Od</span>
-            <input type="date" value={validFrom} onChange={event => setValidFrom(event.target.value)} style={styles.input} />
-          </label>
+          <div className="brigadnici-date-pair" style={styles.datePair}>
+            <label style={styles.field}>
+              <span>Od</span>
+              <input className="brigadnici-date-input" type="date" value={validFrom} onChange={event => setValidFrom(event.target.value)} style={styles.dateInput} />
+            </label>
 
-          <label style={styles.field}>
-            <span>Do</span>
-            <input type="date" value={validTo} onChange={event => setValidTo(event.target.value)} style={styles.input} />
-          </label>
+            <label style={styles.field}>
+              <span>Do</span>
+              <input className="brigadnici-date-input" type="date" value={validTo} onChange={event => setValidTo(event.target.value)} style={styles.dateInput} />
+            </label>
+          </div>
 
           <label style={styles.field}>
             <span>Hladat</span>
@@ -463,8 +474,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   settingsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(3, minmax(140px, 1fr))',
+    gridTemplateColumns: 'minmax(220px, 1.25fr) minmax(216px, 0.8fr) minmax(220px, 1fr)',
     gap: 8
+  },
+  datePair: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+    gap: 8,
+    minWidth: 0
   },
   field: {
     display: 'grid',
@@ -482,6 +499,21 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 800,
     background: '#fff',
     color: '#111827',
+    boxSizing: 'border-box',
+    width: '100%'
+  },
+  dateInput: {
+    minHeight: 38,
+    minWidth: 0,
+    maxWidth: '100%',
+    borderRadius: 6,
+    border: '1px solid #cbd5e1',
+    padding: '0 6px',
+    fontSize: 12,
+    fontWeight: 850,
+    background: '#fff',
+    color: '#111827',
+    colorScheme: 'light',
     boxSizing: 'border-box',
     width: '100%'
   },
