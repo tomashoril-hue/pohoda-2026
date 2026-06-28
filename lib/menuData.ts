@@ -15,18 +15,14 @@ export function todayBratislavaIsoDate() {
   return `${year}-${month}-${day}`
 }
 
-export async function loadMenuSelectionData(userId: string, days = 6) {
+export async function loadMenuSelectionData(userId: string) {
   const today = todayBratislavaIsoDate()
-  const endDate = new Date(today + 'T12:00:00')
-  endDate.setDate(endDate.getDate() + days)
-  const end = endDate.toISOString().slice(0, 10)
 
   const [menuResult, selectionsResult, deadlinesResult, entitlementsResult] = await Promise.all([
     supabaseServer
       .from('jedalny_listok')
       .select('*')
       .gte('datum', today)
-      .lte('datum', end)
       .eq('aktivne', true)
       .order('datum', { ascending: true })
       .order('typ_jedla', { ascending: true })
@@ -35,19 +31,16 @@ export async function loadMenuSelectionData(userId: string, days = 6) {
       .from('vyber_jedal')
       .select('*')
       .eq('user_id', userId)
-      .gte('datum', today)
-      .lte('datum', end),
+      .gte('datum', today),
     supabaseServer
       .from('menu_deadlines')
       .select('datum, typ_jedla, deadline_at, locked')
-      .gte('datum', today)
-      .lte('datum', end),
+      .gte('datum', today),
     supabaseServer
       .from('user_food_entitlements')
       .select('datum, obed, vecera')
       .eq('user_id', userId)
       .gte('datum', today)
-      .lte('datum', end)
   ])
 
   if (menuResult.error) throw new Error(menuResult.error.message)
