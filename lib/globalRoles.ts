@@ -1,6 +1,6 @@
 import { supabaseServer } from '@/lib/supabaseServer'
 
-export type GlobalRole = 'ADMIN' | 'PERSONALISTA' | 'VYDAJ' | 'ADMIN_VYDAJ' | 'GROUP_CREATOR' | 'WRISTBAND_KIOSK' | 'MENU_KIOSK' | 'OFFLINE_OBSLUHA' | 'SAMOSTATNE_OBJEDNAVANIE_STRAVY'
+export type GlobalRole = 'ADMIN' | 'PERSONALISTA' | 'VYDAJ' | 'ADMIN_VYDAJ' | 'GROUP_CREATOR' | 'WRISTBAND_KIOSK' | 'MENU_KIOSK' | 'OFFLINE_OBSLUHA' | 'SAMOSTATNE_OBJEDNAVANIE_STRAVY' | 'ADMIN_REG_SKUPINY'
 
 export type GlobalAccess = {
   roles: GlobalRole[]
@@ -13,6 +13,7 @@ export type GlobalAccess = {
   isMenuKiosk: boolean
   isOfflineObsluha: boolean
   isSelfOrderingMeal: boolean
+  isRegistrationGroupAdmin: boolean
   canUsePersonalista: boolean
   canUseFoodIssue: boolean
   canAdminFoodIssue: boolean
@@ -32,7 +33,7 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
   const roles = (data || [])
     .map(item => String(item.role || '').toUpperCase())
     .filter((role): role is GlobalRole => {
-      return role === 'ADMIN' || role === 'PERSONALISTA' || role === 'VYDAJ' || role === 'ADMIN_VYDAJ' || role === 'GROUP_CREATOR' || role === 'WRISTBAND_KIOSK' || role === 'MENU_KIOSK' || role === 'OFFLINE_OBSLUHA' || role === 'SAMOSTATNE_OBJEDNAVANIE_STRAVY'
+      return role === 'ADMIN' || role === 'PERSONALISTA' || role === 'VYDAJ' || role === 'ADMIN_VYDAJ' || role === 'GROUP_CREATOR' || role === 'WRISTBAND_KIOSK' || role === 'MENU_KIOSK' || role === 'OFFLINE_OBSLUHA' || role === 'SAMOSTATNE_OBJEDNAVANIE_STRAVY' || role === 'ADMIN_REG_SKUPINY'
     })
 
   const isAdmin = roles.includes('ADMIN')
@@ -44,6 +45,7 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
   const isMenuKiosk = roles.includes('MENU_KIOSK')
   const isOfflineObsluha = roles.includes('OFFLINE_OBSLUHA')
   const isSelfOrderingMeal = roles.includes('SAMOSTATNE_OBJEDNAVANIE_STRAVY')
+  const isRegistrationGroupAdmin = roles.includes('ADMIN_REG_SKUPINY')
 
   return {
     roles,
@@ -56,6 +58,7 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
     isMenuKiosk,
     isOfflineObsluha,
     isSelfOrderingMeal,
+    isRegistrationGroupAdmin,
     canUsePersonalista: isAdmin || isPersonalista,
     canUseFoodIssue: isAdmin || isAdminVydaj || isVydaj,
     canAdminFoodIssue: isAdmin || isAdminVydaj,

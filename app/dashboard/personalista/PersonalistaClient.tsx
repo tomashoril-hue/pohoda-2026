@@ -698,7 +698,8 @@ export default function PersonalistaClient({
     wristbandKiosk: false,
     menuKiosk: false,
     offlineObsluha: false,
-    selfOrderingMeal: false
+    selfOrderingMeal: false,
+    adminRegSkupiny: false
   })
   const [accessCodeLoading, setAccessCodeLoading] = useState(false)
   const [accessCodeLoaded, setAccessCodeLoaded] = useState(false)
@@ -1670,7 +1671,8 @@ export default function PersonalistaClient({
       wristbandKiosk: selectedPerson.globalRoles.includes('WRISTBAND_KIOSK'),
       menuKiosk: selectedPerson.globalRoles.includes('MENU_KIOSK'),
       offlineObsluha: selectedPerson.globalRoles.includes('OFFLINE_OBSLUHA'),
-      selfOrderingMeal: selectedPerson.globalRoles.includes('SAMOSTATNE_OBJEDNAVANIE_STRAVY')
+      selfOrderingMeal: selectedPerson.globalRoles.includes('SAMOSTATNE_OBJEDNAVANIE_STRAVY'),
+      adminRegSkupiny: selectedPerson.globalRoles.includes('ADMIN_REG_SKUPINY')
     })
     const preservedMessage = preservedDetailMessageRef.current
 
@@ -3783,7 +3785,8 @@ export default function PersonalistaClient({
       ...(roleForm.wristbandKiosk ? ['WRISTBAND_KIOSK'] : []),
       ...(roleForm.menuKiosk ? ['MENU_KIOSK'] : []),
       ...(roleForm.offlineObsluha ? ['OFFLINE_OBSLUHA'] : []),
-      ...(roleForm.selfOrderingMeal ? ['SAMOSTATNE_OBJEDNAVANIE_STRAVY'] : [])
+      ...(roleForm.selfOrderingMeal ? ['SAMOSTATNE_OBJEDNAVANIE_STRAVY'] : []),
+      ...(roleForm.adminRegSkupiny ? ['ADMIN_REG_SKUPINY'] : [])
     ]
 
     postDetailAction(
@@ -7772,6 +7775,20 @@ export default function PersonalistaClient({
                         style={styles.checkbox}
                       />
                       <span>Samostatné objednávanie stravy</span>
+                    </label>
+
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={roleForm.adminRegSkupiny}
+                        onChange={event => setRoleForm(prev => ({
+                          ...prev,
+                          adminRegSkupiny: event.target.checked
+                        }))}
+                        disabled={detailLoading}
+                        style={styles.checkbox}
+                      />
+                      <span>ADMIN_REG_SKUPINY</span>
                     </label>
                   </div>
 

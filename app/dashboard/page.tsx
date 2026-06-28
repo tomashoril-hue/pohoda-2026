@@ -439,7 +439,9 @@ export default async function DashboardPage({
         .in('id', issuedRegistrationIssueIds)
       : Promise.resolve({ data: [] }),
     canUseGroupIssue(user.id, globalAccess),
-    globalAccess.canUsePersonalista ? Promise.resolve([]) : getManagedRegistrationGroupIds(user.id)
+    globalAccess.canUsePersonalista && !globalAccess.isRegistrationGroupAdmin
+      ? Promise.resolve([])
+      : getManagedRegistrationGroupIds(user.id)
   ])
 
   const issuedByUsers = issuedByUsersResult.data || []
@@ -462,6 +464,7 @@ export default async function DashboardPage({
   const canOpenOfflineIssue = globalAccess.canUseOfflineIssue
   const canOpenAccessCodesShare = canOpenPersonalista || managedRegistrationGroupIds.length > 0
   const canOpenSelfOrdering = globalAccess.isSelfOrderingMeal
+  const canOpenBrigadnikEdit = globalAccess.isRegistrationGroupAdmin && managedRegistrationGroupIds.length > 0
 
   const getSelection = (typJedla: string) => {
     return (selections || []).find((item: any) => item.typ_jedla === typJedla)
@@ -786,6 +789,13 @@ export default async function DashboardPage({
             <Link className="dashboard-menu-tile" href="/dashboard/skupinovy-vydaj" style={{ ...styles.menuTile, ...styles.menuTileWhite }}>
               <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>{copy.food}</span>
               <b className="dashboard-menu-title" style={styles.menuTileTitle}>{copy.groupIssue}</b>
+            </Link>
+          )}
+          {canOpenBrigadnikEdit && (
+            <Link className="dashboard-menu-tile" href="/dashboard/uprava-brigadnikov" style={{ ...styles.menuTile, ...styles.menuTilePink }}>
+              <span style={styles.menuTileIcon} aria-hidden="true">RG</span>
+              <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Skupina</span>
+              <b className="dashboard-menu-title" style={styles.menuTileTitle}>Uprava brigádnikov</b>
             </Link>
           )}
           {canOpenOfflineIssue && (
@@ -1220,6 +1230,21 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 18,
     lineHeight: 1.08,
     fontWeight: 950
+  },
+  menuTileIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    border: '3px solid #000',
+    background: '#fff',
+    color: '#000',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 13,
+    fontWeight: 950,
+    boxShadow: '3px 3px 0 #000',
+    marginBottom: 8
   },
   groupsBox: {
     marginTop: 30,
