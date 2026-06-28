@@ -650,6 +650,7 @@ export default function MenuClient({
                 }}
               >
                 <div
+                  className="menu-option-badge"
                   style={{
                     display: 'inline-block',
                     background: '#ef4444',
@@ -666,6 +667,7 @@ export default function MenuClient({
                 </div>
 
                 <div
+                  className="menu-option-title"
                   style={{
                     fontSize: 20,
                     fontWeight: 900,
@@ -677,6 +679,7 @@ export default function MenuClient({
                 </div>
 
                 <div
+                  className="menu-option-description"
                   style={{
                     fontSize: 14,
                     fontWeight: 700,
