@@ -64,9 +64,9 @@ function selfOrderingEmailHtml({
         greeting: `Hello${meno ? `, ${meno}` : ''},`,
         intro: 'we have registered you in the PohodaPass meal system.',
         body: 'Please choose your default meal type and order lunches or dinners for the days when you want to use catering. After that, you can change your selections in the Meal selection section of the app.',
-        login: `This button signs you in automatically once. It is valid for ${SELF_ORDERING_TOKEN_DAYS} days.`,
+        login: 'Use the button below to open PohodaPass and order your meals.',
         button: 'Open PohodaPass',
-        fallback: 'Or sign in at PohodaPass with your login e-mail:',
+        fallback: 'If the button does not work, sign in here with your login e-mail:',
         footer: 'Your QR code is attached as a PNG file.'
       }
     : {
@@ -75,9 +75,9 @@ function selfOrderingEmailHtml({
         greeting: `Ahoj${meno ? `, ${meno}` : ''},`,
         intro: 'práve sme ťa registrovali do stravovacieho systému PohodaPass.',
         body: 'Prosím vyber si predvolený typ stravy a objednaj si obedy alebo večere na dni, počas ktorých chceš stravu využívať. Následne si v aplikácii môžeš cez Výber stravy meniť jedlo na každý deň.',
-        login: `Toto tlačidlo ťa automaticky prihlási jednorazovo. Platí ${SELF_ORDERING_TOKEN_DAYS} dní.`,
+        login: 'Cez tlačidlo nižšie otvor PohodaPass a objednaj si stravu.',
         button: 'Otvoriť PohodaPass',
-        fallback: 'Alebo sa prihlás na PohodaPass prihlasovacím e-mailom:',
+        fallback: 'Ak tlačidlo nefunguje, prihlás sa tu prihlasovacím e-mailom:',
         footer: 'Tvoj QR kód nájdeš aj v prílohe ako PNG súbor.'
       }
   const safeLoginUrl = htmlEscape(loginUrl)
@@ -109,8 +109,10 @@ function selfOrderingEmailHtml({
         </p>
 
         <p style="font-size:13px;line-height:1.45;margin:18px 0 6px;color:#555;">${htmlEscape(copy.fallback)}</p>
-        <p style="font-size:13px;line-height:1.45;margin:0;color:#333;">
-          <a href="${safeSiteUrl}" style="color:#7417e8;font-weight:900;">${safeSiteUrl}</a><br>
+        <p style="font-size:13px;line-height:1.45;margin:0;word-break:break-all;">
+          <a href="${safeSiteUrl}" style="color:#7417e8;font-weight:900;">${safeSiteUrl}</a>
+        </p>
+        <p style="font-size:13px;line-height:1.45;margin:6px 0 0;color:#333;">
           <span style="font-weight:900;">${safeEmail}</span>
         </p>
 
