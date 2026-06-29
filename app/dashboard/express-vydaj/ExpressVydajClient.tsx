@@ -126,9 +126,9 @@ export default function ExpressVydajClient({
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
   const [nowMs, setNowMs] = useState(Date.now())
   const [redirectAfterCountdown, setRedirectAfterCountdown] = useState(false)
-  const [waitingModalOpen, setWaitingModalOpen] = useState(false)
   const [redirectingToQr, setRedirectingToQr] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+  const [editingIssue, setEditingIssue] = useState(false)
   const redirectTimeoutRef = useRef<number | null>(null)
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
@@ -140,6 +140,9 @@ export default function ExpressVydajClient({
   }, [data?.people, pickupSet])
   const countdown = remainingLabel(data?.issue?.validAfter || null, nowMs)
   const countdownActive = !!data?.issue?.validAfter && Date.parse(data.issue.validAfter) > nowMs
+  const hasExistingIssue = !!data?.issue
+  const showStatusPanel = hasExistingIssue && !editingIssue
+  const showEditor = !hasExistingIssue || editingIssue
   const pickupLabel = pickupPeople.length > 0
     ? pickupPeople.map(displayPersonName).join(', ')
     : t('Nikto nie je vybraný', 'Nobody selected')
@@ -155,7 +158,6 @@ export default function ExpressVydajClient({
 
     const messageTimeout = window.setTimeout(() => {
       setRedirectingToQr(true)
-      setWaitingModalOpen(false)
       setMessage(t('Výdaj je platný. Presmerovávam na Môj QR kód.', 'Issue is valid. Redirecting to My QR code.'))
       setMessageType('ok')
     }, 100)
@@ -179,7 +181,6 @@ export default function ExpressVydajClient({
     if (redirectTimeoutRef.current) window.clearTimeout(redirectTimeoutRef.current)
 
     setRedirectingToQr(true)
-    setWaitingModalOpen(false)
     setMessage(messageText)
     setMessageType('ok')
     redirectTimeoutRef.current = window.setTimeout(() => {
@@ -218,15 +219,15 @@ export default function ExpressVydajClient({
       setSelectedIds(Array.isArray(json.selectedIds) ? json.selectedIds : [])
       setPickupUserIds(Array.isArray(json.pickupUserIds) ? json.pickupUserIds : [])
       setPickupOpen(false)
-      setWaitingModalOpen(loadedCountdownActive)
       setRedirectAfterCountdown(loadedCountdownActive)
+      setEditingIssue(!json.issue)
     } catch (err: any) {
       setData(null)
       setSelectedIds([])
       setPickupUserIds([])
       setPickupOpen(false)
-      setWaitingModalOpen(false)
       setRedirectAfterCountdown(false)
+      setEditingIssue(false)
       setMessage(err?.message || t('Express výdaj sa nepodarilo načítať.', 'Express issue could not be loaded.'))
       setMessageType('error')
     } finally {
@@ -298,8 +299,8 @@ export default function ExpressVydajClient({
       const savedCountdownActive = !!savedValidAfter && Date.parse(savedValidAfter) > Date.now()
 
       if (savedCountdownActive) {
-        setWaitingModalOpen(true)
         setRedirectAfterCountdown(true)
+        setEditingIssue(false)
         setMessage(t('Express výdaj je pripravený. Začne platiť po odpočte.', 'Express issue is ready. It will become valid after the countdown.'))
         setMessageType('ok')
       } else {
@@ -332,7 +333,6 @@ export default function ExpressVydajClient({
 
       if (!res.ok || json.error) throw new Error(json.error || t('Express výdaj sa nepodarilo zrušiť.', 'Express issue could not be cancelled.'))
 
-      setWaitingModalOpen(false)
       setRedirectAfterCountdown(false)
       setMessage(json.message || t('Express výdaj bol zrušený.', 'Express issue has been cancelled.'))
       setMessageType('ok')
@@ -481,7 +481,7 @@ export default function ExpressVydajClient({
           </div>
         )}
 
-        {data && (
+        {data && !showStatusPanel && (
           <div className="express-meta" style={styles.metaGrid}>
             <div className="express-meta-group" style={styles.metaBox}>
               <span>{t('Skupina', 'Group')}</span>
@@ -502,6 +502,60 @@ export default function ExpressVydajClient({
           </div>
         )}
 
+        {showStatusPanel && data?.issue && (
+          <section style={countdownActive ? styles.issueStatusPanelWaiting : styles.issueStatusPanelReady}>
+            <div style={styles.statusPanelHeader}>
+              <div>
+                <div style={styles.statusPanelEyebrow}>{t('Express výdaj', 'Express issue')}</div>
+                <h2 style={styles.statusPanelTitle}>{data.group.name || '-'}</h2>
+                <div style={styles.statusPanelMeta}>{mealLabel(data.meal, language)} · {formatDate(data.date)}</div>
+              </div>
+              <div style={countdownActive ? styles.statusPillWaiting : styles.statusPillReady}>
+                {countdownActive ? t('Čaká', 'Waiting') : t('Platný', 'Valid')}
+              </div>
+            </div>
+
+            {countdownActive ? (
+              <div style={styles.inlineCountdownBox}>
+                <span>{t('Začne platiť o', 'Valid in')}</span>
+                <b>{countdown}</b>
+              </div>
+            ) : (
+              <div style={styles.inlineReadyBox}>{t('Výdaj je platný', 'Issue is valid')}</div>
+            )}
+
+            <div style={styles.statusPanelStats}>
+              <div style={styles.statusPanelStatBox}><span>{t('Označených', 'Selected')}</span><b>{selectedCount}</b></div>
+              <div style={styles.statusPanelStatBox}><span>{t('Prevezme', 'Pickup')}</span><b>{pickupUserIds.length}</b></div>
+              <div style={styles.statusPanelStatBox}><span>{t('Vydateľných', 'Issuable')}</span><b>{data.people.length}</b></div>
+            </div>
+
+            <div style={styles.statusPanelActions}>
+              {!countdownActive && (
+                <button type="button" onClick={() => router.push('/dashboard/qr')} disabled={saving || cancelling} style={styles.statusPrimaryButton}>
+                  {t('Môj QR kód', 'My QR code')}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingIssue(true)
+                  setPickupOpen(false)
+                  setRedirectAfterCountdown(false)
+                }}
+                disabled={saving || cancelling}
+                style={countdownActive ? styles.statusPrimaryButton : styles.statusSecondaryButton}
+              >
+                {t('Upraviť výdaj', 'Edit issue')}
+              </button>
+              <button type="button" onClick={() => void cancelCurrentIssue()} disabled={saving || cancelling} style={styles.statusDangerButton}>
+                {cancelling ? t('Ruším...', 'Cancelling...') : t('Zrušiť výdaj', 'Cancel issue')}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {showEditor && !pickupOpen && (
         <div style={styles.actionBar}>
           <div className="express-actions" style={styles.quickActions}>
             <button type="button" onClick={() => setSelectedIds(allPersonIds)} disabled={loading || saving || allPersonIds.length === 0} style={styles.smallButton}>
@@ -518,8 +572,9 @@ export default function ExpressVydajClient({
             {saving ? t('Ukladám...', 'Saving...') : t('Pripraviť výdaj', 'Prepare issue')}
           </button>
         </div>
+        )}
 
-        {data && pickupOpen && (
+        {showEditor && data && pickupOpen && (
           <section style={styles.pickupPanel}>
             <div style={styles.pickupHeader}>
               <div>
@@ -556,7 +611,7 @@ export default function ExpressVydajClient({
           </section>
         )}
 
-        {loading ? (
+        {showEditor && !pickupOpen && (loading ? (
           <div style={styles.emptyBox}>{t('Načítavam ľudí...', 'Loading people...')}</div>
         ) : data?.people.length ? (
           <div style={styles.peopleList}>
@@ -586,7 +641,7 @@ export default function ExpressVydajClient({
           </div>
         ) : (
           <div style={styles.emptyBox}>{t('Pre aktuálny výdaj tu nie je nikto vydateľný.', 'There is nobody issuable for the current meal.')}</div>
-        )}
+        ))}
 
         {message && (
           <div style={{
@@ -597,40 +652,6 @@ export default function ExpressVydajClient({
           </div>
         )}
       </section>
-
-      {data?.issue && countdownActive && waitingModalOpen && (
-        <div style={styles.modalOverlay}>
-          <section style={styles.waitingModal}>
-            <div style={styles.modalEyebrow}>{t('Express výdaj je pripravený', 'Express issue is ready')}</div>
-            <h2 style={styles.modalTitle}>{t('Začne platiť o', 'Valid in')}</h2>
-            <div style={styles.modalCountdown}>{countdown}</div>
-            <p style={styles.modalText}>
-              {t('Po skončení odpočtu ťa presmerujem na Môj QR kód. Každá zmena spustí 15 minút odznova.', 'After the countdown you will be redirected to My QR code. Every change starts the 15 minutes again.')}
-            </p>
-            <div style={styles.modalActions}>
-              <button
-                type="button"
-                onClick={() => {
-                  setWaitingModalOpen(false)
-                  setRedirectAfterCountdown(false)
-                }}
-                disabled={saving || cancelling}
-                style={styles.modalPrimaryButton}
-              >
-                {t('Zmeniť', 'Change')}
-              </button>
-              <button
-                type="button"
-                onClick={() => void cancelCurrentIssue()}
-                disabled={saving || cancelling}
-                style={styles.modalDangerButton}
-              >
-                {cancelling ? t('Ruším...', 'Cancelling...') : t('Zrušiť', 'Cancel')}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
 
       {redirectingToQr && (
         <div style={styles.modalOverlay}>
@@ -762,6 +783,142 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 12,
     fontWeight: 950,
     whiteSpace: 'nowrap'
+  },
+  issueStatusPanelWaiting: {
+    border: '1px solid #f59e0b',
+    borderRadius: 18,
+    background: 'linear-gradient(180deg, #fff7ed 0%, #ffffff 100%)',
+    padding: 14,
+    display: 'grid',
+    gap: 12,
+    boxShadow: '0 12px 28px rgba(146, 64, 14, 0.12)'
+  },
+  issueStatusPanelReady: {
+    border: '1px solid #86efac',
+    borderRadius: 18,
+    background: 'linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%)',
+    padding: 14,
+    display: 'grid',
+    gap: 12,
+    boxShadow: '0 12px 28px rgba(22, 101, 52, 0.12)'
+  },
+  statusPanelHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12
+  },
+  statusPanelEyebrow: {
+    fontSize: 12,
+    fontWeight: 950,
+    color: '#5b21b6',
+    textTransform: 'uppercase'
+  },
+  statusPanelTitle: {
+    margin: '3px 0 0',
+    fontSize: 28,
+    lineHeight: 1,
+    fontWeight: 950,
+    color: '#211b35'
+  },
+  statusPanelMeta: {
+    marginTop: 5,
+    fontSize: 13,
+    fontWeight: 900,
+    color: '#5b5870'
+  },
+  statusPillWaiting: {
+    border: '1px solid #f59e0b',
+    borderRadius: 999,
+    background: '#fef3c7',
+    color: '#92400e',
+    padding: '7px 10px',
+    fontSize: 12,
+    fontWeight: 950,
+    whiteSpace: 'nowrap'
+  },
+  statusPillReady: {
+    border: '1px solid #86efac',
+    borderRadius: 999,
+    background: '#dcfce7',
+    color: '#166534',
+    padding: '7px 10px',
+    fontSize: 12,
+    fontWeight: 950,
+    whiteSpace: 'nowrap'
+  },
+  inlineCountdownBox: {
+    border: '1px solid #fed7aa',
+    borderRadius: 16,
+    background: '#fff7ed',
+    padding: '12px 14px',
+    display: 'grid',
+    justifyItems: 'center',
+    gap: 4,
+    color: '#92400e',
+    fontWeight: 950
+  },
+  inlineReadyBox: {
+    border: '1px solid #bbf7d0',
+    borderRadius: 16,
+    background: '#dcfce7',
+    padding: '12px 14px',
+    color: '#166534',
+    fontSize: 17,
+    fontWeight: 950,
+    textAlign: 'center'
+  },
+  statusPanelStats: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 8
+  },
+  statusPanelStatBox: {
+    border: '1px solid #e1deea',
+    borderRadius: 14,
+    background: '#fff',
+    padding: '10px 8px',
+    display: 'grid',
+    gap: 3,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: 900,
+    color: '#5b5870'
+  },
+  statusPanelActions: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+    gap: 8
+  },
+  statusPrimaryButton: {
+    border: '1px solid #5b21b6',
+    borderRadius: 999,
+    padding: '11px 14px',
+    background: '#7417e8',
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 950,
+    fontFamily: 'Arial, Helvetica, sans-serif'
+  },
+  statusSecondaryButton: {
+    border: '1px solid #d7d3e8',
+    borderRadius: 999,
+    padding: '11px 14px',
+    background: '#fff',
+    color: '#211b35',
+    fontSize: 14,
+    fontWeight: 950,
+    fontFamily: 'Arial, Helvetica, sans-serif'
+  },
+  statusDangerButton: {
+    border: '1px solid #fecaca',
+    borderRadius: 999,
+    padding: '11px 14px',
+    background: '#fee2e2',
+    color: '#991b1b',
+    fontSize: 14,
+    fontWeight: 950,
+    fontFamily: 'Arial, Helvetica, sans-serif'
   },
   field: {
     display: 'grid',
@@ -1124,17 +1281,6 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: 'center',
     padding: 16
   },
-  waitingModal: {
-    width: 'min(92vw, 430px)',
-    border: '1px solid #ded8f2',
-    borderRadius: 22,
-    background: '#fff',
-    padding: 22,
-    boxShadow: '0 24px 60px rgba(17, 24, 39, 0.34)',
-    textAlign: 'center',
-    display: 'grid',
-    gap: 12
-  },
   redirectModal: {
     width: 'min(88vw, 360px)',
     border: '1px solid #bbf7d0',
@@ -1147,62 +1293,12 @@ const styles: Record<string, CSSProperties> = {
     justifyItems: 'center',
     gap: 10
   },
-  modalEyebrow: {
-    fontSize: 12,
-    fontWeight: 950,
-    color: '#5b21b6',
-    textTransform: 'uppercase'
-  },
-  modalTitle: {
-    margin: 0,
-    fontSize: 22,
-    lineHeight: 1.05,
-    fontWeight: 950,
-    color: '#211b35'
-  },
-  modalCountdown: {
-    border: '1px solid #f59e0b',
-    borderRadius: 18,
-    background: '#fef3c7',
-    color: '#92400e',
-    padding: '14px 18px',
-    fontSize: 48,
-    lineHeight: 1,
-    fontWeight: 950,
-    fontVariantNumeric: 'tabular-nums'
-  },
   modalText: {
     margin: 0,
     color: '#5b5870',
     fontSize: 13,
     lineHeight: 1.42,
     fontWeight: 850
-  },
-  modalActions: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 8,
-    marginTop: 2
-  },
-  modalPrimaryButton: {
-    border: '1px solid #5b21b6',
-    borderRadius: 999,
-    padding: '11px 14px',
-    background: '#7417e8',
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 950,
-    fontFamily: 'Arial, Helvetica, sans-serif'
-  },
-  modalDangerButton: {
-    border: '1px solid #fecaca',
-    borderRadius: 999,
-    padding: '11px 14px',
-    background: '#fee2e2',
-    color: '#991b1b',
-    fontSize: 14,
-    fontWeight: 950,
-    fontFamily: 'Arial, Helvetica, sans-serif'
   },
   spinner: {
     width: 42,
