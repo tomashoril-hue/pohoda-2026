@@ -8321,28 +8321,23 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 800,
     color: '#6b7280',
-    minHeight: 24,
+    minHeight: 16,
     boxSizing: 'border-box',
-    border: '1px solid transparent',
-    borderRadius: 5,
-    padding: '4px 6px',
+    padding: 0,
     display: 'flex',
     alignItems: 'center'
   },
   toolbarHintLoading: {
     color: '#3730a3',
-    background: '#eef2ff',
-    borderColor: '#c7d2fe'
+    background: 'transparent'
   },
   toolbarHintSuccess: {
     color: '#166534',
-    background: '#dcfce7',
-    borderColor: '#86efac'
+    background: 'transparent'
   },
   toolbarHintError: {
     color: '#991b1b',
-    background: '#fee2e2',
-    borderColor: '#fecaca'
+    background: 'transparent'
   },
   inlineDivider: {
     height: 1,
