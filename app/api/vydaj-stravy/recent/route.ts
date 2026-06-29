@@ -19,6 +19,12 @@ function fullName(user: any) {
   return `${user?.meno || ''} ${user?.priezvisko || ''}`.trim()
 }
 
+function displayIssueTitle(value: any) {
+  return String(value || '')
+    .trim()
+    .replace(/([^\s])((?:OBED)|(?:VECERA)|(?:VEČERA))$/i, '$1 $2')
+}
+
 async function issuerAccess(actorId: string) {
   const globalAccess = await getGlobalAccess(actorId)
 
@@ -238,16 +244,19 @@ export async function GET(req: NextRequest) {
         return acc
       }, { MASO: 0, VEGE: 0, DIETA: 0, NEZADANE: 0 })
 
+      const issueTitle = displayIssueTitle(issue?.title)
+      const fallbackGroupName = displayIssueTitle(group?.name)
+
       items.push({
         issuedId: `registration:${issueId}`,
         itemType: 'BULK',
         typJedla: first.typ_jedla,
         issuedAt: first.issued_at,
-        personName: issue?.title || group?.name || 'Skupinovy vydaj',
+        personName: issueTitle || fallbackGroupName || 'Skupinovy vydaj',
         email: '',
         choice: '',
         method: 'HROMADNE',
-        groupName: issue?.title || group?.name || '',
+        groupName: issueTitle || fallbackGroupName || '',
         summary,
         children
       })

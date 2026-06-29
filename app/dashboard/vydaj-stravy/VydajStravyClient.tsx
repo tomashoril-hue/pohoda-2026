@@ -390,7 +390,7 @@ export default function VydajStravyClient({
   const [issueDecision, setIssueDecision] = useState<IssueDecision | null>(null)
   const [online, setOnline] = useState(true)
   const [offlineNotice, setOfflineNotice] = useState('')
-  const [offlineSyncing, setOfflineSyncing] = useState(false)
+  const [, setOfflineSyncing] = useState(false)
   const [offlineSnapshotLoading, setOfflineSnapshotLoading] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -1849,7 +1849,7 @@ export default function VydajStravyClient({
                                 style={styles.cancelCheckbox}
                                 aria-label={`Stornovať ${child.personName || child.email || 'osobu'}`}
                               />
-                              <span>
+                              <span style={styles.cancelPersonText}>
                                 <b>{child.personName || child.email || '-'}</b>
                                 <em>{child.email || choiceLabel(child.choice)}</em>
                               </span>
@@ -2749,6 +2749,11 @@ const styles: Record<string, CSSProperties> = {
     padding: 8,
     fontSize: 13,
     fontWeight: 850
+  },
+  cancelPersonText: {
+    display: 'grid',
+    gap: 2,
+    minWidth: 0
   },
   choiceSelect: {
     height: 42,
