@@ -1415,6 +1415,14 @@ export default function PersonalistaClient({
   const tableMinWidth = foodGroupsVisible
     ? (isMobile ? 760 : 920)
     : (isMobile ? 640 : 760)
+  const hasActivePeopleSearch = (
+    search.trim().length >= 2 ||
+    registrationGroupFilter !== 'ALL' ||
+    emailFilter !== 'ALL' ||
+    foodFilter !== 'ALL' ||
+    qrFilter !== 'ALL' ||
+    statusFilter !== 'ALL'
+  )
   const peopleSearchHintStyle = peopleSearchLoading
     ? styles.toolbarHintLoading
     : peopleSearchMessage.startsWith('Vysledky hladania')
@@ -1530,7 +1538,19 @@ export default function PersonalistaClient({
       statusFilter !== 'ALL'
     )
 
+    if (!hasActiveFilters && q.length === 0) {
+      setPeople(initialPeople)
+      setPeopleTotal(initialPeople.length)
+      setServerPageCount(Math.max(1, Math.ceil(initialPeople.length / pageSize)))
+      setPeopleSearchLoading(false)
+      setPeopleSearchMessage(initialPeopleSearchMessage)
+      return
+    }
+
     if (q && q.length < 2 && !hasActiveFilters) {
+      setPeople(initialPeople)
+      setPeopleTotal(initialPeople.length)
+      setServerPageCount(Math.max(1, Math.ceil(initialPeople.length / pageSize)))
       setPeopleSearchLoading(false)
       setPeopleSearchMessage('Napis aspon 2 znaky pre hladanie v celej databaze')
       return
@@ -1589,7 +1609,7 @@ export default function PersonalistaClient({
       cancelled = true
       window.clearTimeout(timeout)
     }
-  }, [search, registrationGroupFilter, emailFilter, foodFilter, qrFilter, statusFilter, currentPage, pageSize])
+  }, [search, registrationGroupFilter, emailFilter, foodFilter, qrFilter, statusFilter, currentPage, pageSize, initialPeople, initialPeopleSearchMessage])
 
   useEffect(() => {
     if (!selectedPerson) return
@@ -1691,12 +1711,17 @@ export default function PersonalistaClient({
   }, [displayPeople])
 
   const filteredPeople = useMemo(() => {
-    return displayPeople
+    const orderedPeople = displayPeople
       .slice()
       .sort((a, b) => {
         return (peopleOrderById.get(a.id) ?? 0) - (peopleOrderById.get(b.id) ?? 0)
       })
-  }, [displayPeople, peopleOrderById])
+
+    if (hasActivePeopleSearch) return orderedPeople
+
+    const start = (Math.min(currentPage, serverPageCount) - 1) * pageSize
+    return orderedPeople.slice(start, start + pageSize)
+  }, [displayPeople, peopleOrderById, hasActivePeopleSearch, currentPage, serverPageCount, pageSize])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -6183,7 +6208,7 @@ export default function PersonalistaClient({
               ...(isMobile ? styles.mobileToolbarHint : styles.toolbarHint),
               ...peopleSearchHintStyle
             }}>
-              {peopleSearchLoading ? 'Hladam...' : peopleSearchMessage} · zobrazených {people.length} z {peopleTotal}
+              {peopleSearchLoading ? 'Hladam...' : peopleSearchMessage} · zobrazených {pagedPeople.length} z {peopleTotal}
             </div>
 
             <input
@@ -8251,9 +8276,9 @@ const styles: Record<string, CSSProperties> = {
     cursor: 'pointer'
   },
   scopeToggle: {
-    background: '#eef2ff',
+    background: '#f8fafc',
     border: '1px solid #c7d2fe',
-    borderRadius: 5,
+    borderRadius: 7,
     padding: 3,
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
@@ -8261,8 +8286,8 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 164
   },
   scopeToggleButton: {
-    borderRadius: 4,
-    padding: '5px 7px',
+    borderRadius: 5,
+    padding: '6px 8px',
     color: '#3730a3',
     fontSize: 11,
     fontWeight: 950,
@@ -8270,9 +8295,9 @@ const styles: Record<string, CSSProperties> = {
     textDecoration: 'none'
   },
   scopeToggleButtonActive: {
-    background: '#fff',
-    color: '#111827',
-    boxShadow: '0 1px 2px rgba(17, 24, 39, 0.12)'
+    background: '#7c3aed',
+    color: '#fff',
+    boxShadow: '0 2px 6px rgba(124, 58, 237, 0.28)'
   },
   mobileActionStripPanel: {
     flexWrap: 'nowrap',
