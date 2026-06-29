@@ -8320,28 +8320,29 @@ const styles: Record<string, CSSProperties> = {
     gridColumn: '1 / -1',
     fontSize: 10,
     fontWeight: 800,
-    color: '#6b7280'
+    color: '#6b7280',
+    minHeight: 24,
+    boxSizing: 'border-box',
+    border: '1px solid transparent',
+    borderRadius: 5,
+    padding: '4px 6px',
+    display: 'flex',
+    alignItems: 'center'
   },
   toolbarHintLoading: {
-    color: '#c2410c',
-    background: '#ffedd5',
-    border: '1px solid #fed7aa',
-    borderRadius: 5,
-    padding: '4px 6px'
+    color: '#3730a3',
+    background: '#eef2ff',
+    borderColor: '#c7d2fe'
   },
   toolbarHintSuccess: {
     color: '#166534',
     background: '#dcfce7',
-    border: '1px solid #86efac',
-    borderRadius: 5,
-    padding: '4px 6px'
+    borderColor: '#86efac'
   },
   toolbarHintError: {
     color: '#991b1b',
     background: '#fee2e2',
-    border: '1px solid #fecaca',
-    borderRadius: 5,
-    padding: '4px 6px'
+    borderColor: '#fecaca'
   },
   inlineDivider: {
     height: 1,
