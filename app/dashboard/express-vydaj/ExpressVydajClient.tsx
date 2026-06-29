@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import { appText, type AppLanguage } from '@/lib/i18n'
 
@@ -126,6 +126,10 @@ export default function ExpressVydajClient({
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
   const [nowMs, setNowMs] = useState(Date.now())
   const [redirectAfterCountdown, setRedirectAfterCountdown] = useState(false)
+  const [waitingModalOpen, setWaitingModalOpen] = useState(false)
+  const [redirectingToQr, setRedirectingToQr] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const redirectTimeoutRef = useRef<number | null>(null)
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
   const pickupSet = useMemo(() => new Set(pickupUserIds), [pickupUserIds])
@@ -149,12 +153,39 @@ export default function ExpressVydajClient({
     if (!redirectAfterCountdown || !data?.issue?.validAfter) return
     if (Date.parse(data.issue.validAfter) > Date.now()) return
 
-    const timeout = window.setTimeout(() => {
+    const messageTimeout = window.setTimeout(() => {
+      setRedirectingToQr(true)
+      setWaitingModalOpen(false)
+      setMessage(t('Výdaj je platný. Presmerovávam na Môj QR kód.', 'Issue is valid. Redirecting to My QR code.'))
+      setMessageType('ok')
+    }, 100)
+    const redirectTimeout = window.setTimeout(() => {
       router.push('/dashboard/qr')
-    }, 700)
+    }, 900)
 
-    return () => window.clearTimeout(timeout)
+    return () => {
+      window.clearTimeout(messageTimeout)
+      window.clearTimeout(redirectTimeout)
+    }
   }, [data?.issue?.validAfter, redirectAfterCountdown, router, nowMs])
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimeoutRef.current) window.clearTimeout(redirectTimeoutRef.current)
+    }
+  }, [])
+
+  const redirectToQrSoon = (messageText: string) => {
+    if (redirectTimeoutRef.current) window.clearTimeout(redirectTimeoutRef.current)
+
+    setRedirectingToQr(true)
+    setWaitingModalOpen(false)
+    setMessage(messageText)
+    setMessageType('ok')
+    redirectTimeoutRef.current = window.setTimeout(() => {
+      router.push('/dashboard/qr')
+    }, 1000)
+  }
 
   const loadData = async (
     nextGroupId = groupId,
@@ -182,16 +213,20 @@ export default function ExpressVydajClient({
 
       if (json.date && json.date !== selectedDate) setSelectedDate(json.date)
       if (json.meal && json.meal !== selectedMeal) setSelectedMeal(json.meal)
+      const loadedCountdownActive = !!json.issue?.validAfter && Date.parse(json.issue.validAfter) > Date.now()
       setData(json)
       setSelectedIds(Array.isArray(json.selectedIds) ? json.selectedIds : [])
       setPickupUserIds(Array.isArray(json.pickupUserIds) ? json.pickupUserIds : [])
       setPickupOpen(false)
-      setRedirectAfterCountdown(false)
+      setWaitingModalOpen(loadedCountdownActive)
+      setRedirectAfterCountdown(loadedCountdownActive)
     } catch (err: any) {
       setData(null)
       setSelectedIds([])
       setPickupUserIds([])
       setPickupOpen(false)
+      setWaitingModalOpen(false)
+      setRedirectAfterCountdown(false)
       setMessage(err?.message || t('Express výdaj sa nepodarilo načítať.', 'Express issue could not be loaded.'))
       setMessageType('error')
     } finally {
@@ -259,14 +294,54 @@ export default function ExpressVydajClient({
       if (json.meal && json.meal !== selectedMeal) setSelectedMeal(json.meal)
       setSelectedIds(Array.isArray(json.selectedIds) ? json.selectedIds : selectedIds)
       setPickupUserIds(Array.isArray(json.pickupUserIds) ? json.pickupUserIds : pickupUserIds)
-      setRedirectAfterCountdown(true)
-      setMessage(t('Express výdaj je pripravený. Po odpočte ťa presmerujem na Môj QR kód.', 'Express issue is ready. After the countdown you will be redirected to My QR code.'))
-      setMessageType('ok')
+      const savedValidAfter = json.issue?.validAfter || null
+      const savedCountdownActive = !!savedValidAfter && Date.parse(savedValidAfter) > Date.now()
+
+      if (savedCountdownActive) {
+        setWaitingModalOpen(true)
+        setRedirectAfterCountdown(true)
+        setMessage(t('Express výdaj je pripravený. Začne platiť po odpočte.', 'Express issue is ready. It will become valid after the countdown.'))
+        setMessageType('ok')
+      } else {
+        setRedirectAfterCountdown(false)
+        redirectToQrSoon(t('Express výdaj je uložený a platný. Presmerovávam na Môj QR kód.', 'Express issue is saved and valid. Redirecting to My QR code.'))
+      }
     } catch (err: any) {
       setMessage(err?.message || t('Express výdaj sa nepodarilo uložiť.', 'Express issue could not be saved.'))
       setMessageType('error')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const cancelCurrentIssue = async () => {
+    if (!data?.issue?.id || cancelling) return
+    if (!confirm(t('Naozaj chceš zrušiť tento express výdaj?', 'Do you really want to cancel this express issue?'))) return
+
+    setCancelling(true)
+    setMessage('')
+    setMessageType('')
+
+    try {
+      const res = await fetch('/api/skupinovy-vydaj/issues', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issueId: data.issue.id })
+      })
+      const json = await res.json().catch(() => ({ error: t('Server nevrátil platnú odpoveď.', 'The server did not return a valid response.') }))
+
+      if (!res.ok || json.error) throw new Error(json.error || t('Express výdaj sa nepodarilo zrušiť.', 'Express issue could not be cancelled.'))
+
+      setWaitingModalOpen(false)
+      setRedirectAfterCountdown(false)
+      setMessage(json.message || t('Express výdaj bol zrušený.', 'Express issue has been cancelled.'))
+      setMessageType('ok')
+      await loadData(groupId, selectedDate, selectedMeal)
+    } catch (err: any) {
+      setMessage(err?.message || t('Express výdaj sa nepodarilo zrušiť.', 'Express issue could not be cancelled.'))
+      setMessageType('error')
+    } finally {
+      setCancelling(false)
     }
   }
 
@@ -286,6 +361,14 @@ export default function ExpressVydajClient({
           transform: translate(2px, 2px) scale(0.98);
           filter: brightness(0.94);
           box-shadow: 2px 2px 0 #000 !important;
+        }
+
+        @keyframes expressSpin {
+          to { transform: rotate(360deg); }
+        }
+
+        .express-spinner {
+          animation: expressSpin 850ms linear infinite;
         }
 
         @media (max-width: 560px) {
@@ -514,6 +597,50 @@ export default function ExpressVydajClient({
           </div>
         )}
       </section>
+
+      {data?.issue && countdownActive && waitingModalOpen && (
+        <div style={styles.modalOverlay}>
+          <section style={styles.waitingModal}>
+            <div style={styles.modalEyebrow}>{t('Express výdaj je pripravený', 'Express issue is ready')}</div>
+            <h2 style={styles.modalTitle}>{t('Začne platiť o', 'Valid in')}</h2>
+            <div style={styles.modalCountdown}>{countdown}</div>
+            <p style={styles.modalText}>
+              {t('Po skončení odpočtu ťa presmerujem na Môj QR kód. Každá zmena spustí 15 minút odznova.', 'After the countdown you will be redirected to My QR code. Every change starts the 15 minutes again.')}
+            </p>
+            <div style={styles.modalActions}>
+              <button
+                type="button"
+                onClick={() => {
+                  setWaitingModalOpen(false)
+                  setRedirectAfterCountdown(false)
+                }}
+                disabled={saving || cancelling}
+                style={styles.modalPrimaryButton}
+              >
+                {t('Zmeniť', 'Change')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void cancelCurrentIssue()}
+                disabled={saving || cancelling}
+                style={styles.modalDangerButton}
+              >
+                {cancelling ? t('Ruším...', 'Cancelling...') : t('Zrušiť', 'Cancel')}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {redirectingToQr && (
+        <div style={styles.modalOverlay}>
+          <section style={styles.redirectModal}>
+            <div className="express-spinner" style={styles.spinner} />
+            <h2 style={styles.redirectTitle}>{t('Výdaj je platný', 'Issue is valid')}</h2>
+            <p style={styles.modalText}>{t('Presmerovávam na Môj QR kód.', 'Redirecting to My QR code.')}</p>
+          </section>
+        </div>
+      )}
     </main>
   )
 }
@@ -986,5 +1113,108 @@ const styles: Record<string, CSSProperties> = {
     background: '#fee2e2',
     borderColor: '#fecaca',
     color: '#991b1b'
+  },
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 70,
+    background: 'rgba(17, 24, 39, 0.52)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16
+  },
+  waitingModal: {
+    width: 'min(92vw, 430px)',
+    border: '1px solid #ded8f2',
+    borderRadius: 22,
+    background: '#fff',
+    padding: 22,
+    boxShadow: '0 24px 60px rgba(17, 24, 39, 0.34)',
+    textAlign: 'center',
+    display: 'grid',
+    gap: 12
+  },
+  redirectModal: {
+    width: 'min(88vw, 360px)',
+    border: '1px solid #bbf7d0',
+    borderRadius: 22,
+    background: '#fff',
+    padding: 24,
+    boxShadow: '0 24px 60px rgba(17, 24, 39, 0.34)',
+    textAlign: 'center',
+    display: 'grid',
+    justifyItems: 'center',
+    gap: 10
+  },
+  modalEyebrow: {
+    fontSize: 12,
+    fontWeight: 950,
+    color: '#5b21b6',
+    textTransform: 'uppercase'
+  },
+  modalTitle: {
+    margin: 0,
+    fontSize: 22,
+    lineHeight: 1.05,
+    fontWeight: 950,
+    color: '#211b35'
+  },
+  modalCountdown: {
+    border: '1px solid #f59e0b',
+    borderRadius: 18,
+    background: '#fef3c7',
+    color: '#92400e',
+    padding: '14px 18px',
+    fontSize: 48,
+    lineHeight: 1,
+    fontWeight: 950,
+    fontVariantNumeric: 'tabular-nums'
+  },
+  modalText: {
+    margin: 0,
+    color: '#5b5870',
+    fontSize: 13,
+    lineHeight: 1.42,
+    fontWeight: 850
+  },
+  modalActions: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 8,
+    marginTop: 2
+  },
+  modalPrimaryButton: {
+    border: '1px solid #5b21b6',
+    borderRadius: 999,
+    padding: '11px 14px',
+    background: '#7417e8',
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 950,
+    fontFamily: 'Arial, Helvetica, sans-serif'
+  },
+  modalDangerButton: {
+    border: '1px solid #fecaca',
+    borderRadius: 999,
+    padding: '11px 14px',
+    background: '#fee2e2',
+    color: '#991b1b',
+    fontSize: 14,
+    fontWeight: 950,
+    fontFamily: 'Arial, Helvetica, sans-serif'
+  },
+  spinner: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    border: '5px solid #bbf7d0',
+    borderTopColor: '#16a34a'
+  },
+  redirectTitle: {
+    margin: 0,
+    fontSize: 22,
+    fontWeight: 950,
+    color: '#166534'
   }
 }

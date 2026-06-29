@@ -194,6 +194,16 @@ function defaultPickupUserIds(actorId: string, candidateUserIds: Set<string>) {
   return candidateUserIds.has(actorId) ? [actorId] : []
 }
 
+function nextIssueStateForAccess(access: string) {
+  const immediate = access === 'ADMIN' || access === 'MANAGER'
+
+  return {
+    immediate,
+    status: immediate ? 'READY' : 'WAITING',
+    validAfter: immediate ? null : new Date(Date.now() + 15 * 60 * 1000).toISOString()
+  }
+}
+
 async function replacePickupUsers(issueId: string, userIds: string[], actorId: string) {
   let deactivateQuery = supabaseServer
     .from('registration_group_issue_pickup_users')
@@ -499,7 +509,7 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString()
-    const validAfter = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+    const nextIssueState = nextIssueStateForAccess(access)
 
     let issue = existingIssue
 
@@ -511,8 +521,8 @@ export async function POST(req: NextRequest) {
           title,
           datum: date,
           typ_jedla: meal,
-          status: 'WAITING',
-          valid_after: validAfter,
+          status: nextIssueState.status,
+          valid_after: nextIssueState.validAfter,
           created_by: actor.id,
           created_by_access: access,
           updated_at: now
@@ -532,8 +542,8 @@ export async function POST(req: NextRequest) {
       const { error } = await supabaseServer
         .from('registration_group_issues')
         .update({
-          status: 'WAITING',
-          valid_after: validAfter,
+          status: nextIssueState.status,
+          valid_after: nextIssueState.validAfter,
           updated_at: now
         })
         .eq('id', issue.id)
@@ -630,8 +640,8 @@ export async function POST(req: NextRequest) {
       issue: {
         id: issue.id,
         title,
-        status: 'WAITING',
-        validAfter
+        status: nextIssueState.status,
+        validAfter: nextIssueState.validAfter
       },
       date,
       meal,
@@ -639,7 +649,9 @@ export async function POST(req: NextRequest) {
       selectedIds: plannedPeople.map(person => person.id),
       pickupUserIds,
       summary: choiceSummary(plannedPeople),
-      message: 'Express vydaj je pripraveny. Zacne platit o 15 minut.'
+      message: nextIssueState.immediate
+        ? 'Express vydaj je pripraveny a je platny.'
+        : 'Express vydaj je pripraveny. Zacne platit o 15 minut.'
     })
   } catch (err: any) {
     return NextResponse.json(
