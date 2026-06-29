@@ -553,17 +553,36 @@ export default function ExpressVydajClient({
           </section>
         )}
 
-        {showEditor && !pickupOpen && (
+        {showEditor && (
         <div style={styles.actionBar}>
           <div className="express-actions" style={styles.quickActions}>
-            <button type="button" onClick={() => setSelectedIds(allPersonIds)} disabled={loading || saving || allPersonIds.length === 0} style={styles.smallButton}>
-              {t('Všetci', 'All')}
-            </button>
-            <button type="button" onClick={() => setSelectedIds([])} disabled={loading || saving || selectedIds.length === 0} style={styles.smallButtonMuted}>
-              {t('Nikto', 'None')}
-            </button>
+            {pickupOpen ? (
+              <>
+                <button type="button" onClick={() => setPickupOpen(false)} disabled={loading || saving} style={styles.smallButtonMuted}>
+                  {t('Späť', 'Back')}
+                </button>
+                <button type="button" onClick={() => setPickupUserIds([])} disabled={loading || saving || pickupUserIds.length === 0} style={styles.smallButtonMuted}>
+                  {t('Nikto', 'None')}
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => setSelectedIds(allPersonIds)} disabled={loading || saving || allPersonIds.length === 0} style={styles.smallButton}>
+                  {t('Všetci', 'All')}
+                </button>
+                <button type="button" onClick={() => setSelectedIds([])} disabled={loading || saving || selectedIds.length === 0} style={styles.smallButtonMuted}>
+                  {t('Nikto', 'None')}
+                </button>
+              </>
+            )}
           </div>
-          <button className="express-save" type="button" onClick={prepareIssue} disabled={loading || saving || selectedIds.length === 0} style={styles.saveButton}>
+          <button
+            className="express-save"
+            type="button"
+            onClick={pickupOpen ? () => void save() : prepareIssue}
+            disabled={loading || saving || selectedIds.length === 0 || (pickupOpen && pickupUserIds.length === 0)}
+            style={styles.saveButton}
+          >
             {saving ? t('Ukladám...', 'Saving...') : t('Pripraviť výdaj', 'Prepare issue')}
           </button>
         </div>
@@ -576,9 +595,6 @@ export default function ExpressVydajClient({
                 <div style={styles.pickupTitle}>{t('Prevezme osoba', 'Pickup person')}</div>
                 <div style={styles.pickupSubtitle}>{pickupLabel}</div>
               </div>
-              <button type="button" onClick={() => setPickupOpen(false)} disabled={saving} style={styles.pickupDoneButton}>
-                {t('Hotovo', 'Done')}
-              </button>
             </div>
 
             <div style={styles.pickupList}>
@@ -604,14 +620,6 @@ export default function ExpressVydajClient({
               })}
             </div>
 
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={saving || pickupUserIds.length === 0}
-              style={styles.pickupConfirmButton}
-            >
-              {saving ? t('Ukladám...', 'Saving...') : t('Potvrdiť výdaj', 'Confirm issue')}
-            </button>
           </section>
         )}
 
@@ -1132,16 +1140,6 @@ const styles: Record<string, CSSProperties> = {
     color: '#6b667c',
     lineHeight: 1.25
   },
-  pickupDoneButton: {
-    border: '1px solid #d7d3e8',
-    borderRadius: 999,
-    padding: '7px 10px',
-    background: '#fff',
-    color: '#211b35',
-    fontSize: 12,
-    fontWeight: 950,
-    fontFamily: 'Arial, Helvetica, sans-serif'
-  },
   pickupList: {
     display: 'grid',
     gap: 6,
@@ -1175,17 +1173,6 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: 'nowrap',
     fontSize: 13,
     fontWeight: 900
-  },
-  pickupConfirmButton: {
-    border: '1px solid #5b21b6',
-    borderRadius: 999,
-    padding: '10px 16px',
-    background: '#7417e8',
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 950,
-    fontFamily: 'Arial, Helvetica, sans-serif',
-    boxShadow: '0 8px 18px rgba(116, 23, 232, 0.24)'
   },
   peopleList: {
     display: 'grid',
