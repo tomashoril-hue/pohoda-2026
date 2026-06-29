@@ -636,6 +636,7 @@ export default function MenuClient({
         >
           {items.map((item) => {
             const active = effectiveSelectedVariant === normalizeVariant(item.varianta)
+            const visuallyActive = mealEntitlement && active
             const optionKey = `${selectedDate}-${typ}-${item.varianta}`
             const isPressed = pressedKey === optionKey
 
@@ -651,12 +652,12 @@ export default function MenuClient({
                   padding: 18,
                   border: '3px solid #000',
                   borderRadius: 22,
-                  background: isPressed ? '#fff176' : active ? '#56db3f' : '#fff',
-                  boxShadow: isPressed ? '2px 2px 0 #000' : active && !mealDisabled ? '6px 6px 0 #000' : 'none',
+                  background: !mealEntitlement ? '#f3f4f6' : isPressed ? '#fff176' : visuallyActive ? '#56db3f' : '#fff',
+                  boxShadow: isPressed ? '2px 2px 0 #000' : visuallyActive && !mealDisabled ? '6px 6px 0 #000' : 'none',
                   cursor: mealDisabled || !online ? 'not-allowed' : isSaving ? 'wait' : 'pointer',
-                  opacity: (mealDisabled || !online) && !active ? 0.45 : 1,
+                  opacity: !mealEntitlement ? 0.45 : (mealDisabled || !online) && !active ? 0.45 : 1,
                   fontFamily: 'Arial, Helvetica, sans-serif',
-                  filter: (mealDisabled || !online) && !active ? 'grayscale(1)' : 'none',
+                  filter: !mealEntitlement ? 'grayscale(1)' : (mealDisabled || !online) && !active ? 'grayscale(1)' : 'none',
                   transform: isPressed ? 'translate(4px, 4px)' : 'translate(0, 0)',
                   transition: 'transform 120ms ease, box-shadow 120ms ease, background 120ms ease',
                 }}
@@ -719,6 +720,7 @@ export default function MenuClient({
 
           {(() => {
             const active = normalizeVariant(selected) === 'BEZ_ZAUJMU'
+            const visuallyActive = mealEntitlement && active
             const optionKey = `${selectedDate}-${typ}-BEZ_ZAUJMU`
             const isPressed = pressedKey === optionKey
 
@@ -734,12 +736,12 @@ export default function MenuClient({
                   padding: 18,
                   border: '3px solid #000',
                   borderRadius: 22,
-                  background: isPressed ? '#fff176' : active ? '#ff8a8a' : '#fff7ed',
-                  boxShadow: isPressed ? '2px 2px 0 #000' : active && !mealDisabled ? '6px 6px 0 #000' : 'none',
+                  background: !mealEntitlement ? '#f3f4f6' : isPressed ? '#fff176' : visuallyActive ? '#ff8a8a' : '#fff7ed',
+                  boxShadow: isPressed ? '2px 2px 0 #000' : visuallyActive && !mealDisabled ? '6px 6px 0 #000' : 'none',
                   cursor: mealDisabled || !online ? 'not-allowed' : isSaving ? 'wait' : 'pointer',
-                  opacity: (mealDisabled || !online) && !active ? 0.45 : 1,
+                  opacity: !mealEntitlement ? 0.45 : (mealDisabled || !online) && !active ? 0.45 : 1,
                   fontFamily: 'Arial, Helvetica, sans-serif',
-                  filter: (mealDisabled || !online) && !active ? 'grayscale(1)' : 'none',
+                  filter: !mealEntitlement ? 'grayscale(1)' : (mealDisabled || !online) && !active ? 'grayscale(1)' : 'none',
                   transform: isPressed ? 'translate(4px, 4px)' : 'translate(0, 0)',
                   transition: 'transform 120ms ease, box-shadow 120ms ease, background 120ms ease',
                 }}
