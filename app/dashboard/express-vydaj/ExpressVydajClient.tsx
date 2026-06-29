@@ -267,7 +267,8 @@ export default function ExpressVydajClient({
           .express-card { padding: 12px !important; border-radius: 16px !important; }
           .express-title { font-size: 25px !important; line-height: 1 !important; }
           .express-meta { grid-template-columns: 1fr !important; }
-          .express-actions { grid-template-columns: 1fr 1fr !important; }
+          .express-actions { grid-template-columns: 0.8fr 0.8fr 1.35fr !important; gap: 6px !important; }
+          .express-actions button { padding: 7px 6px !important; font-size: 11px !important; white-space: nowrap !important; }
           .express-save { width: 100% !important; }
           .express-person { padding: 8px !important; }
           .express-person-name { font-size: 14px !important; }
