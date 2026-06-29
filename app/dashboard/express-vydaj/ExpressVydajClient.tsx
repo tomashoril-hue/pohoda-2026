@@ -293,8 +293,9 @@ export default function ExpressVydajClient({
           .express-user { font-size: 10px !important; padding: 4px 7px !important; max-width: min(70vw, 300px) !important; }
           .express-card { padding: 12px !important; border-radius: 16px !important; }
           .express-title { font-size: 25px !important; line-height: 1 !important; }
-          .express-admin-controls { grid-template-columns: 1fr !important; }
-          .express-admin-controls input { min-width: 0 !important; font-size: 14px !important; }
+          .express-admin-controls { grid-template-columns: 1fr !important; width: 100% !important; overflow: visible !important; }
+          .express-admin-field { width: 100% !important; max-width: 100% !important; }
+          .express-admin-controls input { width: 100% !important; min-width: 0 !important; font-size: 14px !important; }
           .express-meta { grid-template-columns: 1fr !important; }
           .express-actions { grid-template-columns: 0.8fr 0.8fr 1.35fr !important; gap: 6px !important; }
           .express-actions button { padding: 7px 6px !important; font-size: 11px !important; white-space: nowrap !important; }
@@ -355,7 +356,7 @@ export default function ExpressVydajClient({
 
         {canSelectDateMeal && (
           <div className="express-admin-controls" style={styles.adminControls}>
-            <label style={styles.adminField}>
+            <label className="express-admin-field" style={styles.adminField}>
               <span style={styles.fieldLabel}>{t('Dátum', 'Date')}</span>
               <input
                 type="date"
@@ -365,7 +366,7 @@ export default function ExpressVydajClient({
                 style={styles.dateInput}
               />
             </label>
-            <div style={styles.adminField}>
+            <div className="express-admin-field" style={styles.adminField}>
               <span style={styles.fieldLabel}>{t('Jedlo', 'Meal')}</span>
               <div style={styles.mealSwitch}>
                 {(['OBED', 'VECERA'] as MealType[]).map(meal => (
@@ -653,8 +654,8 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     alignItems: 'end',
     minWidth: 0,
-    maxWidth: '100%',
-    overflow: 'hidden'
+    width: '100%',
+    maxWidth: '100%'
   },
   adminField: {
     display: 'grid',
