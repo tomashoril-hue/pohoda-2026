@@ -140,6 +140,7 @@ export default function ExpressVydajClient({
   const hasExistingIssue = !!data?.issue
   const showStatusPanel = hasExistingIssue && !editingIssue
   const showEditor = !hasExistingIssue || editingIssue
+  const allPeopleSelected = allPersonIds.length > 0 && selectedIds.length === allPersonIds.length
   const allPickupSelected = allPersonIds.length > 0 && pickupUserIds.length === allPersonIds.length
 
   useEffect(() => {
@@ -250,6 +251,11 @@ export default function ExpressVydajClient({
       if (current.includes(personId)) return current.filter(id => id !== personId)
       return [...current, personId]
     })
+  }
+
+  const toggleAllPeople = () => {
+    if (loading || saving || allPersonIds.length === 0) return
+    setSelectedIds(allPeopleSelected ? [] : allPersonIds)
   }
 
   const toggleAllPickupUsers = () => {
@@ -556,18 +562,7 @@ export default function ExpressVydajClient({
 
         {showEditor && (
         <div style={styles.actionBar}>
-          {pickupOpen ? (
-            <div className="express-action-placeholder" style={styles.actionPlaceholder} />
-          ) : (
-            <div className="express-actions" style={styles.quickActions}>
-              <button type="button" onClick={() => setSelectedIds(allPersonIds)} disabled={loading || saving || allPersonIds.length === 0} style={styles.smallButton}>
-                {t('Všetci', 'All')}
-              </button>
-              <button type="button" onClick={() => setSelectedIds([])} disabled={loading || saving || selectedIds.length === 0} style={styles.smallButtonMuted}>
-                {t('Nikto', 'None')}
-              </button>
-            </div>
-          )}
+          <div className="express-action-placeholder" style={styles.actionPlaceholder} />
           <button
             className="express-save"
             type="button"
@@ -631,6 +626,19 @@ export default function ExpressVydajClient({
           <div style={styles.emptyBox}>{t('Načítavam ľudí...', 'Loading people...')}</div>
         ) : data?.people.length ? (
           <div style={styles.peopleList}>
+            <button
+              type="button"
+              onClick={toggleAllPeople}
+              disabled={loading || saving || allPersonIds.length === 0}
+              style={styles.pickupSelectAllButton}
+            >
+              <span style={allPeopleSelected ? styles.checkOn : styles.checkOff}>{allPeopleSelected ? '✓' : ''}</span>
+              <span style={styles.pickupPersonText}>
+                {allPeopleSelected ? t('Odznačiť všetkých', 'Clear all') : t('Označiť všetkých', 'Select all')}
+              </span>
+              <span style={styles.pickupCountBadge}>{selectedIds.length}/{allPersonIds.length}</span>
+            </button>
+
             {data.people.map(person => {
               const selected = selectedSet.has(person.id)
               return (
