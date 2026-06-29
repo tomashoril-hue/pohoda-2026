@@ -14,7 +14,7 @@ function fullName(user: any) {
   return `${user?.meno || ''} ${user?.priezvisko || ''}`.trim()
 }
 
-const INITIAL_PEOPLE_LIMIT = 50
+const INITIAL_PEOPLE_LIMIT = 12
 const RECENT_USER_SELECT = 'id, meno, priezvisko, email, telefon, typ_stravy, aktivny, account_type, registration_group_id, registration_group_note, review_status, updated_at, created_at'
 const PERSON_ACCOUNT_TYPE = 'PERSON'
 

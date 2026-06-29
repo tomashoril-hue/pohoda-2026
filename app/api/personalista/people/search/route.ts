@@ -6,6 +6,7 @@ import { supabaseServer } from '@/lib/supabaseServer'
 
 const RESULT_LIMIT = 5000
 const FILTERED_RESULT_LIMIT = 5000
+const AUDIT_SCAN_LIMIT = 50000
 
 function cleanText(value: any) {
   return String(value || '').trim()
@@ -153,6 +154,91 @@ async function fetchLatestAuditForUsers(userIds: string[]) {
   return latestByUserId
 }
 
+async function fetchRecentAuditPage({
+  actorUserId,
+  page,
+  pageSize
+}: {
+  actorUserId?: string
+  page: number
+  pageSize: number
+}) {
+  const rows: any[] = []
+  const batchSize = 1000
+
+  for (let from = 0; from < AUDIT_SCAN_LIMIT; from += batchSize) {
+    let query = supabaseServer
+      .from('personnel_audit_log')
+      .select('target_user_id, actor_user_id, created_at')
+      .not('target_user_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .range(from, from + batchSize - 1)
+
+    if (actorUserId) {
+      query = query.eq('actor_user_id', actorUserId)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+
+    rows.push(...(data || []))
+
+    if (!data || data.length < batchSize) break
+  }
+
+  const orderedUserIds: string[] = []
+  const lastAuditByUserId = new Map<string, any>()
+  const seenUserIds = new Set<string>()
+
+  rows.forEach((row: any) => {
+    const userId = row.target_user_id
+    if (!userId || seenUserIds.has(userId)) return
+
+    seenUserIds.add(userId)
+    orderedUserIds.push(userId)
+    lastAuditByUserId.set(userId, row)
+  })
+
+  const total = orderedUserIds.length
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const safePage = Math.min(page, pageCount)
+  const from = (safePage - 1) * pageSize
+  const pageUserIds = orderedUserIds.slice(from, from + pageSize)
+  const actorUserIds = Array.from(new Set(
+    pageUserIds
+      .map(userId => lastAuditByUserId.get(userId)?.actor_user_id)
+      .filter(Boolean)
+  ))
+
+  if (actorUserIds.length > 0) {
+    const { data: actorRows } = await supabaseServer
+      .from('users')
+      .select('id, meno, priezvisko, email')
+      .in('id', actorUserIds)
+    const actorsById = new Map((actorRows || []).map((actor: any) => [actor.id, actor]))
+
+    pageUserIds.forEach(userId => {
+      const row = lastAuditByUserId.get(userId)
+      const actor = actorsById.get(row?.actor_user_id)
+
+      lastAuditByUserId.set(userId, {
+        ...row,
+        actor_name: fullName(actor) || actor?.email || ''
+      })
+    })
+  }
+
+  return {
+    userIds: pageUserIds,
+    orderByUserId: new Map(pageUserIds.map((userId, index) => [userId, index])),
+    latestAuditByUserId: lastAuditByUserId,
+    total,
+    page: safePage,
+    pageSize,
+    pageCount
+  }
+}
+
 function mapRegistrationGroupPeriod(row: any, registrationGroupById: Map<string, any>) {
   const group = Array.isArray(row.registration_groups)
     ? row.registration_groups[0]
@@ -226,6 +312,7 @@ export async function GET(req: NextRequest) {
     const emailFilter = cleanText(req.nextUrl.searchParams.get('emailFilter')).toUpperCase() || 'ALL'
     const qrFilter = cleanText(req.nextUrl.searchParams.get('qrFilter')).toUpperCase() || 'ALL'
     const foodFilter = cleanText(req.nextUrl.searchParams.get('foodFilter')).toUpperCase() || 'ALL'
+    const recentScope = cleanText(req.nextUrl.searchParams.get('recentScope')).toLowerCase()
     const page = Math.max(1, Number(req.nextUrl.searchParams.get('page') || 1) || 1)
     const pageSize = Math.min(100, Math.max(12, Number(req.nextUrl.searchParams.get('pageSize') || 50) || 50))
     const paged = req.nextUrl.searchParams.has('page') || req.nextUrl.searchParams.has('pageSize')
@@ -286,13 +373,48 @@ export async function GET(req: NextRequest) {
     }
 
     const filteredMode = Boolean(registrationGroupUserIds || status || emailFilter !== 'ALL' || qrFilter !== 'ALL' || foodFilter !== 'ALL')
+    const recentMode = (
+      !userId &&
+      !filteredMode &&
+      query.length < 2 &&
+      (recentScope === 'mine' || recentScope === 'all')
+    )
+    let recentAuditPage: Awaited<ReturnType<typeof fetchRecentAuditPage>> | null = null
+
+    if (recentMode) {
+      if (recentScope === 'all' && !access.isAdmin) {
+        return NextResponse.json({ error: 'Nemas opravnenie zobrazit vsetky upravy.' }, { status: 403 })
+      }
+
+      recentAuditPage = await fetchRecentAuditPage({
+        actorUserId: recentScope === 'mine' ? actor.id : undefined,
+        page,
+        pageSize
+      })
+
+      if (recentAuditPage.userIds.length === 0) {
+        return NextResponse.json({
+          ok: true,
+          people: [],
+          mode: recentScope === 'all' ? 'RECENT_ALL_AUDIT' : 'RECENT_MY_AUDIT',
+          total: 0,
+          page: 1,
+          pageSize,
+          pageCount: 1
+        })
+      }
+    }
+
     let usersQuery = supabaseServer
       .from('users')
       .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, account_type, registration_group_id, registration_group_note, review_status, updated_at, created_at')
       .limit(filteredMode ? FILTERED_RESULT_LIMIT : RESULT_LIMIT)
     let mode = 'RECENT'
 
-    if (registrationGroupUserIds) {
+    if (recentAuditPage) {
+      usersQuery = usersQuery.in('id', recentAuditPage.userIds)
+      mode = recentScope === 'all' ? 'RECENT_ALL_AUDIT' : 'RECENT_MY_AUDIT'
+    } else if (registrationGroupUserIds) {
       usersQuery = usersQuery.in('id', registrationGroupUserIds)
       mode = 'REGISTRATION_GROUP'
     }
@@ -367,7 +489,9 @@ export async function GET(req: NextRequest) {
       supabaseServer.from('registration_groups').select('id, name, active'),
       fetchRegistrationGroupManagersForUsers(userIds),
       fetchRegistrationGroupDelegatesForUsers(userIds),
-      fetchLatestAuditForUsers(userIds)
+      recentAuditPage
+        ? Promise.resolve(recentAuditPage.latestAuditByUserId)
+        : fetchLatestAuditForUsers(userIds)
     ])
 
     if (qrResult.error) return NextResponse.json({ error: qrResult.error.message }, { status: 500 })
@@ -505,6 +629,13 @@ export async function GET(req: NextRequest) {
       }
     })
 
+    if (recentAuditPage) {
+      people = people.sort((a: any, b: any) => {
+        return (recentAuditPage?.orderByUserId.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+          (recentAuditPage?.orderByUserId.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+      })
+    }
+
     if (emailFilter === 'WITH') {
       people = people.filter((person: any) => cleanText(person.email))
     } else if (emailFilter === 'MISSING') {
@@ -521,11 +652,11 @@ export async function GET(req: NextRequest) {
       people = people.filter((person: any) => !cleanText(person.typStravy))
     }
 
-    const total = people.length
-    const pageCount = Math.max(1, Math.ceil(total / pageSize))
-    const safePage = Math.min(page, pageCount)
+    const total = recentAuditPage ? recentAuditPage.total : people.length
+    const pageCount = recentAuditPage ? recentAuditPage.pageCount : Math.max(1, Math.ceil(total / pageSize))
+    const safePage = recentAuditPage ? recentAuditPage.page : Math.min(page, pageCount)
     const from = (safePage - 1) * pageSize
-    const pagePeople = paged ? people.slice(from, from + pageSize) : people
+    const pagePeople = recentAuditPage ? people : paged ? people.slice(from, from + pageSize) : people
 
     return NextResponse.json({
       ok: true,

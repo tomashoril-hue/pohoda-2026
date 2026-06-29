@@ -1415,14 +1415,6 @@ export default function PersonalistaClient({
   const tableMinWidth = foodGroupsVisible
     ? (isMobile ? 760 : 920)
     : (isMobile ? 640 : 760)
-  const hasActivePeopleSearch = (
-    search.trim().length >= 2 ||
-    registrationGroupFilter !== 'ALL' ||
-    emailFilter !== 'ALL' ||
-    foodFilter !== 'ALL' ||
-    qrFilter !== 'ALL' ||
-    statusFilter !== 'ALL'
-  )
   const peopleSearchHintStyle = peopleSearchLoading
     ? styles.toolbarHintLoading
     : peopleSearchMessage.startsWith('Vysledky hladania')
@@ -1538,15 +1530,6 @@ export default function PersonalistaClient({
       statusFilter !== 'ALL'
     )
 
-    if (!hasActiveFilters && q.length === 0) {
-      setPeople(initialPeople)
-      setPeopleTotal(initialPeople.length)
-      setServerPageCount(Math.max(1, Math.ceil(initialPeople.length / pageSize)))
-      setPeopleSearchLoading(false)
-      setPeopleSearchMessage(initialPeopleSearchMessage)
-      return
-    }
-
     if (q && q.length < 2 && !hasActiveFilters) {
       setPeople(initialPeople)
       setPeopleTotal(initialPeople.length)
@@ -1564,6 +1547,7 @@ export default function PersonalistaClient({
       try {
         const params = new URLSearchParams()
 
+        if (!hasActiveFilters && q.length === 0) params.set('recentScope', peopleScope)
         if (q.length >= 2) params.set('q', q)
         if (registrationGroupFilter !== 'ALL') params.set('registrationGroupId', registrationGroupFilter)
         if (emailFilter !== 'ALL') params.set('emailFilter', emailFilter)
@@ -1609,7 +1593,7 @@ export default function PersonalistaClient({
       cancelled = true
       window.clearTimeout(timeout)
     }
-  }, [search, registrationGroupFilter, emailFilter, foodFilter, qrFilter, statusFilter, currentPage, pageSize, initialPeople, initialPeopleSearchMessage])
+  }, [search, registrationGroupFilter, emailFilter, foodFilter, qrFilter, statusFilter, currentPage, pageSize, initialPeople, peopleScope])
 
   useEffect(() => {
     if (!selectedPerson) return
@@ -1717,11 +1701,8 @@ export default function PersonalistaClient({
         return (peopleOrderById.get(a.id) ?? 0) - (peopleOrderById.get(b.id) ?? 0)
       })
 
-    if (hasActivePeopleSearch) return orderedPeople
-
-    const start = (Math.min(currentPage, serverPageCount) - 1) * pageSize
-    return orderedPeople.slice(start, start + pageSize)
-  }, [displayPeople, peopleOrderById, hasActivePeopleSearch, currentPage, serverPageCount, pageSize])
+    return orderedPeople
+  }, [displayPeople, peopleOrderById])
 
   useEffect(() => {
     setCurrentPage(1)
