@@ -257,6 +257,14 @@ export default function ExpressVydajClient({
     })
   }
 
+  const prepareIssue = () => {
+    if (loading || saving || selectedIds.length === 0) return
+
+    setMessage('')
+    setMessageType('')
+    setPickupOpen(true)
+  }
+
   const save = async () => {
     if (!groupId || saving) return
 
@@ -385,7 +393,7 @@ export default function ExpressVydajClient({
           .express-meta { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px !important; }
           .express-meta-group { grid-column: 1 / -1 !important; }
           .express-counter-box { padding: 8px 6px !important; text-align: center !important; }
-          .express-actions { grid-template-columns: 0.8fr 0.8fr 1.35fr !important; gap: 6px !important; }
+          .express-actions { grid-template-columns: 1fr 1fr !important; gap: 6px !important; }
           .express-actions button { padding: 7px 6px !important; font-size: 11px !important; white-space: nowrap !important; }
           .express-save { width: 100% !important; }
           .express-person { padding: 8px !important; }
@@ -417,13 +425,6 @@ export default function ExpressVydajClient({
             </div>
           </div>
 
-          {data?.issue && (
-            <div style={countdownActive ? styles.timerBadge : styles.readyBadge}>
-              {countdownActive
-                ? `${t('Platí o', 'Valid in')} ${countdown}`
-                : t('Výdaj je platný', 'Issue is valid')}
-            </div>
-          )}
         </div>
 
         {groups.length > 1 && (
@@ -510,9 +511,6 @@ export default function ExpressVydajClient({
                 <h2 style={styles.statusPanelTitle}>{data.group.name || '-'}</h2>
                 <div style={styles.statusPanelMeta}>{mealLabel(data.meal, language)} · {formatDate(data.date)}</div>
               </div>
-              <div style={countdownActive ? styles.statusPillWaiting : styles.statusPillReady}>
-                {countdownActive ? t('Čaká', 'Waiting') : t('Platný', 'Valid')}
-              </div>
             </div>
 
             {countdownActive ? (
@@ -564,11 +562,8 @@ export default function ExpressVydajClient({
             <button type="button" onClick={() => setSelectedIds([])} disabled={loading || saving || selectedIds.length === 0} style={styles.smallButtonMuted}>
               {t('Nikto', 'None')}
             </button>
-            <button type="button" onClick={() => setPickupOpen(current => !current)} disabled={loading || saving || allPersonIds.length === 0} style={pickupUserIds.length > 0 ? styles.smallButtonPurple : styles.smallButtonWarning}>
-              {t('Prevezme osoba', 'Pickup person')}
-            </button>
           </div>
-          <button className="express-save" type="button" onClick={() => void save()} disabled={loading || saving || selectedIds.length === 0 || pickupUserIds.length === 0} style={styles.saveButton}>
+          <button className="express-save" type="button" onClick={prepareIssue} disabled={loading || saving || selectedIds.length === 0} style={styles.saveButton}>
             {saving ? t('Ukladám...', 'Saving...') : t('Pripraviť výdaj', 'Prepare issue')}
           </button>
         </div>
@@ -608,6 +603,15 @@ export default function ExpressVydajClient({
                 )
               })}
             </div>
+
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving || pickupUserIds.length === 0}
+              style={styles.pickupConfirmButton}
+            >
+              {saving ? t('Ukladám...', 'Saving...') : t('Potvrdiť výdaj', 'Confirm issue')}
+            </button>
           </section>
         )}
 
@@ -1048,7 +1052,7 @@ const styles: Record<string, CSSProperties> = {
   },
   quickActions: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr 1.35fr',
+    gridTemplateColumns: '1fr 1fr',
     gap: 8
   },
   smallButton: {
@@ -1171,6 +1175,17 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: 'nowrap',
     fontSize: 13,
     fontWeight: 900
+  },
+  pickupConfirmButton: {
+    border: '1px solid #5b21b6',
+    borderRadius: 999,
+    padding: '10px 16px',
+    background: '#7417e8',
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 950,
+    fontFamily: 'Arial, Helvetica, sans-serif',
+    boxShadow: '0 8px 18px rgba(116, 23, 232, 0.24)'
   },
   peopleList: {
     display: 'grid',
