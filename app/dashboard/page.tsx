@@ -791,6 +791,12 @@ export default async function DashboardPage({
               <b className="dashboard-menu-title" style={styles.menuTileTitle}>{copy.groupIssue}</b>
             </Link>
           )}
+          {canOpenGroupIssue && (
+            <Link className="dashboard-menu-tile" href="/dashboard/express-vydaj" style={{ ...styles.menuTile, ...styles.menuTileGreen }}>
+              <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Rýchlo</span>
+              <b className="dashboard-menu-title" style={styles.menuTileTitle}>Express výdaj</b>
+            </Link>
+          )}
           {canOpenBrigadnikEdit && (
             <Link className="dashboard-menu-tile" href="/dashboard/uprava-brigadnikov" style={{ ...styles.menuTile, ...styles.menuTilePink }}>
               <span style={styles.menuTileIcon} aria-hidden="true">RG</span>
