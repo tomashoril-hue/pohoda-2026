@@ -12,6 +12,31 @@ type RegistrationGroupOption = {
   accessLabel: string
 }
 
+function bratislavaParts(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Bratislava',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date)
+}
+
+function todayIsoDate() {
+  const parts = bratislavaParts()
+  const year = parts.find(part => part.type === 'year')?.value
+  const month = parts.find(part => part.type === 'month')?.value
+  const day = parts.find(part => part.type === 'day')?.value
+
+  return `${year}-${month}-${day}`
+}
+
+function currentExpressMeal() {
+  const hour = Number(bratislavaParts().find(part => part.type === 'hour')?.value || '0')
+  return hour < 16 ? 'OBED' : 'VECERA'
+}
+
 async function loadExpressGroups(userId: string, access: { isAdmin: boolean, isPersonalista: boolean }) {
   const privileged = access.isAdmin || access.isPersonalista
   const [managedIds, delegatedIds, groupsResult] = await Promise.all([
@@ -61,12 +86,16 @@ export default async function ExpressVydajPage() {
   }
 
   const language = await requestLanguage(user)
+  const canSelectDateMeal = access.isAdmin || access.isPersonalista
 
   return (
     <ExpressVydajClient
       language={language}
       userName={`${user.meno || ''} ${user.priezvisko || ''}`.trim()}
       groups={groups}
+      canSelectDateMeal={canSelectDateMeal}
+      initialDate={todayIsoDate()}
+      initialMeal={currentExpressMeal()}
     />
   )
 }

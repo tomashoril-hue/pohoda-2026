@@ -14,7 +14,9 @@ import {
   loadRegistrationGroup,
   loadRegistrationGroupPeople,
   loadUsersByIds,
-  normalizeChoice
+  normalizeChoice,
+  normalizeDate,
+  normalizeMeal
 } from '@/lib/registrationGroupIssue'
 
 type RequestedPerson = {
@@ -81,6 +83,25 @@ async function validateIssueAccess(actorId: string, registrationGroupId: string)
   }
 
   return access
+}
+
+async function resolveExpressDateMeal(actorId: string, dateInput: any, mealInput: any) {
+  const globalAccess = await getGlobalAccess(actorId)
+  const canSelectDateMeal = globalAccess.isAdmin || globalAccess.isPersonalista
+
+  if (!canSelectDateMeal) {
+    return {
+      date: todayIsoDate(),
+      meal: currentExpressMeal(),
+      canSelectDateMeal
+    }
+  }
+
+  return {
+    date: normalizeDate(dateInput) || todayIsoDate(),
+    meal: normalizeMeal(mealInput) || currentExpressMeal(),
+    canSelectDateMeal
+  }
 }
 
 async function loadActiveIssueIds(date: string, meal: MealType, excludedIssueId = '') {
@@ -319,8 +340,11 @@ export async function GET(req: NextRequest) {
     }
 
     const registrationGroupId = cleanText(req.nextUrl.searchParams.get('registrationGroupId'))
-    const date = todayIsoDate()
-    const meal = currentExpressMeal()
+    const { date, meal, canSelectDateMeal } = await resolveExpressDateMeal(
+      actor.id,
+      req.nextUrl.searchParams.get('date'),
+      req.nextUrl.searchParams.get('meal') || req.nextUrl.searchParams.get('typJedla')
+    )
 
     if (!registrationGroupId) {
       return NextResponse.json({ error: 'Chyba registracna skupina.' }, { status: 400 })
@@ -369,6 +393,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       date,
       meal,
+      canSelectDateMeal,
       group: {
         id: registrationGroup.id,
         name: registrationGroup.name || ''
@@ -404,8 +429,11 @@ export async function POST(req: NextRequest) {
     const registrationGroupId = cleanText(body.registrationGroupId)
     const selectedUserIds = normalizeRequestedUserIds(body.userIds)
     const requestedPickupUserIds = normalizeRequestedUserIds(body.pickupUserIds)
-    const date = todayIsoDate()
-    const meal = currentExpressMeal()
+    const { date, meal, canSelectDateMeal } = await resolveExpressDateMeal(
+      actor.id,
+      body.date || body.datum,
+      body.meal || body.typJedla
+    )
 
     if (!registrationGroupId) {
       return NextResponse.json({ error: 'Chyba registracna skupina.' }, { status: 400 })
@@ -607,6 +635,7 @@ export async function POST(req: NextRequest) {
       },
       date,
       meal,
+      canSelectDateMeal,
       selectedIds: plannedPeople.map(person => person.id),
       pickupUserIds,
       summary: choiceSummary(plannedPeople),

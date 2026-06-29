@@ -94,17 +94,25 @@ function displayPersonName(person: ExpressPerson) {
 export default function ExpressVydajClient({
   language = 'SK',
   userName,
-  groups
+  groups,
+  canSelectDateMeal = false,
+  initialDate,
+  initialMeal
 }: {
   language?: AppLanguage
   userName: string
   groups: RegistrationGroupOption[]
+  canSelectDateMeal?: boolean
+  initialDate: string
+  initialMeal: MealType
 }) {
   const router = useRouter()
   const copy = appText(language)
   const isEnglish = language === 'EN'
   const t = (sk: string, en: string) => isEnglish ? en : sk
   const [groupId, setGroupId] = useState(groups[0]?.id || '')
+  const [selectedDate, setSelectedDate] = useState(initialDate)
+  const [selectedMeal, setSelectedMeal] = useState<MealType>(initialMeal)
   const [data, setData] = useState<ExpressData | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [pickupUserIds, setPickupUserIds] = useState<string[]>([])
@@ -145,7 +153,11 @@ export default function ExpressVydajClient({
     return () => window.clearTimeout(timeout)
   }, [data?.issue?.validAfter, redirectAfterCountdown, router, nowMs])
 
-  const loadData = async (nextGroupId = groupId) => {
+  const loadData = async (
+    nextGroupId = groupId,
+    nextDate = selectedDate,
+    nextMeal = selectedMeal
+  ) => {
     if (!nextGroupId) return
 
     setLoading(true)
@@ -153,11 +165,20 @@ export default function ExpressVydajClient({
     setMessageType('')
 
     try {
-      const res = await fetch(`/api/skupinovy-vydaj/express?registrationGroupId=${encodeURIComponent(nextGroupId)}`)
+      const params = new URLSearchParams({ registrationGroupId: nextGroupId })
+
+      if (canSelectDateMeal) {
+        params.set('date', nextDate)
+        params.set('meal', nextMeal)
+      }
+
+      const res = await fetch(`/api/skupinovy-vydaj/express?${params.toString()}`)
       const json = await res.json().catch(() => ({ error: t('Server nevrátil platnú odpoveď.', 'The server did not return a valid response.') }))
 
       if (!res.ok || json.error) throw new Error(json.error || t('Express výdaj sa nepodarilo načítať.', 'Express issue could not be loaded.'))
 
+      if (json.date && json.date !== selectedDate) setSelectedDate(json.date)
+      if (json.meal && json.meal !== selectedMeal) setSelectedMeal(json.meal)
       setData(json)
       setSelectedIds(Array.isArray(json.selectedIds) ? json.selectedIds : [])
       setPickupUserIds(Array.isArray(json.pickupUserIds) ? json.pickupUserIds : [])
@@ -176,8 +197,8 @@ export default function ExpressVydajClient({
   }
 
   useEffect(() => {
-    void loadData(groupId)
-  }, [groupId])
+    void loadData(groupId, selectedDate, selectedMeal)
+  }, [groupId, selectedDate, selectedMeal])
 
   const togglePerson = (personId: string) => {
     if (saving) return
@@ -211,7 +232,11 @@ export default function ExpressVydajClient({
         body: JSON.stringify({
           registrationGroupId: groupId,
           userIds: selectedIds,
-          pickupUserIds
+          pickupUserIds,
+          ...(canSelectDateMeal ? {
+            date: selectedDate,
+            meal: selectedMeal
+          } : {})
         })
       })
       const json = await res.json().catch(() => ({ error: t('Server nevrátil platnú odpoveď.', 'The server did not return a valid response.') }))
@@ -227,6 +252,8 @@ export default function ExpressVydajClient({
         selectedIds: Array.isArray(json.selectedIds) ? json.selectedIds : selectedIds,
         pickupUserIds: Array.isArray(json.pickupUserIds) ? json.pickupUserIds : pickupUserIds
       }))
+      if (json.date && json.date !== selectedDate) setSelectedDate(json.date)
+      if (json.meal && json.meal !== selectedMeal) setSelectedMeal(json.meal)
       setSelectedIds(Array.isArray(json.selectedIds) ? json.selectedIds : selectedIds)
       setPickupUserIds(Array.isArray(json.pickupUserIds) ? json.pickupUserIds : pickupUserIds)
       setRedirectAfterCountdown(true)
@@ -266,6 +293,7 @@ export default function ExpressVydajClient({
           .express-user { font-size: 10px !important; padding: 4px 7px !important; max-width: min(70vw, 300px) !important; }
           .express-card { padding: 12px !important; border-radius: 16px !important; }
           .express-title { font-size: 25px !important; line-height: 1 !important; }
+          .express-admin-controls { grid-template-columns: 1fr !important; }
           .express-meta { grid-template-columns: 1fr !important; }
           .express-actions { grid-template-columns: 0.8fr 0.8fr 1.35fr !important; gap: 6px !important; }
           .express-actions button { padding: 7px 6px !important; font-size: 11px !important; white-space: nowrap !important; }
@@ -322,6 +350,40 @@ export default function ExpressVydajClient({
               ))}
             </select>
           </label>
+        )}
+
+        {canSelectDateMeal && (
+          <div className="express-admin-controls" style={styles.adminControls}>
+            <label style={styles.adminField}>
+              <span style={styles.fieldLabel}>{t('Dátum', 'Date')}</span>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={event => setSelectedDate(event.target.value)}
+                disabled={loading || saving}
+                style={styles.dateInput}
+              />
+            </label>
+            <div style={styles.adminField}>
+              <span style={styles.fieldLabel}>{t('Jedlo', 'Meal')}</span>
+              <div style={styles.mealSwitch}>
+                {(['OBED', 'VECERA'] as MealType[]).map(meal => (
+                  <button
+                    key={meal}
+                    type="button"
+                    onClick={() => setSelectedMeal(meal)}
+                    disabled={loading || saving}
+                    style={{
+                      ...styles.mealButton,
+                      ...(selectedMeal === meal ? styles.mealButtonActive : {})
+                    }}
+                  >
+                    {mealLabel(meal, language)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
 
         {data && (
@@ -583,6 +645,53 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 900,
     fontFamily: 'Arial, Helvetica, sans-serif',
     color: '#211b35'
+  },
+  adminControls: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(170px, 0.8fr) minmax(220px, 1fr)',
+    gap: 8,
+    alignItems: 'end'
+  },
+  adminField: {
+    display: 'grid',
+    gap: 6
+  },
+  dateInput: {
+    width: '100%',
+    minHeight: 42,
+    border: '1px solid #d7d3e8',
+    borderRadius: 12,
+    background: '#fff',
+    padding: '8px 10px',
+    fontSize: 15,
+    fontWeight: 900,
+    fontFamily: 'Arial, Helvetica, sans-serif',
+    color: '#211b35'
+  },
+  mealSwitch: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 6,
+    border: '1px solid #d7d3e8',
+    borderRadius: 14,
+    background: '#f8fafc',
+    padding: 4
+  },
+  mealButton: {
+    minHeight: 34,
+    border: '1px solid transparent',
+    borderRadius: 10,
+    background: 'transparent',
+    color: '#4b5563',
+    fontSize: 13,
+    fontWeight: 950,
+    fontFamily: 'Arial, Helvetica, sans-serif'
+  },
+  mealButtonActive: {
+    background: '#7417e8',
+    color: '#fff',
+    borderColor: '#5b21b6',
+    boxShadow: '0 6px 14px rgba(116, 23, 232, 0.2)'
   },
   metaGrid: {
     display: 'grid',
