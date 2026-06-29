@@ -294,6 +294,7 @@ export default function ExpressVydajClient({
           .express-card { padding: 12px !important; border-radius: 16px !important; }
           .express-title { font-size: 25px !important; line-height: 1 !important; }
           .express-admin-controls { grid-template-columns: 1fr !important; }
+          .express-admin-controls input { min-width: 0 !important; font-size: 14px !important; }
           .express-meta { grid-template-columns: 1fr !important; }
           .express-actions { grid-template-columns: 0.8fr 0.8fr 1.35fr !important; gap: 6px !important; }
           .express-actions button { padding: 7px 6px !important; font-size: 11px !important; white-space: nowrap !important; }
@@ -650,14 +651,22 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'minmax(170px, 0.8fr) minmax(220px, 1fr)',
     gap: 8,
-    alignItems: 'end'
+    alignItems: 'end',
+    minWidth: 0,
+    maxWidth: '100%',
+    overflow: 'hidden'
   },
   adminField: {
     display: 'grid',
-    gap: 6
+    gap: 6,
+    minWidth: 0,
+    maxWidth: '100%'
   },
   dateInput: {
     width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
     minHeight: 42,
     border: '1px solid #d7d3e8',
     borderRadius: 12,
@@ -672,6 +681,9 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
     gap: 6,
+    minWidth: 0,
+    maxWidth: '100%',
+    boxSizing: 'border-box',
     border: '1px solid #d7d3e8',
     borderRadius: 14,
     background: '#f8fafc',
@@ -679,6 +691,7 @@ const styles: Record<string, CSSProperties> = {
   },
   mealButton: {
     minHeight: 34,
+    minWidth: 0,
     border: '1px solid transparent',
     borderRadius: 10,
     background: 'transparent',
