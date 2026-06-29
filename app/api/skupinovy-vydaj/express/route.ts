@@ -169,19 +169,8 @@ async function loadPickupUsers(issueId: string) {
   return (data || []).map((row: any) => row.user_id).filter(Boolean)
 }
 
-async function loadDefaultPickupUserIds(registrationGroupId: string, actorId: string) {
-  const { data, error } = await supabaseServer
-    .from('registration_group_issue_delegates')
-    .select('user_id')
-    .eq('registration_group_id', registrationGroupId)
-    .eq('active', true)
-
-  if (error) throw error
-
-  return Array.from(new Set([
-    actorId,
-    ...(data || []).map((row: any) => row.user_id).filter(Boolean)
-  ]))
+function defaultPickupUserIds(actorId: string, candidateUserIds: Set<string>) {
+  return candidateUserIds.has(actorId) ? [actorId] : []
 }
 
 async function replacePickupUsers(issueId: string, userIds: string[], actorId: string) {
@@ -278,6 +267,17 @@ async function prepareIssuablePeople({
   })
 }
 
+async function loadIssuableGroupPeople(registrationGroupId: string, date: string, meal: MealType) {
+  const groupPeople = await loadRegistrationGroupPeople(registrationGroupId, date)
+
+  return filterIssuablePeople({
+    users: groupPeople,
+    date,
+    meal,
+    source: 'REGISTRATION_GROUP'
+  })
+}
+
 async function loadIssuePeople(issueId: string) {
   const items = await loadIssueItems(issueId)
   const userIds = items.map((item: any) => item.user_id).filter(Boolean)
@@ -353,15 +353,17 @@ export async function GET(req: NextRequest) {
     const issuablePeople = people
       .filter(person => person.issuable !== false)
       .sort(comparePeople)
+    const issuableUserIds = new Set(issuablePeople.map(person => person.id))
     const selectedPeople = issue
       ? await loadIssuePeople(issue.id)
       : []
     const selectedIds = selectedPeople
       .filter(person => person.itemStatus === 'PLANNED')
       .map(person => person.id)
-    const pickupUserIds = issue
+    const rawPickupUserIds = issue
       ? await loadPickupUsers(issue.id)
-      : await loadDefaultPickupUserIds(registrationGroupId, actor.id)
+      : defaultPickupUserIds(actor.id, issuableUserIds)
+    const pickupUserIds = rawPickupUserIds.filter(userId => issuableUserIds.has(userId))
 
     return NextResponse.json({
       ok: true,
@@ -401,6 +403,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const registrationGroupId = cleanText(body.registrationGroupId)
     const selectedUserIds = normalizeRequestedUserIds(body.userIds)
+    const requestedPickupUserIds = normalizeRequestedUserIds(body.pickupUserIds)
     const date = todayIsoDate()
     const meal = currentExpressMeal()
 
@@ -417,6 +420,23 @@ export async function POST(req: NextRequest) {
 
     if (!registrationGroup || registrationGroup.active === false) {
       return NextResponse.json({ error: 'Registracna skupina neexistuje alebo nie je aktivna.' }, { status: 404 })
+    }
+
+    const allIssuablePeople = await loadIssuableGroupPeople(registrationGroupId, date, meal)
+    const issuableUserIds = new Set(allIssuablePeople.map(person => person.id))
+    const pickupUserIds = requestedPickupUserIds.length > 0
+      ? requestedPickupUserIds.filter(userId => issuableUserIds.has(userId))
+      : defaultPickupUserIds(actor.id, issuableUserIds)
+
+    if (pickupUserIds.length === 0) {
+      return NextResponse.json({ error: 'Vyber osobu, ktora prevezme vydaj.' }, { status: 400 })
+    }
+
+    if (pickupUserIds.length !== requestedPickupUserIds.length && requestedPickupUserIds.length > 0) {
+      return NextResponse.json(
+        { error: 'Prevezme osoba môže byť iba vydateľná osoba z tejto registračnej skupiny.' },
+        { status: 400 }
+      )
     }
 
     const title = expressIssueTitle(registrationGroup.name || '', meal)
@@ -452,7 +472,6 @@ export async function POST(req: NextRequest) {
 
     const now = new Date().toISOString()
     const validAfter = new Date(Date.now() + 15 * 60 * 1000).toISOString()
-    const pickupUserIds = await loadDefaultPickupUserIds(registrationGroupId, actor.id)
 
     let issue = existingIssue
 

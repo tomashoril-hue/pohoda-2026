@@ -39,6 +39,7 @@ type ExpressData = {
   issue: ExpressIssue | null
   people: ExpressPerson[]
   selectedIds: string[]
+  pickupUserIds: string[]
 }
 
 function HomeIcon() {
@@ -106,6 +107,8 @@ export default function ExpressVydajClient({
   const [groupId, setGroupId] = useState(groups[0]?.id || '')
   const [data, setData] = useState<ExpressData | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [pickupUserIds, setPickupUserIds] = useState<string[]>([])
+  const [pickupOpen, setPickupOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -114,10 +117,17 @@ export default function ExpressVydajClient({
   const [redirectAfterCountdown, setRedirectAfterCountdown] = useState(false)
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
+  const pickupSet = useMemo(() => new Set(pickupUserIds), [pickupUserIds])
   const selectedCount = selectedIds.length
   const allPersonIds = useMemo(() => (data?.people || []).map(person => person.id), [data?.people])
+  const pickupPeople = useMemo(() => {
+    return (data?.people || []).filter(person => pickupSet.has(person.id))
+  }, [data?.people, pickupSet])
   const countdown = remainingLabel(data?.issue?.validAfter || null, nowMs)
   const countdownActive = !!data?.issue?.validAfter && Date.parse(data.issue.validAfter) > nowMs
+  const pickupLabel = pickupPeople.length > 0
+    ? pickupPeople.map(displayPersonName).join(', ')
+    : t('Nikto nie je vybraný', 'Nobody selected')
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
@@ -150,10 +160,14 @@ export default function ExpressVydajClient({
 
       setData(json)
       setSelectedIds(Array.isArray(json.selectedIds) ? json.selectedIds : [])
+      setPickupUserIds(Array.isArray(json.pickupUserIds) ? json.pickupUserIds : [])
+      setPickupOpen(false)
       setRedirectAfterCountdown(false)
     } catch (err: any) {
       setData(null)
       setSelectedIds([])
+      setPickupUserIds([])
+      setPickupOpen(false)
       setMessage(err?.message || t('Express výdaj sa nepodarilo načítať.', 'Express issue could not be loaded.'))
       setMessageType('error')
     } finally {
@@ -174,6 +188,15 @@ export default function ExpressVydajClient({
     })
   }
 
+  const togglePickupUser = (personId: string) => {
+    if (saving) return
+
+    setPickupUserIds(current => {
+      if (current.includes(personId)) return current.filter(id => id !== personId)
+      return [...current, personId]
+    })
+  }
+
   const save = async () => {
     if (!groupId || saving) return
 
@@ -187,7 +210,8 @@ export default function ExpressVydajClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           registrationGroupId: groupId,
-          userIds: selectedIds
+          userIds: selectedIds,
+          pickupUserIds
         })
       })
       const json = await res.json().catch(() => ({ error: t('Server nevrátil platnú odpoveď.', 'The server did not return a valid response.') }))
@@ -200,9 +224,11 @@ export default function ExpressVydajClient({
         group: current?.group || { id: groupId, name: '' },
         issue: json.issue || null,
         people: current?.people || [],
-        selectedIds: Array.isArray(json.selectedIds) ? json.selectedIds : selectedIds
+        selectedIds: Array.isArray(json.selectedIds) ? json.selectedIds : selectedIds,
+        pickupUserIds: Array.isArray(json.pickupUserIds) ? json.pickupUserIds : pickupUserIds
       }))
       setSelectedIds(Array.isArray(json.selectedIds) ? json.selectedIds : selectedIds)
+      setPickupUserIds(Array.isArray(json.pickupUserIds) ? json.pickupUserIds : pickupUserIds)
       setRedirectAfterCountdown(true)
       setMessage(t('Express výdaj je pripravený. Po odpočte ťa presmerujem na Môj QR kód.', 'Express issue is ready. After the countdown you will be redirected to My QR code.'))
       setMessageType('ok')
@@ -308,6 +334,10 @@ export default function ExpressVydajClient({
               <b>{selectedCount}</b>
             </div>
             <div style={styles.metaBox}>
+              <span>{t('Prevezme', 'Pickup')}</span>
+              <b>{pickupUserIds.length}</b>
+            </div>
+            <div style={styles.metaBox}>
               <span>{t('Vydateľných', 'Issuable')}</span>
               <b>{data.people.length}</b>
             </div>
@@ -322,11 +352,51 @@ export default function ExpressVydajClient({
             <button type="button" onClick={() => setSelectedIds([])} disabled={loading || saving || selectedIds.length === 0} style={styles.smallButtonMuted}>
               {t('Nikto', 'None')}
             </button>
+            <button type="button" onClick={() => setPickupOpen(current => !current)} disabled={loading || saving || allPersonIds.length === 0} style={pickupUserIds.length > 0 ? styles.smallButtonPurple : styles.smallButtonWarning}>
+              {t('Prevezme osoba', 'Pickup person')}
+            </button>
           </div>
-          <button className="express-save" type="button" onClick={() => void save()} disabled={loading || saving || selectedIds.length === 0} style={styles.saveButton}>
+          <button className="express-save" type="button" onClick={() => void save()} disabled={loading || saving || selectedIds.length === 0 || pickupUserIds.length === 0} style={styles.saveButton}>
             {saving ? t('Ukladám...', 'Saving...') : t('Pripraviť výdaj', 'Prepare issue')}
           </button>
         </div>
+
+        {data && pickupOpen && (
+          <section style={styles.pickupPanel}>
+            <div style={styles.pickupHeader}>
+              <div>
+                <div style={styles.pickupTitle}>{t('Prevezme osoba', 'Pickup person')}</div>
+                <div style={styles.pickupSubtitle}>{pickupLabel}</div>
+              </div>
+              <button type="button" onClick={() => setPickupOpen(false)} disabled={saving} style={styles.pickupDoneButton}>
+                {t('Hotovo', 'Done')}
+              </button>
+            </div>
+
+            <div style={styles.pickupList}>
+              {data.people.map(person => {
+                const picked = pickupSet.has(person.id)
+
+                return (
+                  <button
+                    key={person.id}
+                    type="button"
+                    onClick={() => togglePickupUser(person.id)}
+                    disabled={saving}
+                    style={{
+                      ...styles.pickupPersonButton,
+                      ...(picked ? styles.pickupPersonButtonActive : {})
+                    }}
+                  >
+                    <span style={picked ? styles.checkOn : styles.checkOff}>{picked ? '✓' : ''}</span>
+                    <span style={styles.pickupPersonText}>{displayPersonName(person)}</span>
+                    <span style={styles.foodBadge}>{foodLabel(person.choice, language)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        )}
 
         {loading ? (
           <div style={styles.emptyBox}>{t('Načítavam ľudí...', 'Loading people...')}</div>
@@ -515,7 +585,7 @@ const styles: Record<string, CSSProperties> = {
   },
   metaGrid: {
     display: 'grid',
-    gridTemplateColumns: '2fr 1fr 1fr',
+    gridTemplateColumns: '2fr 1fr 1fr 1fr',
     gap: 8
   },
   metaBox: {
@@ -538,7 +608,7 @@ const styles: Record<string, CSSProperties> = {
   },
   quickActions: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    gridTemplateColumns: '1fr 1fr 1.35fr',
     gap: 8
   },
   smallButton: {
@@ -561,6 +631,26 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950,
     fontFamily: 'Arial, Helvetica, sans-serif'
   },
+  smallButtonPurple: {
+    border: '1px solid #6d28d9',
+    borderRadius: 999,
+    padding: '8px 12px',
+    background: '#ede9fe',
+    color: '#4c1d95',
+    fontSize: 13,
+    fontWeight: 950,
+    fontFamily: 'Arial, Helvetica, sans-serif'
+  },
+  smallButtonWarning: {
+    border: '1px solid #f59e0b',
+    borderRadius: 999,
+    padding: '8px 12px',
+    background: '#fef3c7',
+    color: '#92400e',
+    fontSize: 13,
+    fontWeight: 950,
+    fontFamily: 'Arial, Helvetica, sans-serif'
+  },
   saveButton: {
     border: '1px solid #5b21b6',
     borderRadius: 999,
@@ -571,6 +661,76 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950,
     fontFamily: 'Arial, Helvetica, sans-serif',
     boxShadow: '0 8px 18px rgba(116, 23, 232, 0.24)'
+  },
+  pickupPanel: {
+    border: '1px solid #ded8f2',
+    borderRadius: 14,
+    background: '#fbfbfd',
+    padding: 10,
+    display: 'grid',
+    gap: 9
+  },
+  pickupHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10
+  },
+  pickupTitle: {
+    fontSize: 13,
+    fontWeight: 950,
+    color: '#211b35'
+  },
+  pickupSubtitle: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: 850,
+    color: '#6b667c',
+    lineHeight: 1.25
+  },
+  pickupDoneButton: {
+    border: '1px solid #d7d3e8',
+    borderRadius: 999,
+    padding: '7px 10px',
+    background: '#fff',
+    color: '#211b35',
+    fontSize: 12,
+    fontWeight: 950,
+    fontFamily: 'Arial, Helvetica, sans-serif'
+  },
+  pickupList: {
+    display: 'grid',
+    gap: 6,
+    maxHeight: 250,
+    overflowY: 'auto',
+    paddingRight: 2
+  },
+  pickupPersonButton: {
+    width: '100%',
+    border: '1px solid #e1deea',
+    borderRadius: 12,
+    padding: 8,
+    background: '#fff',
+    display: 'grid',
+    gridTemplateColumns: '28px minmax(0, 1fr) auto',
+    alignItems: 'center',
+    gap: 8,
+    textAlign: 'left',
+    fontFamily: 'Arial, Helvetica, sans-serif',
+    color: '#211b35'
+  },
+  pickupPersonButtonActive: {
+    background: '#eef2ff',
+    borderColor: '#a78bfa',
+    boxShadow: '0 6px 14px rgba(109, 40, 217, 0.12)'
+  },
+  pickupPersonText: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 13,
+    fontWeight: 900
   },
   peopleList: {
     display: 'grid',
