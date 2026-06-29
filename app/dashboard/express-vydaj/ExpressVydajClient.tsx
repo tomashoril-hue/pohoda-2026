@@ -135,17 +135,12 @@ export default function ExpressVydajClient({
   const pickupSet = useMemo(() => new Set(pickupUserIds), [pickupUserIds])
   const selectedCount = selectedIds.length
   const allPersonIds = useMemo(() => (data?.people || []).map(person => person.id), [data?.people])
-  const pickupPeople = useMemo(() => {
-    return (data?.people || []).filter(person => pickupSet.has(person.id))
-  }, [data?.people, pickupSet])
   const countdown = remainingLabel(data?.issue?.validAfter || null, nowMs)
   const countdownActive = !!data?.issue?.validAfter && Date.parse(data.issue.validAfter) > nowMs
   const hasExistingIssue = !!data?.issue
   const showStatusPanel = hasExistingIssue && !editingIssue
   const showEditor = !hasExistingIssue || editingIssue
-  const pickupLabel = pickupPeople.length > 0
-    ? pickupPeople.map(displayPersonName).join(', ')
-    : t('Nikto nie je vybraný', 'Nobody selected')
+  const allPickupSelected = allPersonIds.length > 0 && pickupUserIds.length === allPersonIds.length
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
@@ -255,6 +250,11 @@ export default function ExpressVydajClient({
       if (current.includes(personId)) return current.filter(id => id !== personId)
       return [...current, personId]
     })
+  }
+
+  const toggleAllPickupUsers = () => {
+    if (loading || saving || allPersonIds.length === 0) return
+    setPickupUserIds(allPickupSelected ? [] : allPersonIds)
   }
 
   const prepareIssue = () => {
@@ -395,6 +395,7 @@ export default function ExpressVydajClient({
           .express-counter-box { padding: 8px 6px !important; text-align: center !important; }
           .express-actions { grid-template-columns: 1fr 1fr !important; gap: 6px !important; }
           .express-actions button { padding: 7px 6px !important; font-size: 11px !important; white-space: nowrap !important; }
+          .express-action-placeholder { display: none !important; }
           .express-save { width: 100% !important; }
           .express-person { padding: 8px !important; }
           .express-person-name { font-size: 14px !important; }
@@ -555,27 +556,18 @@ export default function ExpressVydajClient({
 
         {showEditor && (
         <div style={styles.actionBar}>
-          <div className="express-actions" style={styles.quickActions}>
-            {pickupOpen ? (
-              <>
-                <button type="button" onClick={() => setPickupOpen(false)} disabled={loading || saving} style={styles.smallButtonMuted}>
-                  {t('Späť', 'Back')}
-                </button>
-                <button type="button" onClick={() => setPickupUserIds([])} disabled={loading || saving || pickupUserIds.length === 0} style={styles.smallButtonMuted}>
-                  {t('Nikto', 'None')}
-                </button>
-              </>
-            ) : (
-              <>
-                <button type="button" onClick={() => setSelectedIds(allPersonIds)} disabled={loading || saving || allPersonIds.length === 0} style={styles.smallButton}>
-                  {t('Všetci', 'All')}
-                </button>
-                <button type="button" onClick={() => setSelectedIds([])} disabled={loading || saving || selectedIds.length === 0} style={styles.smallButtonMuted}>
-                  {t('Nikto', 'None')}
-                </button>
-              </>
-            )}
-          </div>
+          {pickupOpen ? (
+            <div className="express-action-placeholder" style={styles.actionPlaceholder} />
+          ) : (
+            <div className="express-actions" style={styles.quickActions}>
+              <button type="button" onClick={() => setSelectedIds(allPersonIds)} disabled={loading || saving || allPersonIds.length === 0} style={styles.smallButton}>
+                {t('Všetci', 'All')}
+              </button>
+              <button type="button" onClick={() => setSelectedIds([])} disabled={loading || saving || selectedIds.length === 0} style={styles.smallButtonMuted}>
+                {t('Nikto', 'None')}
+              </button>
+            </div>
+          )}
           <button
             className="express-save"
             type="button"
@@ -593,11 +585,23 @@ export default function ExpressVydajClient({
             <div style={styles.pickupHeader}>
               <div>
                 <div style={styles.pickupTitle}>{t('Prevezme osoba', 'Pickup person')}</div>
-                <div style={styles.pickupSubtitle}>{pickupLabel}</div>
               </div>
             </div>
 
             <div style={styles.pickupList}>
+              <button
+                type="button"
+                onClick={toggleAllPickupUsers}
+                disabled={loading || saving || allPersonIds.length === 0}
+                style={styles.pickupSelectAllButton}
+              >
+                <span style={allPickupSelected ? styles.checkOn : styles.checkOff}>{allPickupSelected ? '✓' : ''}</span>
+                <span style={styles.pickupPersonText}>
+                  {allPickupSelected ? t('Odznačiť všetkých', 'Clear all') : t('Označiť všetkých', 'Select all')}
+                </span>
+                <span style={styles.pickupCountBadge}>{pickupUserIds.length}/{allPersonIds.length}</span>
+              </button>
+
               {data.people.map(person => {
                 const picked = pickupSet.has(person.id)
 
@@ -1058,6 +1062,10 @@ const styles: Record<string, CSSProperties> = {
     paddingTop: 10,
     flexWrap: 'wrap'
   },
+  actionPlaceholder: {
+    minWidth: 138,
+    minHeight: 1
+  },
   quickActions: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
@@ -1147,6 +1155,24 @@ const styles: Record<string, CSSProperties> = {
     overflowY: 'auto',
     paddingRight: 2
   },
+  pickupSelectAllButton: {
+    width: '100%',
+    border: '1px solid #c7bdf0',
+    borderRadius: 12,
+    padding: 8,
+    background: '#f5f3ff',
+    display: 'grid',
+    gridTemplateColumns: '28px minmax(0, 1fr) auto',
+    alignItems: 'center',
+    gap: 8,
+    textAlign: 'left',
+    fontFamily: 'Arial, Helvetica, sans-serif',
+    color: '#211b35',
+    position: 'sticky',
+    top: 0,
+    zIndex: 2,
+    boxShadow: '0 6px 12px rgba(31, 24, 61, 0.08)'
+  },
   pickupPersonButton: {
     width: '100%',
     border: '1px solid #e1deea',
@@ -1173,6 +1199,16 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: 'nowrap',
     fontSize: 13,
     fontWeight: 900
+  },
+  pickupCountBadge: {
+    border: '1px solid #ddd6fe',
+    borderRadius: 999,
+    background: '#fff',
+    color: '#5b21b6',
+    padding: '3px 7px',
+    fontSize: 11,
+    fontWeight: 950,
+    whiteSpace: 'nowrap'
   },
   peopleList: {
     display: 'grid',
