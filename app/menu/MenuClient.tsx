@@ -520,6 +520,11 @@ export default function MenuClient({
     const state = getDeadlineState(selectedDate, typ)
     const mealEntitlement = hasMealEntitlement(selectedDate, typ)
     const mealDisabled = state.locked || !mealEntitlement
+    const defaultVariant = normalizeVariant(defaultFood)
+    const effectiveSelectedVariant =
+      !selectedVariant && state.locked && mealEntitlement && defaultVariant
+        ? defaultVariant
+        : selectedVariant
 
     return (
       <section
@@ -630,7 +635,7 @@ export default function MenuClient({
           }}
         >
           {items.map((item) => {
-            const active = normalizeVariant(selected) === normalizeVariant(item.varianta)
+            const active = effectiveSelectedVariant === normalizeVariant(item.varianta)
             const optionKey = `${selectedDate}-${typ}-${item.varianta}`
             const isPressed = pressedKey === optionKey
 
