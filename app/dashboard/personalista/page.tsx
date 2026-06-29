@@ -879,18 +879,27 @@ export default async function PersonalistaPage({
     .map((profile: any) => personMap.get(profile.id))
     .filter(Boolean)
     .sort((a, b) => {
-    const aOrder = recentOrderByUserId.get(a.id) ?? Number.MAX_SAFE_INTEGER
-    const bOrder = recentOrderByUserId.get(b.id) ?? Number.MAX_SAFE_INTEGER
+      if (peopleScope === 'all') {
+        const aEditedAt = Date.parse(a.lastEditedAt || '') || 0
+        const bEditedAt = Date.parse(b.lastEditedAt || '') || 0
 
-    if (aOrder !== bOrder) return aOrder - bOrder
+        if (aEditedAt !== bEditedAt) return bEditedAt - aEditedAt
 
-    const aManager = a.groups.some((group: any) => group.role === 'MANAGER')
-    const bManager = b.groups.some((group: any) => group.role === 'MANAGER')
+        return a.fullName.localeCompare(b.fullName, 'sk')
+      }
 
-    if (aManager !== bManager) return aManager ? -1 : 1
+      const aOrder = recentOrderByUserId.get(a.id) ?? Number.MAX_SAFE_INTEGER
+      const bOrder = recentOrderByUserId.get(b.id) ?? Number.MAX_SAFE_INTEGER
 
-    return a.fullName.localeCompare(b.fullName, 'sk')
-  })
+      if (aOrder !== bOrder) return aOrder - bOrder
+
+      const aManager = a.groups.some((group: any) => group.role === 'MANAGER')
+      const bManager = b.groups.some((group: any) => group.role === 'MANAGER')
+
+      if (aManager !== bManager) return aManager ? -1 : 1
+
+      return a.fullName.localeCompare(b.fullName, 'sk')
+    })
   const pendingReviewPeople = (pendingReviewUsers || [])
     .map((profile: any) => personMap.get(profile.id))
     .filter(Boolean)
