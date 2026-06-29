@@ -295,7 +295,7 @@ export default function ExpressVydajClient({
           .express-title { font-size: 25px !important; line-height: 1 !important; }
           .express-admin-controls { grid-template-columns: 1fr !important; width: 100% !important; overflow: visible !important; }
           .express-admin-field { width: 100% !important; max-width: 100% !important; }
-          .express-admin-controls input { width: 100% !important; min-width: 0 !important; font-size: 14px !important; }
+          .express-date-native { position: absolute !important; inset: 0 !important; width: 100% !important; max-width: 100% !important; min-width: 0 !important; height: 100% !important; opacity: 0 !important; }
           .express-meta { grid-template-columns: 1fr !important; }
           .express-actions { grid-template-columns: 0.8fr 0.8fr 1.35fr !important; gap: 6px !important; }
           .express-actions button { padding: 7px 6px !important; font-size: 11px !important; white-space: nowrap !important; }
@@ -358,13 +358,18 @@ export default function ExpressVydajClient({
           <div className="express-admin-controls" style={styles.adminControls}>
             <label className="express-admin-field" style={styles.adminField}>
               <span style={styles.fieldLabel}>{t('Dátum', 'Date')}</span>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={event => setSelectedDate(event.target.value)}
-                disabled={loading || saving}
-                style={styles.dateInput}
-              />
+              <div style={styles.datePickerBox}>
+                <span style={styles.datePickerText}>{formatDate(selectedDate)}</span>
+                <input
+                  className="express-date-native"
+                  type="date"
+                  value={selectedDate}
+                  onChange={event => setSelectedDate(event.target.value)}
+                  disabled={loading || saving}
+                  aria-label={t('Dátum', 'Date')}
+                  style={styles.dateNativeInput}
+                />
+              </div>
             </label>
             <div className="express-admin-field" style={styles.adminField}>
               <span style={styles.fieldLabel}>{t('Jedlo', 'Meal')}</span>
@@ -663,7 +668,8 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     maxWidth: '100%'
   },
-  dateInput: {
+  datePickerBox: {
+    position: 'relative',
     width: '100%',
     maxWidth: '100%',
     minWidth: 0,
@@ -676,7 +682,28 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 15,
     fontWeight: 900,
     fontFamily: 'Arial, Helvetica, sans-serif',
-    color: '#211b35'
+    color: '#211b35',
+    display: 'flex',
+    alignItems: 'center',
+    overflow: 'hidden'
+  },
+  datePickerText: {
+    minWidth: 0,
+    maxWidth: '100%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    pointerEvents: 'none'
+  },
+  dateNativeInput: {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    minWidth: 0,
+    maxWidth: '100%',
+    opacity: 0,
+    cursor: 'pointer'
   },
   mealSwitch: {
     display: 'grid',
