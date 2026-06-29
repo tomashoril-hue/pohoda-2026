@@ -16,12 +16,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "POHODA PASS",
+  title: "POHODA Pass",
   description: "Stravovací systém POHODA 2026",
-  applicationName: "POHODA PASS",
+  applicationName: "POHODA Pass",
   appleWebApp: {
     capable: true,
-    title: "POHODA PASS",
+    title: "POHODA Pass",
     statusBarStyle: "black-translucent",
   },
   formatDetection: {

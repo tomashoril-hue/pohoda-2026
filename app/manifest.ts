@@ -4,11 +4,11 @@ const pohodaPurple = '#7417e8'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    id: '/dashboard',
-    name: 'POHODA PASS',
-    short_name: 'POHODA PASS',
-    description: 'Stravovaci system POHODA 2026',
-    start_url: '/dashboard',
+    id: '/',
+    name: 'POHODA Pass',
+    short_name: 'POHODA',
+    description: 'Stravovací systém POHODA 2026',
+    start_url: '/',
     scope: '/',
     display: 'standalone',
     background_color: pohodaPurple,
