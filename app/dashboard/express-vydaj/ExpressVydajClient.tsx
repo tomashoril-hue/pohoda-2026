@@ -53,11 +53,14 @@ function HomeIcon() {
 
 function formatDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value || '-'
-  return new Intl.DateTimeFormat('sk-SK', {
+  const formatted = new Intl.DateTimeFormat('sk-SK', {
+    weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric'
   }).format(new Date(`${value}T12:00:00`))
+
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1)
 }
 
 function mealLabel(meal: MealType, language: AppLanguage) {
@@ -296,7 +299,9 @@ export default function ExpressVydajClient({
           .express-admin-controls { grid-template-columns: 1fr !important; width: 100% !important; overflow: visible !important; }
           .express-admin-field { width: 100% !important; max-width: 100% !important; }
           .express-date-native { position: absolute !important; inset: 0 !important; width: 100% !important; max-width: 100% !important; min-width: 0 !important; height: 100% !important; opacity: 0 !important; }
-          .express-meta { grid-template-columns: 1fr !important; }
+          .express-meta { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px !important; }
+          .express-meta-group { grid-column: 1 / -1 !important; }
+          .express-counter-box { padding: 8px 6px !important; text-align: center !important; }
           .express-actions { grid-template-columns: 0.8fr 0.8fr 1.35fr !important; gap: 6px !important; }
           .express-actions button { padding: 7px 6px !important; font-size: 11px !important; white-space: nowrap !important; }
           .express-save { width: 100% !important; }
@@ -395,19 +400,19 @@ export default function ExpressVydajClient({
 
         {data && (
           <div className="express-meta" style={styles.metaGrid}>
-            <div style={styles.metaBox}>
+            <div className="express-meta-group" style={styles.metaBox}>
               <span>{t('Skupina', 'Group')}</span>
               <b>{data.group.name}</b>
             </div>
-            <div style={styles.metaBox}>
+            <div className="express-counter-box" style={styles.metaBox}>
               <span>{t('Označených', 'Selected')}</span>
               <b>{selectedCount}</b>
             </div>
-            <div style={styles.metaBox}>
+            <div className="express-counter-box" style={styles.metaBox}>
               <span>{t('Prevezme', 'Pickup')}</span>
               <b>{pickupUserIds.length}</b>
             </div>
-            <div style={styles.metaBox}>
+            <div className="express-counter-box" style={styles.metaBox}>
               <span>{t('Vydateľných', 'Issuable')}</span>
               <b>{data.people.length}</b>
             </div>
