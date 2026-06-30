@@ -218,6 +218,14 @@ function sortRegistrationPeriods(periods: PersonRegistrationGroupPeriod[]) {
   })
 }
 
+function registrationPeriodCompactLabel(period: PersonRegistrationGroupPeriod) {
+  const from = period.validFrom ? fullDateLabel(period.validFrom) : ''
+  const to = period.validTo ? fullDateLabel(period.validTo) : 'bez konca'
+  const range = from ? ` (${from} - ${to})` : ''
+
+  return `${period.registrationGroupName || '-'}${range}`
+}
+
 function findRegistrationPeriodGaps(periods: PersonRegistrationGroupPeriod[]) {
   const sorted = sortRegistrationPeriods(periods)
   const gaps: Array<{ id: string; validFrom: string; validTo: string }> = []
@@ -1419,14 +1427,14 @@ export default function PersonalistaClient({
     : ''
   const tableColumns = isMobile
     ? foodGroupsVisible
-      ? 'minmax(155px, 1.25fr) 64px minmax(120px, 0.9fr) minmax(120px, 1fr) 56px 52px 62px'
-      : 'minmax(155px, 1.25fr) 64px minmax(135px, 1fr) 56px 52px 62px'
+      ? 'minmax(155px, 1.25fr) 64px minmax(115px, 0.85fr) minmax(150px, 1fr) minmax(120px, 1fr) 56px 52px 62px'
+      : 'minmax(155px, 1.25fr) 64px minmax(125px, 0.9fr) minmax(160px, 1fr) 56px 52px 62px'
     : foodGroupsVisible
-      ? 'minmax(180px, 1.3fr) 70px minmax(135px, 0.9fr) minmax(135px, 1fr) 62px 58px 68px'
-      : 'minmax(180px, 1.3fr) 70px minmax(160px, 1fr) 62px 58px 68px'
+      ? 'minmax(180px, 1.25fr) 70px minmax(130px, 0.8fr) minmax(170px, 1fr) minmax(135px, 1fr) 62px 58px 68px'
+      : 'minmax(180px, 1.25fr) 70px minmax(140px, 0.85fr) minmax(180px, 1fr) 62px 58px 68px'
   const tableMinWidth = foodGroupsVisible
-    ? (isMobile ? 760 : 920)
-    : (isMobile ? 640 : 760)
+    ? (isMobile ? 890 : 1100)
+    : (isMobile ? 770 : 920)
   const peopleSearchHintStyle = peopleSearchLoading
     ? styles.toolbarHintLoading
     : peopleSearchMessage.startsWith('Vysledky hladania')
@@ -6282,6 +6290,7 @@ export default function PersonalistaClient({
               <span>Osoba</span>
               <span>Stav</span>
               <span>Registracna skupina</span>
+              <span>Aktualne zaradenie</span>
               {foodGroupsVisible && <span>Stravovacie skupiny</span>}
               <span>Strava</span>
               <span>QR</span>
@@ -6350,6 +6359,20 @@ export default function PersonalistaClient({
                         </span>
                       ) : (
                         <span style={styles.groupBadge}>-</span>
+                      )}
+                    </div>
+
+                    <div style={styles.assignmentStack}>
+                      {person.registrationGroupPeriods.length > 0 ? (
+                        sortRegistrationPeriods(person.registrationGroupPeriods).map(period => (
+                          <span key={`${person.id}-${period.id}`} style={styles.assignmentLine}>
+                            {registrationPeriodCompactLabel(period)}
+                          </span>
+                        ))
+                      ) : (
+                        <span style={styles.assignmentFallback}>
+                          {person.registrationGroupName || '-'}
+                        </span>
                       )}
                     </div>
 
@@ -8482,6 +8505,32 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid #fde68a',
     fontSize: 9,
     fontWeight: 900
+  },
+  assignmentStack: {
+    minWidth: 0,
+    display: 'grid',
+    gap: 2,
+    alignContent: 'center'
+  },
+  assignmentLine: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: '#4b5563',
+    fontSize: 8,
+    fontWeight: 850,
+    lineHeight: 1.15
+  },
+  assignmentFallback: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: '#6b7280',
+    fontSize: 8,
+    fontWeight: 850,
+    lineHeight: 1.15
   },
   moreBadge: {
     borderRadius: 999,
