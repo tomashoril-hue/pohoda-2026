@@ -542,7 +542,7 @@ export default function ExpressVydajClient({
           </div>
         )}
 
-        {data && (
+        {data && issueList.length > 0 && (
           <section style={styles.issueListPanel}>
             <div style={styles.issueListHeader}>
               <div>
@@ -554,34 +554,30 @@ export default function ExpressVydajClient({
               </button>
             </div>
 
-            {issueList.length > 0 ? (
-              <div style={styles.issueList}>
-                {issueList.map(issue => {
-                  const active = data.issue?.id === issue.id
-                  const waiting = !!issue.validAfter && Date.parse(issue.validAfter) > nowMs
+            <div style={styles.issueList}>
+              {issueList.map(issue => {
+                const active = data.issue?.id === issue.id
+                const waiting = !!issue.validAfter && Date.parse(issue.validAfter) > nowMs
 
-                  return (
-                    <button
-                      key={issue.id}
-                      type="button"
-                      onClick={() => void openIssue(issue.id)}
-                      disabled={loading || saving}
-                      style={{
-                        ...styles.issueListItem,
-                        ...(active ? styles.issueListItemActive : {})
-                      }}
-                    >
-                      <span style={styles.issueListItemTitle}>{issue.title}</span>
-                      <span style={styles.issueListItemMeta}>
-                        {waiting ? `${t('Platí o', 'Valid in')} ${remainingLabel(issue.validAfter, nowMs)}` : t('Platný', 'Valid')} · {issue.selectedCount} {t('osôb', 'people')} · {issue.pickupCount} {t('prevezme', 'pickup')}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            ) : (
-              <div style={styles.issueListEmpty}>{t('Zatiaľ nie je pripravený žiadny express výdaj.', 'No express issue is prepared yet.')}</div>
-            )}
+                return (
+                  <button
+                    key={issue.id}
+                    type="button"
+                    onClick={() => void openIssue(issue.id)}
+                    disabled={loading || saving}
+                    style={{
+                      ...styles.issueListItem,
+                      ...(active ? styles.issueListItemActive : {})
+                    }}
+                  >
+                    <span style={styles.issueListItemTitle}>{issue.title}</span>
+                    <span style={styles.issueListItemMeta}>
+                      {waiting ? `${t('Platí o', 'Valid in')} ${remainingLabel(issue.validAfter, nowMs)}` : t('Platný', 'Valid')} · {issue.selectedCount} {t('osôb', 'people')} · {issue.pickupCount} {t('prevezme', 'pickup')}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </section>
         )}
 

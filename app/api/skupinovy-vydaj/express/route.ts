@@ -257,8 +257,13 @@ function defaultPickupUserIds(actorId: string, candidateUserIds: Set<string>) {
   return candidateUserIds.has(actorId) ? [actorId] : []
 }
 
-function pickupPeopleFromGroupUsers(users: any[]): IssuablePerson[] {
-  return users
+function pickupPeopleFromGroupUsers(users: any[], actor?: any): IssuablePerson[] {
+  const rows = [...users]
+  if (actor?.id && !rows.some((user: any) => user.id === actor.id)) {
+    rows.unshift(actor)
+  }
+
+  return rows
     .map((user: any): IssuablePerson => ({
       id: user.id,
       name: fullName(user),
@@ -268,7 +273,11 @@ function pickupPeopleFromGroupUsers(users: any[]): IssuablePerson[] {
       choice: normalizeChoice(user.typ_stravy) || 'MASO',
       source: 'REGISTRATION_GROUP'
     }))
-    .sort(comparePeople)
+    .sort((a, b) => {
+      if (actor?.id && a.id === actor.id) return -1
+      if (actor?.id && b.id === actor.id) return 1
+      return comparePeople(a, b)
+    })
 }
 
 function nextIssueStateForAccess(access: string) {
@@ -452,7 +461,7 @@ export async function GET(req: NextRequest) {
     const issuablePeople = people
       .filter(person => person.issuable !== false)
       .sort(comparePeople)
-    const pickupPeople = pickupPeopleFromGroupUsers(groupUsers)
+    const pickupPeople = pickupPeopleFromGroupUsers(groupUsers, actor)
     const pickupCandidateUserIds = new Set(pickupPeople.map(person => person.id))
     const selectedPeople = issue
       ? await loadIssuePeople(issue.id)
@@ -544,7 +553,8 @@ export async function POST(req: NextRequest) {
     }
 
     const groupPeople = await loadRegistrationGroupPeople(registrationGroupId, date)
-    const pickupCandidateUserIds = new Set(groupPeople.map((user: any) => user.id).filter(Boolean))
+    const pickupPeople = pickupPeopleFromGroupUsers(groupPeople, actor)
+    const pickupCandidateUserIds = new Set(pickupPeople.map(person => person.id).filter(Boolean))
     const pickupUserIds = requestedPickupUserIds.length > 0
       ? requestedPickupUserIds.filter(userId => pickupCandidateUserIds.has(userId))
       : defaultPickupUserIds(actor.id, pickupCandidateUserIds)
