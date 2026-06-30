@@ -10,6 +10,8 @@ type MealSelection = MealType | ''
 type IssueSourceMode = 'REGISTRATION_GROUP' | 'FOOD_GROUP' | 'ONE_OFF'
 type PickupMode = 'selected' | 'group' | 'outside' | 'qr'
 type FoodGroupMemberMode = 'group' | 'outside' | 'qr'
+type HubMode = 'HOME' | 'PREPARE' | 'FOOD_GROUPS' | 'TODAY' | 'QR'
+type FoodGroupActionMode = 'NEW' | 'EDIT' | 'PICKUP' | 'DELETE'
 
 type RegistrationGroupOption = {
   id: string
@@ -297,6 +299,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
   const [foodGroupPickupQuery, setFoodGroupPickupQuery] = useState('')
   const [foodGroupPickupResults, setFoodGroupPickupResults] = useState<SearchUser[]>([])
   const [foodGroupPickupLoading, setFoodGroupPickupLoading] = useState(false)
+  const [hubMode, setHubMode] = useState<HubMode>('HOME')
+  const [foodGroupActionMode, setFoodGroupActionMode] = useState<FoodGroupActionMode>('NEW')
   const [delegatesPanelOpen, setDelegatesPanelOpen] = useState(false)
   const [groupPickerOpen, setGroupPickerOpen] = useState(false)
   const [groupQuery, setGroupQuery] = useState('')
@@ -319,6 +323,39 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
   const selectedFoodGroup = useMemo(() => {
     return foodGroups.find(group => group.id === selectedFoodGroupId) || null
   }, [foodGroups, selectedFoodGroupId])
+
+  function ensureDefaultGroup() {
+    if (selectedGroupId || groups.length !== 1) return selectedGroupId
+    const onlyGroupId = groups[0]?.id || ''
+    if (onlyGroupId) {
+      selectRegistrationGroup(onlyGroupId)
+    }
+    return onlyGroupId
+  }
+
+  function openHubMode(mode: HubMode) {
+    const nextGroupId = ensureDefaultGroup()
+    setHubMode(mode)
+
+    if (mode === 'FOOD_GROUPS' && nextGroupId) {
+      void loadFoodGroups(nextGroupId)
+    }
+
+    if (mode === 'TODAY' && nextGroupId) {
+      void loadExistingIssuesFor(nextGroupId, date, '')
+    }
+
+    if (mode === 'QR') {
+      setSourceMode('ONE_OFF')
+    }
+  }
+
+  function backToHub() {
+    setHubMode('HOME')
+    setIssueFeedback('')
+    setFoodGroupMessage('')
+    setFeedback('')
+  }
 
   const filteredGroups = useMemo(() => {
     const query = groupQuery.trim().toLowerCase()
@@ -889,6 +926,12 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     }
 
     void searchFoodGroupMembers('', 'group')
+  }
+
+  async function openFoodGroupPickupModal(groupId: string) {
+    await openFoodGroupModal(groupId)
+    setFoodGroupModalStep('PICKUP')
+    void searchFoodGroupPickupUsers('', 'group')
   }
 
   function closeFoodGroupModal() {
@@ -2248,10 +2291,13 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
           .group-issue-title { font-size: 24px !important; }
           .group-issue-actions { grid-template-columns: 1fr !important; }
           .group-issue-top { align-items: stretch !important; flex-direction: column !important; }
+          .group-issue-hub-hero { grid-template-columns: 1fr !important; }
           .delegate-row { grid-template-columns: 1fr auto !important; }
           .issue-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
           .issue-person-row { grid-template-columns: 1fr !important; }
           .issue-person-meta { justify-content: flex-start !important; }
+          .group-issue-hub-grid { grid-template-columns: 1fr !important; }
+          .food-group-action-grid { grid-template-columns: 1fr !important; }
           .group-picker-menu {
             position: fixed !important;
             left: 10px !important;
@@ -2273,13 +2319,172 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
             </p>
           </div>
 
-          <Link href="/dashboard" style={styles.backButton}>
-            {copy.back}
-          </Link>
+          <div style={styles.headerActions}>
+            {hubMode !== 'HOME' && (
+              <button type="button" onClick={backToHub} style={styles.backButton}>
+                {t('Dlaždice', 'Tiles')}
+              </button>
+            )}
+            <Link href="/dashboard" style={styles.backButton}>
+              {copy.back}
+            </Link>
+          </div>
         </header>
 
         {groups.length === 0 ? (
           <div style={styles.messageError}>{t('Nemáte pridelenú registračnú skupinu pre skupinový výdaj.', 'You do not have an assigned registration group for group issue.')}</div>
+        ) : hubMode === 'HOME' ? (
+          <section style={styles.hub}>
+            <div className="group-issue-hub-hero" style={styles.hubHero}>
+              <div style={styles.hubHeroText}>
+                <span style={styles.hubEyebrow}>{t('Rýchly výdaj', 'Fast issue')}</span>
+                <h2 style={styles.hubTitle}>{t('Čo chceš spraviť?', 'What do you want to do?')}</h2>
+              </div>
+
+              {groups.length > 1 && (
+                <label style={styles.hubGroupSelect}>
+                  <span>{t('Registračná skupina', 'Registration group')}</span>
+                  <select
+                    value={selectedGroupId}
+                    onChange={event => selectRegistrationGroup(event.target.value)}
+                    style={styles.input}
+                    disabled={issueLoading}
+                  >
+                    <option value="">{t('Vyberte', 'Choose')}</option>
+                    {groups.map(group => (
+                      <option key={group.id} value={group.id}>{group.name}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+
+            <div className="group-issue-hub-grid" style={styles.hubGrid}>
+              <button type="button" onClick={() => openHubMode('PREPARE')} style={{ ...styles.hubTile, ...styles.hubTilePrimary }}>
+                <span style={styles.hubTileIcon}>+</span>
+                <b>{t('Pripraviť výdaj', 'Prepare issue')}</b>
+                <small>{t('Stravovacia skupina alebo QR.', 'Meal group or QR.')}</small>
+              </button>
+
+              <button type="button" onClick={() => openHubMode('FOOD_GROUPS')} style={{ ...styles.hubTile, ...styles.hubTileViolet }}>
+                <span style={styles.hubTileIcon}>S</span>
+                <b>{t('Stravovacie skupiny', 'Meal groups')}</b>
+                <small>{t('Vytvoriť, upraviť, vyzdvihovači.', 'Create, edit, pickup users.')}</small>
+              </button>
+
+              <button type="button" onClick={() => openHubMode('TODAY')} style={{ ...styles.hubTile, ...styles.hubTileLight }}>
+                <span style={styles.hubTileIcon}>i</span>
+                <b>{t('Dnešné výdaje', 'Today issues')}</b>
+                <small>{t('Pozrieť alebo upraviť existujúce.', 'View or edit existing.')}</small>
+              </button>
+
+              <button type="button" onClick={() => openHubMode('QR')} style={{ ...styles.hubTile, ...styles.hubTileDark }}>
+                <span style={styles.hubTileIcon}>QR</span>
+                <b>{t('Skupina QR', 'QR group')}</b>
+                <small>{t('Jednorazovo cez skener.', 'One-off scanner flow.')}</small>
+              </button>
+            </div>
+          </section>
+        ) : hubMode === 'FOOD_GROUPS' ? (
+          <section style={styles.foodGroupsHub}>
+            <div style={styles.modeHeader}>
+              <button type="button" onClick={backToHub} style={styles.modeBackButton}>‹</button>
+              <div>
+                <span style={styles.hubEyebrow}>{t('Nastavenie', 'Setup')}</span>
+                <h2 style={styles.modeTitle}>{t('Stravovacie skupiny', 'Meal groups')}</h2>
+              </div>
+            </div>
+
+            <label style={styles.field}>
+              <span>{t('Registračná skupina', 'Registration group')}</span>
+              <select
+                value={selectedGroupId}
+                onChange={event => {
+                  selectRegistrationGroup(event.target.value)
+                  if (event.target.value) void loadFoodGroups(event.target.value)
+                }}
+                style={styles.input}
+                disabled={foodGroupsLoading}
+              >
+                <option value="">{t('Vyberte', 'Choose')}</option>
+                {groups.map(group => (
+                  <option key={group.id} value={group.id}>{group.name}</option>
+                ))}
+              </select>
+            </label>
+
+            <div className="food-group-action-grid" style={styles.foodGroupActionGrid}>
+              {([
+                ['NEW', t('Nová skupina', 'New group')],
+                ['EDIT', t('Upraviť skupinu', 'Edit group')],
+                ['PICKUP', t('Vyzdvihovači', 'Pickup users')],
+                ['DELETE', t('Vymazať', 'Delete')]
+              ] as Array<[FoodGroupActionMode, string]>).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setFoodGroupActionMode(mode)}
+                  style={{
+                    ...styles.foodGroupActionTile,
+                    ...(foodGroupActionMode === mode ? styles.foodGroupActionTileActive : {}),
+                    ...(mode === 'DELETE' && foodGroupActionMode !== mode ? styles.foodGroupActionTileDanger : {})
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {foodGroupActionMode === 'NEW' ? (
+              <button
+                type="button"
+                onClick={() => openFoodGroupModal('')}
+                disabled={!selectedGroupId || foodGroupsLoading}
+                style={styles.bigCreateButton}
+              >
+                <b>{t('Vytvoriť stravovaciu skupinu', 'Create meal group')}</b>
+                <small>{t('Najprv členovia, potom vyzdvihovači.', 'Members first, pickup users second.')}</small>
+              </button>
+            ) : (
+              <div style={styles.foodGroupManageGrid}>
+                {foodGroupsLoading ? (
+                  <div style={styles.emptyBox}>{t('Načítavam...', 'Loading...')}</div>
+                ) : foodGroups.length === 0 ? (
+                  <div style={styles.emptyBox}>{t('Zatiaľ nie je vytvorená žiadna stravovacia skupina.', 'No meal group has been created yet.')}</div>
+                ) : foodGroups.map(group => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => {
+                      if (foodGroupActionMode === 'EDIT') void openFoodGroupModal(group.id)
+                      if (foodGroupActionMode === 'PICKUP') void openFoodGroupPickupModal(group.id)
+                      if (foodGroupActionMode === 'DELETE') void deleteFoodGroup(group)
+                    }}
+                    disabled={foodGroupsLoading}
+                    style={{
+                      ...styles.foodGroupManageTile,
+                      ...(foodGroupActionMode === 'DELETE' ? styles.foodGroupManageTileDanger : {})
+                    }}
+                  >
+                    <b>{group.name}</b>
+                    <span>{group.memberCount} {t('osôb', 'people')}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {selectedGroup?.canManageDelegates && (
+              <button type="button" onClick={openDelegateModal} disabled={loading} style={styles.delegateBigButton}>
+                {t('Poverené osoby registračnej skupiny', 'Registration group delegates')} · {delegates.length}
+              </button>
+            )}
+
+            {foodGroupMessage && (
+              <div style={foodGroupMessageType === 'ok' ? styles.feedbackOk : styles.feedbackError}>
+                {foodGroupMessage}
+              </div>
+            )}
+          </section>
         ) : (
           <div className="group-issue-layout" style={styles.layout}>
             {confirmed && (
@@ -3995,6 +4200,216 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center'
+  },
+  headerActions: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end'
+  },
+  hub: {
+    display: 'grid',
+    gap: 14
+  },
+  hubHero: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 320px)',
+    gap: 12,
+    alignItems: 'end',
+    background: '#111827',
+    color: '#fff',
+    borderRadius: 14,
+    padding: 18,
+    boxShadow: '0 18px 45px rgba(17, 24, 39, 0.18)'
+  },
+  hubHeroText: {
+    display: 'grid',
+    gap: 6
+  },
+  hubEyebrow: {
+    width: 'fit-content',
+    border: '1px solid rgba(255,255,255,0.22)',
+    borderRadius: 999,
+    background: 'rgba(255,255,255,0.1)',
+    color: '#a7f3d0',
+    padding: '5px 9px',
+    fontSize: 11,
+    fontWeight: 950,
+    textTransform: 'uppercase'
+  },
+  hubTitle: {
+    margin: 0,
+    fontSize: 30,
+    lineHeight: 1,
+    fontWeight: 950,
+    color: '#fff'
+  },
+  hubGroupSelect: {
+    display: 'grid',
+    gap: 5,
+    color: '#d1d5db',
+    fontSize: 11,
+    fontWeight: 900
+  },
+  hubGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 14
+  },
+  hubTile: {
+    minHeight: 180,
+    border: '1px solid #e5e7eb',
+    borderRadius: 14,
+    padding: 18,
+    display: 'grid',
+    alignContent: 'space-between',
+    justifyItems: 'start',
+    textAlign: 'left',
+    color: '#111827',
+    background: '#fff',
+    boxShadow: '0 18px 42px rgba(17, 24, 39, 0.10)',
+    fontSize: 15,
+    fontWeight: 900
+  },
+  hubTilePrimary: {
+    background: '#6d28d9',
+    borderColor: '#6d28d9',
+    color: '#fff'
+  },
+  hubTileViolet: {
+    background: '#f5f3ff',
+    borderColor: '#c4b5fd',
+    color: '#4c1d95'
+  },
+  hubTileLight: {
+    background: '#ecfdf5',
+    borderColor: '#86efac',
+    color: '#14532d'
+  },
+  hubTileDark: {
+    background: '#111827',
+    borderColor: '#111827',
+    color: '#fff'
+  },
+  hubTileIcon: {
+    minWidth: 42,
+    height: 42,
+    borderRadius: 12,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'rgba(255,255,255,0.18)',
+    border: '1px solid rgba(255,255,255,0.22)',
+    color: 'inherit',
+    fontSize: 18,
+    fontWeight: 950
+  },
+  foodGroupsHub: {
+    display: 'grid',
+    gap: 12,
+    background: '#fff',
+    border: '1px solid #ddd6fe',
+    borderRadius: 14,
+    padding: 14,
+    boxShadow: '0 16px 38px rgba(76, 29, 149, 0.09)'
+  },
+  modeHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10
+  },
+  modeBackButton: {
+    width: 42,
+    height: 42,
+    border: '1px solid #ddd6fe',
+    borderRadius: 12,
+    background: '#f5f3ff',
+    color: '#4c1d95',
+    fontSize: 25,
+    fontWeight: 950
+  },
+  modeTitle: {
+    margin: '4px 0 0 0',
+    fontSize: 24,
+    lineHeight: 1,
+    color: '#111827',
+    fontWeight: 950
+  },
+  foodGroupActionGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 8
+  },
+  foodGroupActionTile: {
+    minHeight: 74,
+    border: '1px solid #ddd6fe',
+    borderRadius: 12,
+    background: '#fff',
+    color: '#4c1d95',
+    padding: 10,
+    fontSize: 13,
+    fontWeight: 950
+  },
+  foodGroupActionTileActive: {
+    background: '#4c1d95',
+    borderColor: '#4c1d95',
+    color: '#fff',
+    boxShadow: '0 12px 24px rgba(76, 29, 149, 0.18)'
+  },
+  foodGroupActionTileDanger: {
+    borderColor: '#fecaca',
+    color: '#991b1b'
+  },
+  bigCreateButton: {
+    minHeight: 118,
+    border: '1px solid #7c3aed',
+    borderRadius: 14,
+    background: '#f5f3ff',
+    color: '#4c1d95',
+    padding: 18,
+    display: 'grid',
+    alignContent: 'center',
+    gap: 5,
+    textAlign: 'left',
+    fontSize: 16,
+    fontWeight: 950
+  },
+  foodGroupManageGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: 10
+  },
+  foodGroupManageTile: {
+    minHeight: 90,
+    border: '1px solid #e5e7eb',
+    borderRadius: 12,
+    background: '#fff',
+    color: '#111827',
+    padding: 12,
+    display: 'grid',
+    alignContent: 'center',
+    gap: 5,
+    textAlign: 'left',
+    fontSize: 13,
+    fontWeight: 900,
+    boxShadow: '0 10px 24px rgba(17, 24, 39, 0.06)'
+  },
+  foodGroupManageTileDanger: {
+    background: '#fff7f7',
+    borderColor: '#fecaca',
+    color: '#991b1b'
+  },
+  delegateBigButton: {
+    minHeight: 48,
+    border: '1px solid #d1d5db',
+    borderRadius: 12,
+    background: '#fff',
+    color: '#374151',
+    padding: '0 12px',
+    fontSize: 13,
+    fontWeight: 900,
+    textAlign: 'left'
   },
   layout: {
     display: 'grid',
