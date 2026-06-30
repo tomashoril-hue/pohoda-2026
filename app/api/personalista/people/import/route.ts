@@ -20,6 +20,7 @@ type PreparedRow = {
   rowNumber: number
   userId: string
   isExistingUser: boolean
+  isFirstRowForUser: boolean
   meno: string
   priezvisko: string
   email: string | null
@@ -41,8 +42,18 @@ type PreparedRow = {
 type ExistingUser = {
   id: string
   email: string | null
+  meno: string | null
+  priezvisko: string | null
+  telefon: string | null
   qr_code: string | null
   registration_group_id: string | null
+}
+
+type ImportIdentity = {
+  userId: string
+  isExistingUser: boolean
+  isFirstRowForUser: boolean
+  existingUser: ExistingUser | null
 }
 
 function normalizeText(value: any) {
@@ -52,6 +63,25 @@ function normalizeText(value: any) {
 function normalizeEmail(value: any) {
   const email = normalizeText(value).toLowerCase()
   return email || null
+}
+
+function normalizeComparableText(value: any) {
+  return normalizeText(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+}
+
+function personNameKey(meno: any, priezvisko: any) {
+  const firstName = normalizeComparableText(meno)
+  const lastName = normalizeComparableText(priezvisko)
+
+  return firstName && lastName ? `${firstName}|${lastName}` : ''
+}
+
+function phoneKey(value: any) {
+  return normalizeText(value).replace(/[^\d+]/g, '')
 }
 
 function normalizeFood(value: any) {
@@ -187,11 +217,166 @@ async function refreshCurrentRegistrationGroups(userIds: string[]) {
   return currentByUserId
 }
 
+function buildImportIdentities(rows: any[], existingUsersByEmail: Map<string, ExistingUser>) {
+  const identitiesByRowNumber = new Map<number, ImportIdentity>()
+  const errorsByRowNumber = new Map<number, string>()
+  const emailGroups = new Map<string, {
+    userId: string
+    isExistingUser: boolean
+    existingUser: ExistingUser | null
+    nameKey: string
+    rowNumbers: number[]
+    invalid: boolean
+  }>()
+  const anonymousGroups = new Map<string, {
+    userId: string
+    rowNumbers: number[]
+  }>()
+
+  const setGroupError = (rowNumbers: number[], message: string) => {
+    rowNumbers.forEach(rowNumber => {
+      if (!errorsByRowNumber.has(rowNumber)) errorsByRowNumber.set(rowNumber, message)
+    })
+  }
+
+  rows.forEach((row: any) => {
+    const rowNumber = Number(row.rowNumber || 0)
+    const nameKey = personNameKey(row.meno, row.priezvisko)
+    const email = normalizeEmail(row.email)
+
+    if (!rowNumber || !nameKey) return
+
+    if (email) {
+      const existingUser = existingUsersByEmail.get(email) || null
+      const existingNameKey = existingUser ? personNameKey(existingUser.meno, existingUser.priezvisko) : ''
+      let group = emailGroups.get(email)
+
+      if (!group) {
+        group = {
+          userId: existingUser?.id || crypto.randomUUID(),
+          isExistingUser: !!existingUser,
+          existingUser,
+          nameKey,
+          rowNumbers: [],
+          invalid: false
+        }
+        emailGroups.set(email, group)
+      }
+
+      group.rowNumbers.push(rowNumber)
+
+      if (group.nameKey !== nameKey) {
+        group.invalid = true
+        setGroupError(group.rowNumbers, 'Rovnaky e-mail je pouzity pri roznych menach.')
+      }
+
+      if (existingUser && existingNameKey && existingNameKey !== nameKey) {
+        errorsByRowNumber.set(rowNumber, 'E-mail uz patri inej osobe v databaze.')
+      }
+
+      return
+    }
+
+    const anonymousKey = `${nameKey}|${phoneKey(row.telefon) || 'NO_PHONE'}`
+    let group = anonymousGroups.get(anonymousKey)
+
+    if (!group) {
+      group = {
+        userId: crypto.randomUUID(),
+        rowNumbers: []
+      }
+      anonymousGroups.set(anonymousKey, group)
+    }
+
+    group.rowNumbers.push(rowNumber)
+  })
+
+  emailGroups.forEach(group => {
+    if (group.invalid) {
+      setGroupError(group.rowNumbers, 'Rovnaky e-mail je pouzity pri roznych menach.')
+      return
+    }
+
+    group.rowNumbers.forEach((rowNumber, index) => {
+      if (errorsByRowNumber.has(rowNumber)) return
+
+      identitiesByRowNumber.set(rowNumber, {
+        userId: group.userId,
+        isExistingUser: group.isExistingUser,
+        isFirstRowForUser: index === 0,
+        existingUser: group.existingUser
+      })
+    })
+  })
+
+  anonymousGroups.forEach(group => {
+    group.rowNumbers.forEach((rowNumber, index) => {
+      if (errorsByRowNumber.has(rowNumber)) return
+
+      identitiesByRowNumber.set(rowNumber, {
+        userId: group.userId,
+        isExistingUser: false,
+        isFirstRowForUser: index === 0,
+        existingUser: null
+      })
+    })
+  })
+
+  return { identitiesByRowNumber, errorsByRowNumber }
+}
+
+function firstRowsByUserId(rows: PreparedRow[]) {
+  const seenUserIds = new Set<string>()
+  const uniqueRows: PreparedRow[] = []
+
+  rows.forEach(row => {
+    if (seenUserIds.has(row.userId)) return
+
+    seenUserIds.add(row.userId)
+    uniqueRows.push(row)
+  })
+
+  return uniqueRows
+}
+
+function findImportPeriodConflicts(rows: PreparedRow[]) {
+  const conflicts = new Set<number>()
+  const rowsByUserId = new Map<string, PreparedRow[]>()
+
+  rows
+    .filter(row => row.registrationGroupId && row.dates.length > 0)
+    .forEach(row => {
+      const list = rowsByUserId.get(row.userId) || []
+      list.push(row)
+      rowsByUserId.set(row.userId, list)
+    })
+
+  rowsByUserId.forEach(userRows => {
+    const sortedRows = [...userRows].sort((a, b) => a.validFrom.localeCompare(b.validFrom))
+
+    for (let index = 0; index < sortedRows.length; index += 1) {
+      for (let compareIndex = index + 1; compareIndex < sortedRows.length; compareIndex += 1) {
+        if (!periodOverlaps(
+          { valid_from: sortedRows[index].validFrom, valid_to: sortedRows[index].validTo },
+          sortedRows[compareIndex].validFrom,
+          sortedRows[compareIndex].validTo
+        )) {
+          continue
+        }
+
+        conflicts.add(sortedRows[index].rowNumber)
+        conflicts.add(sortedRows[compareIndex].rowNumber)
+      }
+    }
+  })
+
+  return conflicts
+}
+
 function prepareRow(
   row: any,
   activeRegistrationGroupIds: Set<string>,
-  existingUsersByEmail: Map<string, ExistingUser>,
-  duplicateImportEmails: Set<string>,
+  identity: ImportIdentity | null,
   selfOrderingImport: boolean
 ): { prepared?: PreparedRow; result?: ImportResult } {
   const rowNumber = Number(row.rowNumber || 0)
@@ -218,21 +403,21 @@ function prepareRow(
   if (!selfOrderingImport && !obed && !vecera) return { result: errorResult(rowNumber, 'Vyber aspon jeden narok na stravu.') }
   if (selfOrderingImport && hasValidPeriod && !obed && !vecera) return { result: errorResult(rowNumber, 'Ak zadavas obdobie, vyber aspon jeden narok na stravu.') }
   if (registrationGroupId && !activeRegistrationGroupIds.has(registrationGroupId)) return { result: errorResult(rowNumber, 'Registracna skupina neexistuje.') }
-  if (email && duplicateImportEmails.has(email)) return { result: errorResult(rowNumber, 'Duplicita e-mailu v importovanom subore.') }
 
   const dates = (!selfOrderingImport || hasValidPeriod) ? dateRange(validFrom, validTo) : []
 
   if (dates.length > 120) return { result: errorResult(rowNumber, 'Obdobie moze mat najviac 120 dni.') }
 
   const accessCodePlain = generateAccessCode ? createAccessCode() : null
-  const existingUser = email ? existingUsersByEmail.get(email) || null : null
+  const existingUser = identity?.existingUser || null
   const shouldSetBaseRegistrationGroup = !!existingUser && !!registrationGroupId && !existingUser.registration_group_id
 
   return {
     prepared: {
       rowNumber,
-      userId: existingUser?.id || crypto.randomUUID(),
-      isExistingUser: !!existingUser,
+      userId: identity?.userId || crypto.randomUUID(),
+      isExistingUser: identity?.isExistingUser || false,
+      isFirstRowForUser: identity?.isFirstRowForUser !== false,
       meno,
       priezvisko,
       email,
@@ -242,11 +427,11 @@ function prepareRow(
       validTo,
       dates,
       registrationGroupId,
-      generateAccessCode: existingUser ? false : generateAccessCode,
-      accessCodePlain: existingUser ? null : accessCodePlain,
+      generateAccessCode: existingUser ? false : generateAccessCode && identity?.isFirstRowForUser !== false,
+      accessCodePlain: existingUser || identity?.isFirstRowForUser === false ? null : accessCodePlain,
       obed,
       vecera,
-      assignQr: existingUser ? assignQr && !existingUser.qr_code : assignQr,
+      assignQr: existingUser ? assignQr && !existingUser.qr_code : assignQr && identity?.isFirstRowForUser !== false,
       selfOrdering: selfOrderingImport,
       shouldSetBaseRegistrationGroup
     }
@@ -294,7 +479,7 @@ export async function POST(req: NextRequest) {
     const { data: existingEmailRows, error: existingEmailError } = emails.length > 0
       ? await supabaseServer
         .from('users')
-        .select('id, email, qr_code, registration_group_id')
+        .select('id, email, meno, priezvisko, telefon, qr_code, registration_group_id')
         .in('email', emails)
       : { data: [], error: null }
 
@@ -311,24 +496,29 @@ export async function POST(req: NextRequest) {
       existingUsersByEmail.set(email, {
         id: row.id,
         email,
+        meno: row.meno || null,
+        priezvisko: row.priezvisko || null,
+        telefon: row.telefon || null,
         qr_code: row.qr_code || null,
         registration_group_id: row.registration_group_id || null
       })
     })
 
-    const seenImportEmails = new Set<string>()
-    const duplicateImportEmails = new Set<string>()
-
-    importEmails.forEach(email => {
-      if (seenImportEmails.has(email)) duplicateImportEmails.add(email)
-      seenImportEmails.add(email)
-    })
+    const { identitiesByRowNumber, errorsByRowNumber } = buildImportIdentities(rows, existingUsersByEmail)
 
     const results: ImportResult[] = []
     const preparedRows: PreparedRow[] = []
 
     rows.forEach((row: any) => {
-      const { prepared, result } = prepareRow(row, activeRegistrationGroupIds, existingUsersByEmail, duplicateImportEmails, selfOrderingImport)
+      const rowNumber = Number(row.rowNumber || 0)
+      const identityError = errorsByRowNumber.get(rowNumber)
+
+      if (identityError) {
+        results.push(errorResult(rowNumber, identityError))
+        return
+      }
+
+      const { prepared, result } = prepareRow(row, activeRegistrationGroupIds, identitiesByRowNumber.get(rowNumber) || null, selfOrderingImport)
 
       if (result) {
         results.push(result)
@@ -390,6 +580,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const importPeriodConflicts = findImportPeriodConflicts(preparedRows)
+
+    if (importPeriodConflicts.size > 0) {
+      importPeriodConflicts.forEach(rowNumber => {
+        results.push(errorResult(rowNumber, 'Obdobia tej istej osoby sa v importovanom subore prekryvaju. Uprav datumy.'))
+      })
+
+      for (let index = preparedRows.length - 1; index >= 0; index -= 1) {
+        if (importPeriodConflicts.has(preparedRows[index].rowNumber)) {
+          preparedRows.splice(index, 1)
+        }
+      }
+    }
+
     if (preparedRows.length === 0) {
       return NextResponse.json({
         ok: false,
@@ -400,8 +604,8 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString()
-    const newRows = preparedRows.filter(row => !row.isExistingUser)
-    const existingRows = preparedRows.filter(row => row.isExistingUser)
+    const newRows = firstRowsByUserId(preparedRows.filter(row => !row.isExistingUser))
+    const existingRows = firstRowsByUserId(preparedRows.filter(row => row.isExistingUser))
     const insertedUserIds = newRows.map(row => row.userId)
 
     try {
@@ -495,8 +699,7 @@ export async function POST(req: NextRequest) {
 
       await refreshCurrentRegistrationGroups(Array.from(new Set(preparedRows.map(row => row.userId))))
 
-      const selfOrderingRoleRows = preparedRows
-        .filter(row => row.selfOrdering)
+      const selfOrderingRoleRows = firstRowsByUserId(preparedRows.filter(row => row.selfOrdering))
         .map(row => ({
           user_id: row.userId,
           role: 'SAMOSTATNE_OBJEDNAVANIE_STRAVY',
@@ -557,8 +760,8 @@ export async function POST(req: NextRequest) {
         actor_user_id: currentUser.id,
         target_user_id: row.userId,
         group_id: null,
-        action: row.isExistingUser ? 'PERSON_IMPORT_PERIOD_ADDED' : 'PERSON_CREATED',
-        entity_table: row.isExistingUser ? 'user_registration_group_periods' : 'users',
+        action: row.isExistingUser || !row.isFirstRowForUser ? 'PERSON_IMPORT_PERIOD_ADDED' : 'PERSON_CREATED',
+        entity_table: row.isExistingUser || !row.isFirstRowForUser ? 'user_registration_group_periods' : 'users',
         entity_id: row.userId,
         after_data: {
           meno: row.meno,
@@ -599,7 +802,9 @@ export async function POST(req: NextRequest) {
           accessCode: row.accessCodePlain,
           message: row.isExistingUser
             ? 'Doplnene dalsie zaradenie existujucej osobe.'
-            : (row.selfOrdering ? 'Importovane pre samostatne objednavanie stravy.' : 'Importovane.')
+            : (!row.isFirstRowForUser
+              ? 'Doplnene dalsie zaradenie novej osobe.'
+              : (row.selfOrdering ? 'Importovane pre samostatne objednavanie stravy.' : 'Importovane.'))
         })
       })
     } catch (err: any) {
