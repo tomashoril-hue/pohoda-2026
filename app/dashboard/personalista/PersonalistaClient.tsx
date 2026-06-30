@@ -218,12 +218,14 @@ function sortRegistrationPeriods(periods: PersonRegistrationGroupPeriod[]) {
   })
 }
 
-function registrationPeriodCompactLabel(period: PersonRegistrationGroupPeriod) {
+function registrationPeriodCompactParts(period: PersonRegistrationGroupPeriod) {
   const from = period.validFrom ? fullDateLabel(period.validFrom) : ''
   const to = period.validTo ? fullDateLabel(period.validTo) : 'bez konca'
-  const range = from ? ` (${from} - ${to})` : ''
 
-  return `${period.registrationGroupName || '-'}${range}`
+  return {
+    name: period.registrationGroupName || '-',
+    range: from ? `${from} - ${to}` : ''
+  }
 }
 
 function findRegistrationPeriodGaps(periods: PersonRegistrationGroupPeriod[]) {
@@ -6364,11 +6366,16 @@ export default function PersonalistaClient({
 
                     <div style={styles.assignmentStack}>
                       {person.registrationGroupPeriods.length > 0 ? (
-                        sortRegistrationPeriods(person.registrationGroupPeriods).map(period => (
-                          <span key={`${person.id}-${period.id}`} style={styles.assignmentLine}>
-                            {registrationPeriodCompactLabel(period)}
-                          </span>
-                        ))
+                        sortRegistrationPeriods(person.registrationGroupPeriods).map(period => {
+                          const assignment = registrationPeriodCompactParts(period)
+
+                          return (
+                            <span key={`${person.id}-${period.id}`} style={styles.assignmentLine}>
+                              <span style={styles.assignmentName}>{assignment.name}</span>
+                              {assignment.range && <span style={styles.assignmentRange}>{assignment.range}</span>}
+                            </span>
+                          )
+                        })
                       ) : (
                         <span style={styles.assignmentFallback}>
                           {person.registrationGroupName || '-'}
@@ -8514,13 +8521,28 @@ const styles: Record<string, CSSProperties> = {
   },
   assignmentLine: {
     minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 5,
+    alignItems: 'baseline',
     color: '#4b5563',
     fontSize: 8,
     fontWeight: 850,
     lineHeight: 1.15
+  },
+  assignmentName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    textAlign: 'left'
+  },
+  assignmentRange: {
+    whiteSpace: 'nowrap',
+    color: '#6b7280',
+    fontSize: 7,
+    fontWeight: 800,
+    textAlign: 'right'
   },
   assignmentFallback: {
     minWidth: 0,
