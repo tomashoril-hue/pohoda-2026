@@ -118,6 +118,37 @@ async function insertInChunks(table: string, rows: any[], size = 1000) {
   }
 }
 
+async function deleteEntitlementsForRows(rows: PreparedRow[]) {
+  const rowsWithDates = rows.filter(row => row.dates.length > 0)
+  if (rowsWithDates.length === 0) return
+
+  const rowsByDatesKey = new Map<string, PreparedRow[]>()
+
+  rowsWithDates.forEach(row => {
+    const datesKey = row.dates.join('|')
+    const list = rowsByDatesKey.get(datesKey) || []
+    list.push(row)
+    rowsByDatesKey.set(datesKey, list)
+  })
+
+  for (const [datesKey, matchingRows] of rowsByDatesKey.entries()) {
+    const dates = datesKey.split('|').filter(Boolean)
+    if (dates.length === 0) continue
+
+    const userIds = Array.from(new Set(matchingRows.map(row => row.userId).filter(Boolean)))
+
+    for (const userIdChunk of chunkArray(userIds, 250)) {
+      const { error } = await supabaseServer
+        .from('user_food_entitlements')
+        .delete()
+        .in('user_id', userIdChunk)
+        .in('datum', dates)
+
+      if (error) throw error
+    }
+  }
+}
+
 async function rollbackUsers(userIds: string[]) {
   if (userIds.length === 0) return
 
@@ -458,17 +489,7 @@ export async function POST(req: NextRequest) {
         }))
       ))
 
-      for (const row of preparedRows.filter(item => item.dates.length > 0)) {
-        for (const dateChunk of chunkArray(row.dates, 120)) {
-          const { error: deleteEntitlementError } = await supabaseServer
-            .from('user_food_entitlements')
-            .delete()
-            .eq('user_id', row.userId)
-            .in('datum', dateChunk)
-
-          if (deleteEntitlementError) throw deleteEntitlementError
-        }
-      }
+      await deleteEntitlementsForRows(preparedRows)
 
       await insertInChunks('user_food_entitlements', entitlementRows, 1000)
 
