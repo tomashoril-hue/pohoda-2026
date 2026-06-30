@@ -698,13 +698,17 @@ export default function ExpressVydajClient({
                     type="button"
                     onClick={() => togglePickupUser(person.id)}
                     disabled={saving}
+                    className="express-person"
                     style={{
-                      ...styles.pickupPersonButton,
-                      ...(picked ? styles.pickupPersonButtonActive : {})
+                      ...styles.personRow,
+                      ...(picked ? styles.personRowSelected : {})
                     }}
                   >
                     <span style={picked ? styles.checkOn : styles.checkOff}>{picked ? '✓' : ''}</span>
-                    <span style={styles.pickupPersonText}>{displayPersonName(person)}</span>
+                    <span style={styles.personText}>
+                      <b className="express-person-name" style={styles.personName}>{displayPersonName(person)}</b>
+                      <span style={styles.personEmail}>{person.email || '-'}</span>
+                    </span>
                     <span style={styles.foodBadge}>{foodLabel(person.choice, language)}</span>
                   </button>
                 )
