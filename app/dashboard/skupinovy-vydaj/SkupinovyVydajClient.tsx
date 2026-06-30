@@ -10,6 +10,7 @@ type MealSelection = MealType | ''
 type IssueSourceMode = 'REGISTRATION_GROUP' | 'FOOD_GROUP' | 'ONE_OFF'
 type PickupMode = 'selected' | 'group' | 'outside' | 'qr'
 type FoodGroupMemberMode = 'group' | 'outside' | 'qr'
+type FoodGroupSetupTab = 'NEW' | 'EDIT' | 'DELETE' | 'PICKUP'
 
 type RegistrationGroupOption = {
   id: string
@@ -297,6 +298,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
   const [foodGroupPickupQuery, setFoodGroupPickupQuery] = useState('')
   const [foodGroupPickupResults, setFoodGroupPickupResults] = useState<SearchUser[]>([])
   const [foodGroupPickupLoading, setFoodGroupPickupLoading] = useState(false)
+  const [foodGroupSetupOpen, setFoodGroupSetupOpen] = useState(false)
+  const [foodGroupSetupTab, setFoodGroupSetupTab] = useState<FoodGroupSetupTab>('NEW')
   const [delegatesPanelOpen, setDelegatesPanelOpen] = useState(false)
   const [groupPickerOpen, setGroupPickerOpen] = useState(false)
   const [groupQuery, setGroupQuery] = useState('')
@@ -889,6 +892,25 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     }
 
     void searchFoodGroupMembers('', 'group')
+  }
+
+  async function openFoodGroupPickupModal(groupId: string) {
+    await openFoodGroupModal(groupId)
+    setFoodGroupModalStep('PICKUP')
+    void searchFoodGroupPickupUsers('', 'group')
+  }
+
+  async function openFoodGroupSetup(tab: FoodGroupSetupTab) {
+    if (!selectedGroupId) {
+      setIssueMessage(t('Najprv vyber registračnú skupinu.', 'Choose a registration group first.'), 'error')
+      return
+    }
+
+    setFoodGroupSetupTab(tab)
+    setFoodGroupSetupOpen(true)
+    if (foodGroups.length === 0) {
+      await loadFoodGroups(selectedGroupId)
+    }
   }
 
   function closeFoodGroupModal() {
@@ -2252,6 +2274,8 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
           .issue-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
           .issue-person-row { grid-template-columns: 1fr !important; }
           .issue-person-meta { justify-content: flex-start !important; }
+          .group-issue-action-hub { grid-template-columns: 1fr !important; }
+          .group-issue-setup-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
           .group-picker-menu {
             position: fixed !important;
             left: 10px !important;
@@ -2608,8 +2632,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
               {!confirmed && (
               <section style={{ ...styles.panel, order: 1 }}>
                 <div style={styles.panelHeaderRow}>
-                  <div style={styles.panelTitle}>{t('Výber výdaja', 'Issue selection')}</div>
-                  <span style={styles.kicker}>{t('Krok 1', 'Step 1')}</span>
+                  <div style={styles.panelTitle}>{t('Skupina a výdaj', 'Group and issue')}</div>
                 </div>
 
                 <div style={styles.formGrid}>
@@ -2747,6 +2770,128 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                   </label>
                 </div>
 
+                {daySelectionReady && (
+                  <div className="group-issue-action-hub" style={styles.actionHub}>
+                    <button
+                      type="button"
+                      onClick={openPrepareSourceModal}
+                      disabled={issueLoading || readOnlyDate || !meal}
+                      style={{
+                        ...styles.actionTile,
+                        ...styles.actionTilePrimary,
+                        ...(issueLoading || readOnlyDate || !meal ? styles.actionTileDisabled : {})
+                      }}
+                    >
+                      <b>{t('Pripraviť výdaj', 'Prepare issue')}</b>
+                      <span>{meal ? localizedMealLabel(meal, language) : t('Vyber jedlo', 'Choose meal')}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (foodGroupSetupOpen) {
+                          setFoodGroupSetupOpen(false)
+                        } else {
+                          void openFoodGroupSetup('NEW')
+                        }
+                      }}
+                      disabled={issueLoading || foodGroupsLoading}
+                      style={{
+                        ...styles.actionTile,
+                        ...(foodGroupSetupOpen ? styles.actionTileActive : {})
+                      }}
+                    >
+                      <b>{t('Stravovacie skupiny', 'Meal groups')}</b>
+                      <span>{foodGroups.length} {t('skupín', 'groups')}</span>
+                    </button>
+                  </div>
+                )}
+
+                {selectedGroupId && foodGroupSetupOpen && (
+                  <div style={styles.foodGroupSetupPanel}>
+                    <div className="group-issue-setup-tabs" style={styles.foodGroupSetupTabs}>
+                      {([
+                        ['NEW', t('Nová', 'New')],
+                        ['EDIT', t('Upraviť', 'Edit')],
+                        ['DELETE', t('Vymazať', 'Delete')],
+                        ['PICKUP', t('Vyzdvihovači', 'Pickup')]
+                      ] as Array<[FoodGroupSetupTab, string]>).map(([tab, label]) => (
+                        <button
+                          key={tab}
+                          type="button"
+                          onClick={() => void openFoodGroupSetup(tab)}
+                          disabled={foodGroupsLoading || issueLoading}
+                          style={{
+                            ...styles.foodGroupSetupTab,
+                            ...(foodGroupSetupTab === tab ? styles.foodGroupSetupTabActive : {})
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {foodGroupSetupTab === 'NEW' && (
+                      <button
+                        type="button"
+                        onClick={() => openFoodGroupModal('')}
+                        disabled={foodGroupsLoading || issueLoading}
+                        style={styles.setupBigButton}
+                      >
+                        <b>{t('Vytvoriť novú skupinu', 'Create new group')}</b>
+                        <span>{t('Ľudia aj vyzdvihovači v dvoch krokoch.', 'People and pickup users in two steps.')}</span>
+                      </button>
+                    )}
+
+                    {foodGroupSetupTab !== 'NEW' && (
+                      <div style={styles.setupGroupGrid}>
+                        {foodGroupsLoading ? (
+                          <div style={styles.emptyBox}>{t('Načítavam...', 'Loading...')}</div>
+                        ) : foodGroups.length === 0 ? (
+                          <div style={styles.emptyBox}>{t('Zatiaľ nie je vytvorená žiadna stravovacia skupina.', 'No meal group has been created yet.')}</div>
+                        ) : (
+                          foodGroups.map(group => (
+                            <button
+                              key={group.id}
+                              type="button"
+                              onClick={() => {
+                                if (foodGroupSetupTab === 'EDIT') void openFoodGroupModal(group.id)
+                                if (foodGroupSetupTab === 'DELETE') void deleteFoodGroup(group)
+                                if (foodGroupSetupTab === 'PICKUP') void openFoodGroupPickupModal(group.id)
+                              }}
+                              disabled={foodGroupsLoading || issueLoading}
+                              style={{
+                                ...styles.setupGroupButton,
+                                ...(foodGroupSetupTab === 'DELETE' ? styles.setupGroupButtonDanger : {})
+                              }}
+                            >
+                              <b>{group.name}</b>
+                              <span>
+                                {foodGroupSetupTab === 'EDIT'
+                                  ? t('Upraviť ľudí', 'Edit people')
+                                  : foodGroupSetupTab === 'DELETE'
+                                    ? t('Vymazať skupinu', 'Delete group')
+                                    : t('Nastaviť vyzdvihovačov', 'Set pickup users')}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+
+                    {selectedGroup?.canManageDelegates && (
+                      <button
+                        type="button"
+                        onClick={openDelegateModal}
+                        disabled={loading}
+                        style={styles.setupTextButton}
+                      >
+                        {t('Poverené osoby registračnej skupiny', 'Registration group delegates')} ({delegates.length})
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {false && selectedGroupId && (
                   <div style={styles.delegateSummaryCard}>
                     <div style={styles.delegateSummaryText}>
@@ -2765,7 +2910,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                   </div>
                 )}
 
-                {selectedGroup?.canManageDelegates && (
+                {false && selectedGroup?.canManageDelegates && (
                   <div style={styles.delegateSummaryCard}>
                     <div style={styles.delegateSummaryText}>
                       <b>{t('Poverené osoby, ktoré môžu vytvárať hromadný výdaj', 'Delegated people who can create bulk issues')}</b>
@@ -2869,7 +3014,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                     </div>
                   )}
 
-                  <div style={styles.prepareActions}>
+                  <div style={{ ...styles.prepareActions, display: 'none' }}>
                     <label style={{ ...styles.field, display: 'none' }}>
                       <span>{t('Zdroj ľudí', 'People source')}</span>
                       <select
@@ -4162,6 +4307,126 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'minmax(0, 1fr)',
     gap: 10
+  },
+  actionHub: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 8,
+    marginTop: 12
+  },
+  actionTile: {
+    minHeight: 82,
+    border: '1px solid #d8b4fe',
+    borderRadius: 8,
+    background: '#fff',
+    color: '#4c1d95',
+    padding: 12,
+    display: 'grid',
+    alignContent: 'center',
+    gap: 4,
+    textAlign: 'left',
+    fontSize: 12,
+    fontWeight: 900,
+    boxShadow: '0 8px 18px rgba(76, 29, 149, 0.08)'
+  },
+  actionTilePrimary: {
+    background: '#6d28d9',
+    borderColor: '#6d28d9',
+    color: '#fff',
+    boxShadow: '0 12px 24px rgba(109, 40, 217, 0.22)'
+  },
+  actionTileActive: {
+    background: '#f5f3ff',
+    borderColor: '#7c3aed',
+    boxShadow: 'inset 0 0 0 1px #7c3aed, 0 10px 20px rgba(76, 29, 149, 0.12)'
+  },
+  actionTileDisabled: {
+    background: '#ede9fe',
+    borderColor: '#ddd6fe',
+    color: '#6b7280',
+    boxShadow: 'none'
+  },
+  foodGroupSetupPanel: {
+    marginTop: 10,
+    border: '1px solid #ddd6fe',
+    borderRadius: 8,
+    background: '#faf7ff',
+    padding: 9,
+    display: 'grid',
+    gap: 9
+  },
+  foodGroupSetupTabs: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 5
+  },
+  foodGroupSetupTab: {
+    minHeight: 38,
+    border: '1px solid #ddd6fe',
+    borderRadius: 7,
+    background: '#fff',
+    color: '#4c1d95',
+    padding: '0 6px',
+    fontSize: 11,
+    fontWeight: 950
+  },
+  foodGroupSetupTabActive: {
+    background: '#4c1d95',
+    borderColor: '#4c1d95',
+    color: '#fff'
+  },
+  setupBigButton: {
+    minHeight: 70,
+    border: '1px solid #7c3aed',
+    borderRadius: 8,
+    background: '#fff',
+    color: '#111827',
+    padding: 12,
+    display: 'grid',
+    alignContent: 'center',
+    gap: 4,
+    textAlign: 'left',
+    fontSize: 12,
+    fontWeight: 900
+  },
+  setupGroupGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(136px, 1fr))',
+    gap: 7,
+    maxHeight: 240,
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    overscrollBehaviorY: 'contain'
+  },
+  setupGroupButton: {
+    minHeight: 60,
+    border: '1px solid #ddd6fe',
+    borderRadius: 8,
+    background: '#fff',
+    color: '#111827',
+    padding: 10,
+    display: 'grid',
+    alignContent: 'center',
+    gap: 3,
+    textAlign: 'left',
+    fontSize: 12,
+    fontWeight: 900
+  },
+  setupGroupButtonDanger: {
+    borderColor: '#fecaca',
+    background: '#fff7f7',
+    color: '#991b1b'
+  },
+  setupTextButton: {
+    minHeight: 36,
+    border: '1px solid #e5e7eb',
+    borderRadius: 7,
+    background: '#fff',
+    color: '#374151',
+    padding: '0 10px',
+    fontSize: 12,
+    fontWeight: 900,
+    textAlign: 'left'
   },
   groupPicker: {
     position: 'relative',
