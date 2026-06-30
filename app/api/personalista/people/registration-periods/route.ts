@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { setMissingBaseRegistrationGroup } from '@/lib/baseRegistrationGroup'
 import { slovakiaDateIso } from '@/lib/date'
 import { canManagePersonAsPersonalista } from '@/lib/personalistaAccess'
 import { supabaseServer } from '@/lib/supabaseServer'
@@ -291,6 +292,7 @@ export async function POST(req: NextRequest) {
       return overlapErrorResponse(insertError)
     }
 
+    const baseRegistrationGroupUpdated = await setMissingBaseRegistrationGroup([userId], registrationGroupId)
     const currentPeriod = await refreshCurrentRegistrationGroupSnapshot(userId)
 
     await supabaseServer
@@ -305,6 +307,7 @@ export async function POST(req: NextRequest) {
           ...period,
           registration_group_name: registrationGroup.name,
           auto_closed_previous_period: closedPreviousPeriod,
+          base_registration_group_updated: baseRegistrationGroupUpdated > 0,
           current_registration_group_id: currentPeriod?.registration_group_id || null
         },
         note: 'Naroky na stravu neboli zmenene.'
@@ -479,6 +482,7 @@ export async function PATCH(req: NextRequest) {
         }
       }
 
+      const baseRegistrationGroupUpdated = await setMissingBaseRegistrationGroup([userId], registrationGroupId)
       const refreshedPeriod = await refreshCurrentRegistrationGroupSnapshot(userId)
 
       await supabaseServer
@@ -495,6 +499,7 @@ export async function PATCH(req: NextRequest) {
           after_data: {
             periods: changedPeriods,
             registration_group_name: registrationGroup.name,
+            base_registration_group_updated: baseRegistrationGroupUpdated > 0,
             current_registration_group_id: refreshedPeriod?.registration_group_id || null
           },
           note: 'Hromadna uprava oznacenych zaradeni. Naroky na stravu neboli zmenene.'
@@ -539,6 +544,7 @@ export async function PATCH(req: NextRequest) {
       return overlapErrorResponse(updateError)
     }
 
+    const baseRegistrationGroupUpdated = await setMissingBaseRegistrationGroup([userId], registrationGroupId)
     const refreshedPeriod = await refreshCurrentRegistrationGroupSnapshot(userId)
 
     await supabaseServer
@@ -553,6 +559,7 @@ export async function PATCH(req: NextRequest) {
         after_data: {
           ...period,
           registration_group_name: registrationGroup.name,
+          base_registration_group_updated: baseRegistrationGroupUpdated > 0,
           current_registration_group_id: refreshedPeriod?.registration_group_id || null
         },
         note: 'Naroky na stravu neboli zmenene.'

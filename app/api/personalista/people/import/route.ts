@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { createAccessCode, hashAccessCode, normalizeAccessName } from '@/lib/accessCode'
+import { setMissingBaseRegistrationGroup } from '@/lib/baseRegistrationGroup'
 import { slovakiaDateIso } from '@/lib/date'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
@@ -409,18 +410,18 @@ export async function POST(req: NextRequest) {
       }
 
       const existingRowsWithoutBaseGroup = existingRows.filter(row => row.shouldSetBaseRegistrationGroup && row.registrationGroupId)
+      const rowsWithoutBaseGroupByGroup = new Map<string, string[]>()
 
-      for (const row of existingRowsWithoutBaseGroup) {
-        const { error: updateBaseGroupError } = await supabaseServer
-          .from('users')
-          .update({
-            registration_group_id: row.registrationGroupId,
-            updated_at: now
-          })
-          .eq('id', row.userId)
-          .is('registration_group_id', null)
+      existingRowsWithoutBaseGroup.forEach(row => {
+        if (!row.registrationGroupId) return
 
-        if (updateBaseGroupError) throw updateBaseGroupError
+        const list = rowsWithoutBaseGroupByGroup.get(row.registrationGroupId) || []
+        list.push(row.userId)
+        rowsWithoutBaseGroupByGroup.set(row.registrationGroupId, list)
+      })
+
+      for (const [registrationGroupId, userIds] of rowsWithoutBaseGroupByGroup.entries()) {
+        await setMissingBaseRegistrationGroup(userIds, registrationGroupId)
       }
 
       const registrationPeriodRows = preparedRows

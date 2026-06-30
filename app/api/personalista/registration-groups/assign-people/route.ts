@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { setMissingBaseRegistrationGroup } from '@/lib/baseRegistrationGroup'
 import { slovakiaDateIso } from '@/lib/date'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
@@ -354,6 +355,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const baseRegistrationGroupUpdated = await setMissingBaseRegistrationGroup(userIds, registrationGroupId)
     await refreshCurrentRegistrationGroups(userIds)
 
     await supabaseServer
@@ -375,6 +377,7 @@ export async function POST(req: NextRequest) {
           valid_to: validTo,
           user_ids: userIds,
           users: users.length,
+          base_registration_group_updated: baseRegistrationGroupUpdated,
           auto_closed_periods: closePlans.map(plan => ({
             id: plan.period.id,
             user_id: plan.userId,

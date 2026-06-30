@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { setMissingBaseRegistrationGroup } from '@/lib/baseRegistrationGroup'
 import { slovakiaDateIso } from '@/lib/date'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { getManagedRegistrationGroupIds } from '@/lib/registrationGroupManagers'
@@ -382,6 +383,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const baseRegistrationGroupUpdated = mode === 'SET'
+      ? await setMissingBaseRegistrationGroup(userIds, registrationGroupId)
+      : 0
     await refreshCurrentRegistrationGroups(userIds)
 
     await supabaseServer
@@ -408,7 +412,8 @@ export async function POST(req: NextRequest) {
           vecera,
           days: dates.length,
           deleted_entitlements: deletedEntitlements,
-          inserted_entitlements: insertedEntitlements
+          inserted_entitlements: insertedEntitlements,
+          base_registration_group_updated: baseRegistrationGroupUpdated
         }
       })
 
