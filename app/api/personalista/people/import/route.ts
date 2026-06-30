@@ -180,7 +180,6 @@ function prepareRow(
   const hasValidPeriod = isIsoDate(validFrom) && isIsoDate(validTo) && validTo >= validFrom
 
   if (!meno || !priezvisko) return { result: errorResult(rowNumber, 'Meno a priezvisko su povinne.') }
-  if (!email) return { result: errorResult(rowNumber, 'E-mail je povinny.') }
   if (!typStravy) return { result: errorResult(rowNumber, 'Vyber typ stravy.') }
   if (selfOrderingImport && !registrationGroupId) return { result: errorResult(rowNumber, 'Registracna skupina je povinna.') }
   if (!selfOrderingImport && (!isIsoDate(validFrom) || !isIsoDate(validTo) || validTo < validFrom)) return { result: errorResult(rowNumber, 'Zadaj platne obdobie prace.') }
