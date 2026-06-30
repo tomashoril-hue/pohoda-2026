@@ -44,6 +44,7 @@ type ExpressData = {
   issue: ExpressIssue | null
   issues: ExpressIssueListItem[]
   people: ExpressPerson[]
+  pickupPeople: ExpressPerson[]
   selectedIds: string[]
   pickupUserIds: string[]
 }
@@ -142,13 +143,14 @@ export default function ExpressVydajClient({
   const pickupSet = useMemo(() => new Set(pickupUserIds), [pickupUserIds])
   const selectedCount = selectedIds.length
   const allPersonIds = useMemo(() => (data?.people || []).map(person => person.id), [data?.people])
+  const allPickupPersonIds = useMemo(() => (data?.pickupPeople || []).map(person => person.id), [data?.pickupPeople])
   const countdown = remainingLabel(data?.issue?.validAfter || null, nowMs)
   const countdownActive = !!data?.issue?.validAfter && Date.parse(data.issue.validAfter) > nowMs
   const hasExistingIssue = !!data?.issue
   const showStatusPanel = hasExistingIssue && !editingIssue
   const showEditor = !hasExistingIssue || editingIssue
   const allPeopleSelected = allPersonIds.length > 0 && selectedIds.length === allPersonIds.length
-  const allPickupSelected = allPersonIds.length > 0 && pickupUserIds.length === allPersonIds.length
+  const allPickupSelected = allPickupPersonIds.length > 0 && pickupUserIds.length === allPickupPersonIds.length
   const issueList = data?.issues || []
 
   useEffect(() => {
@@ -273,8 +275,8 @@ export default function ExpressVydajClient({
   }
 
   const toggleAllPickupUsers = () => {
-    if (loading || saving || allPersonIds.length === 0) return
-    setPickupUserIds(allPickupSelected ? [] : allPersonIds)
+    if (loading || saving || allPickupPersonIds.length === 0) return
+    setPickupUserIds(allPickupSelected ? [] : allPickupPersonIds)
   }
 
   const prepareIssue = () => {
@@ -351,6 +353,7 @@ export default function ExpressVydajClient({
           ]
           : current?.issues || [],
         people: current?.people || [],
+        pickupPeople: current?.pickupPeople || [],
         selectedIds: Array.isArray(json.selectedIds) ? json.selectedIds : selectedIds,
         pickupUserIds: Array.isArray(json.pickupUserIds) ? json.pickupUserIds : pickupUserIds
       }))
@@ -680,17 +683,17 @@ export default function ExpressVydajClient({
               <button
                 type="button"
                 onClick={toggleAllPickupUsers}
-                disabled={loading || saving || allPersonIds.length === 0}
+                disabled={loading || saving || allPickupPersonIds.length === 0}
                 style={styles.pickupSelectAllButton}
               >
                 <span style={allPickupSelected ? styles.checkOn : styles.checkOff}>{allPickupSelected ? '✓' : ''}</span>
                 <span style={styles.pickupPersonText}>
                   {allPickupSelected ? t('Odznačiť všetkých', 'Clear all') : t('Označiť všetkých', 'Select all')}
                 </span>
-                <span style={styles.pickupCountBadge}>{pickupUserIds.length}/{allPersonIds.length}</span>
+                <span style={styles.pickupCountBadge}>{pickupUserIds.length}/{allPickupPersonIds.length}</span>
               </button>
 
-              {data.people.map(person => {
+              {data.pickupPeople.map(person => {
                 const picked = pickupSet.has(person.id)
 
                 return (

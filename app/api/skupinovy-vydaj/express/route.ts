@@ -257,6 +257,20 @@ function defaultPickupUserIds(actorId: string, candidateUserIds: Set<string>) {
   return candidateUserIds.has(actorId) ? [actorId] : []
 }
 
+function pickupPeopleFromGroupUsers(users: any[]): IssuablePerson[] {
+  return users
+    .map((user: any): IssuablePerson => ({
+      id: user.id,
+      name: fullName(user),
+      firstName: user.meno || '',
+      lastName: user.priezvisko || '',
+      email: user.email || '',
+      choice: normalizeChoice(user.typ_stravy) || 'MASO',
+      source: 'REGISTRATION_GROUP'
+    }))
+    .sort(comparePeople)
+}
+
 function nextIssueStateForAccess(access: string) {
   const immediate = access === 'ADMIN' || access === 'MANAGER'
 
@@ -361,17 +375,6 @@ async function prepareIssuablePeople({
   })
 }
 
-async function loadIssuableGroupPeople(registrationGroupId: string, date: string, meal: MealType) {
-  const groupPeople = await loadRegistrationGroupPeople(registrationGroupId, date)
-
-  return filterIssuablePeople({
-    users: groupPeople,
-    date,
-    meal,
-    source: 'REGISTRATION_GROUP'
-  })
-}
-
 async function loadIssuePeople(issueId: string) {
   const items = await loadIssueItems(issueId)
   const userIds = items.map((item: any) => item.user_id).filter(Boolean)
@@ -449,7 +452,8 @@ export async function GET(req: NextRequest) {
     const issuablePeople = people
       .filter(person => person.issuable !== false)
       .sort(comparePeople)
-    const issuableUserIds = new Set(issuablePeople.map(person => person.id))
+    const pickupPeople = pickupPeopleFromGroupUsers(groupUsers)
+    const pickupCandidateUserIds = new Set(pickupPeople.map(person => person.id))
     const selectedPeople = issue
       ? await loadIssuePeople(issue.id)
       : []
@@ -458,8 +462,8 @@ export async function GET(req: NextRequest) {
       .map(person => person.id)
     const rawPickupUserIds = issue
       ? await loadPickupUsers(issue.id)
-      : defaultPickupUserIds(actor.id, issuableUserIds)
-    const pickupUserIds = rawPickupUserIds.filter(userId => issuableUserIds.has(userId))
+      : defaultPickupUserIds(actor.id, pickupCandidateUserIds)
+    const pickupUserIds = rawPickupUserIds.filter(userId => pickupCandidateUserIds.has(userId))
 
     return NextResponse.json({
       ok: true,
@@ -491,6 +495,7 @@ export async function GET(req: NextRequest) {
         }
       })),
       people: issuablePeople,
+      pickupPeople,
       selectedIds,
       pickupUserIds,
       summary: choiceSummary(issuablePeople)
@@ -538,11 +543,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Registracna skupina neexistuje alebo nie je aktivna.' }, { status: 404 })
     }
 
-    const allIssuablePeople = await loadIssuableGroupPeople(registrationGroupId, date, meal)
-    const issuableUserIds = new Set(allIssuablePeople.map(person => person.id))
+    const groupPeople = await loadRegistrationGroupPeople(registrationGroupId, date)
+    const pickupCandidateUserIds = new Set(groupPeople.map((user: any) => user.id).filter(Boolean))
     const pickupUserIds = requestedPickupUserIds.length > 0
-      ? requestedPickupUserIds.filter(userId => issuableUserIds.has(userId))
-      : defaultPickupUserIds(actor.id, issuableUserIds)
+      ? requestedPickupUserIds.filter(userId => pickupCandidateUserIds.has(userId))
+      : defaultPickupUserIds(actor.id, pickupCandidateUserIds)
 
     if (pickupUserIds.length === 0) {
       return NextResponse.json({ error: 'Vyber osobu, ktora prevezme vydaj.' }, { status: 400 })
@@ -550,7 +555,7 @@ export async function POST(req: NextRequest) {
 
     if (pickupUserIds.length !== requestedPickupUserIds.length && requestedPickupUserIds.length > 0) {
       return NextResponse.json(
-        { error: 'Prevezme osoba môže byť iba vydateľná osoba z tejto registračnej skupiny.' },
+        { error: 'Prevezme osoba môže byť iba osoba z aktuálnej registračnej skupiny.' },
         { status: 400 }
       )
     }
