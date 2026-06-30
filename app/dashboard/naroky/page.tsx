@@ -10,6 +10,8 @@ type EntitlementRow = {
   datum: string
   obed: boolean
   vecera: boolean
+  cancelled_reason?: string
+  cancelled_at?: string
 }
 
 type CalendarDay = {
@@ -18,6 +20,7 @@ type CalendarDay = {
   inMonth: boolean
   obed: boolean
   vecera: boolean
+  cancelledReason: string
 }
 
 const WEEKDAYS_SK = ['Po', 'Ut', 'St', 'Št', 'Pi', 'So', 'Ne']
@@ -87,7 +90,8 @@ function buildMonth(year: number, month: number, rowsByDate: Map<string, Entitle
       day: 0,
       inMonth: false,
       obed: false,
-      vecera: false
+      vecera: false,
+      cancelledReason: ''
     })
   }
 
@@ -100,7 +104,8 @@ function buildMonth(year: number, month: number, rowsByDate: Map<string, Entitle
       day,
       inMonth: true,
       obed: !!row?.obed,
-      vecera: !!row?.vecera
+      vecera: !!row?.vecera,
+      cancelledReason: row?.cancelled_reason || ''
     })
   }
 
@@ -110,11 +115,23 @@ function buildMonth(year: number, month: number, rowsByDate: Map<string, Entitle
       day: 0,
       inMonth: false,
       obed: false,
-      vecera: false
+      vecera: false,
+      cancelledReason: ''
     })
   }
 
   return days
+}
+
+function cancellationLabel(reason?: string, language: 'SK' | 'EN' = 'SK') {
+  const normalized = String(reason || '').toUpperCase()
+  if (normalized === 'BLOCKED') {
+    return language === 'EN' ? 'Cancelled by blocking' : 'Zrušené blokáciou'
+  }
+  if (normalized === 'DEREGISTERED') {
+    return language === 'EN' ? 'Cancelled by deregistration' : 'Zrušené odregistráciou'
+  }
+  return ''
 }
 
 function getMonthKeys(fromIso: string, toIso: string) {
@@ -145,18 +162,31 @@ export default async function FoodEntitlementsPage() {
   const today = todayIsoDate()
   const until = addDaysIso(today, 120)
 
-  const { data } = await supabaseServer
+  const entitlementsQuery = await supabaseServer
     .from('user_food_entitlements')
-    .select('datum, obed, vecera')
+    .select('datum, obed, vecera, cancelled_reason, cancelled_at')
     .eq('user_id', user.id)
     .gte('datum', today)
     .lte('datum', until)
     .order('datum', { ascending: true })
 
+  let data: EntitlementRow[] | null = (entitlementsQuery.data || null) as EntitlementRow[] | null
+  if (entitlementsQuery.error && String(entitlementsQuery.error.message || '').includes('cancelled_')) {
+    const fallback = await supabaseServer
+      .from('user_food_entitlements')
+      .select('datum, obed, vecera')
+      .eq('user_id', user.id)
+      .gte('datum', today)
+      .lte('datum', until)
+      .order('datum', { ascending: true })
+    data = (fallback.data || null) as EntitlementRow[] | null
+  }
+
   const entitlements = (data || []) as EntitlementRow[]
   const activeRows = entitlements.filter(row => row.obed || row.vecera)
+  const visibleRows = entitlements.filter(row => row.obed || row.vecera || cancellationLabel(row.cancelled_reason, language))
   const rowsByDate = new Map(entitlements.map(row => [row.datum, row]))
-  const lastEntitlementDate = activeRows[activeRows.length - 1]?.datum || until
+  const lastEntitlementDate = visibleRows[visibleRows.length - 1]?.datum || until
   const monthKeys = getMonthKeys(today, lastEntitlementDate)
 
   const lunchCount = activeRows.filter(row => row.obed).length
@@ -337,9 +367,12 @@ export default async function FoodEntitlementsPage() {
           <span><b style={styles.lunchDot} /> {copy.lunch}</span>
           <span><b style={styles.dinnerDot} /> {copy.dinner}</span>
           <span><b style={styles.bothDot} /> {copy.lunchDinner}</span>
+          {visibleRows.some(row => cancellationLabel(row.cancelled_reason, language)) && (
+            <span><b style={styles.cancelledDot} /> {language === 'EN' ? 'Cancelled' : 'Zrušené'}</span>
+          )}
         </div>
 
-        {activeRows.length === 0 ? (
+        {visibleRows.length === 0 ? (
           <div style={styles.emptyBox}>
             {copy.noUpcomingEntitlements}
           </div>
@@ -364,6 +397,7 @@ export default async function FoodEntitlementsPage() {
                     {days.map((day, index) => {
                       const hasAny = day.obed || day.vecera
                       const hasBoth = day.obed && day.vecera
+                      const cancelLabel = cancellationLabel(day.cancelledReason, language)
 
                       return (
                         <div
@@ -373,13 +407,19 @@ export default async function FoodEntitlementsPage() {
                             ...styles.dayCell,
                             ...(day.inMonth ? {} : styles.emptyDay),
                             ...(hasAny ? styles.activeDay : {}),
-                            ...(hasBoth ? styles.bothDay : {})
+                            ...(hasBoth ? styles.bothDay : {}),
+                            ...(cancelLabel ? styles.cancelledDay : {})
                           }}
+                          title={cancelLabel || undefined}
                         >
                           {day.inMonth && (
                             <>
                               <strong>{day.day}</strong>
-                              {hasAny && (
+                              {cancelLabel ? (
+                                <div style={styles.mealTags}>
+                                  <span className="entitlements-tag" style={styles.cancelledTag}>Z</span>
+                                </div>
+                              ) : hasAny && (
                                 <div style={styles.mealTags}>
                                   {day.obed && <span className="entitlements-tag" style={styles.lunchTag}>O</span>}
                                   {day.vecera && <span className="entitlements-tag" style={styles.dinnerTag}>V</span>}
@@ -560,6 +600,14 @@ const styles: Record<string, CSSProperties> = {
     background: '#000',
     verticalAlign: 'middle'
   },
+  cancelledDot: {
+    display: 'inline-block',
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    background: '#dc2626',
+    verticalAlign: 'middle'
+  },
   emptyBox: {
     marginTop: 14,
     border: '1px dashed #d1d5db',
@@ -624,6 +672,11 @@ const styles: Record<string, CSSProperties> = {
   bothDay: {
     boxShadow: 'inset 0 0 0 2px #7417e8'
   },
+  cancelledDay: {
+    borderColor: '#fecaca',
+    background: '#fee2e2',
+    color: '#991b1b'
+  },
   mealTags: {
     display: 'flex',
     gap: 3,
@@ -657,6 +710,21 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: 'center',
     background: '#56db3f',
     color: '#111827',
+    borderRadius: 999,
+    padding: 0,
+    fontSize: 10,
+    fontWeight: 950,
+    lineHeight: 1
+  },
+  cancelledTag: {
+    width: 18,
+    height: 18,
+    boxSizing: 'border-box',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#dc2626',
+    color: '#fff',
     borderRadius: 999,
     padding: 0,
     fontSize: 10,

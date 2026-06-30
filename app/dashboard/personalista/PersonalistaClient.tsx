@@ -39,6 +39,8 @@ type PersonEntitlement = {
   datum: string
   obed: boolean
   vecera: boolean
+  cancelledReason?: string
+  cancelledAt?: string
 }
 
 type PersonRegistrationGroupPeriod = {
@@ -362,6 +364,13 @@ function fullDateLabel(value: string) {
 
   const [year, month, day] = value.split('-')
   return `${day}-${month}-${year}`
+}
+
+function entitlementCancelLabel(reason?: string) {
+  const normalized = String(reason || '').toUpperCase()
+  if (normalized === 'BLOCKED') return 'Zrušené blokáciou'
+  if (normalized === 'DEREGISTERED') return 'Zrušené odregistráciou'
+  return ''
 }
 
 function compactDateTimeLabel(value: string) {
@@ -6845,11 +6854,21 @@ export default function PersonalistaClient({
                 {selectedPerson.entitlements.length === 0 ? (
                   <span style={styles.emptyGroupSelection}>Bez nárokov</span>
                 ) : (
-                  selectedPerson.entitlements.map(item => (
-                    <span key={item.datum} style={styles.entitlementPill}>
-                      {fullDateLabel(item.datum)}: {item.obed ? 'O' : '-'} / {item.vecera ? 'V' : '-'}
-                    </span>
-                  ))
+                  selectedPerson.entitlements.map(item => {
+                    const cancelLabel = entitlementCancelLabel(item.cancelledReason)
+
+                    return (
+                      <span
+                        key={item.datum}
+                        style={{
+                          ...styles.entitlementPill,
+                          ...(cancelLabel ? styles.cancelledEntitlementPill : {})
+                        }}
+                      >
+                        {fullDateLabel(item.datum)}: {cancelLabel || `${item.obed ? 'O' : '-'} / ${item.vecera ? 'V' : '-'}`}
+                      </span>
+                    )
+                  })
                 )}
               </div>
 
@@ -9211,6 +9230,11 @@ const styles: Record<string, CSSProperties> = {
     color: '#3730a3',
     fontSize: 11,
     fontWeight: 950
+  },
+  cancelledEntitlementPill: {
+    background: '#fee2e2',
+    color: '#991b1b',
+    border: '1px solid #fecaca'
   },
   calendarToolbar: {
     display: 'grid',

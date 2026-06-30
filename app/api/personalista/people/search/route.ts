@@ -46,15 +46,27 @@ async function fetchMembershipsForUsers(userIds: string[]) {
 async function fetchEntitlementsForUsers(userIds: string[]) {
   if (userIds.length === 0) return []
 
-  const { data, error } = await supabaseServer
+  const query = supabaseServer
+    .from('user_food_entitlements')
+    .select('user_id, datum, obed, vecera, cancelled_reason, cancelled_at')
+    .in('user_id', userIds)
+    .order('datum', { ascending: true })
+  const { data, error } = await query
+
+  if (!error) return data || []
+
+  const missingCancellationColumns = String(error.message || '').includes('cancelled_')
+  if (!missingCancellationColumns) throw error
+
+  const { data: fallbackData, error: fallbackError } = await supabaseServer
     .from('user_food_entitlements')
     .select('user_id, datum, obed, vecera')
     .in('user_id', userIds)
     .order('datum', { ascending: true })
 
-  if (error) throw error
+  if (fallbackError) throw fallbackError
 
-  return data || []
+  return fallbackData || []
 }
 
 async function fetchRegistrationGroupPeriodsForUsers(userIds: string[]) {
@@ -563,8 +575,9 @@ export async function GET(req: NextRequest) {
 
     let people = users.map((profile: any) => {
       const rows = entitlementsByUserId.get(profile.id) || []
-      const lunchClaims = rows.filter(row => row.obed).length
-      const dinnerClaims = rows.filter(row => row.vecera).length
+      const activeEntitlementRows = rows.filter(row => row.obed || row.vecera)
+      const lunchClaims = activeEntitlementRows.filter(row => row.obed).length
+      const dinnerClaims = activeEntitlementRows.filter(row => row.vecera).length
       const personMemberships = membershipsByUserId.get(profile.id) || []
       const registrationGroupPeriods = registrationGroupPeriodsByUserId.get(profile.id) || []
       const registrationGroup = currentRegistrationGroupSnapshot(
@@ -606,7 +619,7 @@ export async function GET(req: NextRequest) {
         activeQrCount: activeQrByUserId.get(profile.id) || 0,
         activeNfcCount: activeNfcByUserId.get(profile.id) || 0,
         globalRoles: globalRolesByUserId.get(profile.id) || [],
-        entitlementDays: rows.length,
+        entitlementDays: activeEntitlementRows.length,
         lunchClaims,
         dinnerClaims,
         mealClaims: lunchClaims + dinnerClaims,
@@ -614,7 +627,9 @@ export async function GET(req: NextRequest) {
           .map(row => ({
             datum: row.datum,
             obed: !!row.obed,
-            vecera: !!row.vecera
+            vecera: !!row.vecera,
+            cancelledReason: row.cancelled_reason || '',
+            cancelledAt: row.cancelled_at || ''
           }))
           .sort((a, b) => String(a.datum).localeCompare(String(b.datum))),
         groups: personMemberships.map((membership: any) => {

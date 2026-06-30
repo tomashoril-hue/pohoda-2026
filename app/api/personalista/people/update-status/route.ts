@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { cancelFutureFoodEntitlements } from '@/lib/cancelFutureEntitlements'
 import { canManagePersonAsPersonalista } from '@/lib/personalistaAccess'
 import { supabaseServer } from '@/lib/supabaseServer'
 
@@ -69,6 +70,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
 
+    const cancelledEntitlements = !active
+      ? await cancelFutureFoodEntitlements({
+        userId,
+        actorId: actor.id,
+        reason: 'BLOCKED'
+      })
+      : null
+
     await supabaseServer
       .from('personnel_audit_log')
       .insert({
@@ -80,14 +89,23 @@ export async function POST(req: NextRequest) {
         before_data: before,
         after_data: {
           aktivny: nextStatus,
-          reason: reason || null
+          reason: reason || null,
+          cancelledFutureEntitlements: cancelledEntitlements
+            ? {
+              fromDate: cancelledEntitlements.fromDate,
+              count: cancelledEntitlements.cancelledCount
+            }
+            : null
         },
         note: reason || null
       })
 
     return NextResponse.json({
       ok: true,
-      message: active ? 'Osoba bola odblokovana.' : 'Osoba bola zablokovana.',
+      message: active
+        ? 'Osoba bola odblokovana.'
+        : `Osoba bola zablokovana. Buduce naroky boli zrusene: ${cancelledEntitlements?.cancelledCount || 0}.`,
+      cancelledFutureEntitlements: cancelledEntitlements?.cancelledCount || 0,
       aktivny: nextStatus
     })
   } catch (err: any) {

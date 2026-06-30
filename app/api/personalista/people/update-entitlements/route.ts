@@ -221,18 +221,33 @@ export async function POST(req: NextRequest) {
 
     const { data: updatedEntitlements, error: updatedEntitlementsError } = await supabaseServer
       .from('user_food_entitlements')
-      .select('datum, obed, vecera')
+      .select('datum, obed, vecera, cancelled_reason, cancelled_at')
       .eq('user_id', userId)
       .order('datum', { ascending: true })
 
-    if (updatedEntitlementsError) {
+    const missingCancellationColumns = String(updatedEntitlementsError?.message || '').includes('cancelled_')
+    const { data: fallbackEntitlements, error: fallbackEntitlementsError } = updatedEntitlementsError && missingCancellationColumns
+      ? await supabaseServer
+        .from('user_food_entitlements')
+        .select('datum, obed, vecera')
+        .eq('user_id', userId)
+        .order('datum', { ascending: true })
+      : { data: null, error: null }
+
+    if (updatedEntitlementsError && !missingCancellationColumns) {
       return NextResponse.json({ error: updatedEntitlementsError.message }, { status: 500 })
     }
 
-    const safeUpdatedEntitlements = (updatedEntitlements || []).map((row: any) => ({
+    if (fallbackEntitlementsError) {
+      return NextResponse.json({ error: fallbackEntitlementsError.message }, { status: 500 })
+    }
+
+    const safeUpdatedEntitlements = (updatedEntitlements || fallbackEntitlements || []).map((row: any) => ({
       datum: row.datum,
       obed: !!row.obed,
-      vecera: !!row.vecera
+      vecera: !!row.vecera,
+      cancelledReason: row.cancelled_reason || '',
+      cancelledAt: row.cancelled_at || ''
     }))
     const updatedLunchClaims = safeUpdatedEntitlements.filter(item => item.obed).length
     const updatedDinnerClaims = safeUpdatedEntitlements.filter(item => item.vecera).length

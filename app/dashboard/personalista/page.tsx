@@ -218,12 +218,29 @@ async function fetchEntitlementsForUsers(userIds: string[]) {
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabaseServer
       .from('user_food_entitlements')
-      .select('user_id, datum, obed, vecera')
+      .select('user_id, datum, obed, vecera, cancelled_reason, cancelled_at')
       .in('user_id', userIds)
       .order('datum', { ascending: true })
       .range(from, from + pageSize - 1)
 
-    if (error) return rows
+    if (error) {
+      const missingCancellationColumns = String(error.message || '').includes('cancelled_')
+      if (!missingCancellationColumns) return rows
+
+      const { data: fallbackData, error: fallbackError } = await supabaseServer
+        .from('user_food_entitlements')
+        .select('user_id, datum, obed, vecera')
+        .in('user_id', userIds)
+        .order('datum', { ascending: true })
+        .range(from, from + pageSize - 1)
+
+      if (fallbackError) return rows
+
+      rows.push(...(fallbackData || []))
+
+      if (!fallbackData || fallbackData.length < pageSize) return rows
+      continue
+    }
 
     rows.push(...(data || []))
 
@@ -759,8 +776,9 @@ export default async function PersonalistaPage({
       registrationGroupById,
       fromDate
     )
-    const lunchClaims = rows.filter(row => row.obed).length
-    const dinnerClaims = rows.filter(row => row.vecera).length
+    const activeEntitlementRows = rows.filter(row => row.obed || row.vecera)
+    const lunchClaims = activeEntitlementRows.filter(row => row.obed).length
+    const dinnerClaims = activeEntitlementRows.filter(row => row.vecera).length
     const mealClaims = lunchClaims + dinnerClaims
     const managedRegistrationGroups = mapRegistrationGroupAccessRows(
       registrationGroupManagersByUserId.get(membership.user_id) || [],
@@ -794,7 +812,7 @@ export default async function PersonalistaPage({
       activeQrCount: activeQrByUserId.get(membership.user_id) || 0,
       activeNfcCount: activeNfcByUserId.get(membership.user_id) || 0,
       globalRoles: globalRolesByUserId.get(membership.user_id) || [],
-      entitlementDays: rows.length,
+      entitlementDays: activeEntitlementRows.length,
       lunchClaims,
       dinnerClaims,
       mealClaims,
@@ -802,7 +820,9 @@ export default async function PersonalistaPage({
         .map(row => ({
           datum: row.datum,
           obed: !!row.obed,
-          vecera: !!row.vecera
+          vecera: !!row.vecera,
+          cancelledReason: row.cancelled_reason || '',
+          cancelledAt: row.cancelled_at || ''
         }))
         .sort((a, b) => String(a.datum).localeCompare(String(b.datum))),
       groups: [groupItem]
@@ -814,6 +834,7 @@ export default async function PersonalistaPage({
       if (personMap.has(profile.id)) return
 
       const rows = entitlementsByUserId.get(profile.id) || []
+      const activeEntitlementRows = rows.filter(row => row.obed || row.vecera)
       const registrationGroupPeriods = registrationGroupPeriodsByUserId.get(profile.id) || []
       const registrationGroup = currentRegistrationGroupSnapshot(
         profile,
@@ -821,8 +842,8 @@ export default async function PersonalistaPage({
         registrationGroupById,
         fromDate
       )
-      const lunchClaims = rows.filter(row => row.obed).length
-      const dinnerClaims = rows.filter(row => row.vecera).length
+      const lunchClaims = activeEntitlementRows.filter(row => row.obed).length
+      const dinnerClaims = activeEntitlementRows.filter(row => row.vecera).length
       const managedRegistrationGroups = mapRegistrationGroupAccessRows(
         registrationGroupManagersByUserId.get(profile.id) || [],
         registrationGroupById
@@ -855,7 +876,7 @@ export default async function PersonalistaPage({
         activeQrCount: activeQrByUserId.get(profile.id) || 0,
         activeNfcCount: activeNfcByUserId.get(profile.id) || 0,
         globalRoles: globalRolesByUserId.get(profile.id) || [],
-        entitlementDays: rows.length,
+        entitlementDays: activeEntitlementRows.length,
         lunchClaims,
         dinnerClaims,
         mealClaims: lunchClaims + dinnerClaims,
@@ -863,7 +884,9 @@ export default async function PersonalistaPage({
           .map(row => ({
             datum: row.datum,
             obed: !!row.obed,
-            vecera: !!row.vecera
+            vecera: !!row.vecera,
+            cancelledReason: row.cancelled_reason || '',
+            cancelledAt: row.cancelled_at || ''
           }))
           .sort((a, b) => String(a.datum).localeCompare(String(b.datum))),
         groups: []

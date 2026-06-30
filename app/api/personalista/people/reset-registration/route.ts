@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
+import { cancelFutureFoodEntitlements } from '@/lib/cancelFutureEntitlements'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
@@ -64,6 +65,11 @@ export async function POST(req: NextRequest) {
     }
 
     const result = Array.isArray(data) ? data[0] : data
+    const cancelledEntitlements = await cancelFutureFoodEntitlements({
+      userId,
+      actorId: actor.id,
+      reason: 'DEREGISTERED'
+    })
 
     await supabaseServer
       .from('personnel_audit_log')
@@ -74,13 +80,20 @@ export async function POST(req: NextRequest) {
         entity_table: 'users',
         entity_id: userId,
         before_data: target,
-        after_data: result || {},
+        after_data: {
+          ...(result || {}),
+          cancelledFutureEntitlements: {
+            fromDate: cancelledEntitlements.fromDate,
+            count: cancelledEntitlements.cancelledCount
+          }
+        },
         note: reason
       })
 
     return NextResponse.json({
       ok: true,
-      message: `Email ${target.email} bol uvolneny pre novu registraciu.`,
+      message: `Email ${target.email} bol uvolneny pre novu registraciu. Buduce naroky boli zrusene: ${cancelledEntitlements.cancelledCount}.`,
+      cancelledFutureEntitlements: cancelledEntitlements.cancelledCount,
       result
     })
   } catch (err: any) {
