@@ -267,6 +267,7 @@ function mapRegistrationGroupPeriod(row: any, registrationGroupById: Map<string,
 }
 
 function currentRegistrationGroupSnapshot(profile: any, periods: any[], registrationGroupById: Map<string, any>, today: string) {
+  const baseGroup = baseRegistrationGroupSnapshot(profile, registrationGroupById)
   const currentPeriod = periods.find(period => {
     return period.validFrom <= today && (!period.validTo || period.validTo >= today)
   })
@@ -281,9 +282,15 @@ function currentRegistrationGroupSnapshot(profile: any, periods: any[], registra
     }
   }
 
+  return baseGroup
+}
+
+function baseRegistrationGroupSnapshot(profile: any, registrationGroupById: Map<string, any>) {
+  const id = profile?.registration_group_id || ''
+
   return {
-    id: profile?.registration_group_id || '',
-    name: registrationGroupById.get(profile?.registration_group_id)?.name || '',
+    id,
+    name: registrationGroupById.get(id)?.name || '',
     note: profile?.registration_group_note || ''
   }
 }
@@ -341,33 +348,17 @@ export async function GET(req: NextRequest) {
     let registrationGroupUserIds: string[] | null = null
 
     if (registrationGroupId) {
-      const today = slovakiaDateIso()
-      const [periodResult, profileGroupResult] = await Promise.all([
-        supabaseServer
-          .from('user_registration_group_periods')
-          .select('user_id')
-          .eq('registration_group_id', registrationGroupId)
-          .lte('valid_from', today)
-          .or(`valid_to.is.null,valid_to.gte.${today}`),
-        supabaseServer
-          .from('users')
-          .select('id')
-          .eq('registration_group_id', registrationGroupId)
-      ])
+      const { data: profileGroupRows, error: profileGroupError } = await supabaseServer
+        .from('users')
+        .select('id')
+        .eq('registration_group_id', registrationGroupId)
 
-      if (periodResult.error) {
-        return NextResponse.json({ error: periodResult.error.message }, { status: 500 })
-      }
-
-      if (profileGroupResult.error) {
-        return NextResponse.json({ error: profileGroupResult.error.message }, { status: 500 })
+      if (profileGroupError) {
+        return NextResponse.json({ error: profileGroupError.message }, { status: 500 })
       }
 
       registrationGroupUserIds = Array.from(new Set(
-        [
-          ...(periodResult.data || []).map((row: any) => row.user_id),
-          ...(profileGroupResult.data || []).map((row: any) => row.id)
-        ].filter(Boolean)
+        (profileGroupRows || []).map((row: any) => row.id).filter(Boolean)
       ))
 
       if (registrationGroupUserIds.length === 0) {
@@ -580,7 +571,8 @@ export async function GET(req: NextRequest) {
       const dinnerClaims = activeEntitlementRows.filter(row => row.vecera).length
       const personMemberships = membershipsByUserId.get(profile.id) || []
       const registrationGroupPeriods = registrationGroupPeriodsByUserId.get(profile.id) || []
-      const registrationGroup = currentRegistrationGroupSnapshot(
+      const baseRegistrationGroup = baseRegistrationGroupSnapshot(profile, registrationGroupById)
+      const currentRegistrationGroup = currentRegistrationGroupSnapshot(
         profile,
         registrationGroupPeriods,
         registrationGroupById,
@@ -607,9 +599,12 @@ export async function GET(req: NextRequest) {
         aktivny: profile.aktivny || 'ANO',
         accountType: profile.account_type || 'PERSON',
         reviewStatus: profile.review_status || 'APPROVED',
-        registrationGroupId: registrationGroup.id,
-        registrationGroupName: registrationGroup.name,
-        registrationGroupNote: registrationGroup.note,
+        registrationGroupId: baseRegistrationGroup.id || currentRegistrationGroup.id,
+        registrationGroupName: baseRegistrationGroup.name || currentRegistrationGroup.name,
+        registrationGroupNote: baseRegistrationGroup.note,
+        currentRegistrationGroupId: currentRegistrationGroup.id,
+        currentRegistrationGroupName: currentRegistrationGroup.name,
+        currentRegistrationGroupNote: currentRegistrationGroup.note,
         registrationGroupPeriods,
         managedRegistrationGroups,
         delegatedRegistrationGroups,

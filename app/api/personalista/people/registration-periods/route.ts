@@ -50,19 +50,6 @@ async function refreshCurrentRegistrationGroupSnapshot(userId: string) {
     throw currentPeriodError
   }
 
-  const { error: userUpdateError } = await supabaseServer
-    .from('users')
-    .update({
-      registration_group_id: currentPeriod?.registration_group_id || null,
-      registration_group_note: currentPeriod?.note || null,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', userId)
-
-  if (userUpdateError) {
-    throw userUpdateError
-  }
-
   return currentPeriod
 }
 

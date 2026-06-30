@@ -85,32 +85,6 @@ async function refreshCurrentRegistrationGroups(userIds: string[]) {
     if (!currentByUserId.has(row.user_id)) currentByUserId.set(row.user_id, row)
   })
 
-  for (const userIdChunk of chunk(userIds, 250)) {
-    const { error } = await supabaseServer
-      .from('users')
-      .update({
-        registration_group_id: null,
-        registration_group_note: null,
-        updated_at: new Date().toISOString()
-      })
-      .in('id', userIdChunk)
-
-    if (error) throw error
-  }
-
-  for (const [userId, period] of currentByUserId.entries()) {
-    const { error } = await supabaseServer
-      .from('users')
-      .update({
-        registration_group_id: period.registration_group_id,
-        registration_group_note: period.note || null,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', userId)
-
-    if (error) throw error
-  }
-
   return currentByUserId
 }
 

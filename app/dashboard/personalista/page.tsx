@@ -479,6 +479,7 @@ function mapRegistrationGroupAccessRows(rows: any[], registrationGroupById: Map<
 }
 
 function currentRegistrationGroupSnapshot(profile: any, periods: any[], registrationGroupById: Map<string, any>, today: string) {
+  const baseGroup = baseRegistrationGroupSnapshot(profile, registrationGroupById)
   const currentPeriod = periods.find(period => {
     return period.validFrom <= today && (!period.validTo || period.validTo >= today)
   })
@@ -493,9 +494,15 @@ function currentRegistrationGroupSnapshot(profile: any, periods: any[], registra
     }
   }
 
+  return baseGroup
+}
+
+function baseRegistrationGroupSnapshot(profile: any, registrationGroupById: Map<string, any>) {
+  const id = profile?.registration_group_id || ''
+
   return {
-    id: profile?.registration_group_id || '',
-    name: registrationGroupById.get(profile?.registration_group_id)?.name || '',
+    id,
+    name: registrationGroupById.get(id)?.name || '',
     note: profile?.registration_group_note || ''
   }
 }
@@ -770,7 +777,8 @@ export default async function PersonalistaPage({
 
     const rows = entitlementsByUserId.get(membership.user_id) || []
     const registrationGroupPeriods = registrationGroupPeriodsByUserId.get(membership.user_id) || []
-    const registrationGroup = currentRegistrationGroupSnapshot(
+    const baseRegistrationGroup = baseRegistrationGroupSnapshot(profile, registrationGroupById)
+    const currentRegistrationGroup = currentRegistrationGroupSnapshot(
       profile,
       registrationGroupPeriods,
       registrationGroupById,
@@ -800,9 +808,12 @@ export default async function PersonalistaPage({
       aktivny: profile?.aktivny || 'ANO',
       accountType: profile?.account_type || 'PERSON',
       reviewStatus: profile?.review_status || 'APPROVED',
-      registrationGroupId: registrationGroup.id,
-      registrationGroupName: registrationGroup.name,
-      registrationGroupNote: registrationGroup.note,
+      registrationGroupId: baseRegistrationGroup.id || currentRegistrationGroup.id,
+      registrationGroupName: baseRegistrationGroup.name || currentRegistrationGroup.name,
+      registrationGroupNote: baseRegistrationGroup.note,
+      currentRegistrationGroupId: currentRegistrationGroup.id,
+      currentRegistrationGroupName: currentRegistrationGroup.name,
+      currentRegistrationGroupNote: currentRegistrationGroup.note,
       registrationGroupPeriods,
       managedRegistrationGroups,
       delegatedRegistrationGroups,
@@ -836,7 +847,8 @@ export default async function PersonalistaPage({
       const rows = entitlementsByUserId.get(profile.id) || []
       const activeEntitlementRows = rows.filter(row => row.obed || row.vecera)
       const registrationGroupPeriods = registrationGroupPeriodsByUserId.get(profile.id) || []
-      const registrationGroup = currentRegistrationGroupSnapshot(
+      const baseRegistrationGroup = baseRegistrationGroupSnapshot(profile, registrationGroupById)
+      const currentRegistrationGroup = currentRegistrationGroupSnapshot(
         profile,
         registrationGroupPeriods,
         registrationGroupById,
@@ -864,9 +876,12 @@ export default async function PersonalistaPage({
         aktivny: profile.aktivny || 'ANO',
         accountType: profile.account_type || 'PERSON',
         reviewStatus: profile.review_status || 'APPROVED',
-        registrationGroupId: registrationGroup.id,
-        registrationGroupName: registrationGroup.name,
-        registrationGroupNote: registrationGroup.note,
+        registrationGroupId: baseRegistrationGroup.id || currentRegistrationGroup.id,
+        registrationGroupName: baseRegistrationGroup.name || currentRegistrationGroup.name,
+        registrationGroupNote: baseRegistrationGroup.note,
+        currentRegistrationGroupId: currentRegistrationGroup.id,
+        currentRegistrationGroupName: currentRegistrationGroup.name,
+        currentRegistrationGroupNote: currentRegistrationGroup.note,
         registrationGroupPeriods,
         managedRegistrationGroups,
         delegatedRegistrationGroups,

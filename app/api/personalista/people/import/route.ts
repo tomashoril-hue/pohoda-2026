@@ -34,12 +34,14 @@ type PreparedRow = {
   vecera: boolean
   assignQr: boolean
   selfOrdering: boolean
+  shouldSetBaseRegistrationGroup: boolean
 }
 
 type ExistingUser = {
   id: string
   email: string | null
   qr_code: string | null
+  registration_group_id: string | null
 }
 
 function normalizeText(value: any) {
@@ -150,31 +152,7 @@ async function refreshCurrentRegistrationGroups(userIds: string[]) {
     if (!currentByUserId.has(row.user_id)) currentByUserId.set(row.user_id, row)
   })
 
-  for (const userIdChunk of chunkArray(userIds, 250)) {
-    const { error } = await supabaseServer
-      .from('users')
-      .update({
-        registration_group_id: null,
-        registration_group_note: null,
-        updated_at: new Date().toISOString()
-      })
-      .in('id', userIdChunk)
-
-    if (error) throw error
-  }
-
-  for (const [userId, period] of currentByUserId.entries()) {
-    const { error } = await supabaseServer
-      .from('users')
-      .update({
-        registration_group_id: period.registration_group_id,
-        registration_group_note: period.note || null,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', userId)
-
-    if (error) throw error
-  }
+  return currentByUserId
 }
 
 function prepareRow(
@@ -217,6 +195,7 @@ function prepareRow(
 
   const accessCodePlain = generateAccessCode ? createAccessCode() : null
   const existingUser = email ? existingUsersByEmail.get(email) || null : null
+  const shouldSetBaseRegistrationGroup = !!existingUser && !!registrationGroupId && !existingUser.registration_group_id
 
   return {
     prepared: {
@@ -237,7 +216,8 @@ function prepareRow(
       obed,
       vecera,
       assignQr: existingUser ? assignQr && !existingUser.qr_code : assignQr,
-      selfOrdering: selfOrderingImport
+      selfOrdering: selfOrderingImport,
+      shouldSetBaseRegistrationGroup
     }
   }
 }
@@ -283,7 +263,7 @@ export async function POST(req: NextRequest) {
     const { data: existingEmailRows, error: existingEmailError } = emails.length > 0
       ? await supabaseServer
         .from('users')
-        .select('id, email, qr_code')
+        .select('id, email, qr_code, registration_group_id')
         .in('email', emails)
       : { data: [], error: null }
 
@@ -300,7 +280,8 @@ export async function POST(req: NextRequest) {
       existingUsersByEmail.set(email, {
         id: row.id,
         email,
-        qr_code: row.qr_code || null
+        qr_code: row.qr_code || null,
+        registration_group_id: row.registration_group_id || null
       })
     })
 
@@ -425,6 +406,21 @@ export async function POST(req: NextRequest) {
 
           if (updateSelfOrderingError) throw updateSelfOrderingError
         }
+      }
+
+      const existingRowsWithoutBaseGroup = existingRows.filter(row => row.shouldSetBaseRegistrationGroup && row.registrationGroupId)
+
+      for (const row of existingRowsWithoutBaseGroup) {
+        const { error: updateBaseGroupError } = await supabaseServer
+          .from('users')
+          .update({
+            registration_group_id: row.registrationGroupId,
+            updated_at: now
+          })
+          .eq('id', row.userId)
+          .is('registration_group_id', null)
+
+        if (updateBaseGroupError) throw updateBaseGroupError
       }
 
       const registrationPeriodRows = preparedRows

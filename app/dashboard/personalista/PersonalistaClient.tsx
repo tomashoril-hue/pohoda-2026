@@ -86,6 +86,9 @@ type PersonItem = {
   registrationGroupId: string
   registrationGroupName: string
   registrationGroupNote: string
+  currentRegistrationGroupId?: string
+  currentRegistrationGroupName?: string
+  currentRegistrationGroupNote?: string
   registrationGroupPeriods: PersonRegistrationGroupPeriod[]
   managedRegistrationGroups: RegistrationGroupAccess[]
   delegatedRegistrationGroups: RegistrationGroupAccess[]
@@ -6808,9 +6811,15 @@ export default function PersonalistaClient({
                 </div>
 
                 <div style={styles.detailRow}>
-                  <span>Registracna skupina</span>
+                  <span>Registračná skupina</span>
                   <b>{selectedPerson.registrationGroupName || '-'}</b>
                   {selectedPerson.registrationGroupNote && <small>{selectedPerson.registrationGroupNote}</small>}
+                </div>
+
+                <div style={styles.detailRow}>
+                  <span>Aktuálna registračná skupina dnes</span>
+                  <b>{selectedPerson.currentRegistrationGroupName || selectedPerson.registrationGroupName || '-'}</b>
+                  {selectedPerson.currentRegistrationGroupNote && <small>{selectedPerson.currentRegistrationGroupNote}</small>}
                 </div>
 
                 <div style={styles.detailRow}>
@@ -7117,7 +7126,7 @@ export default function PersonalistaClient({
                     {selectedPerson.registrationGroupPeriods.length === 0 ? (
                       <div style={styles.detailGroupRow}>
                         <b>Bez casoveho zaradenia</b>
-                        <span>{selectedPerson.registrationGroupName || '-'}</span>
+                        <span>{selectedPerson.currentRegistrationGroupName || selectedPerson.registrationGroupName || '-'}</span>
                       </div>
                     ) : (
                       selectedRegistrationPeriodRows.map(row => {
