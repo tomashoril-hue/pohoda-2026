@@ -8523,12 +8523,12 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     display: 'grid',
     gridTemplateColumns: 'minmax(0, 1fr) auto',
-    gap: 5,
+    gap: 6,
     alignItems: 'baseline',
     color: '#4b5563',
-    fontSize: 8,
+    fontSize: 10,
     fontWeight: 850,
-    lineHeight: 1.15
+    lineHeight: 1.2
   },
   assignmentName: {
     minWidth: 0,
@@ -8540,7 +8540,7 @@ const styles: Record<string, CSSProperties> = {
   assignmentRange: {
     whiteSpace: 'nowrap',
     color: '#6b7280',
-    fontSize: 7,
+    fontSize: 9,
     fontWeight: 800,
     textAlign: 'right'
   },
@@ -8550,9 +8550,9 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     color: '#6b7280',
-    fontSize: 8,
+    fontSize: 10,
     fontWeight: 850,
-    lineHeight: 1.15
+    lineHeight: 1.2
   },
   moreBadge: {
     borderRadius: 999,
