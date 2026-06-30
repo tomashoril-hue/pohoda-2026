@@ -29,6 +29,11 @@ type ExpressIssue = {
   validAfter: string | null
 }
 
+type ExpressIssueListItem = ExpressIssue & {
+  selectedCount: number
+  pickupCount: number
+}
+
 type ExpressData = {
   date: string
   meal: MealType
@@ -37,6 +42,7 @@ type ExpressData = {
     name: string
   }
   issue: ExpressIssue | null
+  issues: ExpressIssueListItem[]
   people: ExpressPerson[]
   selectedIds: string[]
   pickupUserIds: string[]
@@ -129,6 +135,7 @@ export default function ExpressVydajClient({
   const [redirectingToQr, setRedirectingToQr] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [editingIssue, setEditingIssue] = useState(false)
+  const [activeIssueId, setActiveIssueId] = useState('')
   const redirectTimeoutRef = useRef<number | null>(null)
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
@@ -142,6 +149,7 @@ export default function ExpressVydajClient({
   const showEditor = !hasExistingIssue || editingIssue
   const allPeopleSelected = allPersonIds.length > 0 && selectedIds.length === allPersonIds.length
   const allPickupSelected = allPersonIds.length > 0 && pickupUserIds.length === allPersonIds.length
+  const issueList = data?.issues || []
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
@@ -187,7 +195,9 @@ export default function ExpressVydajClient({
   const loadData = async (
     nextGroupId = groupId,
     nextDate = selectedDate,
-    nextMeal = selectedMeal
+    nextMeal = selectedMeal,
+    nextIssueId = activeIssueId,
+    newIssue = false
   ) => {
     if (!nextGroupId) return
 
@@ -202,6 +212,8 @@ export default function ExpressVydajClient({
         params.set('date', nextDate)
         params.set('meal', nextMeal)
       }
+      if (nextIssueId) params.set('issueId', nextIssueId)
+      if (newIssue) params.set('newIssue', 'true')
 
       const res = await fetch(`/api/skupinovy-vydaj/express?${params.toString()}`)
       const json = await res.json().catch(() => ({ error: t('Server nevrátil platnú odpoveď.', 'The server did not return a valid response.') }))
@@ -217,6 +229,7 @@ export default function ExpressVydajClient({
       setPickupOpen(false)
       setRedirectAfterCountdown(loadedCountdownActive)
       setEditingIssue(!json.issue)
+      setActiveIssueId(json.issue?.id || '')
     } catch (err: any) {
       setData(null)
       setSelectedIds([])
@@ -224,6 +237,7 @@ export default function ExpressVydajClient({
       setPickupOpen(false)
       setRedirectAfterCountdown(false)
       setEditingIssue(false)
+      setActiveIssueId('')
       setMessage(err?.message || t('Express výdaj sa nepodarilo načítať.', 'Express issue could not be loaded.'))
       setMessageType('error')
     } finally {
@@ -232,7 +246,7 @@ export default function ExpressVydajClient({
   }
 
   useEffect(() => {
-    void loadData(groupId, selectedDate, selectedMeal)
+    void loadData(groupId, selectedDate, selectedMeal, '', false)
   }, [groupId, selectedDate, selectedMeal])
 
   const togglePerson = (personId: string) => {
@@ -271,6 +285,26 @@ export default function ExpressVydajClient({
     setPickupOpen(true)
   }
 
+  const openIssue = async (issueId: string) => {
+    if (!issueId || loading || saving) return
+    setActiveIssueId(issueId)
+    setEditingIssue(false)
+    setPickupOpen(false)
+    setRedirectAfterCountdown(false)
+    await loadData(groupId, selectedDate, selectedMeal, issueId, false)
+  }
+
+  const startNewIssue = async () => {
+    if (loading || saving) return
+    setActiveIssueId('')
+    setSelectedIds([])
+    setPickupUserIds([])
+    setPickupOpen(false)
+    setEditingIssue(true)
+    setRedirectAfterCountdown(false)
+    await loadData(groupId, selectedDate, selectedMeal, '', true)
+  }
+
   const save = async () => {
     if (!groupId || saving) return
 
@@ -284,6 +318,8 @@ export default function ExpressVydajClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           registrationGroupId: groupId,
+          issueId: activeIssueId || undefined,
+          createNew: !activeIssueId,
           userIds: selectedIds,
           pickupUserIds,
           ...(canSelectDateMeal ? {
@@ -301,10 +337,24 @@ export default function ExpressVydajClient({
         meal: json.meal || current?.meal || 'OBED',
         group: current?.group || { id: groupId, name: '' },
         issue: json.issue || null,
+        issues: json.issue
+          ? [
+            {
+              id: json.issue.id,
+              title: json.issue.title,
+              status: json.issue.status,
+              validAfter: json.issue.validAfter,
+              selectedCount: Array.isArray(json.selectedIds) ? json.selectedIds.length : selectedIds.length,
+              pickupCount: Array.isArray(json.pickupUserIds) ? json.pickupUserIds.length : pickupUserIds.length
+            },
+            ...(current?.issues || []).filter(issue => issue.id !== json.issue.id)
+          ]
+          : current?.issues || [],
         people: current?.people || [],
         selectedIds: Array.isArray(json.selectedIds) ? json.selectedIds : selectedIds,
         pickupUserIds: Array.isArray(json.pickupUserIds) ? json.pickupUserIds : pickupUserIds
       }))
+      setActiveIssueId(json.issue?.id || activeIssueId)
       if (json.date && json.date !== selectedDate) setSelectedDate(json.date)
       if (json.meal && json.meal !== selectedMeal) setSelectedMeal(json.meal)
       setSelectedIds(Array.isArray(json.selectedIds) ? json.selectedIds : selectedIds)
@@ -487,6 +537,49 @@ export default function ExpressVydajClient({
               </div>
             </div>
           </div>
+        )}
+
+        {data && (
+          <section style={styles.issueListPanel}>
+            <div style={styles.issueListHeader}>
+              <div>
+                <div style={styles.issueListTitle}>{t('Express výdaje', 'Express issues')}</div>
+                <div style={styles.issueListSubtitle}>{t('Pre tento deň a jedlo', 'For this day and meal')}</div>
+              </div>
+              <button type="button" onClick={() => void startNewIssue()} disabled={loading || saving} style={styles.newIssueButton}>
+                {t('Nový express výdaj', 'New express issue')}
+              </button>
+            </div>
+
+            {issueList.length > 0 ? (
+              <div style={styles.issueList}>
+                {issueList.map(issue => {
+                  const active = data.issue?.id === issue.id
+                  const waiting = !!issue.validAfter && Date.parse(issue.validAfter) > nowMs
+
+                  return (
+                    <button
+                      key={issue.id}
+                      type="button"
+                      onClick={() => void openIssue(issue.id)}
+                      disabled={loading || saving}
+                      style={{
+                        ...styles.issueListItem,
+                        ...(active ? styles.issueListItemActive : {})
+                      }}
+                    >
+                      <span style={styles.issueListItemTitle}>{issue.title}</span>
+                      <span style={styles.issueListItemMeta}>
+                        {waiting ? `${t('Platí o', 'Valid in')} ${remainingLabel(issue.validAfter, nowMs)}` : t('Platný', 'Valid')} · {issue.selectedCount} {t('osôb', 'people')} · {issue.pickupCount} {t('prevezme', 'pickup')}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div style={styles.issueListEmpty}>{t('Zatiaľ nie je pripravený žiadny express výdaj.', 'No express issue is prepared yet.')}</div>
+            )}
+          </section>
         )}
 
         {data && !showStatusPanel && (
@@ -1046,6 +1139,94 @@ const styles: Record<string, CSSProperties> = {
     color: '#fff',
     borderColor: '#5b21b6',
     boxShadow: '0 6px 14px rgba(116, 23, 232, 0.2)'
+  },
+  issueListPanel: {
+    border: '1px solid #e1deea',
+    borderRadius: 16,
+    background: '#fbfbfd',
+    padding: 10,
+    display: 'grid',
+    gap: 9
+  },
+  issueListHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    flexWrap: 'wrap'
+  },
+  issueListTitle: {
+    fontSize: 13,
+    fontWeight: 950,
+    color: '#211b35'
+  },
+  issueListSubtitle: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: 850,
+    color: '#6b667c'
+  },
+  newIssueButton: {
+    border: '1px solid #5b21b6',
+    borderRadius: 999,
+    padding: '8px 11px',
+    background: '#7417e8',
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 950,
+    fontFamily: 'Arial, Helvetica, sans-serif',
+    boxShadow: '0 6px 14px rgba(116, 23, 232, 0.2)'
+  },
+  issueList: {
+    display: 'grid',
+    gap: 6,
+    maxHeight: 180,
+    overflowY: 'auto',
+    paddingRight: 2
+  },
+  issueListItem: {
+    width: '100%',
+    border: '1px solid #e1deea',
+    borderRadius: 12,
+    background: '#fff',
+    padding: '9px 10px',
+    display: 'grid',
+    gap: 3,
+    textAlign: 'left',
+    fontFamily: 'Arial, Helvetica, sans-serif',
+    color: '#211b35'
+  },
+  issueListItemActive: {
+    borderColor: '#a78bfa',
+    background: '#f5f3ff',
+    boxShadow: '0 6px 14px rgba(109, 40, 217, 0.1)'
+  },
+  issueListItemTitle: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 13,
+    fontWeight: 950
+  },
+  issueListItemMeta: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 11,
+    fontWeight: 850,
+    color: '#6b667c'
+  },
+  issueListEmpty: {
+    border: '1px dashed #d7d3e8',
+    borderRadius: 12,
+    padding: 10,
+    background: '#fff',
+    color: '#6b667c',
+    fontSize: 12,
+    fontWeight: 900,
+    textAlign: 'center'
   },
   metaGrid: {
     display: 'grid',

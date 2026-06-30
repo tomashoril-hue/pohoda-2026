@@ -53,8 +53,13 @@ function mealLabel(meal: MealType) {
   return meal === 'OBED' ? 'obed' : 'vecera'
 }
 
-function expressIssueTitle(groupName: string, meal: MealType) {
-  return `Express ${mealLabel(meal)} - ${groupName || 'registracna skupina'}`
+function expressIssueTitle(groupName: string, meal: MealType, sequence = 1) {
+  const suffix = sequence > 1 ? ` c. ${sequence}` : ''
+  return `Express ${mealLabel(meal)}${suffix} - ${groupName || 'registracna skupina'}`
+}
+
+function expressTitlePrefix(meal: MealType) {
+  return `Express ${mealLabel(meal)}`
 }
 
 function normalizeRequestedUserIds(value: any): string[] {
@@ -164,6 +169,64 @@ async function findExpressIssue({
   if (error) throw error
 
   return data
+}
+
+async function loadExpressIssues({
+  registrationGroupId,
+  date,
+  meal
+}: {
+  registrationGroupId: string
+  date: string
+  meal: MealType
+}) {
+  const { data, error } = await supabaseServer
+    .from('registration_group_issues')
+    .select('id, title, datum, typ_jedla, status, valid_after, created_at, updated_at')
+    .eq('registration_group_id', registrationGroupId)
+    .eq('datum', date)
+    .eq('typ_jedla', meal)
+    .ilike('title', `${expressTitlePrefix(meal)}%`)
+    .in('status', ['READY', 'WAITING'])
+    .order('updated_at', { ascending: false })
+    .limit(50)
+
+  if (error) throw error
+
+  return data || []
+}
+
+async function loadExpressIssueById(issueId: string, registrationGroupId: string, date: string, meal: MealType) {
+  if (!issueId) return null
+
+  const { data, error } = await supabaseServer
+    .from('registration_group_issues')
+    .select('id, title, datum, typ_jedla, status, valid_after')
+    .eq('id', issueId)
+    .eq('registration_group_id', registrationGroupId)
+    .eq('datum', date)
+    .eq('typ_jedla', meal)
+    .ilike('title', `${expressTitlePrefix(meal)}%`)
+    .in('status', ['READY', 'WAITING'])
+    .maybeSingle()
+
+  if (error) throw error
+
+  return data
+}
+
+async function nextExpressIssueSequence(registrationGroupId: string, date: string, meal: MealType) {
+  const { count, error } = await supabaseServer
+    .from('registration_group_issues')
+    .select('id', { count: 'exact', head: true })
+    .eq('registration_group_id', registrationGroupId)
+    .eq('datum', date)
+    .eq('typ_jedla', meal)
+    .ilike('title', `${expressTitlePrefix(meal)}%`)
+
+  if (error) throw error
+
+  return (count || 0) + 1
 }
 
 async function loadIssueItems(issueId: string) {
@@ -350,6 +413,8 @@ export async function GET(req: NextRequest) {
     }
 
     const registrationGroupId = cleanText(req.nextUrl.searchParams.get('registrationGroupId'))
+    const issueId = cleanText(req.nextUrl.searchParams.get('issueId'))
+    const forceNewIssue = req.nextUrl.searchParams.get('newIssue') === 'true'
     const { date, meal, canSelectDateMeal } = await resolveExpressDateMeal(
       actor.id,
       req.nextUrl.searchParams.get('date'),
@@ -367,14 +432,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Registracna skupina neexistuje alebo nie je aktivna.' }, { status: 404 })
     }
 
-    const title = expressIssueTitle(registrationGroup.name || '', meal)
-    const issue = await findExpressIssue({
-      actorId: actor.id,
-      registrationGroupId,
-      date,
-      meal,
-      title
-    })
+    const expressIssues = await loadExpressIssues({ registrationGroupId, date, meal })
+    const selectedIssue = issueId
+      ? await loadExpressIssueById(issueId, registrationGroupId, date, meal)
+      : null
+    const issue = forceNewIssue ? null : selectedIssue || expressIssues[0] || null
     const plannedUserIds = await loadPlannedUserIds(date, meal, issue?.id || '')
     const groupUsers = await loadRegistrationGroupPeople(registrationGroupId, date)
     const people = await loadPreparationPeople({
@@ -414,6 +476,20 @@ export async function GET(req: NextRequest) {
         status: issue.status,
         validAfter: issue.valid_after
       } : null,
+      issues: await Promise.all(expressIssues.map(async (item: any) => {
+        const itemPeople = await loadIssuePeople(item.id)
+        const plannedPeople = itemPeople.filter(person => person.itemStatus === 'PLANNED')
+        const pickupUserIds = await loadPickupUsers(item.id)
+
+        return {
+          id: item.id,
+          title: item.title,
+          status: item.status,
+          validAfter: item.valid_after,
+          selectedCount: plannedPeople.length,
+          pickupCount: pickupUserIds.length
+        }
+      })),
       people: issuablePeople,
       selectedIds,
       pickupUserIds,
@@ -437,6 +513,8 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const registrationGroupId = cleanText(body.registrationGroupId)
+    const issueId = cleanText(body.issueId)
+    const createNew = body.createNew === true
     const selectedUserIds = normalizeRequestedUserIds(body.userIds)
     const requestedPickupUserIds = normalizeRequestedUserIds(body.pickupUserIds)
     const { date, meal, canSelectDateMeal } = await resolveExpressDateMeal(
@@ -477,14 +555,24 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const title = expressIssueTitle(registrationGroup.name || '', meal)
-    const existingIssue = await findExpressIssue({
-      actorId: actor.id,
-      registrationGroupId,
-      date,
-      meal,
-      title
-    })
+    const sequence = await nextExpressIssueSequence(registrationGroupId, date, meal)
+    const title = expressIssueTitle(registrationGroup.name || '', meal, sequence)
+    const fallbackTitle = expressIssueTitle(registrationGroup.name || '', meal)
+    const existingIssue = issueId
+      ? await loadExpressIssueById(issueId, registrationGroupId, date, meal)
+      : createNew
+        ? null
+        : await findExpressIssue({
+          actorId: actor.id,
+          registrationGroupId,
+          date,
+          meal,
+          title: fallbackTitle
+        })
+
+    if (issueId && !existingIssue) {
+      return NextResponse.json({ error: 'Express vydaj neexistuje alebo ho nie je mozne upravit.' }, { status: 404 })
+    }
     const requestedPeople = requestedPeopleFromIds(selectedUserIds)
     const currentItems = existingIssue ? await loadIssueItems(existingIssue.id) : []
     const currentByUserId = new Map((currentItems || []).map((item: any) => [item.user_id, item]))
@@ -639,7 +727,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       issue: {
         id: issue.id,
-        title,
+        title: issue.title || title,
         status: nextIssueState.status,
         validAfter: nextIssueState.validAfter
       },
