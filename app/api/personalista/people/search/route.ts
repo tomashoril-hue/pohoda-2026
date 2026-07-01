@@ -12,6 +12,28 @@ function cleanText(value: any) {
   return String(value || '').trim()
 }
 
+function normalizeSearchText(value: any) {
+  return cleanText(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+}
+
+function personMatchesSearch(user: any, normalizedQuery: string) {
+  if (!normalizedQuery) return true
+
+  const values = [
+    user?.meno,
+    user?.priezvisko,
+    fullName(user),
+    user?.email,
+    user?.telefon
+  ]
+
+  return values.some(value => normalizeSearchText(value).includes(normalizedQuery))
+}
+
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 }
@@ -444,9 +466,7 @@ export async function GET(req: NextRequest) {
         .limit(1)
       mode = 'PERSON'
     } else if (query.length >= 2) {
-      const pattern = `%${query}%`
       usersQuery = usersQuery
-        .or(`meno.ilike.${pattern},priezvisko.ilike.${pattern},email.ilike.${pattern},telefon.ilike.${pattern}`)
         .order('priezvisko', { ascending: true })
         .order('meno', { ascending: true })
       mode = 'SEARCH'
@@ -462,7 +482,24 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: usersError.message }, { status: 500 })
     }
 
-    const users = usersData || []
+    let users = usersData || []
+
+    if (!userId && query.length >= 2) {
+      const normalizedQuery = normalizeSearchText(query)
+
+      users = users
+        .filter((profile: any) => personMatchesSearch(profile, normalizedQuery))
+        .sort((a: any, b: any) => {
+          const lastNameCompare = cleanText(a.priezvisko).localeCompare(cleanText(b.priezvisko), 'sk')
+          if (lastNameCompare !== 0) return lastNameCompare
+
+          const firstNameCompare = cleanText(a.meno).localeCompare(cleanText(b.meno), 'sk')
+          if (firstNameCompare !== 0) return firstNameCompare
+
+          return cleanText(a.email).localeCompare(cleanText(b.email), 'sk')
+        })
+    }
+
     const userIds = users.map((user: any) => user.id).filter(Boolean)
 
     const [
