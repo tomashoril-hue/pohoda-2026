@@ -156,6 +156,26 @@ async function getSelfOrderingUserIds(candidateUserIds: string[]) {
   return result
 }
 
+async function getIssuedMealUserIds(candidateUserIds: string[]) {
+  const result = new Set<string>()
+
+  for (const chunk of chunkArray(candidateUserIds, 500)) {
+    const { data, error } = await supabaseServer
+      .from('vydaj_jedal')
+      .select('user_id')
+      .in('user_id', chunk)
+      .eq('status', 'VYDANE')
+
+    if (error) throw error
+
+    ;(data || []).forEach((row: any) => {
+      if (row.user_id) result.add(row.user_id)
+    })
+  }
+
+  return result
+}
+
 export async function GET(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser()
@@ -205,8 +225,11 @@ export async function GET(req: NextRequest) {
     const selfOrderingUserIds = activeUserIds.length > 0
       ? await getSelfOrderingUserIds(activeUserIds)
       : new Set<string>()
-    const welcomeUserIds = activeUserIds.filter(userId => !selfOrderingUserIds.has(userId))
-    const welcomeUsers = activeUsers.filter((user: any) => !selfOrderingUserIds.has(user.id))
+    const issuedMealUserIds = activeUserIds.length > 0
+      ? await getIssuedMealUserIds(activeUserIds)
+      : new Set<string>()
+    const welcomeUserIds = activeUserIds.filter(userId => !selfOrderingUserIds.has(userId) && !issuedMealUserIds.has(userId))
+    const welcomeUsers = activeUsers.filter((user: any) => !selfOrderingUserIds.has(user.id) && !issuedMealUserIds.has(user.id))
 
     const sentUserIds = welcomeUserIds.length > 0
       ? await getUserIdSetByChunks('personnel_email_log', welcomeUserIds, query => query

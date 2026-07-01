@@ -184,6 +184,26 @@ async function getSentWelcomeUserIds(userIds: string[]) {
   return sentUserIds
 }
 
+async function getIssuedMealUserIds(userIds: string[]) {
+  const issuedUserIds = new Set<string>()
+
+  for (const chunk of chunkArray(userIds, 500)) {
+    const { data, error } = await supabaseServer
+      .from('vydaj_jedal')
+      .select('user_id')
+      .in('user_id', chunk)
+      .eq('status', 'VYDANE')
+
+    if (error) throw error
+
+    ;(data || []).forEach((row: any) => {
+      if (row.user_id) issuedUserIds.add(row.user_id)
+    })
+  }
+
+  return issuedUserIds
+}
+
 export async function POST(req: NextRequest) {
   try {
     const currentUser = await getCurrentUser()
@@ -219,11 +239,23 @@ export async function POST(req: NextRequest) {
     const selfOrderingUserIds = rawUserIds.length > 0
       ? await getSelfOrderingUserIds(rawUserIds)
       : new Set<string>()
-    const users = rawUsers.filter((user: any) => !selfOrderingUserIds.has(user.id))
+    const issuedMealUserIds = rawUserIds.length > 0
+      ? await getIssuedMealUserIds(rawUserIds)
+      : new Set<string>()
+    const users = rawUsers.filter((user: any) => !selfOrderingUserIds.has(user.id) && !issuedMealUserIds.has(user.id))
 
     if (userId && rawUsers.length > 0 && users.length === 0) {
+      const blockedBySelfOrdering = selfOrderingUserIds.has(rawUsers[0].id)
+      const blockedByIssuedMeal = issuedMealUserIds.has(rawUsers[0].id)
+
       return NextResponse.json(
-        { error: 'Tato osoba ma samostatne objednavanie stravy. Pouzi e-mail Samostatne objednavanie stravy.' },
+        {
+          error: blockedBySelfOrdering
+            ? 'Tato osoba ma samostatne objednavanie stravy. Pouzi e-mail Samostatne objednavanie stravy.'
+            : blockedByIssuedMeal
+              ? 'Tejto osobe uz bolo vydane jedlo, uvitaci e-mail sa neposiela.'
+              : 'Osobu nie je mozne zaradit do uvitacich e-mailov.'
+        },
         { status: 400 }
       )
     }
