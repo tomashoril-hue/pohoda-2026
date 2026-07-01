@@ -84,6 +84,18 @@ async function getCurrentRegistrationGroupUserIds(registrationGroupId: string) {
   return Array.from(periodUserIds)
 }
 
+async function getBaseRegistrationGroupUserIds(registrationGroupId: string) {
+  const { data, error } = await supabaseServer
+    .from('users')
+    .select('id')
+    .eq('registration_group_id', registrationGroupId)
+    .eq('aktivny', 'ANO')
+
+  if (error) throw error
+
+  return (data || []).map((row: any) => row.id).filter(Boolean)
+}
+
 async function getActiveUsersByIds(userIds: string[]) {
   const users: Array<{ id: string; email: string | null }> = []
 
@@ -159,6 +171,7 @@ export async function GET(req: NextRequest) {
     }
 
     const registrationGroupId = text(req.nextUrl.searchParams.get('registrationGroupId'))
+    const baseRegistrationGroup = text(req.nextUrl.searchParams.get('baseRegistrationGroup')) === '1'
 
     let group: any = null
     let userIds: string[] = []
@@ -179,7 +192,9 @@ export async function GET(req: NextRequest) {
       }
 
       group = groupRow
-      userIds = await getCurrentRegistrationGroupUserIds(registrationGroupId)
+      userIds = baseRegistrationGroup
+        ? await getBaseRegistrationGroupUserIds(registrationGroupId)
+        : await getCurrentRegistrationGroupUserIds(registrationGroupId)
     } else {
       userIds = await getAllActiveUserIds()
     }
@@ -187,8 +202,14 @@ export async function GET(req: NextRequest) {
     const activeUsers = userIds.length > 0 ? await getActiveUsersByIds(userIds) : []
     const activeUserIds = activeUsers.map((user: any) => user.id)
 
-    const sentUserIds = activeUserIds.length > 0
-      ? await getUserIdSetByChunks('personnel_email_log', activeUserIds, query => query
+    const selfOrderingUserIds = activeUserIds.length > 0
+      ? await getSelfOrderingUserIds(activeUserIds)
+      : new Set<string>()
+    const welcomeUserIds = activeUserIds.filter(userId => !selfOrderingUserIds.has(userId))
+    const welcomeUsers = activeUsers.filter((user: any) => !selfOrderingUserIds.has(user.id))
+
+    const sentUserIds = welcomeUserIds.length > 0
+      ? await getUserIdSetByChunks('personnel_email_log', welcomeUserIds, query => query
         .eq('type', 'WELCOME_IMPORTED_USER')
         .eq('status', 'SENT'))
       : new Set<string>()
@@ -200,10 +221,7 @@ export async function GET(req: NextRequest) {
     const qrUserIds = activeUserIds.length > 0
       ? await getUserIdSetByChunks('user_qr_codes', activeUserIds, query => query.eq('active', true))
       : new Set<string>()
-    const withEmail = activeUsers.filter((user: any) => text(user.email)).length
-    const selfOrderingUserIds = activeUserIds.length > 0
-      ? await getSelfOrderingUserIds(activeUserIds)
-      : new Set<string>()
+    const withEmail = welcomeUsers.filter((user: any) => text(user.email)).length
     const selfOrderingEmailUserIds = new Set(
       activeUsers
         .filter((user: any) => text(user.email) && selfOrderingUserIds.has(user.id))

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
-import { slovakiaDateIso } from '@/lib/date'
 import { sendAppEmail } from '@/lib/email'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { createQrPngAttachment } from '@/lib/qrEmailAttachment'
@@ -82,46 +81,16 @@ function welcomeEmailHtml(meno: string, loginUrl: string, language: 'SK' | 'EN')
   `
 }
 
-async function getCurrentRegistrationGroupUserIds(registrationGroupId: string) {
-  const today = slovakiaDateIso(0)
-
-  const { data: periodRows, error: periodError } = await supabaseServer
-    .from('user_registration_group_periods')
-    .select('user_id')
-    .eq('registration_group_id', registrationGroupId)
-    .lte('valid_from', today)
-    .or(`valid_to.is.null,valid_to.gte.${today}`)
-
-  if (periodError) throw periodError
-
-  const userIds = new Set((periodRows || []).map((row: any) => row.user_id).filter(Boolean))
-
-  const { data: fallbackUsers, error: fallbackError } = await supabaseServer
+async function getBaseRegistrationGroupUserIds(registrationGroupId: string) {
+  const { data, error } = await supabaseServer
     .from('users')
     .select('id')
     .eq('registration_group_id', registrationGroupId)
+    .eq('aktivny', 'ANO')
 
-  if (fallbackError) throw fallbackError
+  if (error) throw error
 
-  const fallbackUserIds = (fallbackUsers || []).map((row: any) => row.id).filter(Boolean)
-  const fallbackCurrentPeriods = fallbackUserIds.length > 0
-    ? await supabaseServer
-      .from('user_registration_group_periods')
-      .select('user_id')
-      .in('user_id', fallbackUserIds)
-      .lte('valid_from', today)
-      .or(`valid_to.is.null,valid_to.gte.${today}`)
-    : { data: [], error: null }
-
-  if (fallbackCurrentPeriods.error) throw fallbackCurrentPeriods.error
-
-  const usersWithCurrentPeriod = new Set((fallbackCurrentPeriods.data || []).map((row: any) => row.user_id).filter(Boolean))
-
-  fallbackUserIds.forEach((userId: string) => {
-    if (!usersWithCurrentPeriod.has(userId)) userIds.add(userId)
-  })
-
-  return Array.from(userIds)
+  return (data || []).map((row: any) => row.id).filter(Boolean)
 }
 
 async function getAllWelcomeCandidateUsers() {
@@ -150,6 +119,27 @@ async function getAllWelcomeCandidateUsers() {
   }
 
   return users
+}
+
+async function getSelfOrderingUserIds(userIds: string[]) {
+  const result = new Set<string>()
+
+  for (const chunk of chunkArray(userIds, 500)) {
+    const { data, error } = await supabaseServer
+      .from('app_user_roles')
+      .select('user_id')
+      .in('user_id', chunk)
+      .eq('role', 'SAMOSTATNE_OBJEDNAVANIE_STRAVY')
+      .eq('active', true)
+
+    if (error) throw error
+
+    ;(data || []).forEach((row: any) => {
+      if (row.user_id) result.add(row.user_id)
+    })
+  }
+
+  return result
 }
 
 async function getWelcomeCandidateUsersByIds(userIds: string[]) {
@@ -212,17 +202,40 @@ export async function POST(req: NextRequest) {
     if (!sendLimit.ok) return rateLimitResponse(sendLimit, 'Prilis vela hromadnych e-mailov. Skuste znova neskor.')
 
     const body = await req.json().catch(() => ({}))
+    const userId = text(body.userId)
     const registrationGroupId = text(body.registrationGroupId)
     const resend = body.resend === true
     const language = languageValue(body.language)
 
-    const scopedUserIds = registrationGroupId
-      ? await getCurrentRegistrationGroupUserIds(registrationGroupId)
-      : []
-    const users = registrationGroupId
+    const scopedUserIds = userId
+      ? [userId]
+      : registrationGroupId
+        ? await getBaseRegistrationGroupUserIds(registrationGroupId)
+        : []
+    const rawUsers = userId || registrationGroupId
       ? await getWelcomeCandidateUsersByIds(scopedUserIds)
       : await getAllWelcomeCandidateUsers()
+    const rawUserIds = rawUsers.map((user: any) => user.id).filter(Boolean)
+    const selfOrderingUserIds = rawUserIds.length > 0
+      ? await getSelfOrderingUserIds(rawUserIds)
+      : new Set<string>()
+    const users = rawUsers.filter((user: any) => !selfOrderingUserIds.has(user.id))
+
+    if (userId && rawUsers.length > 0 && users.length === 0) {
+      return NextResponse.json(
+        { error: 'Tato osoba ma samostatne objednavanie stravy. Pouzi e-mail Samostatne objednavanie stravy.' },
+        { status: 400 }
+      )
+    }
+
     const userIds = users.map((user: any) => user.id).filter(Boolean)
+
+    if (userId && userIds.length === 0) {
+      return NextResponse.json(
+        { error: 'Osoba sa nenasla, nema e-mail alebo nie je aktivna.' },
+        { status: 404 }
+      )
+    }
 
     if (userIds.length === 0) {
       return NextResponse.json({ ok: true, sent: 0, failed: 0, total: 0, remaining: 0, batchSize: WELCOME_EMAIL_BATCH_SIZE })

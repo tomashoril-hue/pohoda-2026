@@ -573,10 +573,15 @@ export default function PersonalistaClient({
   const [registrationGroupMessageType, setRegistrationGroupMessageType] = useState<'ok' | 'error' | ''>('')
   const [personnelTool, setPersonnelTool] = useState<PersonnelTool>('')
   const [communicationLanguage, setCommunicationLanguage] = useState<CommunicationLanguage>('SK')
+  const [communicationGroupId, setCommunicationGroupId] = useState('')
+  const [communicationWelcomeResend, setCommunicationWelcomeResend] = useState(false)
   const [communicationSummary, setCommunicationSummary] = useState<CommunicationSummary | null>(null)
   const [communicationLoading, setCommunicationLoading] = useState(false)
   const [communicationMessage, setCommunicationMessage] = useState('')
   const [communicationMessageType, setCommunicationMessageType] = useState<'ok' | 'error' | ''>('')
+  const [welcomePersonQuery, setWelcomePersonQuery] = useState('')
+  const [welcomePersonResults, setWelcomePersonResults] = useState<PersonItem[]>([])
+  const [welcomeSelectedPerson, setWelcomeSelectedPerson] = useState<PersonItem | null>(null)
   const [communicationPersonQuery, setCommunicationPersonQuery] = useState('')
   const [communicationPersonResults, setCommunicationPersonResults] = useState<PersonItem[]>([])
   const [communicationSelectedPerson, setCommunicationSelectedPerson] = useState<PersonItem | null>(null)
@@ -783,7 +788,7 @@ export default function PersonalistaClient({
 
     try {
       const url = registrationGroupId
-        ? `/api/personalista/communication/summary?registrationGroupId=${encodeURIComponent(registrationGroupId)}`
+        ? `/api/personalista/communication/summary?registrationGroupId=${encodeURIComponent(registrationGroupId)}${target === 'communication' ? '&baseRegistrationGroup=1' : ''}`
         : '/api/personalista/communication/summary'
       const res = await fetch(url, {
         cache: 'no-store'
@@ -836,8 +841,8 @@ export default function PersonalistaClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          registrationGroupId: '',
-          resend: false,
+          registrationGroupId: communicationGroupId,
+          resend: communicationWelcomeResend,
           language: communicationLanguage
         })
       })
@@ -854,10 +859,97 @@ export default function PersonalistaClient({
         (json.remaining ? ` Zostáva ešte: ${json.remaining}. Spusti odoslanie znova pre ďalšiu dávku.` : '')
       )
       setCommunicationMessageType(json.failed ? 'error' : 'ok')
-      await loadCommunicationSummary('', 'communication')
+      await loadCommunicationSummary(communicationGroupId, 'communication')
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setCommunicationMessage('Chyba spojenia so serverom: ' + message)
+      setCommunicationMessageType('error')
+    } finally {
+      setCommunicationLoading(false)
+    }
+  }
+
+  const searchWelcomePeople = async () => {
+    const query = welcomePersonQuery.trim()
+
+    if (query.length < 2) {
+      setCommunicationMessage('Zadaj aspon 2 znaky mena, priezviska alebo e-mailu.')
+      setCommunicationMessageType('error')
+      setWelcomePersonResults([])
+      return
+    }
+
+    setCommunicationLoading(true)
+    setCommunicationMessage('')
+    setCommunicationMessageType('')
+    setWelcomeSelectedPerson(null)
+
+    try {
+      const res = await fetch(`/api/personalista/people/search?q=${encodeURIComponent(query)}`, {
+        cache: 'no-store'
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setCommunicationMessage(json.error || 'Vyhladavanie osoby zlyhalo.')
+        setCommunicationMessageType('error')
+        setWelcomePersonResults([])
+        return
+      }
+
+      const results = Array.isArray(json.people) ? json.people : []
+      const candidates = results
+        .filter((person: PersonItem) => (
+          !!person.email &&
+          !(person.globalRoles || []).includes('SAMOSTATNE_OBJEDNAVANIE_STRAVY') &&
+          String(person.aktivny || '').toUpperCase() === 'ANO'
+        ))
+        .slice(0, 12)
+
+      setWelcomePersonResults(candidates)
+      setCommunicationMessage(candidates.length ? `Najdenych: ${candidates.length}.` : 'Nenasla sa aktivna osoba s e-mailom pre bezny uvitaci e-mail.')
+      setCommunicationMessageType(candidates.length ? 'ok' : 'error')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setCommunicationMessage('Chyba spojenia so serverom: ' + message)
+      setCommunicationMessageType('error')
+      setWelcomePersonResults([])
+    } finally {
+      setCommunicationLoading(false)
+    }
+  }
+
+  const sendWelcomeEmailToPerson = async () => {
+    if (!welcomeSelectedPerson) {
+      setCommunicationMessage('Vyber osobu zo zoznamu.')
+      setCommunicationMessageType('error')
+      return
+    }
+
+    setCommunicationLoading(true)
+    setCommunicationMessage('')
+    setCommunicationMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/communication/send-welcome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: welcomeSelectedPerson.id,
+          resend: communicationWelcomeResend,
+          language: communicationLanguage
+        })
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) throw new Error(json.error || 'Odoslanie zlyhalo.')
+      if (json.failed || !json.sent) throw new Error('E-mail sa nepodarilo odoslat alebo uz bol odoslany.')
+
+      await loadCommunicationSummary(communicationGroupId, 'communication')
+      setCommunicationMessage(`Uvitaci e-mail odoslany: ${welcomeSelectedPerson.fullName || welcomeSelectedPerson.email}.`)
+      setCommunicationMessageType('ok')
+    } catch (err: any) {
+      setCommunicationMessage(err?.message || 'Odoslanie zlyhalo.')
       setCommunicationMessageType('error')
     } finally {
       setCommunicationLoading(false)
@@ -874,7 +966,7 @@ export default function PersonalistaClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          registrationGroupId: '',
+          registrationGroupId: communicationGroupId,
           language: communicationLanguage
         })
       })
@@ -884,7 +976,7 @@ export default function PersonalistaClient({
 
       setCommunicationMessage(`Samostatné objednávanie: odoslané ${json.sent}, chyby ${json.failed}, zostáva ${json.remaining}.`)
       setCommunicationMessageType(json.failed ? 'error' : 'ok')
-      await loadCommunicationSummary('', 'communication')
+      await loadCommunicationSummary(communicationGroupId, 'communication')
     } catch (err: any) {
       setCommunicationMessage(err?.message || 'Odoslanie zlyhalo.')
       setCommunicationMessageType('error')
@@ -969,7 +1061,7 @@ export default function PersonalistaClient({
       if (!res.ok || json.error) throw new Error(json.error || 'Odoslanie zlyhalo.')
       if (json.failed || !json.sent) throw new Error('E-mail sa nepodarilo odoslat.')
 
-      await loadCommunicationSummary('', 'communication')
+      await loadCommunicationSummary(communicationGroupId, 'communication')
       setCommunicationMessage(`Odoslane znova: ${communicationSelectedPerson.fullName || communicationSelectedPerson.email}.`)
       setCommunicationMessageType('ok')
     } catch (err: any) {
@@ -4260,6 +4352,36 @@ export default function PersonalistaClient({
                 <option value="EN">English</option>
               </select>
             </label>
+
+            <label style={styles.field}>
+              <span>Zakladna registracna skupina</span>
+              <select
+                value={communicationGroupId}
+                onChange={event => {
+                  setCommunicationGroupId(event.target.value)
+                  setCommunicationSummary(null)
+                }}
+                style={styles.input}
+                disabled={communicationLoading}
+              >
+                <option value="">Vsetky bez samostatneho objednavania</option>
+                {registrationGroups.map(group => (
+                  <option key={group.id} value={group.id}>{group.name}</option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ ...styles.field, alignSelf: 'end' }}>
+              <span>Rezim odoslania</span>
+              <button
+                type="button"
+                style={communicationWelcomeResend ? styles.confirmButton : styles.lightButton}
+                disabled={communicationLoading}
+                onClick={() => setCommunicationWelcomeResend(prev => !prev)}
+              >
+                {communicationWelcomeResend ? 'Odoslat aj znova' : 'Len neposlane'}
+              </button>
+            </label>
           </div>
 
           <div style={styles.toolActionRow}>
@@ -4267,7 +4389,7 @@ export default function PersonalistaClient({
               type="button"
               style={styles.lightButton}
               disabled={communicationLoading}
-              onClick={() => void loadCommunicationSummary('', 'communication')}
+              onClick={() => void loadCommunicationSummary(communicationGroupId, 'communication')}
             >
               Načítať stav
             </button>
@@ -4275,7 +4397,7 @@ export default function PersonalistaClient({
             <button
               type="button"
               style={styles.confirmButton}
-              disabled={communicationLoading || !communicationSummary?.welcomePending}
+              disabled={communicationLoading || (!communicationWelcomeResend && !communicationSummary?.welcomePending) || (communicationWelcomeResend && !communicationSummary?.withEmail)}
               onClick={() => void sendWelcomeEmailsForGroup()}
             >
               Odoslať ďalšiu dávku 50
@@ -4289,6 +4411,77 @@ export default function PersonalistaClient({
             >
               Samostatné objednávanie stravy
             </button>
+          </div>
+
+          <div style={styles.communicationResendBox}>
+            <div style={styles.detailEditTitle}>Uvitaci e-mail pre jednotlivca</div>
+            <div style={styles.createGrid}>
+              <label style={styles.field}>
+                <span>Vyhladat osobu</span>
+                <input
+                  value={welcomePersonQuery}
+                  onChange={event => {
+                    setWelcomePersonQuery(event.target.value)
+                    setWelcomeSelectedPerson(null)
+                    if (event.target.value.trim().length < 2) setWelcomePersonResults([])
+                  }}
+                  style={styles.input}
+                  placeholder="Meno, priezvisko alebo e-mail"
+                  disabled={communicationLoading}
+                />
+              </label>
+            </div>
+
+            <div style={styles.toolActionRow}>
+              <button
+                type="button"
+                style={styles.lightButton}
+                disabled={communicationLoading || welcomePersonQuery.trim().length < 2}
+                onClick={() => void searchWelcomePeople()}
+              >
+                {communicationLoading ? 'Pracujem...' : 'Vyhladat osobu'}
+              </button>
+
+              <button
+                type="button"
+                style={styles.confirmButton}
+                disabled={communicationLoading || !welcomeSelectedPerson}
+                onClick={() => void sendWelcomeEmailToPerson()}
+              >
+                Odoslat uvitaci e-mail
+              </button>
+
+              {welcomeSelectedPerson && (
+                <span style={styles.optionHint}>
+                  {welcomeSelectedPerson.fullName || 'Bez mena'} | {welcomeSelectedPerson.email}
+                </span>
+              )}
+            </div>
+
+            {welcomePersonResults.length > 0 && (
+              <div style={styles.managerResultList}>
+                {welcomePersonResults.map(person => {
+                  const isSelected = welcomeSelectedPerson?.id === person.id
+
+                  return (
+                    <button
+                      key={person.id}
+                      type="button"
+                      style={{
+                        ...styles.managerResultButton,
+                        ...(isSelected ? styles.managerResultButtonActive : {})
+                      }}
+                      disabled={communicationLoading}
+                      onClick={() => setWelcomeSelectedPerson(person)}
+                    >
+                      <b>{person.fullName || 'Bez mena'}</b>
+                      <span>{person.email || 'Bez e-mailu'}</span>
+                      <span>{person.registrationGroupName || 'Bez registracnej skupiny'}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           <div style={styles.communicationResendBox}>
