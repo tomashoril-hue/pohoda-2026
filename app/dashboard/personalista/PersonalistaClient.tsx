@@ -576,6 +576,9 @@ export default function PersonalistaClient({
   const [communicationGroupId, setCommunicationGroupId] = useState('')
   const [communicationWelcomeResend, setCommunicationWelcomeResend] = useState(false)
   const [communicationSummary, setCommunicationSummary] = useState<CommunicationSummary | null>(null)
+  const [selfOrderingGroupId, setSelfOrderingGroupId] = useState('')
+  const [selfOrderingResend, setSelfOrderingResend] = useState(false)
+  const [selfOrderingSummary, setSelfOrderingSummary] = useState<CommunicationSummary | null>(null)
   const [communicationLoading, setCommunicationLoading] = useState(false)
   const [communicationMessage, setCommunicationMessage] = useState('')
   const [communicationMessageType, setCommunicationMessageType] = useState<'ok' | 'error' | ''>('')
@@ -770,17 +773,21 @@ export default function PersonalistaClient({
     window.setTimeout(() => setRefreshingPeople(false), 900)
   }
 
-  const loadCommunicationSummary = async (registrationGroupId: string, target: 'communication' | 'accessCodes') => {
+  const loadCommunicationSummary = async (registrationGroupId: string, target: 'communication' | 'selfOrdering' | 'accessCodes') => {
     if (target === 'accessCodes' && !registrationGroupId) {
       setAccessCodesMessage('Vyber registracnu skupinu.')
       setAccessCodesMessageType('error')
       return null
     }
 
-    const loadingSetter = target === 'communication' ? setCommunicationLoading : setAccessCodesLoading
-    const messageSetter = target === 'communication' ? setCommunicationMessage : setAccessCodesMessage
-    const typeSetter = target === 'communication' ? setCommunicationMessageType : setAccessCodesMessageType
-    const summarySetter = target === 'communication' ? setCommunicationSummary : setAccessCodesSummary
+    const loadingSetter = target === 'accessCodes' ? setAccessCodesLoading : setCommunicationLoading
+    const messageSetter = target === 'accessCodes' ? setAccessCodesMessage : setCommunicationMessage
+    const typeSetter = target === 'accessCodes' ? setAccessCodesMessageType : setCommunicationMessageType
+    const summarySetter = target === 'accessCodes'
+      ? setAccessCodesSummary
+      : target === 'selfOrdering'
+        ? setSelfOrderingSummary
+        : setCommunicationSummary
 
     loadingSetter(true)
     messageSetter('')
@@ -788,7 +795,7 @@ export default function PersonalistaClient({
 
     try {
       const url = registrationGroupId
-        ? `/api/personalista/communication/summary?registrationGroupId=${encodeURIComponent(registrationGroupId)}${target === 'communication' ? '&baseRegistrationGroup=1' : ''}`
+        ? `/api/personalista/communication/summary?registrationGroupId=${encodeURIComponent(registrationGroupId)}${target !== 'accessCodes' ? '&baseRegistrationGroup=1' : ''}`
         : '/api/personalista/communication/summary'
       const res = await fetch(url, {
         cache: 'no-store'
@@ -966,7 +973,8 @@ export default function PersonalistaClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          registrationGroupId: communicationGroupId,
+          registrationGroupId: selfOrderingGroupId,
+          resend: selfOrderingResend,
           language: communicationLanguage
         })
       })
@@ -976,7 +984,7 @@ export default function PersonalistaClient({
 
       setCommunicationMessage(`Samostatné objednávanie: odoslané ${json.sent}, chyby ${json.failed}, zostáva ${json.remaining}.`)
       setCommunicationMessageType(json.failed ? 'error' : 'ok')
-      await loadCommunicationSummary(communicationGroupId, 'communication')
+      await loadCommunicationSummary(selfOrderingGroupId, 'selfOrdering')
     } catch (err: any) {
       setCommunicationMessage(err?.message || 'Odoslanie zlyhalo.')
       setCommunicationMessageType('error')
@@ -1061,7 +1069,7 @@ export default function PersonalistaClient({
       if (!res.ok || json.error) throw new Error(json.error || 'Odoslanie zlyhalo.')
       if (json.failed || !json.sent) throw new Error('E-mail sa nepodarilo odoslat.')
 
-      await loadCommunicationSummary(communicationGroupId, 'communication')
+      await loadCommunicationSummary(selfOrderingGroupId, 'selfOrdering')
       setCommunicationMessage(`Odoslane znova: ${communicationSelectedPerson.fullName || communicationSelectedPerson.email}.`)
       setCommunicationMessageType('ok')
     } catch (err: any) {
@@ -1082,6 +1090,7 @@ export default function PersonalistaClient({
 
     communicationAutoLoadedRef.current = true
     void loadCommunicationSummary('', 'communication')
+    void loadCommunicationSummary('', 'selfOrdering')
   }, [personnelTool])
 
   const sendAccessCodesForGroup = async () => {
@@ -4354,7 +4363,7 @@ export default function PersonalistaClient({
             </label>
 
             <label style={styles.field}>
-              <span>Zakladna registracna skupina</span>
+              <span>Registracna skupina</span>
               <select
                 value={communicationGroupId}
                 onChange={event => {
@@ -4364,7 +4373,7 @@ export default function PersonalistaClient({
                 style={styles.input}
                 disabled={communicationLoading}
               >
-                <option value="">Vsetky bez samostatneho objednavania</option>
+                <option value="">Vsetky registracne skupiny</option>
                 {registrationGroups.map(group => (
                   <option key={group.id} value={group.id}>{group.name}</option>
                 ))}
@@ -4403,14 +4412,6 @@ export default function PersonalistaClient({
               Odoslať ďalšiu dávku 50
             </button>
 
-            <button
-              type="button"
-              style={styles.confirmButtonPurple}
-              disabled={communicationLoading || !communicationSummary?.selfOrderingPending}
-              onClick={() => void sendSelfOrderingEmails()}
-            >
-              Samostatné objednávanie stravy
-            </button>
           </div>
 
           <div style={styles.communicationResendBox}>
@@ -4484,8 +4485,79 @@ export default function PersonalistaClient({
             )}
           </div>
 
+          {communicationSummary && (
+            <div style={styles.toolStatsGrid}>
+              <div style={styles.toolStat}><b>{communicationSummary.withEmail}</b><span>S e-mailom</span></div>
+              <div style={styles.toolStat}><b>{communicationSummary.welcomeSent}</b><span>Odoslane</span></div>
+              <div style={styles.toolStatWarning}><b>{communicationSummary.welcomePending}</b><span>Caka</span></div>
+            </div>
+          )}
+
           <div style={styles.communicationResendBox}>
-            <div style={styles.detailEditTitle}>Odoslat samostatne objednavanie znova</div>
+            <div style={styles.detailEditTitle}>Samostatne objednavanie stravy</div>
+            <div style={styles.optionHint}>Tento e-mail sa posiela iba ludom so samostatnym objednavanim stravy.</div>
+
+            <div style={styles.createGrid}>
+              <label style={styles.field}>
+                <span>Registracna skupina</span>
+                <select
+                  value={selfOrderingGroupId}
+                  onChange={event => {
+                    setSelfOrderingGroupId(event.target.value)
+                    setSelfOrderingSummary(null)
+                  }}
+                  style={styles.input}
+                  disabled={communicationLoading}
+                >
+                  <option value="">Vsetky registracne skupiny</option>
+                  {registrationGroups.map(group => (
+                    <option key={group.id} value={group.id}>{group.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={{ ...styles.field, alignSelf: 'end' }}>
+                <span>Rezim</span>
+                <button
+                  type="button"
+                  style={selfOrderingResend ? styles.confirmButtonPurple : styles.lightButton}
+                  disabled={communicationLoading}
+                  onClick={() => setSelfOrderingResend(prev => !prev)}
+                >
+                  {selfOrderingResend ? 'Odoslat aj znova' : 'Len neposlane'}
+                </button>
+              </label>
+            </div>
+
+            <div style={styles.toolActionRow}>
+              <button
+                type="button"
+                style={styles.lightButton}
+                disabled={communicationLoading}
+                onClick={() => void loadCommunicationSummary(selfOrderingGroupId, 'selfOrdering')}
+              >
+                Nacitat stav
+              </button>
+
+              <button
+                type="button"
+                style={styles.confirmButtonPurple}
+                disabled={communicationLoading || (!selfOrderingResend && !selfOrderingSummary?.selfOrderingPending) || (selfOrderingResend && !selfOrderingSummary?.selfOrderingWithEmail)}
+                onClick={() => void sendSelfOrderingEmails()}
+              >
+                Odoslat davku 50
+              </button>
+            </div>
+
+            {selfOrderingSummary && (
+              <div style={styles.toolStatsGrid}>
+                <div style={styles.toolStatBlue}><b>{selfOrderingSummary.selfOrderingWithEmail}</b><span>S e-mailom</span></div>
+                <div style={styles.toolStatGreen}><b>{selfOrderingSummary.selfOrderingSent}</b><span>Odoslane</span></div>
+                <div style={styles.toolStatWarning}><b>{selfOrderingSummary.selfOrderingPending}</b><span>Caka</span></div>
+              </div>
+            )}
+
+            <div style={styles.detailEditTitle}>Jednotlivec</div>
             <div style={styles.createGrid}>
               <label style={styles.field}>
                 <span>Vyhladat osobu</span>
@@ -4553,22 +4625,6 @@ export default function PersonalistaClient({
                 })}
               </div>
             )}
-          </div>
-
-          {communicationSummary && (
-            <div style={styles.toolStatsGrid}>
-              <div style={styles.toolStat}><b>{communicationSummary.total}</b><span>Aktívni ľudia</span></div>
-              <div style={styles.toolStat}><b>{communicationSummary.withEmail}</b><span>S e-mailom</span></div>
-              <div style={styles.toolStat}><b>{communicationSummary.welcomeSent}</b><span>Uvítací odoslaný</span></div>
-              <div style={styles.toolStatWarning}><b>{communicationSummary.welcomePending}</b><span>Čaká na odoslanie</span></div>
-              <div style={styles.toolStatBlue}><b>{communicationSummary.selfOrderingTotal}</b><span>Samostatné objednávanie</span></div>
-              <div style={styles.toolStatGreen}><b>{communicationSummary.selfOrderingSent}</b><span>Objednávanie odoslané</span></div>
-              <div style={styles.toolStatWarning}><b>{communicationSummary.selfOrderingPending}</b><span>Objednávanie čaká</span></div>
-            </div>
-          )}
-
-          <div style={styles.optionHint}>
-            Systém vyberá čakajúcich ľudí naprieč registračnými skupinami. Schválené registrácie s už odoslaným e-mailom sa preskočia.
           </div>
 
           {communicationMessage && (

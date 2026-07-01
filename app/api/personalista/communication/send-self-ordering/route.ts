@@ -271,8 +271,8 @@ export async function POST(req: NextRequest) {
 
       const users = await getSelfOrderingUsers(registrationGroupId)
       const userIds = users.map((user: any) => user.id).filter(Boolean)
-      const sentUserIds = await getSentInviteUserIds(userIds)
-      const pendingUsers = users.filter((user: any) => !sentUserIds.has(user.id))
+      const sentUserIds = resend ? new Set<string>() : await getSentInviteUserIds(userIds)
+      const pendingUsers = users.filter((user: any) => resend || !sentUserIds.has(user.id))
       targetUsers = pendingUsers.slice(0, BATCH_SIZE)
       pendingCount = pendingUsers.length
     }
