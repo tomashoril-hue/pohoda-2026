@@ -44,7 +44,6 @@ export default async function DashboardLayout({
 
   if (
     access.isSelfOrderingMeal &&
-    user.self_ordering_required &&
     !user.self_ordering_completed_at &&
     pathname &&
     pathname !== '/dashboard/objednavanie-stravy'
