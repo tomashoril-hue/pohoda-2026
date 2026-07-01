@@ -37,6 +37,8 @@ export async function POST(req: NextRequest) {
     const email = cleanEmail(body.email)
     const telefon = cleanText(body.telefon) || null
     const typStravy = cleanFood(body.typStravy)
+    const registrationGroupId = cleanText(body.registrationGroupId) || null
+    const registrationGroupNote = cleanText(body.registrationGroupNote) || null
     const emailChangeConfirmed = body.emailChangeConfirmed === true
 
     if (!userId) {
@@ -80,9 +82,28 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (registrationGroupId) {
+      const { data: registrationGroup, error: registrationGroupError } = await supabaseServer
+        .from('registration_groups')
+        .select('id, active')
+        .eq('id', registrationGroupId)
+        .maybeSingle()
+
+      if (registrationGroupError) {
+        return NextResponse.json({ error: registrationGroupError.message }, { status: 500 })
+      }
+
+      if (!registrationGroup || registrationGroup.active === false) {
+        return NextResponse.json(
+          { error: 'Základná registračná skupina neexistuje alebo nie je aktívna.' },
+          { status: 400 }
+        )
+      }
+    }
+
     const { data: before } = await supabaseServer
       .from('users')
-      .select('meno, priezvisko, email, telefon, typ_stravy')
+      .select('meno, priezvisko, email, telefon, typ_stravy, registration_group_id, registration_group_note')
       .eq('id', userId)
       .maybeSingle()
 
@@ -105,6 +126,8 @@ export async function POST(req: NextRequest) {
         email,
         telefon,
         typ_stravy: typStravy,
+        registration_group_id: registrationGroupId,
+        registration_group_note: registrationGroupNote,
         updated_at: now
       })
       .eq('id', userId)
@@ -127,7 +150,9 @@ export async function POST(req: NextRequest) {
           priezvisko,
           email,
           telefon,
-          typ_stravy: typStravy
+          typ_stravy: typStravy,
+          registration_group_id: registrationGroupId,
+          registration_group_note: registrationGroupNote
         }
       })
 

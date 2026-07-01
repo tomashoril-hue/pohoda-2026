@@ -2536,6 +2536,8 @@ export default function PersonalistaClient({
         email: profileForm.email,
         telefon: profileForm.telefon,
         typStravy: profileForm.typStravy,
+        registrationGroupId: profileForm.registrationGroupId,
+        registrationGroupNote: profileForm.registrationGroupNote,
         emailChangeConfirmed: originalEmail !== nextEmail
       },
       'Detail osoby sa nepodarilo uložiť.'
@@ -3040,6 +3042,12 @@ export default function PersonalistaClient({
       return
     }
 
+    if (bulkRegistrationEntitlementsForm.mode === 'CLEAR' && !bulkRegistrationEntitlementsForm.obed && !bulkRegistrationEntitlementsForm.vecera) {
+      setBulkRegistrationEntitlementsMessage('Vyber obed alebo veceru, ktoru chces zrusit.')
+      setBulkRegistrationEntitlementsMessageType('error')
+      return
+    }
+
     const dayClaims = Object.entries(bulkRegistrationCalendarClaims)
       .filter(([date]) => bulkRegistrationCalendarDates.includes(date))
       .map(([datum, claim]) => ({
@@ -3057,8 +3065,12 @@ export default function PersonalistaClient({
     }
 
     const groupName = selectedBulkRegistrationGroup?.name || 'vybrana registracna skupina'
+    const selectedMealsLabel = [
+      bulkRegistrationEntitlementsForm.obed ? 'obed' : '',
+      bulkRegistrationEntitlementsForm.vecera ? 'veceru' : ''
+    ].filter(Boolean).join(' a ')
     const confirmMessage = bulkRegistrationEntitlementsForm.mode === 'CLEAR'
-      ? `Vymazu sa naroky v obdobi ${bulkRegistrationEntitlementsForm.validFrom} - ${bulkRegistrationEntitlementsForm.validTo} pre ${selectedBulkRegistrationGroupPeopleCount} osob v registracnej skupine ${groupName}. Pokracovat?`
+      ? `Zrusia sa nevydane naroky na ${selectedMealsLabel} v obdobi ${bulkRegistrationEntitlementsForm.validFrom} - ${bulkRegistrationEntitlementsForm.validTo} pre ${selectedBulkRegistrationGroupPeopleCount} osob v registracnej skupine ${groupName}. Vydane jedla ostanu zachovane. Pokracovat?`
       : bulkRegistrationEntitlementsForm.mode === 'DATES'
         ? `Podla kalendara sa prepise obdobie ${bulkRegistrationEntitlementsForm.validFrom} - ${bulkRegistrationEntitlementsForm.validTo} pre ${selectedBulkRegistrationGroupPeopleCount} osob v registracnej skupine ${groupName}. Pokracovat?`
         : `Prepise sa obdobie ${bulkRegistrationEntitlementsForm.validFrom} - ${bulkRegistrationEntitlementsForm.validTo} pre ${selectedBulkRegistrationGroupPeopleCount} osob v registracnej skupine ${groupName}. Pokracovat?`
@@ -5615,14 +5627,14 @@ export default function PersonalistaClient({
               </div>
 
               <div style={styles.optionBox}>
-                <div style={styles.optionTitle}>Strava pre cele obdobie</div>
+                <div style={styles.optionTitle}>{bulkRegistrationEntitlementsForm.mode === 'CLEAR' ? 'Zrusit jedla' : 'Strava pre cele obdobie'}</div>
 
                 <label style={styles.checkRow}>
                   <input
                     type="checkbox"
                     checked={bulkRegistrationEntitlementsForm.obed}
                     onChange={event => updateBulkRegistrationEntitlementsForm('obed', event.target.checked)}
-                    disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationEntitlementsForm.mode !== 'SET'}
+                    disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationEntitlementsForm.mode === 'DATES'}
                     style={styles.checkbox}
                   />
                   <span>Obed</span>
@@ -5633,7 +5645,7 @@ export default function PersonalistaClient({
                     type="checkbox"
                     checked={bulkRegistrationEntitlementsForm.vecera}
                     onChange={event => updateBulkRegistrationEntitlementsForm('vecera', event.target.checked)}
-                    disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationEntitlementsForm.mode !== 'SET'}
+                    disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationEntitlementsForm.mode === 'DATES'}
                     style={styles.checkbox}
                   />
                   <span>Vecera</span>
@@ -5750,7 +5762,7 @@ export default function PersonalistaClient({
               {bulkRegistrationEntitlementsLoading
                 ? 'Ukladam...'
                 : bulkRegistrationEntitlementsForm.mode === 'CLEAR'
-                  ? 'Zrusit naroky v obdobi'
+                  ? 'Zrusit vybrane naroky'
                   : bulkRegistrationEntitlementsForm.mode === 'DATES'
                     ? 'Ulozit kalendar skupiny'
                     : 'Pridelit naroky skupine'}
@@ -6019,7 +6031,7 @@ export default function PersonalistaClient({
               </label>
 
               <span style={styles.optionHint}>
-                Zrusenie vymaze obed aj veceru pre vybrane dni.
+                Pri zruseni vyber, ci sa ma zrusit obed, vecera alebo oboje. Vydane jedla ostanu zachovane.
               </span>
             </div>
 
@@ -6031,7 +6043,7 @@ export default function PersonalistaClient({
                   type="checkbox"
                   checked={bulkRegistrationEntitlementsForm.obed}
                   onChange={event => updateBulkRegistrationEntitlementsForm('obed', event.target.checked)}
-                  disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationEntitlementsForm.mode === 'CLEAR'}
+                  disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationEntitlementsForm.mode === 'DATES'}
                   style={styles.checkbox}
                 />
                 <span>Obed</span>
@@ -6042,7 +6054,7 @@ export default function PersonalistaClient({
                   type="checkbox"
                   checked={bulkRegistrationEntitlementsForm.vecera}
                   onChange={event => updateBulkRegistrationEntitlementsForm('vecera', event.target.checked)}
-                  disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationEntitlementsForm.mode === 'CLEAR'}
+                  disabled={bulkRegistrationEntitlementsLoading || bulkRegistrationEntitlementsForm.mode === 'DATES'}
                   style={styles.checkbox}
                 />
                 <span>Vecera</span>
@@ -6078,7 +6090,7 @@ export default function PersonalistaClient({
             {bulkRegistrationEntitlementsLoading
               ? 'Ukladam...'
               : bulkRegistrationEntitlementsForm.mode === 'CLEAR'
-                ? 'Zrusit naroky skupine'
+                ? 'Zrusit vybrane naroky'
                 : 'Pridelit naroky skupine'}
           </button>
 
@@ -7378,6 +7390,35 @@ export default function PersonalistaClient({
                         <option value="VEGE">VEGE</option>
                         <option value="DIETA">DIÉTA</option>
                       </select>
+                    </label>
+
+                    <label style={styles.field}>
+                      <span>Základná registračná skupina</span>
+                      <select
+                        value={profileForm.registrationGroupId}
+                        onChange={event => updateProfileForm('registrationGroupId', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                      >
+                        <option value="">Bez základnej skupiny</option>
+                        {registrationGroups.map(group => (
+                          <option key={group.id} value={group.id}>
+                            {group.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={{ ...styles.field, ...styles.detailEditFullRow }}>
+                      <span>Poznámka k základnej skupine</span>
+                      <input
+                        value={profileForm.registrationGroupNote}
+                        onChange={event => updateProfileForm('registrationGroupNote', event.target.value)}
+                        style={styles.input}
+                        disabled={detailLoading}
+                        autoComplete="off"
+                        placeholder="Voliteľné"
+                      />
                     </label>
 
                   </div>

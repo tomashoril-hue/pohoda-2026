@@ -42,6 +42,14 @@ type DayClaim = {
   vecera: boolean
 }
 
+type EntitlementRow = {
+  id: string
+  user_id: string
+  datum: string
+  obed: boolean
+  vecera: boolean
+}
+
 async function fetchUsersByRegistrationGroup(registrationGroupId: string, activeOnly: boolean) {
   const rows: any[] = []
   const pageSize = 1000
@@ -66,6 +74,156 @@ async function fetchUsersByRegistrationGroup(registrationGroupId: string, active
 
     if (!data || data.length < pageSize) return rows
   }
+}
+
+async function fetchEntitlementsForUsers(userIds: string[], validFrom?: string, validTo?: string) {
+  const rows: EntitlementRow[] = []
+  const pageSize = 1000
+
+  for (let from = 0; ; from += pageSize) {
+    let query = supabaseServer
+      .from('user_food_entitlements')
+      .select('id, user_id, datum, obed, vecera')
+      .in('user_id', userIds)
+      .order('datum', { ascending: true })
+      .range(from, from + pageSize - 1)
+
+    if (validFrom && validTo) {
+      query = query.gte('datum', validFrom).lte('datum', validTo)
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+
+    rows.push(...((data || []) as EntitlementRow[]))
+
+    if (!data || data.length < pageSize) return rows
+  }
+}
+
+async function fetchIssuedMealKeys(userIds: string[], dates: string[]) {
+  const keys = new Set<string>()
+  const pageSize = 1000
+
+  for (let from = 0; ; from += pageSize) {
+    let query = supabaseServer
+      .from('vydaj_jedal')
+      .select('user_id, datum, typ_jedla, status')
+      .in('user_id', userIds)
+      .neq('status', 'CANCELLED')
+      .order('datum', { ascending: true })
+      .range(from, from + pageSize - 1)
+
+    if (dates.length > 0) {
+      query = query.in('datum', dates)
+    }
+
+    const { data, error } = await query
+
+    if (error) throw error
+
+    ;(data || []).forEach((row: any) => {
+      const meal = cleanText(row.typ_jedla).toUpperCase()
+      if (row.user_id && row.datum && (meal === 'OBED' || meal === 'VECERA')) {
+        keys.add(`${row.user_id}|${row.datum}|${meal}`)
+      }
+    })
+
+    if (!data || data.length < pageSize) return keys
+  }
+}
+
+async function clearEntitlementsForUsers(
+  userIds: string[],
+  options: {
+    validFrom?: string
+    validTo?: string
+    clearObed: boolean
+    clearVecera: boolean
+    updatedBy: string
+    updatedAt: string
+  }
+) {
+  const entitlements = await fetchEntitlementsForUsers(userIds, options.validFrom, options.validTo)
+
+  if (entitlements.length === 0) {
+    return { changedRows: 0, skippedIssuedMeals: 0 }
+  }
+
+  const dates = Array.from(new Set(entitlements.map(row => row.datum).filter(Boolean)))
+  const issuedMealKeys = await fetchIssuedMealKeys(userIds, dates)
+  const deleteIds: string[] = []
+  const updateRows: Array<{ id: string; obed: boolean; vecera: boolean }> = []
+  let skippedIssuedMeals = 0
+
+  entitlements.forEach(row => {
+    let nextObed = row.obed
+    let nextVecera = row.vecera
+
+    if (options.clearObed && row.obed) {
+      if (issuedMealKeys.has(`${row.user_id}|${row.datum}|OBED`)) {
+        skippedIssuedMeals += 1
+      } else {
+        nextObed = false
+      }
+    }
+
+    if (options.clearVecera && row.vecera) {
+      if (issuedMealKeys.has(`${row.user_id}|${row.datum}|VECERA`)) {
+        skippedIssuedMeals += 1
+      } else {
+        nextVecera = false
+      }
+    }
+
+    if (nextObed === row.obed && nextVecera === row.vecera) {
+      return
+    }
+
+    if (!nextObed && !nextVecera) {
+      deleteIds.push(row.id)
+      return
+    }
+
+    updateRows.push({
+      id: row.id,
+      obed: nextObed,
+      vecera: nextVecera
+    })
+  })
+
+  let changedRows = 0
+
+  for (const idChunk of chunk(deleteIds, 500)) {
+    const { count, error } = await supabaseServer
+      .from('user_food_entitlements')
+      .delete({ count: 'exact' })
+      .in('id', idChunk)
+
+    if (error) throw error
+
+    changedRows += count || 0
+  }
+
+  for (const row of updateRows) {
+    const { error } = await supabaseServer
+      .from('user_food_entitlements')
+      .update({
+        obed: row.obed,
+        vecera: row.vecera,
+        updated_by: options.updatedBy,
+        updated_at: options.updatedAt,
+        note: 'Hromadné zrušenie vybraných nárokov podľa registračnej skupiny.'
+      })
+      .eq('id', row.id)
+
+    if (error) throw error
+
+    changedRows += 1
+  }
+
+  return { changedRows, skippedIssuedMeals }
 }
 
 export async function POST(req: NextRequest) {
@@ -133,6 +291,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Vyber aspon jeden narok.' }, { status: 400 })
     }
 
+    if (mode === 'CLEAR' && !obed && !vecera) {
+      return NextResponse.json({ error: 'Vyber obed alebo veceru, ktoru chces zrusit.' }, { status: 400 })
+    }
+
     if (mode === 'DATES' && dayClaims.length === 0) {
       return NextResponse.json({ error: 'Vyber aspon jeden den v kalendari.' }, { status: 400 })
     }
@@ -196,8 +358,29 @@ export async function POST(req: NextRequest) {
     const userIds = users.map(user => user.id)
     let replacedRows = 0
     let insertedRows = 0
+    let skippedIssuedMeals = 0
 
     for (const userIdChunk of chunk(userIds, 250)) {
+      if (mode === 'CLEAR' || mode === 'CLEAR_ALL') {
+        try {
+          const result = await clearEntitlementsForUsers(userIdChunk, {
+            validFrom: usesDateRange ? validFrom : undefined,
+            validTo: usesDateRange ? validTo : undefined,
+            clearObed: mode === 'CLEAR_ALL' ? true : obed,
+            clearVecera: mode === 'CLEAR_ALL' ? true : vecera,
+            updatedBy: actor.id,
+            updatedAt: now
+          })
+
+          replacedRows += result.changedRows
+          skippedIssuedMeals += result.skippedIssuedMeals
+        } catch (clearError: any) {
+          return NextResponse.json({ error: clearError?.message || 'Naroky sa nepodarilo zrusit.' }, { status: 500 })
+        }
+
+        continue
+      }
+
       let deleteQuery = supabaseServer
         .from('user_food_entitlements')
         .delete({ count: 'exact' })
@@ -310,6 +493,7 @@ export async function POST(req: NextRequest) {
           days: dates.length,
           users: users.length,
           inserted_rows: insertedRows,
+          skipped_issued_meals: skippedIssuedMeals,
           obed,
           vecera,
           day_claims: safeDayClaims
@@ -329,10 +513,11 @@ export async function POST(req: NextRequest) {
       days: dates.length,
       insertedRows,
       replacedRows,
+      skippedIssuedMeals,
       message: mode === 'CLEAR_ALL'
-        ? `Vsetky existujuce naroky boli vymazane pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
+        ? `Vsetky existujuce nevydane naroky boli vymazane pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.${skippedIssuedMeals > 0 ? ` Vydane jedla ostali zachovane: ${skippedIssuedMeals}.` : ''}`
         : mode === 'CLEAR'
-          ? `Naroky boli vymazane pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
+          ? `Vybrane nevydane naroky boli zrusene pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.${skippedIssuedMeals > 0 ? ` Vydane jedla ostali zachovane: ${skippedIssuedMeals}.` : ''}`
           : mode === 'DATES'
             ? `Naroky podla kalendara boli nastavene pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
             : `Naroky boli nastavene pre ${users.length} osob v registracnej skupine ${registrationGroup.name}.`
