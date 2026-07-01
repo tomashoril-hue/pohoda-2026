@@ -63,6 +63,7 @@ type ExistingIssue = {
   meal: MealType
   status: string
   validAfter: string | null
+  fullyIssued?: boolean
   summary: {
     MASO: number
     VEGE: number
@@ -2810,7 +2811,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                         const issueWaitingInfo = issue.status === 'WAITING'
                           ? waitingInfo(issue.validAfter, nowMs)
                           : null
-                        const fullyIssuedIssue = (issue.summary?.SPOLU || 0) === 0
+                        const fullyIssuedIssue = issue.fullyIssued === true
                         const isReadOnlyIssue = readOnlyDate || fullyIssuedIssue
                         const canChangeIssue = canEditExistingIssues && !isReadOnlyIssue
 

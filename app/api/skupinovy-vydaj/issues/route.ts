@@ -535,13 +535,23 @@ export async function GET(req: NextRequest) {
       if (!issueMeal) continue
 
       const people = await loadIssuePeople(issue.id, date, issueMeal)
+      const activePeople = people.filter(person => person.itemStatus !== 'REMOVED')
+      const fullyIssued = activePeople.length > 0 && activePeople.every(person => {
+        return (
+          person.itemStatus === 'BULK_ISSUED' ||
+          person.itemStatus === 'INDIVIDUAL_ISSUED' ||
+          person.issueStatus === 'ALREADY_ISSUED'
+        )
+      })
+
       result.push({
         id: issue.id,
         title: issue.title,
         meal: issueMeal,
         status: issue.status,
         validAfter: issue.valid_after,
-        summary: choiceSummary(people.filter(person => person.issuable))
+        summary: choiceSummary(activePeople),
+        fullyIssued
       })
     }
 
