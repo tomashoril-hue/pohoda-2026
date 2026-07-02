@@ -123,7 +123,7 @@ export async function GET(req: NextRequest) {
       const [usersResult, periodsResult, entitlementsResult] = await Promise.all([
         supabaseServer
           .from('users')
-          .select('id, meno, priezvisko, email, telefon, typ_stravy, qr_code, aktivny')
+          .select('id, meno, priezvisko, email, telefon, typ_stravy, qr_code, aktivny, review_status')
           .in('id', userIdChunk),
         supabaseServer
           .from('user_registration_group_periods')
@@ -183,6 +183,7 @@ export async function GET(req: NextRequest) {
           typStravy: user.typ_stravy || '',
           qrCode: user.qr_code || '',
           aktivny: user.aktivny || '',
+          reviewStatus: user.review_status || 'APPROVED',
           periods: periodsByUserId.get(user.id) || [],
           entitlements: userEntitlements,
           lunchClaims: userEntitlements.filter(item => item.obed).length,

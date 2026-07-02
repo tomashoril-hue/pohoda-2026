@@ -15,7 +15,7 @@ function fullName(user: any) {
 }
 
 const INITIAL_PEOPLE_LIMIT = 12
-const RECENT_USER_SELECT = 'id, meno, priezvisko, email, telefon, typ_stravy, aktivny, account_type, registration_group_id, registration_group_note, review_status, updated_at, created_at'
+const RECENT_USER_SELECT = 'id, meno, priezvisko, email, telefon, typ_stravy, aktivny, account_type, registration_group_id, registration_group_note, review_status, zdroj, manual_created_by, updated_at, created_at'
 const PERSON_ACCOUNT_TYPE = 'PERSON'
 
 type PersonalistaSearchParams = Promise<{
@@ -647,6 +647,23 @@ export default async function PersonalistaPage({
     ...membershipUserIds,
     ...globalUserIds
   ]))
+  const creatorIds = Array.from(new Set(
+    allVisibleUsers
+      .map((item: any) => item.manual_created_by)
+      .filter(Boolean)
+  ))
+  const creatorById = new Map<string, any>()
+
+  if (creatorIds.length > 0) {
+    const { data: creatorRows } = await supabaseServer
+      .from('users')
+      .select('id, meno, priezvisko, email')
+      .in('id', creatorIds)
+
+    ;(creatorRows || []).forEach((creator: any) => {
+      creatorById.set(creator.id, creator)
+    })
+  }
 
   const fromDate = isoDateOffset(0)
   const toDate = isoDateOffset(13)
@@ -808,6 +825,9 @@ export default async function PersonalistaPage({
       aktivny: profile?.aktivny || 'ANO',
       accountType: profile?.account_type || 'PERSON',
       reviewStatus: profile?.review_status || 'APPROVED',
+      registrationSource: profile?.zdroj || '',
+      createdByUserId: profile?.manual_created_by || '',
+      createdByName: fullName(creatorById.get(profile?.manual_created_by)) || creatorById.get(profile?.manual_created_by)?.email || '',
       registrationGroupId: baseRegistrationGroup.id || currentRegistrationGroup.id,
       registrationGroupName: baseRegistrationGroup.name || currentRegistrationGroup.name,
       registrationGroupNote: baseRegistrationGroup.note,
@@ -876,6 +896,9 @@ export default async function PersonalistaPage({
         aktivny: profile.aktivny || 'ANO',
         accountType: profile.account_type || 'PERSON',
         reviewStatus: profile.review_status || 'APPROVED',
+        registrationSource: profile.zdroj || '',
+        createdByUserId: profile.manual_created_by || '',
+        createdByName: fullName(creatorById.get(profile.manual_created_by)) || creatorById.get(profile.manual_created_by)?.email || '',
         registrationGroupId: baseRegistrationGroup.id || currentRegistrationGroup.id,
         registrationGroupName: baseRegistrationGroup.name || currentRegistrationGroup.name,
         registrationGroupNote: baseRegistrationGroup.note,

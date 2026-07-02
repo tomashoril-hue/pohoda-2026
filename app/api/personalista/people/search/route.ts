@@ -432,7 +432,7 @@ export async function GET(req: NextRequest) {
 
     let usersQuery = supabaseServer
       .from('users')
-      .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, account_type, registration_group_id, registration_group_note, review_status, updated_at, created_at')
+      .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, account_type, registration_group_id, registration_group_note, review_status, zdroj, manual_created_by, updated_at, created_at')
       .limit(filteredMode ? FILTERED_RESULT_LIMIT : RESULT_LIMIT)
     let mode = 'RECENT'
 
@@ -501,6 +501,25 @@ export async function GET(req: NextRequest) {
     }
 
     const userIds = users.map((user: any) => user.id).filter(Boolean)
+    const creatorIds = Array.from(new Set(
+      users
+        .map((user: any) => user.manual_created_by)
+        .filter(Boolean)
+    ))
+    const creatorById = new Map<string, any>()
+
+    if (creatorIds.length > 0) {
+      const { data: creatorRows, error: creatorError } = await supabaseServer
+        .from('users')
+        .select('id, meno, priezvisko, email')
+        .in('id', creatorIds)
+
+      if (creatorError) return NextResponse.json({ error: creatorError.message }, { status: 500 })
+
+      ;(creatorRows || []).forEach((creator: any) => {
+        creatorById.set(creator.id, creator)
+      })
+    }
 
     const [
       memberships,
@@ -636,6 +655,9 @@ export async function GET(req: NextRequest) {
         aktivny: profile.aktivny || 'ANO',
         accountType: profile.account_type || 'PERSON',
         reviewStatus: profile.review_status || 'APPROVED',
+        registrationSource: profile.zdroj || '',
+        createdByUserId: profile.manual_created_by || '',
+        createdByName: fullName(creatorById.get(profile.manual_created_by)) || creatorById.get(profile.manual_created_by)?.email || '',
         registrationGroupId: baseRegistrationGroup.id || currentRegistrationGroup.id,
         registrationGroupName: baseRegistrationGroup.name || currentRegistrationGroup.name,
         registrationGroupNote: baseRegistrationGroup.note,

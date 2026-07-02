@@ -18,6 +18,7 @@ type Person = {
   typStravy: string
   qrCode: string
   aktivny: string
+  reviewStatus: string
   periods: Array<{
     id: string
     valid_from: string
@@ -89,6 +90,14 @@ export default function UpravaBrigadnikovClient({
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'ok' | 'error' | ''>('')
   const [activeAction, setActiveAction] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createForm, setCreateForm] = useState({
+    meno: '',
+    priezvisko: '',
+    email: '',
+    telefon: '',
+    typStravy: 'MASO'
+  })
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
   const calendarSet = useMemo(() => new Set(calendarDates), [calendarDates])
@@ -271,6 +280,91 @@ export default function UpravaBrigadnikovClient({
     }
   }
 
+  const updateCreateForm = (key: keyof typeof createForm, value: string) => {
+    setCreateForm(current => ({
+      ...current,
+      [key]: value
+    }))
+  }
+
+  const submitPendingPerson = async () => {
+    if (!groupId) {
+      setMessage('Chyba registracna skupina.')
+      setMessageType('error')
+      return
+    }
+
+    if (!createForm.meno.trim() || !createForm.priezvisko.trim()) {
+      setMessage('Zadaj meno a priezvisko brigadnika.')
+      setMessageType('error')
+      return
+    }
+
+    if (!validFrom || !validTo || validTo < validFrom) {
+      setMessage('Zadaj platne datumy od/do.')
+      setMessageType('error')
+      return
+    }
+
+    if (calendarOpen && calendarDates.length === 0) {
+      setMessage('V kalendari vyber aspon jeden den.')
+      setMessageType('error')
+      return
+    }
+
+    if (!obed && !vecera) {
+      setMessage('Vyber obed alebo veceru.')
+      setMessageType('error')
+      return
+    }
+
+    setSaving(true)
+    setActiveAction('create-pending')
+    setMessage('')
+    setMessageType('')
+
+    try {
+      const res = await fetch('/api/uprava-brigadnikov/pending-person', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          registrationGroupId: groupId,
+          ...createForm,
+          validFrom,
+          validTo,
+          obed,
+          vecera,
+          selectedDates: calendarOpen ? calendarDates : undefined
+        })
+      })
+      const json = await res.json().catch(() => ({ error: 'Server vratil neplatnu odpoved.' }))
+
+      if (!res.ok || json.error) {
+        setMessage(json.error || 'Brigadnika sa nepodarilo pripravit.')
+        setMessageType('error')
+        return
+      }
+
+      setCreateForm({
+        meno: '',
+        priezvisko: '',
+        email: '',
+        telefon: '',
+        typStravy: 'MASO'
+      })
+      setCreateOpen(false)
+      setMessage(json.message || 'Brigadnik bol pripraveny na schvalenie.')
+      setMessageType('ok')
+      await loadPeople()
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err))
+      setMessageType('error')
+    } finally {
+      setSaving(false)
+      setActiveAction('')
+    }
+  }
+
   return (
     <main className="brigadnici-page" style={styles.page}>
       <style>{`
@@ -309,6 +403,7 @@ export default function UpravaBrigadnikovClient({
           .brigadnici-header { padding: 14px !important; }
           .brigadnici-title { font-size: 25px !important; }
           .brigadnici-grid { grid-template-columns: 1fr !important; }
+          .brigadnici-create-grid { grid-template-columns: 1fr !important; }
           .brigadnici-date-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
           .brigadnici-actions { grid-template-columns: 1fr 1fr !important; }
           .brigadnici-person-row { grid-template-columns: 32px 1fr !important; }
@@ -366,6 +461,99 @@ export default function UpravaBrigadnikovClient({
             <input value={search} onChange={event => setSearch(event.target.value)} style={styles.input} placeholder="Meno, email, telefon" />
           </label>
         </div>
+
+        <section style={styles.createPendingBox}>
+          <div style={styles.createPendingHeader}>
+            <div>
+              <b>Pridať brigádnika na schválenie</b>
+              <span>Použije vybranú skupinu, obdobie a nároky z tejto obrazovky. QR kód dostane až po schválení.</span>
+            </div>
+
+            <button
+              type="button"
+              style={buttonStyle(createOpen ? styles.secondaryButton : styles.lightButton, 'toggle-create', saving)}
+              onClick={() => setCreateOpen(current => !current)}
+              disabled={saving}
+            >
+              {createOpen ? 'Zavrieť' : 'Pridať brigádnika'}
+            </button>
+          </div>
+
+          {createOpen && (
+            <div className="brigadnici-create-grid" style={styles.createPendingGrid}>
+              <label style={styles.field}>
+                <span>Meno</span>
+                <input
+                  value={createForm.meno}
+                  onChange={event => updateCreateForm('meno', event.target.value)}
+                  style={styles.input}
+                  disabled={saving}
+                  autoComplete="off"
+                />
+              </label>
+
+              <label style={styles.field}>
+                <span>Priezvisko</span>
+                <input
+                  value={createForm.priezvisko}
+                  onChange={event => updateCreateForm('priezvisko', event.target.value)}
+                  style={styles.input}
+                  disabled={saving}
+                  autoComplete="off"
+                />
+              </label>
+
+              <label style={styles.field}>
+                <span>E-mail</span>
+                <input
+                  value={createForm.email}
+                  onChange={event => updateCreateForm('email', event.target.value)}
+                  style={styles.input}
+                  disabled={saving}
+                  autoComplete="off"
+                  inputMode="email"
+                  placeholder="Voliteľné"
+                />
+              </label>
+
+              <label style={styles.field}>
+                <span>Telefón</span>
+                <input
+                  value={createForm.telefon}
+                  onChange={event => updateCreateForm('telefon', event.target.value)}
+                  style={styles.input}
+                  disabled={saving}
+                  autoComplete="off"
+                  inputMode="tel"
+                  placeholder="Voliteľné"
+                />
+              </label>
+
+              <label style={styles.field}>
+                <span>Typ stravy</span>
+                <select
+                  value={createForm.typStravy}
+                  onChange={event => updateCreateForm('typStravy', event.target.value)}
+                  style={styles.input}
+                  disabled={saving}
+                >
+                  <option value="MASO">MASO</option>
+                  <option value="VEGE">VEGE</option>
+                  <option value="DIETA">DIÉTA</option>
+                </select>
+              </label>
+
+              <button
+                type="button"
+                style={buttonStyle(styles.primaryButton, 'create-pending', saving)}
+                onClick={() => void submitPendingPerson()}
+                disabled={saving}
+              >
+                {saving && activeAction === 'create-pending' ? 'Pripravujem...' : 'Odoslať na schválenie'}
+              </button>
+            </div>
+          )}
+        </section>
 
         <div style={styles.claimBox}>
           <label style={styles.checkCard}>
@@ -473,6 +661,9 @@ export default function UpravaBrigadnikovClient({
 
                 <span style={styles.personMain}>
                   <b>{person.fullName || 'Bez mena'}</b>
+                  {String(person.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW' && (
+                    <small style={styles.pendingText}>Čaká na schválenie</small>
+                  )}
                   <small>{person.email || '-'} {person.telefon ? `· ${person.telefon}` : ''}</small>
                 </span>
 
@@ -595,6 +786,30 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#111827',
     boxSizing: 'border-box',
     width: '100%'
+  },
+  createPendingBox: {
+    border: '1px solid #d8b4fe',
+    borderRadius: 8,
+    background: '#faf5ff',
+    padding: 10,
+    display: 'grid',
+    gap: 10
+  },
+  createPendingHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    flexWrap: 'wrap',
+    fontSize: 13,
+    fontWeight: 850,
+    color: '#581c87'
+  },
+  createPendingGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 8,
+    alignItems: 'end'
   },
   dateInput: {
     minHeight: 38,
@@ -763,6 +978,10 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 3,
     fontSize: 14,
     fontWeight: 850
+  },
+  pendingText: {
+    color: '#92400e',
+    fontWeight: 950
   },
   personMeta: {
     display: 'grid',

@@ -83,6 +83,9 @@ type PersonItem = {
   aktivny: string
   accountType: string
   reviewStatus: string
+  registrationSource: string
+  createdByUserId: string
+  createdByName: string
   registrationGroupId: string
   registrationGroupName: string
   registrationGroupNote: string
@@ -1389,6 +1392,13 @@ export default function PersonalistaClient({
   const selectedPersonIsTechnical = String(selectedPerson?.accountType || '').toUpperCase() === 'TECHNICAL'
   const canUseSelectedPersonAccessCode = !!selectedPerson && (!selectedPersonIsTechnical || canAssignSensitiveRoles)
   const selectedPersonPendingReview = String(selectedPerson?.reviewStatus || '').toUpperCase() === 'PENDING_REVIEW'
+  const pendingReviewSourceLabel = selectedPerson?.registrationSource === 'MANAGER_REG_SKUPINY'
+    ? `Pripravil manažér registračnej skupiny${selectedPerson.createdByName ? `: ${selectedPerson.createdByName}` : ''}`
+    : selectedPerson?.registrationSource === 'WEBAPP'
+      ? 'Samostatná registrácia cez aplikáciu'
+      : selectedPerson?.createdByName
+        ? `Pripravil: ${selectedPerson.createdByName}`
+        : 'Pôvod žiadosti nie je uvedený'
   const pendingReviewPeriods = sortRegistrationPeriods(selectedPerson?.registrationGroupPeriods || [])
   const pendingReviewBoundedPeriods = boundedRegistrationPeriods(pendingReviewPeriods)
   const pendingReviewAssignmentDates = datesFromRegistrationPeriods(pendingReviewBoundedPeriods)
@@ -6801,6 +6811,7 @@ export default function PersonalistaClient({
                   <div style={styles.pendingApprovalBox}>
                     <div style={styles.pendingApprovalHeader}>
                       <div style={styles.pendingApprovalHeaderText}>
+                        <span>{pendingReviewSourceLabel}</span>
                         <b>Registrácia čaká na kontrolu</b>
                       </div>
                     </div>
