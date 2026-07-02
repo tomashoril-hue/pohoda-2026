@@ -1565,7 +1565,13 @@ export default function PersonalistaClient({
         return
       }
 
-      setDetailFeedback(json.message || 'Štítok bol odoslaný do tlače.', 'ok')
+      const jobId = String(json.job?.id || '').trim()
+      setDetailFeedback(
+        jobId
+          ? `${json.message || 'Štítok bol odoslaný do tlače.'} Job: ${jobId}`
+          : json.message || 'Štítok bol odoslaný do tlače.',
+        'ok'
+      )
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setDetailFeedback('Štítok sa nepodarilo odoslať do tlače: ' + message, 'error')

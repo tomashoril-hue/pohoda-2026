@@ -27,7 +27,7 @@ function slovakDateLabel(date = new Date()) {
     year: 'numeric'
   })
 
-  return formatter.format(date)
+  return formatter.format(date).replace(/\s+/g, '')
 }
 
 function sanitizeOptionalPayloadValue(value: unknown) {
