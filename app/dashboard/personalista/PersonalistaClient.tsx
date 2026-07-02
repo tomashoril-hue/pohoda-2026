@@ -640,6 +640,7 @@ export default function PersonalistaClient({
   const [bulkRegistrationCalendarClaims, setBulkRegistrationCalendarClaims] = useState<Record<string, CalendarClaim>>({})
   const [detailMode, setDetailMode] = useState<DetailMode>('')
   const [detailLoading, setDetailLoading] = useState(false)
+  const [printJobLoading, setPrintJobLoading] = useState(false)
   const [detailMessage, setDetailMessage] = useState('')
   const [detailMessageType, setDetailMessageType] = useState<DetailMessageType>('')
   const [detailMessageMode, setDetailMessageMode] = useState<DetailMode>('')
@@ -1538,6 +1539,40 @@ export default function PersonalistaClient({
   const printPersonHref = selectedPerson
     ? `/dashboard/personalista/print-qr?personId=${encodeURIComponent(selectedPerson.id)}`
     : ''
+  const printSelectedPersonLabel = async () => {
+    if (!selectedPerson) return
+
+    if (selectedPerson.activeQrCount <= 0) {
+      setDetailFeedback('Osoba nemá aktívny QR kód.', 'error')
+      return
+    }
+
+    setPrintJobLoading(true)
+
+    try {
+      const res = await fetch('/api/print-jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          printerId: 'vydaj-1',
+          personId: selectedPerson.id
+        })
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setDetailFeedback(json.error || 'Štítok sa nepodarilo odoslať do tlače.', 'error')
+        return
+      }
+
+      setDetailFeedback(json.message || 'Štítok bol odoslaný do tlače.', 'ok')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setDetailFeedback('Štítok sa nepodarilo odoslať do tlače: ' + message, 'error')
+    } finally {
+      setPrintJobLoading(false)
+    }
+  }
   const tableColumns = isMobile
     ? foodGroupsVisible
       ? 'minmax(155px, 1.25fr) 64px minmax(115px, 0.85fr) minmax(150px, 1fr) minmax(120px, 1fr) 56px 52px 62px'
@@ -7336,6 +7371,18 @@ export default function PersonalistaClient({
                     Tlačiť QR osoby
                   </a>
                 )}
+
+                <button
+                  type="button"
+                  style={{
+                    ...styles.confirmButton,
+                    opacity: detailLoading || printJobLoading || selectedPerson.activeQrCount <= 0 ? 0.6 : 1
+                  }}
+                  disabled={detailLoading || printJobLoading || selectedPerson.activeQrCount <= 0}
+                  onClick={printSelectedPersonLabel}
+                >
+                  {printJobLoading ? 'Odosielam do tlače...' : 'Tlačiť štítok'}
+                </button>
               </div>
 
               {detailMode === 'profile' && (
