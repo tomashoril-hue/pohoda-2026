@@ -26,10 +26,10 @@ where status is not null
 update public.print_jobs
 set status = case
   when status in ('done', 'complete', 'completed', 'success') then 'printed'
-  when status in ('started', 'running', 'printing') then 'processing'
-  when status in ('failed', 'fail', 'chyba') then 'error'
-  when status in ('pending', 'processing', 'printed', 'error') then status
-  else 'error'
+  when status in ('started', 'running', 'processing', 'printing') then 'printing'
+  when status in ('failed', 'fail', 'chyba', 'error') then 'failed'
+  when status in ('pending', 'printing', 'printed', 'failed') then status
+  else 'failed'
 end;
 
 do $$
@@ -42,7 +42,7 @@ begin
   ) then
     alter table public.print_jobs
       add constraint print_jobs_status_check
-      check (status in ('pending', 'processing', 'printed', 'error'));
+      check (status in ('pending', 'printing', 'printed', 'failed'));
   end if;
 end $$;
 
