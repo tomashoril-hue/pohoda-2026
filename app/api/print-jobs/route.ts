@@ -4,6 +4,7 @@ import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 const DEFAULT_PRINTER_ID = 'vydaj-1'
+const SLOVAK_TIME_ZONE = 'Europe/Bratislava'
 
 function cleanText(value: unknown) {
   return String(value ?? '').trim()
@@ -16,6 +17,17 @@ function fullName(user: any) {
 function normalizePrinterId(value: unknown) {
   const printerId = cleanText(value) || DEFAULT_PRINTER_ID
   return printerId.slice(0, 80)
+}
+
+function slovakDateLabel(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat('sk-SK', {
+    timeZone: SLOVAK_TIME_ZONE,
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric'
+  })
+
+  return formatter.format(date)
 }
 
 function sanitizeOptionalPayloadValue(value: unknown) {
@@ -83,8 +95,10 @@ async function buildPersonQrPayload(personId: string) {
     payload: {
       name: fullName(user),
       group: groupName,
+      meal: 'QR',
+      date: slovakDateLabel(),
       qr,
-      note: 'QR osoby'
+      note: 'QR osoby - personalistika'
     }
   }
 }
