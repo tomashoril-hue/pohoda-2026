@@ -68,10 +68,9 @@ async function buildPersonQrPayload(personId: string) {
 
   const { data: qrRows, error: qrError } = await supabaseServer
     .from('user_qr_codes')
-    .select('qr_code, assigned_at')
+    .select('qr_code')
     .eq('user_id', personId)
     .eq('active', true)
-    .order('assigned_at', { ascending: false, nullsFirst: false })
     .limit(1)
 
   if (qrError) throw qrError
