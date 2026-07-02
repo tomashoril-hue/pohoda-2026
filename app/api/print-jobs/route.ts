@@ -78,11 +78,18 @@ async function buildPersonQrPayload(personId: string) {
     groupName = cleanText(group?.name)
   }
 
+  const meal = cleanText(user.typ_stravy) || 'NEZADANE'
+
   return {
     payload: {
       name: fullName(user),
       group: groupName,
-      meal: cleanText(user.typ_stravy) || 'NEZADANE',
+      registrationGroup: groupName,
+      meal,
+      food: meal,
+      foodType: meal,
+      typStravy: meal,
+      defaultMeal: meal,
       qr
     }
   }
