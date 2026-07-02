@@ -18,6 +18,42 @@ function normalizePrinterId(value: unknown) {
   return printerId.slice(0, 80)
 }
 
+function zplText(value: unknown, maxLength = 120) {
+  return cleanText(value)
+    .replace(/[\^~]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .slice(0, maxLength)
+}
+
+function buildPersonQrLabelZpl(input: {
+  name: string
+  group: string
+  meal: string
+  qr: string
+}) {
+  const name = zplText(input.name, 90)
+  const group = zplText(input.group || '-', 120)
+  const meal = zplText(input.meal || 'NEZADANE', 30)
+  const qr = zplText(input.qr, 120)
+
+  return [
+    '^XA',
+    '^CI28',
+    '^PW384',
+    '^LL280',
+    '^LH0,0',
+    '^FO14,16^A0N,28,28^FB356,2,0,C,0^FD' + name + '^FS',
+    '^FO14,76^A0N,18,18^FB356,2,0,C,0^FD' + group + '^FS',
+    '^FO14,116^GB356,1,1^FS',
+    '^FO22,132^BQN,2,5^FDLA,' + qr + '^FS',
+    '^FO170,136^A0N,18,18^FDSTRAVA^FS',
+    '^FO170,160^A0N,34,34^FD' + meal + '^FS',
+    '^FO170,205^A0N,17,17^FDQR^FS',
+    '^FO170,226^A0N,20,20^FB190,2,0,L,0^FD' + qr + '^FS',
+    '^XZ'
+  ].join('\n')
+}
+
 function sanitizeOptionalPayloadValue(value: unknown) {
   const text = cleanText(value)
   return text ? text.slice(0, 240) : undefined
@@ -40,6 +76,15 @@ function buildPayloadFromInput(input: Record<string, any>) {
   if (meal) payload.meal = meal
   if (date) payload.date = date
   if (note) payload.note = note
+
+  payload.type = 'zpl'
+  payload.template = 'person_qr_label'
+  payload.zpl = cleanText(input.zpl) || buildPersonQrLabelZpl({
+    name,
+    group: group || '',
+    meal: meal || '',
+    qr
+  })
 
   return { payload }
 }
@@ -79,10 +124,19 @@ async function buildPersonQrPayload(personId: string) {
   }
 
   const meal = cleanText(user.typ_stravy) || 'NEZADANE'
+  const name = fullName(user)
+  const zpl = buildPersonQrLabelZpl({
+    name,
+    group: groupName,
+    meal,
+    qr
+  })
 
   return {
     payload: {
-      name: fullName(user),
+      type: 'zpl',
+      template: 'person_qr_label',
+      name,
       group: groupName,
       registrationGroup: groupName,
       meal,
@@ -90,7 +144,8 @@ async function buildPersonQrPayload(personId: string) {
       foodType: meal,
       typStravy: meal,
       defaultMeal: meal,
-      qr
+      qr,
+      zpl
     }
   }
 }
