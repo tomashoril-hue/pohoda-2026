@@ -4,6 +4,7 @@ import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 const DEFAULT_PRINTER_ID = 'vydaj-1'
+const PRINT_TIME_ZONE = 'Europe/Bratislava'
 
 function cleanText(value: unknown) {
   return String(value ?? '').trim()
@@ -25,31 +26,54 @@ function zplText(value: unknown, maxLength = 120) {
     .slice(0, maxLength)
 }
 
+function currentPrintDateTime() {
+  const parts = new Intl.DateTimeFormat('sk-SK', {
+    timeZone: PRINT_TIME_ZONE,
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(new Date())
+
+  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value || ''
+
+  return `${getPart('day')}.${getPart('month')}.${getPart('year')}  ${getPart('hour')}:${getPart('minute')}`
+}
+
 function buildPersonQrLabelZpl(input: {
   name: string
   group: string
   meal: string
   qr: string
 }) {
-  const name = zplText(input.name, 90)
-  const group = zplText(input.group || '-', 120)
-  const meal = zplText(input.meal || 'NEZADANE', 30)
+  const name = zplText(input.name, 52)
+  const group = zplText(input.group || '-', 54)
+  const meal = zplText(input.meal || 'NEZADANE', 18)
   const qr = zplText(input.qr, 120)
+  const printedAt = zplText(currentPrintDateTime(), 24)
 
   return [
     '^XA',
     '^CI28',
     '^PW384',
-    '^LL280',
-    '^LH0,0',
-    '^FO14,16^A0N,28,28^FB356,2,0,C,0^FD' + name + '^FS',
-    '^FO14,76^A0N,18,18^FB356,2,0,C,0^FD' + group + '^FS',
-    '^FO14,116^GB356,1,1^FS',
-    '^FO22,132^BQN,2,5^FDLA,' + qr + '^FS',
-    '^FO170,136^A0N,18,18^FDSTRAVA^FS',
-    '^FO170,160^A0N,34,34^FD' + meal + '^FS',
-    '^FO170,205^A0N,17,17^FDQR^FS',
-    '^FO170,226^A0N,20,20^FB190,2,0,L,0^FD' + qr + '^FS',
+    '^LL490',
+    '^MMT',
+    '^MNN',
+    '^POI',
+    '~TA020',
+    '^LT0',
+    '^FO20,50^GB344,395,2,15^FS',
+    '^FO90,65',
+    '^BQN,2,11',
+    '^FDLA,' + qr + '^FS',
+    '^FO0,300^FB384,1,0,C,0^A0N,23,23^FDMeno: ' + name + '^FS',
+    '^FO0,330^FB384,1,0,C,0^A0N,21,21^FDSkupina: ' + group + '^FS',
+    '^FO112,362^GB160,32,2,15^FS',
+    '^FO112,370^FB160,1,0,C,0^A0N,18,18^FDTyp stravy: ' + meal + '^FS',
+    '^FO0,415^FB384,1,0,C,0^A0N,22,22^FD' + printedAt + '^FS',
     '^XZ'
   ].join('\n')
 }
