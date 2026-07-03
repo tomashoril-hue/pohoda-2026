@@ -3895,14 +3895,22 @@ export default function PersonalistaClient({
     if (!selectedPerson) return
 
     const email = selectedPerson.email || ''
+    const hasEmail = email.trim().length > 0
     const typedEmail = window.prompt(
-      `Tato akcia odregistruje osobu a uvolni email pre novu registraciu.\n\nPre potvrdenie napis email osoby: ${email}`
+      hasEmail
+        ? `Tato akcia odregistruje osobu a uvolni email pre novu registraciu.\n\nPre potvrdenie napis email osoby: ${email}`
+        : 'Tato akcia odregistruje osobu bez emailu.\n\nOsoba nema email, pre potvrdenie nechaj pole prazdne a stlac OK.'
     )
 
     if (typedEmail === null) return
 
-    if (typedEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
+    if (hasEmail && typedEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
       setDetailFeedback('Email nesedi. Odregistrovanie nebolo spustene.', 'error', 'roles')
+      return
+    }
+
+    if (!hasEmail && typedEmail.trim() !== '') {
+      setDetailFeedback('Osoba nema email. Pre potvrdenie nechaj pole prazdne.', 'error', 'roles')
       return
     }
 
@@ -3914,7 +3922,9 @@ export default function PersonalistaClient({
     if (reason === null) return
 
     const ok = window.confirm(
-      'Naozaj odregistrovat tuto osobu? Email sa uvolni pre novu registraciu, stare historicke zaznamy ostanu v audite.'
+      hasEmail
+        ? 'Naozaj odregistrovat tuto osobu? Email sa uvolni pre novu registraciu, stare historicke zaznamy ostanu v audite.'
+        : 'Naozaj odregistrovat tuto osobu bez emailu? Buduce naroky a aktivne QR sa zneplatnia, historicke zaznamy ostanu v audite.'
     )
 
     if (!ok) return
