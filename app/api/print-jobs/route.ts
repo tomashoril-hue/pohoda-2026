@@ -40,7 +40,10 @@ function currentPrintDateTime() {
   const getPart = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value || ''
 
-  return `${getPart('day')}.${getPart('month')}.${getPart('year')}  ${getPart('hour')}:${getPart('minute')}`
+  const day = getPart('day').padStart(2, '0')
+  const month = getPart('month').padStart(2, '0')
+
+  return `${day}.${month}.${getPart('year')}  ${getPart('hour')}:${getPart('minute')}`
 }
 
 function buildPersonQrLabelZpl(input: {
@@ -73,6 +76,7 @@ function buildPersonQrLabelZpl(input: {
     '^FO0,330^FB384,1,0,C,0^A0N,21,21^FDSkupina: ' + group + '^FS',
     '^FO112,362^GB160,32,2,15^FS',
     '^FO112,370^FB160,1,0,C,0^A0N,18,18^FDTyp stravy: ' + meal + '^FS',
+    '^FC%,H,M',
     '^FO0,415^FB384,1,0,C,0^A0N,22,22^FD' + printedAt + '^FS',
     '^XZ'
   ].join('\n')
