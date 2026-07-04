@@ -848,8 +848,8 @@ export default function PersonalistaClient({
 
   const sendWelcomeEmailsForGroup = async () => {
     setCommunicationLoading(true)
-    setCommunicationMessage('')
-    setCommunicationMessageType('')
+    setCommunicationMessage('Odosielam uvitacie e-maily...')
+    setCommunicationMessageType('ok')
 
     try {
       const res = await fetch('/api/personalista/communication/send-welcome', {
@@ -875,6 +875,11 @@ export default function PersonalistaClient({
       )
       setCommunicationMessageType(json.failed ? 'error' : 'ok')
       await loadCommunicationSummary(communicationGroupId, 'communication')
+      setCommunicationMessage(
+        `Spracovane: ${json.total}, odoslane: ${json.sent}, chyby: ${json.failed}.` +
+        (json.remaining ? ` Zostava este: ${json.remaining}. Spusti odoslanie znova pre dalsiu davku.` : '')
+      )
+      setCommunicationMessageType(json.failed ? 'error' : 'ok')
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setCommunicationMessage('Chyba spojenia so serverom: ' + message)
@@ -973,8 +978,8 @@ export default function PersonalistaClient({
 
   const sendSelfOrderingEmails = async () => {
     setCommunicationLoading(true)
-    setCommunicationMessage('')
-    setCommunicationMessageType('')
+    setCommunicationMessage('Odosielam e-maily pre samostatne objednavanie...')
+    setCommunicationMessageType('ok')
 
     try {
       const res = await fetch('/api/personalista/communication/send-self-ordering', {
@@ -993,6 +998,8 @@ export default function PersonalistaClient({
       setCommunicationMessage(`Samostatné objednávanie: odoslané ${json.sent}, chyby ${json.failed}, zostáva ${json.remaining}.`)
       setCommunicationMessageType(json.failed ? 'error' : 'ok')
       await loadCommunicationSummary(selfOrderingGroupId, 'selfOrdering')
+      setCommunicationMessage(`Samostatne objednavanie: spracovane ${json.total}, odoslane ${json.sent}, chyby ${json.failed}, zostava ${json.remaining}.`)
+      setCommunicationMessageType(json.failed ? 'error' : 'ok')
     } catch (err: any) {
       setCommunicationMessage(err?.message || 'Odoslanie zlyhalo.')
       setCommunicationMessageType('error')
