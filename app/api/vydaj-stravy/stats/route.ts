@@ -92,6 +92,30 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Nemáš oprávnenie vydávať stravu.' }, { status: 403 })
     }
 
+    const stats: Record<'OBED' | 'VECERA', ReturnType<typeof emptyStats>> = {
+      OBED: emptyStats(),
+      VECERA: emptyStats()
+    }
+
+    const issuedRows = await fetchAll((from, to) => supabaseServer
+      .from('vydaj_jedal')
+      .select('user_id, typ_jedla, volba')
+      .eq('datum', datum)
+      .eq('status', 'VYDANE')
+      .in('typ_jedla', ['OBED', 'VECERA'])
+      .range(from, to)
+    )
+
+    issuedRows.forEach((row: any) => {
+      const meal = String(row.typ_jedla || '').toUpperCase()
+      if (meal !== 'OBED' && meal !== 'VECERA') return
+
+      const issuedChoice = normalizeChoice(row.volba)
+
+      stats[meal].issued += 1
+      stats[meal][issuedChoice].issued += 1
+    })
+
     let userIds: string[] = []
 
     let entitlementRows: any[] = []
@@ -107,16 +131,12 @@ export async function GET(req: NextRequest) {
     if (userIds.length === 0) {
       return NextResponse.json({
         ok: true,
-        stats: {
-          OBED: emptyStats(),
-          VECERA: emptyStats()
-        }
+        stats
       })
     }
 
     const usersRows: any[] = []
     const selectionRows: any[] = []
-    const issuedRows: any[] = []
 
     for (const userIdChunk of chunks(userIds, 400)) {
       const users = await fetchAll((from, to) => supabaseServer
@@ -134,32 +154,14 @@ export async function GET(req: NextRequest) {
         .range(from, to)
       )
 
-      const issued = await fetchAll((from, to) => supabaseServer
-        .from('vydaj_jedal')
-        .select('user_id, typ_jedla, volba')
-        .eq('datum', datum)
-        .eq('status', 'VYDANE')
-        .in('user_id', userIdChunk)
-        .range(from, to)
-      )
-
       usersRows.push(...users)
       selectionRows.push(...selections)
-      issuedRows.push(...issued)
     }
 
     const userMap = new Map(usersRows.map((row: any) => [row.id, row]))
     const selectionMap = new Map(
       selectionRows.map((row: any) => [`${row.user_id}|${row.typ_jedla}`, row])
     )
-    const issuedMap = new Map(
-      issuedRows.map((row: any) => [`${row.user_id}|${row.typ_jedla}`, row])
-    )
-
-    const stats: Record<'OBED' | 'VECERA', ReturnType<typeof emptyStats>> = {
-      OBED: emptyStats(),
-      VECERA: emptyStats()
-    }
 
     entitlementRows.forEach((entitlement: any) => {
       const user = userMap.get(entitlement.user_id)
@@ -171,19 +173,12 @@ export async function GET(req: NextRequest) {
         if (!hasEntitlement) return
 
         const selection = selectionMap.get(`${entitlement.user_id}|${meal}`)
-        const issued = issuedMap.get(`${entitlement.user_id}|${meal}`)
         if (isNoInterestChoice(selection?.volba)) return
 
         const choice = normalizeChoice(selection?.volba || user.typ_stravy)
-        const issuedChoice = normalizeChoice(issued?.volba || choice)
 
         stats[meal].total += 1
         stats[meal][choice].total += 1
-
-        if (issued) {
-          stats[meal].issued += 1
-          stats[meal][issuedChoice].issued += 1
-        }
       })
     })
 
