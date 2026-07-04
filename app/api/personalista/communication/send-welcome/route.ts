@@ -9,6 +9,7 @@ import { supabaseServer } from '@/lib/supabaseServer'
 const WELCOME_EMAIL_BATCH_SIZE = 50
 const EMAIL_SEND_CONCURRENCY = 1
 const EMAIL_SEND_DELAY_MS = 150
+const SUPABASE_IN_FILTER_CHUNK_SIZE = 80
 
 function text(value: any) {
   return String(value || '').trim()
@@ -129,7 +130,7 @@ async function getAllWelcomeCandidateUsers() {
 async function getSelfOrderingUserIds(userIds: string[]) {
   const result = new Set<string>()
 
-  for (const chunk of chunkArray(userIds, 500)) {
+  for (const chunk of chunkArray(userIds, SUPABASE_IN_FILTER_CHUNK_SIZE)) {
     const { data, error } = await supabaseServer
       .from('app_user_roles')
       .select('user_id')
@@ -150,7 +151,7 @@ async function getSelfOrderingUserIds(userIds: string[]) {
 async function getWelcomeCandidateUsersByIds(userIds: string[]) {
   const users: any[] = []
 
-  for (const chunk of chunkArray(userIds, 500)) {
+  for (const chunk of chunkArray(userIds, SUPABASE_IN_FILTER_CHUNK_SIZE)) {
     const { data, error } = await supabaseServer
       .from('users')
       .select('id, meno, priezvisko, email, qr_code, registration_group_id')
@@ -171,7 +172,7 @@ async function getWelcomeCandidateUsersByIds(userIds: string[]) {
 async function getWelcomeEmailLogUserIds(userIds: string[], status: 'SENT' | 'FAILED', permanentOnly = false) {
   const result = new Set<string>()
 
-  for (const chunk of chunkArray(userIds, 500)) {
+  for (const chunk of chunkArray(userIds, SUPABASE_IN_FILTER_CHUNK_SIZE)) {
     let query = supabaseServer
       .from('personnel_email_log')
       .select('user_id')
@@ -200,7 +201,7 @@ async function getWelcomeEmailLogUserIds(userIds: string[], status: 'SENT' | 'FA
 async function getIssuedMealUserIds(userIds: string[]) {
   const issuedUserIds = new Set<string>()
 
-  for (const chunk of chunkArray(userIds, 500)) {
+  for (const chunk of chunkArray(userIds, SUPABASE_IN_FILTER_CHUNK_SIZE)) {
     const { data, error } = await supabaseServer
       .from('vydaj_jedal')
       .select('user_id')

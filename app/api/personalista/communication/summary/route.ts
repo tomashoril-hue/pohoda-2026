@@ -5,6 +5,7 @@ import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 const SUMMARY_VERSION = 'communication-summary-direct-2026-07-04'
+const SUPABASE_IN_FILTER_CHUNK_SIZE = 80
 const NO_STORE_HEADERS = {
   'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
   Pragma: 'no-cache',
@@ -116,7 +117,7 @@ async function getBaseRegistrationGroupUserIds(registrationGroupId: string) {
 async function getActiveUsersByIds(userIds: string[]) {
   const users: Array<{ id: string; email: string | null }> = []
 
-  for (const chunk of chunkArray(userIds, 500)) {
+  for (const chunk of chunkArray(userIds, SUPABASE_IN_FILTER_CHUNK_SIZE)) {
     const { data, error } = await supabaseServer
       .from('users')
       .select('id, email')
@@ -133,7 +134,7 @@ async function getActiveUsersByIds(userIds: string[]) {
 async function getUserIdSetByChunks(table: string, userIds: string[], configure: (query: any) => any) {
   const result = new Set<string>()
 
-  for (const chunk of chunkArray(userIds, 500)) {
+  for (const chunk of chunkArray(userIds, SUPABASE_IN_FILTER_CHUNK_SIZE)) {
     const query = configure(
       supabaseServer
         .from(table)
@@ -155,7 +156,7 @@ async function getUserIdSetByChunks(table: string, userIds: string[], configure:
 async function getSelfOrderingUserIds(candidateUserIds: string[]) {
   const result = new Set<string>()
 
-  for (const chunk of chunkArray(candidateUserIds, 500)) {
+  for (const chunk of chunkArray(candidateUserIds, SUPABASE_IN_FILTER_CHUNK_SIZE)) {
     const { data, error } = await supabaseServer
       .from('app_user_roles')
       .select('user_id')
@@ -176,7 +177,7 @@ async function getSelfOrderingUserIds(candidateUserIds: string[]) {
 async function getIssuedMealUserIds(candidateUserIds: string[]) {
   const result = new Set<string>()
 
-  for (const chunk of chunkArray(candidateUserIds, 500)) {
+  for (const chunk of chunkArray(candidateUserIds, SUPABASE_IN_FILTER_CHUNK_SIZE)) {
     const { data, error } = await supabaseServer
       .from('vydaj_jedal')
       .select('user_id')

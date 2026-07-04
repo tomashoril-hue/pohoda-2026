@@ -11,6 +11,7 @@ const BATCH_SIZE = 50
 const EMAIL_SEND_CONCURRENCY = 1
 const EMAIL_SEND_DELAY_MS = 150
 const SELF_ORDERING_TOKEN_DAYS = 7
+const SUPABASE_IN_FILTER_CHUNK_SIZE = 80
 
 function text(value: any) {
   return String(value || '').trim()
@@ -161,7 +162,7 @@ async function getSelfOrderingUsers(registrationGroupId: string) {
   const roleUserIds = (roleRows || []).map((row: any) => row.user_id).filter(Boolean)
   const users: any[] = []
 
-  for (const chunk of chunkArray(roleUserIds, 500)) {
+  for (const chunk of chunkArray(roleUserIds, SUPABASE_IN_FILTER_CHUNK_SIZE)) {
     let query = supabaseServer
       .from('users')
       .select('id, meno, priezvisko, email, qr_code, registration_group_id')
@@ -210,7 +211,7 @@ async function getSelfOrderingUserById(userId: string) {
 async function getInviteLogUserIds(userIds: string[], status: 'SENT' | 'FAILED', permanentOnly = false) {
   const result = new Set<string>()
 
-  for (const chunk of chunkArray(userIds, 500)) {
+  for (const chunk of chunkArray(userIds, SUPABASE_IN_FILTER_CHUNK_SIZE)) {
     let query = supabaseServer
       .from('personnel_email_log')
       .select('user_id')
