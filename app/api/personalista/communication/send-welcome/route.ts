@@ -163,8 +163,8 @@ async function getWelcomeCandidateUsersByIds(userIds: string[]) {
   return users
 }
 
-async function getSentWelcomeUserIds(userIds: string[]) {
-  const sentUserIds = new Set<string>()
+async function getWelcomeEmailLogUserIds(userIds: string[], status: 'SENT' | 'FAILED') {
+  const result = new Set<string>()
 
   for (const chunk of chunkArray(userIds, 500)) {
     const { data, error } = await supabaseServer
@@ -172,16 +172,16 @@ async function getSentWelcomeUserIds(userIds: string[]) {
       .select('user_id')
       .in('user_id', chunk)
       .eq('type', 'WELCOME_IMPORTED_USER')
-      .eq('status', 'SENT')
+      .eq('status', status)
 
     if (error) throw error
 
     ;(data || []).forEach((row: any) => {
-      if (row.user_id) sentUserIds.add(row.user_id)
+      if (row.user_id) result.add(row.user_id)
     })
   }
 
-  return sentUserIds
+  return result
 }
 
 async function getIssuedMealUserIds(userIds: string[]) {
@@ -217,9 +217,6 @@ export async function POST(req: NextRequest) {
     if (!access.canUsePersonalista) {
       return NextResponse.json({ error: 'Nemate opravnenie.' }, { status: 403 })
     }
-
-    const sendLimit = checkActorRateLimit(currentUser.id, 'personalista-welcome-email', 4, 10 * 60 * 1000)
-    if (!sendLimit.ok) return rateLimitResponse(sendLimit, 'Prilis vela hromadnych e-mailov. Skuste znova neskor.')
 
     const body = await req.json().catch(() => ({}))
     const userId = text(body.userId)
@@ -273,12 +270,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, sent: 0, failed: 0, total: 0, remaining: 0, batchSize: WELCOME_EMAIL_BATCH_SIZE })
     }
 
-    const sentUserIds = !resend ? await getSentWelcomeUserIds(userIds) : new Set<string>()
+    const sentUserIds = !resend ? await getWelcomeEmailLogUserIds(userIds, 'SENT') : new Set<string>()
+    const failedUserIds = !resend && !userId ? await getWelcomeEmailLogUserIds(userIds, 'FAILED') : new Set<string>()
 
     const pendingUsers = users
-      .filter((user: any) => resend || !sentUserIds.has(user.id))
+      .filter((user: any) => resend || (!sentUserIds.has(user.id) && !failedUserIds.has(user.id)))
     const targetUsers = pendingUsers.slice(0, WELCOME_EMAIL_BATCH_SIZE)
     const loginUrl = `${process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin}/login`
+
+    if (targetUsers.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        sent: 0,
+        failed: 0,
+        total: 0,
+        remaining: 0,
+        batchSize: WELCOME_EMAIL_BATCH_SIZE
+      })
+    }
+
+    const sendLimit = userId
+      ? checkActorRateLimit(currentUser.id, 'personalista-welcome-email-single', 20, 10 * 60 * 1000)
+      : checkActorRateLimit(currentUser.id, 'personalista-welcome-email-bulk', 20, 10 * 60 * 1000)
+    if (!sendLimit.ok) {
+      return rateLimitResponse(
+        sendLimit,
+        userId
+          ? 'Prilis vela opakovanych e-mailov. Skuste znova neskor.'
+          : 'Prilis vela hromadnych e-mailov. Skuste znova neskor.'
+      )
+    }
 
     const sendResults = await mapWithConcurrency(targetUsers, EMAIL_SEND_CONCURRENCY, async (user) => {
       const email = text(user.email).toLowerCase()

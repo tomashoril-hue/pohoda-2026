@@ -120,10 +120,12 @@ type CommunicationSummary = {
   total: number
   withEmail: number
   welcomeSent: number
+  welcomeFailed: number
   welcomePending: number
   selfOrderingTotal: number
   selfOrderingWithEmail: number
   selfOrderingSent: number
+  selfOrderingFailed: number
   selfOrderingPending: number
   withAccessCode: number
   withQr: number
@@ -817,10 +819,12 @@ export default function PersonalistaClient({
         total: Number(json.total || 0),
         withEmail: Number(json.withEmail || 0),
         welcomeSent: Number(json.welcomeSent || 0),
+        welcomeFailed: Number(json.welcomeFailed || 0),
         welcomePending: Number(json.welcomePending || 0),
         selfOrderingTotal: Number(json.selfOrderingTotal || 0),
         selfOrderingWithEmail: Number(json.selfOrderingWithEmail || 0),
         selfOrderingSent: Number(json.selfOrderingSent || 0),
+        selfOrderingFailed: Number(json.selfOrderingFailed || 0),
         selfOrderingPending: Number(json.selfOrderingPending || 0),
         withAccessCode: Number(json.withAccessCode || 0),
         withQr: Number(json.withQr || 0),
@@ -4562,6 +4566,7 @@ export default function PersonalistaClient({
             <div style={styles.toolStatsGrid}>
               <div style={styles.toolStat}><b>{communicationSummary.withEmail}</b><span>S e-mailom</span></div>
               <div style={styles.toolStat}><b>{communicationSummary.welcomeSent}</b><span>Odoslane</span></div>
+              <div style={styles.toolStatError}><b>{communicationSummary.welcomeFailed}</b><span>Chyby</span></div>
               <div style={styles.toolStatWarning}><b>{communicationSummary.welcomePending}</b><span>Caka</span></div>
             </div>
           )}
@@ -4626,6 +4631,7 @@ export default function PersonalistaClient({
               <div style={styles.toolStatsGrid}>
                 <div style={styles.toolStatBlue}><b>{selfOrderingSummary.selfOrderingWithEmail}</b><span>S e-mailom</span></div>
                 <div style={styles.toolStatGreen}><b>{selfOrderingSummary.selfOrderingSent}</b><span>Odoslane</span></div>
+                <div style={styles.toolStatError}><b>{selfOrderingSummary.selfOrderingFailed}</b><span>Chyby</span></div>
                 <div style={styles.toolStatWarning}><b>{selfOrderingSummary.selfOrderingPending}</b><span>Caka</span></div>
               </div>
             )}
@@ -9432,6 +9438,16 @@ const styles: Record<string, CSSProperties> = {
     gap: 2,
     minHeight: 44,
     color: '#9a3412'
+  },
+  toolStatError: {
+    border: '1px solid #fecaca',
+    borderRadius: 6,
+    background: '#fef2f2',
+    padding: '6px 8px',
+    display: 'grid',
+    gap: 2,
+    minHeight: 44,
+    color: '#991b1b'
   },
   toolStatBlue: {
     border: '1px solid #bfdbfe',

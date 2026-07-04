@@ -202,8 +202,8 @@ async function getSelfOrderingUserById(userId: string) {
   return user
 }
 
-async function getSentInviteUserIds(userIds: string[]) {
-  const sent = new Set<string>()
+async function getInviteLogUserIds(userIds: string[], status: 'SENT' | 'FAILED') {
+  const result = new Set<string>()
 
   for (const chunk of chunkArray(userIds, 500)) {
     const { data, error } = await supabaseServer
@@ -211,16 +211,16 @@ async function getSentInviteUserIds(userIds: string[]) {
       .select('user_id')
       .in('user_id', chunk)
       .eq('type', 'SELF_ORDERING_INVITE')
-      .eq('status', 'SENT')
+      .eq('status', status)
 
     if (error) throw error
 
     ;(data || []).forEach((row: any) => {
-      if (row.user_id) sent.add(row.user_id)
+      if (row.user_id) result.add(row.user_id)
     })
   }
 
-  return sent
+  return result
 }
 
 export async function POST(req: NextRequest) {
@@ -266,15 +266,18 @@ export async function POST(req: NextRequest) {
       targetUsers = [user]
       pendingCount = 1
     } else {
-      const sendLimit = checkActorRateLimit(currentUser.id, 'personalista-self-ordering-email', 4, 10 * 60 * 1000)
-      if (!sendLimit.ok) return rateLimitResponse(sendLimit, 'Prilis vela hromadnych e-mailov. Skuste znova neskor.')
-
       const users = await getSelfOrderingUsers(registrationGroupId)
       const userIds = users.map((user: any) => user.id).filter(Boolean)
-      const sentUserIds = resend ? new Set<string>() : await getSentInviteUserIds(userIds)
-      const pendingUsers = users.filter((user: any) => resend || !sentUserIds.has(user.id))
+      const sentUserIds = resend ? new Set<string>() : await getInviteLogUserIds(userIds, 'SENT')
+      const failedUserIds = resend ? new Set<string>() : await getInviteLogUserIds(userIds, 'FAILED')
+      const pendingUsers = users.filter((user: any) => resend || (!sentUserIds.has(user.id) && !failedUserIds.has(user.id)))
       targetUsers = pendingUsers.slice(0, BATCH_SIZE)
       pendingCount = pendingUsers.length
+
+      if (targetUsers.length > 0) {
+        const sendLimit = checkActorRateLimit(currentUser.id, 'personalista-self-ordering-email', 20, 10 * 60 * 1000)
+        if (!sendLimit.ok) return rateLimitResponse(sendLimit, 'Prilis vela hromadnych e-mailov. Skuste znova neskor.')
+      }
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin

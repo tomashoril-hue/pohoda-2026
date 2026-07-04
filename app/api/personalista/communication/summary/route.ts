@@ -236,6 +236,11 @@ export async function GET(req: NextRequest) {
         .eq('type', 'WELCOME_IMPORTED_USER')
         .eq('status', 'SENT'))
       : new Set<string>()
+    const failedUserIds = welcomeUserIds.length > 0
+      ? await getUserIdSetByChunks('personnel_email_log', welcomeUserIds, query => query
+        .eq('type', 'WELCOME_IMPORTED_USER')
+        .eq('status', 'FAILED'))
+      : new Set<string>()
     const codeUserIds = activeUserIds.length > 0
       ? await getUserIdSetByChunks('user_access_codes', activeUserIds, query => query
         .eq('active', true)
@@ -255,6 +260,11 @@ export async function GET(req: NextRequest) {
         .eq('type', 'SELF_ORDERING_INVITE')
         .eq('status', 'SENT'))
       : new Set<string>()
+    const selfOrderingFailedUserIds = selfOrderingEmailUserIds.size > 0
+      ? await getUserIdSetByChunks('personnel_email_log', Array.from(selfOrderingEmailUserIds), query => query
+        .eq('type', 'SELF_ORDERING_INVITE')
+        .eq('status', 'FAILED'))
+      : new Set<string>()
 
     return NextResponse.json({
       ok: true,
@@ -262,11 +272,13 @@ export async function GET(req: NextRequest) {
       total: activeUsers.length,
       withEmail,
       welcomeSent: sentUserIds.size,
-      welcomePending: Math.max(0, withEmail - sentUserIds.size),
+      welcomeFailed: failedUserIds.size,
+      welcomePending: Math.max(0, withEmail - sentUserIds.size - failedUserIds.size),
       selfOrderingTotal: selfOrderingUserIds.size,
       selfOrderingWithEmail: selfOrderingEmailUserIds.size,
       selfOrderingSent: selfOrderingSentUserIds.size,
-      selfOrderingPending: Math.max(0, selfOrderingEmailUserIds.size - selfOrderingSentUserIds.size),
+      selfOrderingFailed: selfOrderingFailedUserIds.size,
+      selfOrderingPending: Math.max(0, selfOrderingEmailUserIds.size - selfOrderingSentUserIds.size - selfOrderingFailedUserIds.size),
       withAccessCode: codeUserIds.size,
       withQr: qrUserIds.size
     })
