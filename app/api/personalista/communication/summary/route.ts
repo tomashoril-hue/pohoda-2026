@@ -228,16 +228,21 @@ export async function GET(req: NextRequest) {
     const issuedMealUserIds = activeUserIds.length > 0
       ? await getIssuedMealUserIds(activeUserIds)
       : new Set<string>()
-    const welcomeUserIds = activeUserIds.filter(userId => !selfOrderingUserIds.has(userId) && !issuedMealUserIds.has(userId))
     const welcomeUsers = activeUsers.filter((user: any) => !selfOrderingUserIds.has(user.id) && !issuedMealUserIds.has(user.id))
+    const welcomeEmailUserIds = new Set(
+      welcomeUsers
+        .filter((user: any) => text(user.email))
+        .map((user: any) => user.id)
+    )
+    const welcomeEmailUserIdList = Array.from(welcomeEmailUserIds)
 
-    const sentUserIds = welcomeUserIds.length > 0
-      ? await getUserIdSetByChunks('personnel_email_log', welcomeUserIds, query => query
+    const sentUserIds = welcomeEmailUserIdList.length > 0
+      ? await getUserIdSetByChunks('personnel_email_log', welcomeEmailUserIdList, query => query
         .eq('type', 'WELCOME_IMPORTED_USER')
         .eq('status', 'SENT'))
       : new Set<string>()
-    const failedUserIds = welcomeUserIds.length > 0
-      ? await getUserIdSetByChunks('personnel_email_log', welcomeUserIds, query => query
+    const failedUserIds = welcomeEmailUserIdList.length > 0
+      ? await getUserIdSetByChunks('personnel_email_log', welcomeEmailUserIdList, query => query
         .eq('type', 'WELCOME_IMPORTED_USER')
         .eq('status', 'FAILED')
         .not('error_message', 'ilike', '%Too many requests%')
@@ -251,7 +256,6 @@ export async function GET(req: NextRequest) {
     const qrUserIds = activeUserIds.length > 0
       ? await getUserIdSetByChunks('user_qr_codes', activeUserIds, query => query.eq('active', true))
       : new Set<string>()
-    const withEmail = welcomeUsers.filter((user: any) => text(user.email)).length
     const selfOrderingEmailUserIds = new Set(
       activeUsers
         .filter((user: any) => text(user.email) && selfOrderingUserIds.has(user.id))
@@ -269,20 +273,26 @@ export async function GET(req: NextRequest) {
         .not('error_message', 'ilike', '%Too many requests%')
         .not('error_message', 'ilike', '%requests per second%'))
       : new Set<string>()
+    const welcomePending = welcomeEmailUserIdList
+      .filter(userId => !sentUserIds.has(userId) && !failedUserIds.has(userId))
+      .length
+    const selfOrderingPending = Array.from(selfOrderingEmailUserIds)
+      .filter(userId => !selfOrderingSentUserIds.has(userId) && !selfOrderingFailedUserIds.has(userId))
+      .length
 
     return NextResponse.json({
       ok: true,
       group,
       total: activeUsers.length,
-      withEmail,
+      withEmail: welcomeEmailUserIds.size,
       welcomeSent: sentUserIds.size,
       welcomeFailed: failedUserIds.size,
-      welcomePending: Math.max(0, withEmail - sentUserIds.size - failedUserIds.size),
+      welcomePending,
       selfOrderingTotal: selfOrderingUserIds.size,
       selfOrderingWithEmail: selfOrderingEmailUserIds.size,
       selfOrderingSent: selfOrderingSentUserIds.size,
       selfOrderingFailed: selfOrderingFailedUserIds.size,
-      selfOrderingPending: Math.max(0, selfOrderingEmailUserIds.size - selfOrderingSentUserIds.size - selfOrderingFailedUserIds.size),
+      selfOrderingPending,
       withAccessCode: codeUserIds.size,
       withQr: qrUserIds.size
     })
