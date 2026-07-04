@@ -239,7 +239,9 @@ export async function GET(req: NextRequest) {
     const failedUserIds = welcomeUserIds.length > 0
       ? await getUserIdSetByChunks('personnel_email_log', welcomeUserIds, query => query
         .eq('type', 'WELCOME_IMPORTED_USER')
-        .eq('status', 'FAILED'))
+        .eq('status', 'FAILED')
+        .not('error_message', 'ilike', '%Too many requests%')
+        .not('error_message', 'ilike', '%requests per second%'))
       : new Set<string>()
     const codeUserIds = activeUserIds.length > 0
       ? await getUserIdSetByChunks('user_access_codes', activeUserIds, query => query
@@ -263,7 +265,9 @@ export async function GET(req: NextRequest) {
     const selfOrderingFailedUserIds = selfOrderingEmailUserIds.size > 0
       ? await getUserIdSetByChunks('personnel_email_log', Array.from(selfOrderingEmailUserIds), query => query
         .eq('type', 'SELF_ORDERING_INVITE')
-        .eq('status', 'FAILED'))
+        .eq('status', 'FAILED')
+        .not('error_message', 'ilike', '%Too many requests%')
+        .not('error_message', 'ilike', '%requests per second%'))
       : new Set<string>()
 
     return NextResponse.json({

@@ -8,7 +8,8 @@ import { createSelfOrderingToken, hashSelfOrderingToken } from '@/lib/selfOrderi
 import { supabaseServer } from '@/lib/supabaseServer'
 
 const BATCH_SIZE = 50
-const EMAIL_SEND_CONCURRENCY = 5
+const EMAIL_SEND_CONCURRENCY = 1
+const EMAIL_SEND_DELAY_MS = 150
 const SELF_ORDERING_TOKEN_DAYS = 7
 
 function text(value: any) {
@@ -32,6 +33,10 @@ function chunkArray<T>(items: T[], size: number) {
   }
 
   return chunks
+}
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 async function mapWithConcurrency<T, R>(
@@ -202,16 +207,24 @@ async function getSelfOrderingUserById(userId: string) {
   return user
 }
 
-async function getInviteLogUserIds(userIds: string[], status: 'SENT' | 'FAILED') {
+async function getInviteLogUserIds(userIds: string[], status: 'SENT' | 'FAILED', permanentOnly = false) {
   const result = new Set<string>()
 
   for (const chunk of chunkArray(userIds, 500)) {
-    const { data, error } = await supabaseServer
+    let query = supabaseServer
       .from('personnel_email_log')
       .select('user_id')
       .in('user_id', chunk)
       .eq('type', 'SELF_ORDERING_INVITE')
       .eq('status', status)
+
+    if (permanentOnly) {
+      query = query
+        .not('error_message', 'ilike', '%Too many requests%')
+        .not('error_message', 'ilike', '%requests per second%')
+    }
+
+    const { data, error } = await query
 
     if (error) throw error
 
@@ -269,7 +282,7 @@ export async function POST(req: NextRequest) {
       const users = await getSelfOrderingUsers(registrationGroupId)
       const userIds = users.map((user: any) => user.id).filter(Boolean)
       const sentUserIds = resend ? new Set<string>() : await getInviteLogUserIds(userIds, 'SENT')
-      const failedUserIds = resend ? new Set<string>() : await getInviteLogUserIds(userIds, 'FAILED')
+      const failedUserIds = resend ? new Set<string>() : await getInviteLogUserIds(userIds, 'FAILED', true)
       const pendingUsers = users.filter((user: any) => resend || (!sentUserIds.has(user.id) && !failedUserIds.has(user.id)))
       targetUsers = pendingUsers.slice(0, BATCH_SIZE)
       pendingCount = pendingUsers.length
@@ -324,6 +337,7 @@ export async function POST(req: NextRequest) {
           language,
           faviconUrl
         })
+        await sleep(EMAIL_SEND_DELAY_MS)
         const result = await sendAppEmail({
           from: 'POHODA 2026 <registracia@pohodapass.sk>',
           to: email,

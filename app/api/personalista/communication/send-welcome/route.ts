@@ -7,7 +7,8 @@ import { checkActorRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 const WELCOME_EMAIL_BATCH_SIZE = 50
-const EMAIL_SEND_CONCURRENCY = 5
+const EMAIL_SEND_CONCURRENCY = 1
+const EMAIL_SEND_DELAY_MS = 150
 
 function text(value: any) {
   return String(value || '').trim()
@@ -21,6 +22,10 @@ function chunkArray<T>(items: T[], size: number) {
   }
 
   return chunks
+}
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 async function mapWithConcurrency<T, R>(
@@ -163,16 +168,24 @@ async function getWelcomeCandidateUsersByIds(userIds: string[]) {
   return users
 }
 
-async function getWelcomeEmailLogUserIds(userIds: string[], status: 'SENT' | 'FAILED') {
+async function getWelcomeEmailLogUserIds(userIds: string[], status: 'SENT' | 'FAILED', permanentOnly = false) {
   const result = new Set<string>()
 
   for (const chunk of chunkArray(userIds, 500)) {
-    const { data, error } = await supabaseServer
+    let query = supabaseServer
       .from('personnel_email_log')
       .select('user_id')
       .in('user_id', chunk)
       .eq('type', 'WELCOME_IMPORTED_USER')
       .eq('status', status)
+
+    if (permanentOnly) {
+      query = query
+        .not('error_message', 'ilike', '%Too many requests%')
+        .not('error_message', 'ilike', '%requests per second%')
+    }
+
+    const { data, error } = await query
 
     if (error) throw error
 
@@ -271,7 +284,7 @@ export async function POST(req: NextRequest) {
     }
 
     const sentUserIds = !resend ? await getWelcomeEmailLogUserIds(userIds, 'SENT') : new Set<string>()
-    const failedUserIds = !resend && !userId ? await getWelcomeEmailLogUserIds(userIds, 'FAILED') : new Set<string>()
+    const failedUserIds = !resend && !userId ? await getWelcomeEmailLogUserIds(userIds, 'FAILED', true) : new Set<string>()
 
     const pendingUsers = users
       .filter((user: any) => resend || (!sentUserIds.has(user.id) && !failedUserIds.has(user.id)))
@@ -308,6 +321,7 @@ export async function POST(req: NextRequest) {
 
       try {
         const qrAttachment = await createQrPngAttachment(user.qr_code || '', 'pohodapass-qr')
+        await sleep(EMAIL_SEND_DELAY_MS)
         const result = await sendAppEmail({
           from: 'POHODA 2026 <registracia@pohodapass.sk>',
           to: email,
