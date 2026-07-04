@@ -117,6 +117,7 @@ type CommunicationLanguage = 'SK' | 'EN'
 type CreateAccountType = 'PERSON' | 'TECHNICAL'
 
 type CommunicationSummary = {
+  computedAt?: string
   total: number
   withEmail: number
   welcomeSent: number
@@ -816,6 +817,7 @@ export default function PersonalistaClient({
       }
 
       const summary = {
+        computedAt: String(json.computedAt || ''),
         total: Number(json.total || 0),
         withEmail: Number(json.withEmail || 0),
         welcomeSent: Number(json.welcomeSent || 0),
@@ -832,7 +834,10 @@ export default function PersonalistaClient({
       }
 
       summarySetter(summary)
-      messageSetter(`Načítané: ${summary.group?.name || 'všetci aktívni ľudia'}.`)
+      const loadedAt = summary.computedAt
+        ? new Date(summary.computedAt).toLocaleTimeString('sk-SK', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : ''
+      messageSetter(`Načítané: ${summary.group?.name || 'všetci aktívni ľudia'}${loadedAt ? ` o ${loadedAt}` : ''}.`)
       typeSetter('ok')
       return summary
     } catch (err) {

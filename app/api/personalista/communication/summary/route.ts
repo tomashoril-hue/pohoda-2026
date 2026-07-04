@@ -4,6 +4,23 @@ import { slovakiaDateIso } from '@/lib/date'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
+const SUMMARY_VERSION = 'communication-summary-direct-2026-07-04'
+const NO_STORE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+  Pragma: 'no-cache',
+  Expires: '0'
+}
+
+function jsonNoStore(body: any, init: ResponseInit = {}) {
+  return NextResponse.json(body, {
+    ...init,
+    headers: {
+      ...NO_STORE_HEADERS,
+      ...(init.headers || {})
+    }
+  })
+}
+
 function text(value: any) {
   return String(value || '').trim()
 }
@@ -181,13 +198,13 @@ export async function GET(req: NextRequest) {
     const currentUser = await getCurrentUser()
 
     if (!currentUser) {
-      return NextResponse.json({ error: 'Nie si prihlaseny.' }, { status: 401 })
+      return jsonNoStore({ error: 'Nie si prihlaseny.' }, { status: 401 })
     }
 
     const access = await getGlobalAccess(currentUser.id)
 
     if (!access.canUsePersonalista) {
-      return NextResponse.json({ error: 'Nemate opravnenie.' }, { status: 403 })
+      return jsonNoStore({ error: 'Nemate opravnenie.' }, { status: 403 })
     }
 
     const registrationGroupId = text(req.nextUrl.searchParams.get('registrationGroupId'))
@@ -204,11 +221,11 @@ export async function GET(req: NextRequest) {
         .maybeSingle()
 
       if (groupError) {
-        return NextResponse.json({ error: groupError.message }, { status: 500 })
+        return jsonNoStore({ error: groupError.message }, { status: 500 })
       }
 
       if (!groupRow) {
-        return NextResponse.json({ error: 'Registracna skupina neexistuje.' }, { status: 404 })
+        return jsonNoStore({ error: 'Registracna skupina neexistuje.' }, { status: 404 })
       }
 
       group = groupRow
@@ -280,8 +297,10 @@ export async function GET(req: NextRequest) {
       .filter(userId => !selfOrderingSentUserIds.has(userId) && !selfOrderingFailedUserIds.has(userId))
       .length
 
-    return NextResponse.json({
+    return jsonNoStore({
       ok: true,
+      summaryVersion: SUMMARY_VERSION,
+      computedAt: new Date().toISOString(),
       group,
       total: activeUsers.length,
       withEmail: welcomeEmailUserIds.size,
@@ -297,6 +316,6 @@ export async function GET(req: NextRequest) {
       withQr: qrUserIds.size
     })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Neznama chyba servera.' }, { status: 500 })
+    return jsonNoStore({ error: err?.message || 'Neznama chyba servera.' }, { status: 500 })
   }
 }
