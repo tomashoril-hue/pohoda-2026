@@ -450,7 +450,6 @@ export default function UpravaBrigadnikovClient({
           .brigadnici-create-grid { grid-template-columns: 1fr !important; }
           .brigadnici-date-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
           .brigadnici-actions { grid-template-columns: 1fr !important; }
-          .brigadnici-people-search { grid-template-columns: 1fr !important; }
           .brigadnici-person-row { grid-template-columns: 32px 1fr !important; }
           .brigadnici-person-meta { grid-column: 2 !important; }
         }
@@ -679,9 +678,17 @@ export default function UpravaBrigadnikovClient({
           </button>
         </div>
 
-        <section className="brigadnici-people-search" style={styles.peopleSearchBox}>
+        <section style={styles.peopleSearchBox}>
           <label style={styles.peopleSearchField}>
-            <span>Hladat medzi ludmi</span>
+            <span style={styles.peopleSearchHeader}>
+              <span>Hladat medzi ludmi</span>
+              <span style={styles.peopleSearchCount}>{filteredPeople.length}/{people.length}</span>
+              {search && (
+                <button type="button" style={styles.tinyButton} onClick={() => setSearch('')} disabled={saving}>
+                  Zrusit
+                </button>
+              )}
+            </span>
             <input
               value={search}
               onChange={event => setSearch(event.target.value)}
@@ -690,16 +697,6 @@ export default function UpravaBrigadnikovClient({
               autoComplete="off"
             />
           </label>
-
-          <div style={styles.peopleSearchMeta}>
-            <b>{filteredPeople.length}</b>
-            <span>/ {people.length}</span>
-            {search && (
-              <button type="button" style={styles.tinyButton} onClick={() => setSearch('')} disabled={saving}>
-                Zrusit
-              </button>
-            )}
-          </div>
         </section>
 
         <section style={styles.peopleBox}>
@@ -936,18 +933,27 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     background: '#f8fafc',
     padding: 10,
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) auto',
-    gap: 10,
-    alignItems: 'end'
+    display: 'grid'
   },
   peopleSearchField: {
     display: 'grid',
-    gap: 5,
+    gap: 6,
     minWidth: 0,
     fontSize: 12,
     fontWeight: 850,
     color: '#374151'
+  },
+  peopleSearchHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0
+  },
+  peopleSearchCount: {
+    marginLeft: 'auto',
+    color: '#111827',
+    fontWeight: 900,
+    whiteSpace: 'nowrap'
   },
   peopleSearchInput: {
     minHeight: 39,
@@ -959,16 +965,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#fff',
     width: '100%',
     minWidth: 0
-  },
-  peopleSearchMeta: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 6,
-    minHeight: 39,
-    fontSize: 13,
-    color: '#4b5563',
-    whiteSpace: 'nowrap'
   },
   primaryButton: {
     ...buttonBase,
