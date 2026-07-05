@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'pohoda-pass-offline-v6'
+const CACHE_VERSION = 'pohoda-pass-offline-v7'
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 
