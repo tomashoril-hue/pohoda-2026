@@ -1,6 +1,16 @@
-const CACHE_VERSION = 'pohoda-pass-offline-v3'
+const CACHE_VERSION = 'pohoda-pass-offline-v4'
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
+
+const OFFLINE_START_PATHS = ['/', '/login']
+const OFFLINE_AUTH_FALLBACK_PATHS = [
+  '/dashboard',
+  '/dashboard/vydaj-stravy',
+  '/dashboard/qr',
+  '/menu',
+  '/dashboard/naroky',
+  '/dashboard/offline-rezim'
+]
 
 const APP_SHELL_URLS = [
   '/install',
@@ -81,6 +91,8 @@ self.addEventListener('fetch', event => {
 })
 
 async function handleNavigation(request) {
+  const requestUrl = new URL(request.url)
+
   try {
     const response = await fetch(request)
 
@@ -91,6 +103,11 @@ async function handleNavigation(request) {
 
     return response
   } catch {
+    if (OFFLINE_START_PATHS.includes(requestUrl.pathname)) {
+      const cachedAuthPage = await findCachedNavigationByPath(OFFLINE_AUTH_FALLBACK_PATHS)
+      if (cachedAuthPage) return cachedAuthPage
+    }
+
     const cachedPage = await caches.match(request)
     if (cachedPage) return cachedPage
 
@@ -102,6 +119,31 @@ async function handleNavigation(request) {
       headers: { 'Content-Type': 'text/plain; charset=utf-8' }
     })
   }
+}
+
+async function findCachedNavigationByPath(paths) {
+  const cache = await caches.open(RUNTIME_CACHE)
+  const keys = await cache.keys()
+
+  for (const path of paths) {
+    const matchingRequest = keys
+      .filter(key => key.mode === 'navigate' || key.destination === 'document' || key.headers.get('accept')?.includes('text/html'))
+      .find(key => {
+        try {
+          const url = new URL(key.url)
+          return url.origin === self.location.origin && url.pathname === path
+        } catch {
+          return false
+        }
+      })
+
+    if (!matchingRequest) continue
+
+    const response = await cache.match(matchingRequest)
+    if (response) return response
+  }
+
+  return null
 }
 
 async function handleStaticAsset(request) {
