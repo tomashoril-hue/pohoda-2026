@@ -7,8 +7,8 @@ import { checkActorRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 const WELCOME_EMAIL_BATCH_SIZE = 50
-const EMAIL_SEND_CONCURRENCY = 1
-const EMAIL_SEND_DELAY_MS = 150
+const EMAIL_SEND_CONCURRENCY = 6
+const EMAIL_SEND_INTERVAL_MS = 150
 const SUPABASE_IN_FILTER_CHUNK_SIZE = 80
 
 function text(value: any) {
@@ -27,6 +27,21 @@ function chunkArray<T>(items: T[], size: number) {
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function createSendSlotLimiter(intervalMs: number) {
+  let nextSendAt = 0
+
+  return async function waitForSendSlot() {
+    const now = Date.now()
+    const scheduledAt = Math.max(now, nextSendAt)
+    nextSendAt = scheduledAt + intervalMs
+    const waitMs = scheduledAt - now
+
+    if (waitMs > 0) {
+      await sleep(waitMs)
+    }
+  }
 }
 
 async function mapWithConcurrency<T, R>(
@@ -315,6 +330,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const waitForEmailSendSlot = createSendSlotLimiter(EMAIL_SEND_INTERVAL_MS)
     const sendResults = await mapWithConcurrency(targetUsers, EMAIL_SEND_CONCURRENCY, async (user) => {
       const email = text(user.email).toLowerCase()
 
@@ -322,7 +338,7 @@ export async function POST(req: NextRequest) {
 
       try {
         const qrAttachment = await createQrPngAttachment(user.qr_code || '', 'pohodapass-qr')
-        await sleep(EMAIL_SEND_DELAY_MS)
+        await waitForEmailSendSlot()
         const result = await sendAppEmail({
           from: 'POHODA 2026 <registracia@pohodapass.sk>',
           to: email,
