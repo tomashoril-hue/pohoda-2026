@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
     if (mode !== 'SET' && mode !== 'CLEAR') {
       return NextResponse.json({ error: 'Neplatny sposob upravy.' }, { status: 400 })
     }
-    if (mode === 'SET' && !obed && !vecera) {
+    if (!obed && !vecera) {
       return NextResponse.json({ error: 'Vyber obed alebo veceru.' }, { status: 400 })
     }
     if (userIds.length === 0) return NextResponse.json({ error: 'Vyber aspon jednu osobu.' }, { status: 400 })
@@ -257,24 +257,25 @@ export async function POST(req: NextRequest) {
     }
 
     let deletedEntitlements = 0
-    for (const userIdChunk of chunk(userIds, 250)) {
-      const query = supabaseServer
-        .from('user_food_entitlements')
-        .delete({ count: 'exact' })
-        .in('user_id', userIdChunk)
-
-      const { count, error } = selectedDates.length > 0
-        ? await query.in('datum', dates)
-        : await query.gte('datum', validFrom).lte('datum', validTo)
-
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      deletedEntitlements += count || 0
-    }
-
+    let updatedEntitlements = 0
     let insertedEntitlements = 0
     const now = new Date().toISOString()
 
     if (mode === 'SET') {
+      for (const userIdChunk of chunk(userIds, 250)) {
+        const query = supabaseServer
+          .from('user_food_entitlements')
+          .delete({ count: 'exact' })
+          .in('user_id', userIdChunk)
+
+        const { count, error } = selectedDates.length > 0
+          ? await query.in('datum', dates)
+          : await query.gte('datum', validFrom).lte('datum', validTo)
+
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+        deletedEntitlements += count || 0
+      }
+
       for (const userChunk of chunk(users, 80)) {
         const rows = userChunk.flatMap(user => dates.map(datum => ({
           user_id: user.id,
@@ -295,11 +296,46 @@ export async function POST(req: NextRequest) {
         if (error) return NextResponse.json({ error: error.message }, { status: 500 })
         insertedEntitlements += rows.length
       }
+    } else {
+      const clearPatch = {
+        ...(obed ? { obed: false } : {}),
+        ...(vecera ? { vecera: false } : {}),
+        updated_by: actor.id,
+        updated_at: now
+      }
+
+      for (const userIdChunk of chunk(userIds, 250)) {
+        const updateQuery = supabaseServer
+          .from('user_food_entitlements')
+          .update(clearPatch, { count: 'exact' })
+          .in('user_id', userIdChunk)
+
+        const updateResult = selectedDates.length > 0
+          ? await updateQuery.in('datum', dates)
+          : await updateQuery.gte('datum', validFrom).lte('datum', validTo)
+
+        if (updateResult.error) return NextResponse.json({ error: updateResult.error.message }, { status: 500 })
+        updatedEntitlements += updateResult.count || 0
+
+        const deleteQuery = supabaseServer
+          .from('user_food_entitlements')
+          .delete({ count: 'exact' })
+          .in('user_id', userIdChunk)
+          .eq('obed', false)
+          .eq('vecera', false)
+
+        const deleteResult = selectedDates.length > 0
+          ? await deleteQuery.in('datum', dates)
+          : await deleteQuery.gte('datum', validFrom).lte('datum', validTo)
+
+        if (deleteResult.error) return NextResponse.json({ error: deleteResult.error.message }, { status: 500 })
+        deletedEntitlements += deleteResult.count || 0
+      }
     }
 
     for (const user of users) {
       const userPeriods = periodsByUserId.get(user.id) || []
-      const shouldAdjustPeriods = mode === 'SET' || selectedDates.length === 0
+      const shouldAdjustPeriods = mode === 'SET' || (selectedDates.length === 0 && obed && vecera)
       const sameGroupPeriods = userPeriods.filter(period => {
         return period.registration_group_id === registrationGroupId && periodOverlaps(period, validFrom, validTo)
       })
@@ -416,6 +452,7 @@ export async function POST(req: NextRequest) {
           vecera,
           days: dates.length,
           deleted_entitlements: deletedEntitlements,
+          updated_entitlements: updatedEntitlements,
           inserted_entitlements: insertedEntitlements,
           base_registration_group_updated: baseRegistrationGroupUpdated
         }
@@ -427,6 +464,7 @@ export async function POST(req: NextRequest) {
       days: dates.length,
       deletedEntitlements,
       insertedEntitlements,
+      updatedEntitlements,
       message: mode === 'CLEAR'
         ? `Naroky boli vymazane pre ${users.length} osob.`
         : `Naroky boli ulozene pre ${users.length} osob.`

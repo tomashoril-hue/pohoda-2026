@@ -195,7 +195,19 @@ export default function UpravaBrigadnikovClient({
   const openCalendar = () => {
     setCalendarOpen(current => {
       const next = !current
-      if (next && calendarDates.length === 0) setCalendarDates(rangeDates)
+      if (next && calendarDates.length === 0) {
+        const entitlementDates = Array.from(new Set(
+          selectedPeople
+            .flatMap(person => person.entitlements)
+            .filter(entitlement => {
+              return (obed && entitlement.obed) || (vecera && entitlement.vecera)
+            })
+            .map(entitlement => entitlement.datum)
+            .filter(date => rangeDates.includes(date))
+        )).sort()
+
+        setCalendarDates(entitlementDates.length > 0 ? entitlementDates : rangeDates)
+      }
       return next
     })
   }
@@ -233,10 +245,24 @@ export default function UpravaBrigadnikovClient({
       return
     }
 
-    if (mode === 'SET' && !obed && !vecera) {
+    if (!obed && !vecera) {
       setMessage('Vyber obed alebo veceru.')
       setMessageType('error')
       return
+    }
+
+    if (mode === 'CLEAR') {
+      const mealLabel = [obed ? 'obed' : '', vecera ? 'veceru' : ''].filter(Boolean).join(' a ')
+      const dateLabel = calendarOpen
+        ? `${calendarDates.length} vybranych dni`
+        : `obdobie ${validFrom} - ${validTo}`
+      const peopleLabel = `${selectedIds.length} ${selectedIds.length === 1 ? 'osobe' : 'osobam'}`
+
+      const confirmed = window.confirm(
+        `Naozaj vymazat ${mealLabel} pre ${peopleLabel} v rozsahu ${dateLabel}? Ostatne neoznacene jedla ostanu zachovane.`
+      )
+
+      if (!confirmed) return
     }
 
     const action = mode === 'SET' ? 'save' : 'clear'

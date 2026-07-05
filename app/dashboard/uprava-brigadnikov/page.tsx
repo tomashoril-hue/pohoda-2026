@@ -68,7 +68,7 @@ export default async function UpravaBrigadnikovPage() {
     <UpravaBrigadnikovClient
       groups={(groups || []).map((group: any) => ({ id: group.id, name: group.name }))}
       defaultFrom={today}
-      defaultTo={addDaysIso(today, 6)}
+      defaultTo={addDaysIso(today, 20)}
       actorName={`${user.meno || ''} ${user.priezvisko || ''}`.trim() || user.email || ''}
     />
   )
