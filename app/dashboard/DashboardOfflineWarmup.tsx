@@ -2,8 +2,21 @@
 
 import { useEffect } from 'react'
 
-const RUNTIME_CACHE = 'pohoda-pass-offline-v9-runtime'
-const SW_RELOAD_KEY = 'pohoda-sw-controller-reload-v9'
+const OFFLINE_READY_VERSION = 'v10'
+const RUNTIME_CACHE = `pohoda-pass-offline-${OFFLINE_READY_VERSION}-runtime`
+const SW_RELOAD_KEY = `pohoda-sw-controller-reload-${OFFLINE_READY_VERSION}`
+
+function offlineReadyKey(path: string) {
+  return `pohoda-offline-route-ready:${OFFLINE_READY_VERSION}:${path}`
+}
+
+function markOfflineRouteReady(path: string) {
+  try {
+    window.localStorage.setItem(offlineReadyKey(path), new Date().toISOString())
+  } catch {
+    // Readiness markers only improve offline navigation; failures are harmless.
+  }
+}
 
 function uniqueRoutes(routes: string[]) {
   return Array.from(new Set(
@@ -51,7 +64,7 @@ async function cacheRoutesInWindow(paths: string[]) {
   )
 }
 
-function waitForHiddenFrameLoad(path: string, timeoutMs = 4500) {
+function waitForHiddenFrameLoad(path: string, timeoutMs = 6000) {
   return new Promise<void>(resolve => {
     if (!document.body) {
       resolve()
@@ -61,20 +74,21 @@ function waitForHiddenFrameLoad(path: string, timeoutMs = 4500) {
     const frame = document.createElement('iframe')
     let finished = false
 
-    const finish = () => {
+    const finish = (loaded = false) => {
       if (finished) return
       finished = true
       window.clearTimeout(timer)
+      if (loaded) markOfflineRouteReady(path)
       frame.remove()
       resolve()
     }
 
-    const timer = window.setTimeout(finish, timeoutMs)
+    const timer = window.setTimeout(() => finish(false), timeoutMs)
 
     frame.addEventListener('load', () => {
-      window.setTimeout(finish, 250)
+      window.setTimeout(() => finish(true), 350)
     }, { once: true })
-    frame.addEventListener('error', finish, { once: true })
+    frame.addEventListener('error', () => finish(false), { once: true })
     frame.setAttribute('aria-hidden', 'true')
     frame.tabIndex = -1
     frame.src = path
@@ -93,11 +107,9 @@ function waitForHiddenFrameLoad(path: string, timeoutMs = 4500) {
 
 async function warmRoutesWithHiddenFrames(paths: string[]) {
   const framePaths = paths.filter(path => path !== '/dashboard')
+  if (framePaths.length === 0 || !navigator.onLine) return
 
-  for (const path of framePaths) {
-    if (!navigator.onLine) return
-    await waitForHiddenFrameLoad(path)
-  }
+  await Promise.all(framePaths.map(path => waitForHiddenFrameLoad(path)))
 }
 
 export default function DashboardOfflineWarmup({ routes }: { routes: string[] }) {
@@ -117,6 +129,7 @@ export default function DashboardOfflineWarmup({ routes }: { routes: string[] })
       try {
         await cacheRoutesInWindow(paths)
         if (cancelled) return
+        markOfflineRouteReady('/dashboard')
 
         const registration = await waitForServiceWorkerReady()
         if (cancelled) return

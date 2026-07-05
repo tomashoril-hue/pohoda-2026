@@ -5,6 +5,43 @@ import { useEffect, useRef, useState } from 'react'
 const refreshThreshold = 72
 const maxPullDistance = 104
 const disablePullRefreshClass = 'pwa-disable-pull-refresh'
+const offlineReadyVersion = 'v10'
+const offlineReadyRoutes = new Set([
+  '/dashboard',
+  '/dashboard/qr',
+  '/menu',
+  '/dashboard/naroky',
+  '/dashboard/vydaj-stravy',
+  '/dashboard/offline-rezim',
+  '/dashboard/objednavanie-stravy'
+])
+
+function offlineReadyKey(path: string) {
+  return `pohoda-offline-route-ready:${offlineReadyVersion}:${path}`
+}
+
+function isOfflineRouteReady(path: string) {
+  if (path === '/offline') return true
+  if (!offlineReadyRoutes.has(path)) return false
+
+  try {
+    return !!window.localStorage.getItem(offlineReadyKey(path))
+  } catch {
+    return false
+  }
+}
+
+function markCurrentOfflineRouteReady() {
+  const path = window.location.pathname
+
+  if (!offlineReadyRoutes.has(path) || !navigator.onLine) return
+
+  try {
+    window.localStorage.setItem(offlineReadyKey(path), new Date().toISOString())
+  } catch {
+    // Readiness markers only prevent bad offline navigations.
+  }
+}
 
 function isIosStandalone() {
   const iosDevice =
@@ -61,13 +98,33 @@ export default function PwaChrome() {
       if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return
 
       event.preventDefault()
-      window.location.assign(`${url.pathname}${url.search}${url.hash}`)
+      if (isOfflineRouteReady(url.pathname)) {
+        window.location.assign(`${url.pathname}${url.search}${url.hash}`)
+        return
+      }
+
+      window.location.assign('/offline')
     }
 
     document.addEventListener('click', handleOfflineLinkClick, true)
 
     return () => {
       document.removeEventListener('click', handleOfflineLinkClick, true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    if (document.readyState === 'complete') {
+      window.setTimeout(markCurrentOfflineRouteReady, 500)
+      return
+    }
+
+    window.addEventListener('load', markCurrentOfflineRouteReady, { once: true })
+
+    return () => {
+      window.removeEventListener('load', markCurrentOfflineRouteReady)
     }
   }, [])
 
