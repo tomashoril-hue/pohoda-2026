@@ -29,8 +29,16 @@ function chunk<T>(items: T[], size: number) {
 async function resolveAllowedGroup(actorId: string, registrationGroupId: string) {
   const access = await getGlobalAccess(actorId)
 
+  if (access.isAdmin || access.isPersonalista) {
+    if (!registrationGroupId) {
+      return { error: 'Vyber registracnu skupinu.', status: 400, groupIds: [] as string[] }
+    }
+
+    return { groupId: registrationGroupId, groupIds: [] as string[] }
+  }
+
   if (!access.isRegistrationGroupAdmin) {
-    return { error: 'Tuto cast moze pouzivat iba rola ADMIN_REG_SKUPINY.', status: 403, groupIds: [] as string[] }
+    return { error: 'Tuto cast moze pouzivat iba ADMIN, PERSONALISTA alebo rola ADMIN_REG_SKUPINY.', status: 403, groupIds: [] as string[] }
   }
 
   const groupIds = await getManagedRegistrationGroupIds(actorId)

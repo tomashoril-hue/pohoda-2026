@@ -91,8 +91,12 @@ async function refreshCurrentRegistrationGroups(userIds: string[]) {
 async function assertAccess(actorId: string, registrationGroupId: string) {
   const access = await getGlobalAccess(actorId)
 
+  if (access.isAdmin || access.isPersonalista) {
+    return { ok: true }
+  }
+
   if (!access.isRegistrationGroupAdmin) {
-    return { error: 'Tuto cast moze pouzivat iba rola ADMIN_REG_SKUPINY.', status: 403 }
+    return { error: 'Tuto cast moze pouzivat iba ADMIN, PERSONALISTA alebo rola ADMIN_REG_SKUPINY.', status: 403 }
   }
 
   const managedGroupIds = await getManagedRegistrationGroupIds(actorId)

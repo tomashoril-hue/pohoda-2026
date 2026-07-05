@@ -32,22 +32,27 @@ export default async function UpravaBrigadnikovPage() {
 
   const access = await getGlobalAccess(user.id)
 
-  if (!access.isRegistrationGroupAdmin) {
+  const canUseAllGroups = access.isAdmin || access.isPersonalista
+
+  if (!canUseAllGroups && !access.isRegistrationGroupAdmin) {
     redirect('/dashboard')
   }
 
-  const managedGroupIds = await getManagedRegistrationGroupIds(user.id)
+  const managedGroupIds = canUseAllGroups ? [] : await getManagedRegistrationGroupIds(user.id)
 
-  if (managedGroupIds.length === 0) {
+  if (!canUseAllGroups && managedGroupIds.length === 0) {
     redirect('/dashboard')
   }
 
-  const { data: groups, error } = await supabaseServer
+  const groupsQuery = supabaseServer
     .from('registration_groups')
     .select('id, name, active')
-    .in('id', managedGroupIds)
     .eq('active', true)
     .order('name', { ascending: true })
+
+  const { data: groups, error } = canUseAllGroups
+    ? await groupsQuery
+    : await groupsQuery.in('id', managedGroupIds)
 
   if (error) {
     throw new Error(error.message)
