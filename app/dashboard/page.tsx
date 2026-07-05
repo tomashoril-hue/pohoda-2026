@@ -11,6 +11,7 @@ import { supabaseServer } from '@/lib/supabaseServer'
 import LanguageSwitcher from '@/components/LanguageSwitcher'
 import DashboardInvites from './DashboardInvites'
 import DashboardDatePicker from './DashboardDatePicker'
+import DashboardOfflineWarmup from './DashboardOfflineWarmup'
 
 function todayIsoDate() {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -465,6 +466,15 @@ export default async function DashboardPage({
   const canOpenAccessCodesShare = canOpenPersonalista || managedRegistrationGroupIds.length > 0
   const canOpenSelfOrdering = globalAccess.isSelfOrderingMeal
   const canOpenBrigadnikEdit = globalAccess.isRegistrationGroupAdmin && managedRegistrationGroupIds.length > 0
+  const offlineWarmupRoutes = [
+    '/dashboard',
+    '/dashboard/qr',
+    '/menu',
+    '/dashboard/naroky',
+    canOpenFoodIssue ? '/dashboard/vydaj-stravy' : '',
+    canOpenOfflineIssue ? '/dashboard/offline-rezim' : '',
+    canOpenSelfOrdering ? '/dashboard/objednavanie-stravy' : ''
+  ].filter(Boolean)
 
   const getSelection = (typJedla: string) => {
     return (selections || []).find((item: any) => item.typ_jedla === typJedla)
@@ -566,6 +576,7 @@ export default async function DashboardPage({
 
   return (
     <main className="dashboard-page" style={styles.page}>
+      <DashboardOfflineWarmup routes={offlineWarmupRoutes} />
       <style>{`
         .dashboard-page button,
         .dashboard-page a[href] {

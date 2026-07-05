@@ -46,21 +46,14 @@ export default function PwaChrome() {
     if (!('serviceWorker' in navigator)) return
 
     const registerServiceWorker = () => {
-      navigator.serviceWorker.register('/sw.js').catch(() => {
+      navigator.serviceWorker.register('/sw.js').then(registration => {
+        registration.update().catch(() => undefined)
+      }).catch(() => {
         // Offline fallback is helpful but must never block the app.
       })
     }
 
-    if (document.readyState === 'complete') {
-      registerServiceWorker()
-      return
-    }
-
-    window.addEventListener('load', registerServiceWorker, { once: true })
-
-    return () => {
-      window.removeEventListener('load', registerServiceWorker)
-    }
+    registerServiceWorker()
   }, [])
 
   useEffect(() => {

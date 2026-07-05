@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'pohoda-pass-offline-v4'
+const CACHE_VERSION = 'pohoda-pass-offline-v5'
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 
@@ -51,7 +51,7 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches
       .open(APP_SHELL_CACHE)
-      .then(cache => cache.addAll(APP_SHELL_URLS))
+      .then(cache => cacheUrlsSafely(cache, APP_SHELL_URLS))
       .then(() => self.skipWaiting())
   )
 })
@@ -90,6 +90,26 @@ self.addEventListener('fetch', event => {
   }
 })
 
+self.addEventListener('message', event => {
+  const data = event.data || {}
+
+  if (data.type !== 'CACHE_AUTH_ROUTES' || !Array.isArray(data.paths)) return
+
+  event.waitUntil(cacheAuthRoutes(data.paths))
+})
+
+async function cacheUrlsSafely(cache, urls) {
+  await Promise.all(
+    urls.map(async url => {
+      try {
+        await cache.add(url)
+      } catch {
+        // One missing icon or transient request must not prevent offline fallback from installing.
+      }
+    })
+  )
+}
+
 async function handleNavigation(request) {
   const requestUrl = new URL(request.url)
 
@@ -114,11 +134,41 @@ async function handleNavigation(request) {
     const offlinePage = await caches.match('/offline')
     if (offlinePage) return offlinePage
 
-    return new Response('Offline', {
+    return new Response(inlineOfflineHtml(), {
       status: 503,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      headers: { 'Content-Type': 'text/html; charset=utf-8' }
     })
   }
+}
+
+async function cacheAuthRoutes(paths) {
+  const cache = await caches.open(RUNTIME_CACHE)
+  const safePaths = paths
+    .map(path => typeof path === 'string' ? path : '')
+    .filter(path => path.startsWith('/') && !path.startsWith('/api/') && path !== '/logout')
+
+  await Promise.all(
+    safePaths.map(async path => {
+      try {
+        const request = new Request(path, {
+          credentials: 'include',
+          headers: {
+            Accept: 'text/html'
+          }
+        })
+        const response = await fetch(request)
+
+        if (!response || !response.ok || response.redirected) return
+
+        const contentType = response.headers.get('content-type') || ''
+        if (!contentType.includes('text/html')) return
+
+        await cache.put(request, response.clone())
+      } catch {
+        // The app remains usable even if one warmup route is not available.
+      }
+    })
+  )
 }
 
 async function findCachedNavigationByPath(paths) {
@@ -162,4 +212,38 @@ async function handleStaticAsset(request) {
   } catch {
     return cached || Response.error()
   }
+}
+
+function inlineOfflineHtml() {
+  return `<!doctype html>
+<html lang="sk">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>POHODA Pass offline</title>
+    <style>
+      body{margin:0;min-height:100vh;background:#7417e8;color:#111827;display:grid;place-items:center;padding:18px;font-family:Arial,Helvetica,sans-serif}
+      section{width:min(100%,520px);border:2px solid #000;border-radius:22px;background:#fff;box-shadow:8px 8px 0 #000;padding:22px;display:grid;gap:14px}
+      .kicker{width:fit-content;border:2px solid #000;border-radius:999px;background:#dcfce7;color:#14532d;padding:6px 10px;font-size:11px;font-weight:950}
+      h1{margin:0;font-size:28px;line-height:1.05;font-weight:950;color:#111827}
+      p{margin:0;color:#374151;font-size:14px;font-weight:800;line-height:1.45}
+      .notice{border:1px solid #fed7aa;border-radius:10px;background:#fff7ed;color:#9a3412;padding:12px;font-size:13px;font-weight:900;line-height:1.35}
+      .actions{display:flex;gap:8px;flex-wrap:wrap}
+      a{min-height:44px;border:2px solid #000;border-radius:10px;background:#22c55e;color:#052e16;box-shadow:4px 4px 0 #000;display:inline-flex;align-items:center;justify-content:center;padding:0 14px;text-decoration:none;font-size:14px;font-weight:950}
+      a.secondary{background:#fff;color:#111827}
+    </style>
+  </head>
+  <body>
+    <section>
+      <div class="kicker">OFFLINE REŽIM</div>
+      <h1>Aplikácia je bez internetu</h1>
+      <p>Momentálne nie je dostupné internetové pripojenie. Skontroluj sieť a skús stránku obnoviť.</p>
+      <div class="notice">Niektoré časti aplikácie nemusia fungovať, kým sa zariadenie znova nepripojí na internet.</div>
+      <div class="actions">
+        <a href="">Obnoviť</a>
+        <a class="secondary" href="/dashboard">Dashboard</a>
+      </div>
+    </section>
+  </body>
+</html>`
 }
