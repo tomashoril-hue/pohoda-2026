@@ -81,7 +81,7 @@ export default function UpravaBrigadnikovClient({
   const [validFrom, setValidFrom] = useState(defaultFrom)
   const [validTo, setValidTo] = useState(defaultTo)
   const [obed, setObed] = useState(true)
-  const [vecera, setVecera] = useState(false)
+  const [vecera, setVecera] = useState(true)
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [calendarDates, setCalendarDates] = useState<string[]>([])
   const [search, setSearch] = useState('')
