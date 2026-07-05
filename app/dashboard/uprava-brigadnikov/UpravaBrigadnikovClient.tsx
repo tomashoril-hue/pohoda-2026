@@ -451,7 +451,6 @@ export default function UpravaBrigadnikovClient({
           .brigadnici-date-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
           .brigadnici-actions { grid-template-columns: 1fr !important; }
           .brigadnici-person-row { grid-template-columns: 32px 1fr !important; }
-          .brigadnici-person-meta { grid-column: 2 !important; }
         }
       `}</style>
 
@@ -725,10 +724,6 @@ export default function UpravaBrigadnikovClient({
                   <small>{person.email || '-'} {person.telefon ? `· ${person.telefon}` : ''}</small>
                 </span>
 
-                <span className="brigadnici-person-meta" style={styles.personMeta}>
-                  <b>{person.typStravy || '-'}</b>
-                  <small>Obedy: {person.lunchClaims} · Vecere: {person.dinnerClaims}</small>
-                </span>
               </label>
             ))
           )}
@@ -1052,7 +1047,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   personRow: {
     display: 'grid',
-    gridTemplateColumns: '32px minmax(220px, 1fr) 180px',
+    gridTemplateColumns: '32px minmax(0, 1fr)',
     gap: 10,
     alignItems: 'center',
     border: '1px solid #e5e7eb',
@@ -1078,13 +1073,6 @@ const styles: Record<string, React.CSSProperties> = {
   pendingText: {
     color: '#92400e',
     fontWeight: 950
-  },
-  personMeta: {
-    display: 'grid',
-    gap: 3,
-    fontSize: 12,
-    fontWeight: 850,
-    color: '#64748b'
   },
   empty: {
     border: '1px dashed #cbd5e1',
