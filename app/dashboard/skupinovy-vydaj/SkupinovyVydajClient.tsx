@@ -329,9 +329,6 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
   }, [groups, groupQuery])
 
   const delegates = selectedGroupId ? delegateMap[selectedGroupId] || [] : []
-  const pickupSelectedMode = pickupMode === 'selected'
-  const pickupGroupMode = pickupMode === 'group'
-  const pickupSearchOutside = pickupMode === 'outside'
   const pickupQrMode = pickupMode === 'qr'
   const foodGroupMemberGroupMode = foodGroupMemberMode === 'group'
   const foodGroupMemberOutsideMode = foodGroupMemberMode === 'outside'
@@ -388,11 +385,6 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       ? mergeSearchUsers(pendingDelegateExternalUsers, searchResults)
       : mergeSearchUsers(selectedDelegates, issuePickupCandidates, searchResults)
   }, [delegateSearchAll, delegates, issuePickupCandidates, pendingDelegateExternalUsers, searchResults])
-  const pickupExternalUsers = useMemo(() => {
-    const issueIds = new Set(issuePickupCandidates.map(user => user.id))
-    return mergeSearchUsers(pickupUsers, pendingPickupExternalUsers)
-      .filter(user => !issueIds.has(user.id))
-  }, [issuePickupCandidates, pendingPickupExternalUsers, pickupUsers])
   const sourceGroupPickupUsers = useMemo(() => {
     if (sourceMode === 'ONE_OFF') {
       return mergeSearchUsers(issuePickupCandidates, pendingPickupSearchUsers)
@@ -418,19 +410,20 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
   const pickupKnownUsers = useMemo(() => {
     return mergeSearchUsers(pickupUsers, issuePickupCandidates, sourceGroupPickupUsers, pendingPickupSearchUsers, pendingPickupExternalUsers, pickupResults)
   }, [pickupUsers, issuePickupCandidates, sourceGroupPickupUsers, pendingPickupSearchUsers, pendingPickupExternalUsers, pickupResults])
-  const pickupCandidateUsers = useMemo(() => {
-    if (pickupSelectedMode) return issuePickupCandidates
-    if (pickupGroupMode) return sourceGroupPickupUsers
-    if (pickupQrMode) return pickupExternalUsers
-    if (pickupSearchOutside) {
-      return mergeSearchUsers(
-        pickupExternalUsers,
-        pickupQuery.trim().length >= 3 ? pickupResults : []
-      )
-    }
+  const selectedPickupUsers = useMemo(() => {
+    const usersById = new Map(pickupKnownUsers.map(user => [user.id, user]))
 
-    return []
-  }, [issuePickupCandidates, pickupExternalUsers, pickupGroupMode, pickupQrMode, pickupQuery, pickupResults, pickupSearchOutside, pickupSelectedMode, sourceGroupPickupUsers])
+    return pendingPickupUserIds
+      .map(id => usersById.get(id))
+      .filter((user): user is SearchUser => Boolean(user))
+      .sort(compareSearchUsers)
+  }, [pendingPickupUserIds, pickupKnownUsers])
+  const pickupCandidateUsers = useMemo(() => {
+    return mergeSearchUsers(
+      selectedPickupUsers,
+      pickupQuery.trim().length >= 3 ? pickupResults : []
+    )
+  }, [pickupQuery, pickupResults, selectedPickupUsers])
   const delegateUserIds = useMemo(() => delegates.map(delegate => delegate.userId), [delegates])
   const delegateSelectionChanged = !sameIds(delegateUserIds, pendingDelegateUserIds)
   const pickupSelectionChanged = !sameIds(pickupUserIds, pendingPickupUserIds)
@@ -1657,8 +1650,17 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       }
     }
 
-    addIssuePerson(json.person)
     const ready = isIssuePersonReady(json.person)
+    addIssuePerson(json.person)
+
+    if (ready) {
+      const pickupUser = issuePersonToSearchUser(json.person)
+      setPickupUsers(current => mergeSearchUsers(current, [pickupUser]))
+      setPickupUserIds(current => current.includes(pickupUser.id) ? current : [...current, pickupUser.id])
+      setPendingPickupSearchUsers(current => mergeSearchUsers(current, [pickupUser]))
+      setPendingPickupUserIds(current => current.includes(pickupUser.id) ? current : [...current, pickupUser.id])
+    }
+
     const message = ready
       ? `${json.person.name || t('Osoba', 'Person')} ${t('pridaná cez QR.', 'added by QR.')}`
       : `${json.person.name || t('Osoba', 'Person')} ${t('pridaná cez QR, ale nie je vydateľná:', 'added by QR, but is not issuable:')} ${json.person.issueStatusLabel || t('bez nároku', 'no entitlement')}.`
@@ -1804,12 +1806,9 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     setPickupQuery('')
     setPickupResults([])
     setPickupLoading(false)
-    if (mode === 'group' && sourceMode === 'REGISTRATION_GROUP') {
-      void searchPickupUsers('', 'group')
-    }
   }
 
-  async function searchPickupUsers(query: string, mode = pickupMode) {
+  async function searchPickupUsers(query: string) {
     const requestId = pickupSearchRequestRef.current + 1
     pickupSearchRequestRef.current = requestId
     setPickupQuery(query)
@@ -1818,10 +1817,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     const searchText = query.trim()
     if (
       !selectedGroupId ||
-      (mode !== 'group' && mode !== 'outside') ||
-      sourceMode === 'FOOD_GROUP' ||
-      sourceMode === 'ONE_OFF' ||
-      (mode === 'outside' && searchText.length < 3)
+      searchText.length < 3
     ) {
       setPickupLoading(false)
       return
@@ -1832,18 +1828,15 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
     try {
       const params = new URLSearchParams({
         registrationGroupId: selectedGroupId,
-        mode: 'pickup',
-        date,
         q: searchText
       })
-      if (mode === 'outside') params.set('scope', 'outside')
-      const res = await fetch(`/api/skupinovy-vydaj/people-search?${params.toString()}`)
+      const res = await fetch(`/api/skupinovy-vydaj/food-groups?${params.toString()}`)
       const json = await res.json()
 
       if (!res.ok) throw new Error(json.error || 'Vyhladavanie zlyhalo.')
 
       if (pickupSearchRequestRef.current !== requestId) return
-      setPickupResults(json.people || [])
+      setPickupResults(json.users || [])
     } catch (err: any) {
       if (pickupSearchRequestRef.current !== requestId) return
       setIssueMessage(err?.message || 'Vyhladavanie zlyhalo.', 'error')
@@ -1879,11 +1872,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
       ...pickupCandidateUsers.map(user => user.id)
     ])))
 
-    if (pickupSearchOutside || pickupQrMode) {
-      setPendingPickupExternalUsers(current => mergeSearchUsers(current, pickupCandidateUsers))
-    } else {
-      setPendingPickupSearchUsers(current => mergeSearchUsers(current, pickupCandidateUsers))
-    }
+    setPendingPickupExternalUsers(current => mergeSearchUsers(current, pickupCandidateUsers))
   }
 
   function clearPickupCandidates() {
@@ -3754,6 +3743,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
 
                   <div
                     style={{
+                      display: 'none',
                       ...styles.segment,
                       gridTemplateColumns: selectedGroup?.canSearchAllDelegates ? 'repeat(4, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))'
                     }}
@@ -3813,21 +3803,30 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       </button>
                     </div>
 
-                  {(pickupGroupMode || pickupSearchOutside) && (
+                  {!pickupQrMode && (
                     <label style={styles.field}>
                       <span style={styles.label}>
-                        {pickupSearchOutside ? t('Vyhľadať mimo skupiny', 'Search outside group') : t('Vyhľadať v skupine', 'Search in group')}
+                        {t('Hladat osobu', 'Search person')}
                       </span>
                       <input
                         type="search"
                         value={pickupQuery}
-                        onChange={event => searchPickupUsers(event.target.value, pickupSearchOutside ? 'outside' : 'group')}
-                        placeholder={pickupSearchOutside ? t('Zadaj aspoň 3 znaky mimo skupiny', 'Enter at least 3 characters outside the group') : t('Zadaj aspoň 3 znaky v skupine', 'Enter at least 3 characters in the group')}
+                        onChange={event => searchPickupUsers(event.target.value)}
+                        placeholder={t('Zadaj aspon 3 znaky', 'Enter at least 3 characters')}
                         style={styles.input}
                         disabled={issueLoading}
                       />
                     </label>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => switchPickupMode(pickupQrMode ? 'outside' : 'qr')}
+                    style={pickupQrMode ? styles.secondaryButton : styles.lightButton}
+                    disabled={issueLoading || issueReadOnly || !selectedGroupId}
+                  >
+                    QR
+                  </button>
 
                   {pickupQrMode && (
                     <QrCameraScanner
@@ -3838,7 +3837,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
 
                   {pickupLoading && <div style={styles.emptyBox}>{t('Vyhľadávam...', 'Searching...')}</div>}
 
-                  <div style={styles.toolbarLeft}>
+                  <div style={{ ...styles.toolbarLeft, display: 'none' }}>
                     <button
                       type="button"
                       onClick={selectAllPickupCandidates}
@@ -3862,13 +3861,9 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                       <div style={styles.emptyBox}>
                         {pickupQrMode
                           ? t('Naskenuj QR osoby, ktorú chceš pridať medzi oprávnených prevziať.', 'Scan the QR code of the person you want to allow for pickup.')
-                          : pickupSearchOutside
-                            ? t('Pre vyhľadávanie mimo skupiny zadaj aspoň 3 znaky.', 'Enter at least 3 characters to search outside the group.')
-                            : pickupGroupMode
-                              ? sourceMode === 'REGISTRATION_GROUP'
-                                ? t('Zadaj aspoň 3 znaky a vyhľadaj osobu v skupine.', 'Enter at least 3 characters and search for a person in the group.')
-                                : t('V tejto skupine nie je nikto na výber.', 'There is nobody to choose from in this group.')
-                              : t('Najprv označ osoby vo výdaji.', 'Select people in the issue first.')}
+                          : pickupQuery.trim().length >= 3
+                            ? t('Nikto sa nenasiel.', 'No person found.')
+                            : t('Napipani cez QR sa zobrazia tu. Dalsich vies pridat hladanim alebo QR kodom.', 'People scanned by QR will appear here. You can add more by search or QR.')}
                       </div>
                     ) : (
                       pickupCandidateUsers.map(user => {
@@ -3882,7 +3877,7 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                           <button
                             key={user.id}
                             type="button"
-                            onClick={() => togglePendingPickupUser(user, pickupSearchOutside || pickupQrMode ? 'outside' : 'group')}
+                            onClick={() => togglePendingPickupUser(user, 'outside')}
                             style={{
                               ...styles.resultButton,
                               ...(selected && !willAdd ? styles.resultButtonSelected : {}),
@@ -3895,21 +3890,15 @@ export default function SkupinovyVydajClient({ language = 'SK', initialDate, min
                               ...(selected ? styles.resultMarkerSelected : {}),
                               ...(willRemove ? styles.resultMarkerRemoved : {})
                             }}>
-                              {selected ? '✓' : willRemove ? '-' : ''}
+                              {selected ? 'OK' : willRemove ? '-' : ''}
                             </span>
                             <span style={styles.resultText}>
                               <b>{user.name}</b>
                               {user.email && <span>{user.email}</span>}
                               <small>
-                                {pickupQrMode
-                                  ? selected ? t('Označený cez QR', 'Selected by QR') : t('Kliknutím označíš', 'Click to select')
-                                  : pickupSearchOutside
-                                  ? selected ? t('Už označený', 'Already selected') : t('Kliknutím pridáš', 'Click to add')
-                                  : pickupSelectedMode
-                                    ? selected ? t('Oprávnený', 'Allowed') : t('Z osôb vo výdaji', 'From issue people')
-                                  : changed
-                                    ? selected ? t('Bude pridaný po uložení', 'Will be added after saving') : t('Bude odobratý po uložení', 'Will be removed after saving')
-                                    : selected ? t('Oprávnený', 'Allowed') : t('Zo skupiny', 'From group')}
+                                {changed
+                                  ? selected ? t('Bude pridaný po uložení', 'Will be added after saving') : t('Bude odobratý po uložení', 'Will be removed after saving')
+                                  : selected ? t('Oprávnený prevziať', 'Allowed to pick up') : t('Kliknutím pridáš', 'Click to add')}
                               </small>
                             </span>
                           </button>
