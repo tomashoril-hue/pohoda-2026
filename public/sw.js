@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'pohoda-pass-offline-v5'
+const CACHE_VERSION = 'pohoda-pass-offline-v6'
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 
@@ -130,6 +130,9 @@ async function handleNavigation(request) {
 
     const cachedPage = await caches.match(request)
     if (cachedPage) return cachedPage
+
+    const cachedPageByPath = await findCachedNavigationByPath([requestUrl.pathname])
+    if (cachedPageByPath) return cachedPageByPath
 
     const offlinePage = await caches.match('/offline')
     if (offlinePage) return offlinePage
