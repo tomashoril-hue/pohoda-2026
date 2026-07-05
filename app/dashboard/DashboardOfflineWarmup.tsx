@@ -2,8 +2,8 @@
 
 import { useEffect } from 'react'
 
-const RUNTIME_CACHE = 'pohoda-pass-offline-v8-runtime'
-const SW_RELOAD_KEY = 'pohoda-sw-controller-reload-v8'
+const RUNTIME_CACHE = 'pohoda-pass-offline-v9-runtime'
+const SW_RELOAD_KEY = 'pohoda-sw-controller-reload-v9'
 
 function uniqueRoutes(routes: string[]) {
   return Array.from(new Set(
@@ -51,6 +51,55 @@ async function cacheRoutesInWindow(paths: string[]) {
   )
 }
 
+function waitForHiddenFrameLoad(path: string, timeoutMs = 4500) {
+  return new Promise<void>(resolve => {
+    if (!document.body) {
+      resolve()
+      return
+    }
+
+    const frame = document.createElement('iframe')
+    let finished = false
+
+    const finish = () => {
+      if (finished) return
+      finished = true
+      window.clearTimeout(timer)
+      frame.remove()
+      resolve()
+    }
+
+    const timer = window.setTimeout(finish, timeoutMs)
+
+    frame.addEventListener('load', () => {
+      window.setTimeout(finish, 250)
+    }, { once: true })
+    frame.addEventListener('error', finish, { once: true })
+    frame.setAttribute('aria-hidden', 'true')
+    frame.tabIndex = -1
+    frame.src = path
+    frame.style.position = 'fixed'
+    frame.style.left = '-10000px'
+    frame.style.top = '-10000px'
+    frame.style.width = '1px'
+    frame.style.height = '1px'
+    frame.style.opacity = '0'
+    frame.style.pointerEvents = 'none'
+    frame.style.border = '0'
+
+    document.body.appendChild(frame)
+  })
+}
+
+async function warmRoutesWithHiddenFrames(paths: string[]) {
+  const framePaths = paths.filter(path => path !== '/dashboard')
+
+  for (const path of framePaths) {
+    if (!navigator.onLine) return
+    await waitForHiddenFrameLoad(path)
+  }
+}
+
 export default function DashboardOfflineWarmup({ routes }: { routes: string[] }) {
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -79,6 +128,9 @@ export default function DashboardOfflineWarmup({ routes }: { routes: string[] })
           type: 'CACHE_AUTH_ROUTES',
           paths
         })
+        await warmRoutesWithHiddenFrames(paths)
+        if (cancelled) return
+
         warmed = true
       } catch {
         // Offline cache warmup is best-effort and must never affect dashboard usage.
