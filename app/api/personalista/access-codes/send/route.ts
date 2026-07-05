@@ -298,8 +298,9 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
 
       return xlsxInlineCell(value, ref, rowIndex === 0 ? 1 : 0)
     }).join('')
+    const rowHeight = rowIndex === 0 ? 16 : 14
 
-    return `<row r="${rowNumber}">${cells}</row>`
+    return `<row r="${rowNumber}" ht="${rowHeight}" customHeight="1">${cells}</row>`
   }).join('')
   const lastRow = Math.max(1, allRows.length)
   const lastColumn = columnToLetter(headers.length)
@@ -363,9 +364,9 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <fonts count="3">
-    <font><sz val="11"/><name val="Calibri"/></font>
-    <font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font>
-    <font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font>
+    <font><sz val="9"/><name val="Calibri"/></font>
+    <font><b/><color rgb="FFFFFFFF"/><sz val="9"/><name val="Calibri"/></font>
+    <font><b/><color rgb="FFFFFFFF"/><sz val="9"/><name val="Calibri"/></font>
   </fonts>
   <fills count="4">
     <fill><patternFill patternType="none"/></fill>
@@ -387,20 +388,25 @@ function buildAccessCodesXlsx(rows: AccessExportRow[], language: 'SK' | 'EN') {
       name: 'xl/worksheets/sheet1.xml',
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>
   <dimension ref="A1:${lastColumn}${lastRow}"/>
   <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+  <sheetFormatPr defaultRowHeight="14"/>
   <cols>
-    <col min="1" max="1" width="26" customWidth="1"/>
-    <col min="2" max="2" width="18" customWidth="1"/>
-    <col min="3" max="3" width="22" customWidth="1"/>
-    <col min="4" max="4" width="34" customWidth="1"/>
-    <col min="5" max="5" width="18" customWidth="1"/>
-    <col min="6" max="6" width="12" customWidth="1"/>
-    <col min="7" max="7" width="18" customWidth="1"/>
-    <col min="8" max="8" width="18" customWidth="1"/>
+    <col min="1" max="1" width="22" customWidth="1"/>
+    <col min="2" max="2" width="14" customWidth="1"/>
+    <col min="3" max="3" width="17" customWidth="1"/>
+    <col min="4" max="4" width="28" customWidth="1"/>
+    <col min="5" max="5" width="14" customWidth="1"/>
+    <col min="6" max="6" width="10" customWidth="1"/>
+    <col min="7" max="7" width="15" customWidth="1"/>
+    <col min="8" max="8" width="15" customWidth="1"/>
   </cols>
   <sheetData>${sheetRows}</sheetData>
   <autoFilter ref="A1:${lastColumn}${lastRow}"/>
+  <printOptions horizontalCentered="1"/>
+  <pageMargins left="0.25" right="0.25" top="0.35" bottom="0.35" header="0.2" footer="0.2"/>
+  <pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>
 </worksheet>`
     },
   ])
