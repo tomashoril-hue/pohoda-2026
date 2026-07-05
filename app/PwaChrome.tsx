@@ -43,6 +43,35 @@ export default function PwaChrome() {
   }, [])
 
   useEffect(() => {
+    const handleOfflineLinkClick = (event: MouseEvent) => {
+      if (navigator.onLine) return
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+
+      const target = event.target instanceof Element
+        ? event.target.closest('a[href]')
+        : null
+
+      if (!(target instanceof HTMLAnchorElement)) return
+      if (target.target || target.hasAttribute('download')) return
+
+      const url = new URL(target.href, window.location.href)
+
+      if (url.origin !== window.location.origin) return
+      if (url.pathname.startsWith('/api/') || url.pathname === '/logout') return
+      if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return
+
+      event.preventDefault()
+      window.location.assign(`${url.pathname}${url.search}${url.hash}`)
+    }
+
+    document.addEventListener('click', handleOfflineLinkClick, true)
+
+    return () => {
+      document.removeEventListener('click', handleOfflineLinkClick, true)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!('serviceWorker' in navigator)) return
 
     const registerServiceWorker = () => {

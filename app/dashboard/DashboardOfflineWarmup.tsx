@@ -2,8 +2,8 @@
 
 import { useEffect } from 'react'
 
-const RUNTIME_CACHE = 'pohoda-pass-offline-v7-runtime'
-const SW_RELOAD_KEY = 'pohoda-sw-controller-reload-v7'
+const RUNTIME_CACHE = 'pohoda-pass-offline-v8-runtime'
+const SW_RELOAD_KEY = 'pohoda-sw-controller-reload-v8'
 
 function uniqueRoutes(routes: string[]) {
   return Array.from(new Set(

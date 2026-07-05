@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'pohoda-pass-offline-v7'
+const CACHE_VERSION = 'pohoda-pass-offline-v8'
 const APP_SHELL_CACHE = `${CACHE_VERSION}-shell`
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`
 
@@ -85,6 +85,11 @@ self.addEventListener('fetch', event => {
     return
   }
 
+  if (isNextNavigationDataRequest(request, url)) {
+    event.respondWith(handleNavigationDataRequest(request, url))
+    return
+  }
+
   if (isStaticAsset(url) || APP_SHELL_URLS.includes(url.pathname)) {
     event.respondWith(handleStaticAsset(request))
   }
@@ -142,6 +147,37 @@ async function handleNavigation(request) {
       headers: { 'Content-Type': 'text/html; charset=utf-8' }
     })
   }
+}
+
+async function handleNavigationDataRequest(request, url) {
+  try {
+    return await fetch(request)
+  } catch {
+    const cachedPage = await findCachedNavigationByPath([url.pathname])
+    if (cachedPage) {
+      return new Response('', {
+        status: 204,
+        headers: {
+          'X-Pohoda-Offlline-Document-Available': '1'
+        }
+      })
+    }
+
+    return new Response('', { status: 503 })
+  }
+}
+
+function isNextNavigationDataRequest(request, url) {
+  const accept = request.headers.get('accept') || ''
+  const nextRouter = request.headers.get('next-router-state-tree')
+  const rsc = request.headers.get('rsc')
+
+  return (
+    url.searchParams.has('_rsc') ||
+    rsc === '1' ||
+    !!nextRouter ||
+    accept.includes('text/x-component')
+  )
 }
 
 async function cacheAuthRoutes(paths) {
