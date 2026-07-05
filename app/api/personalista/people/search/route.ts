@@ -8,6 +8,7 @@ const RESULT_LIMIT = 5000
 const FILTERED_RESULT_LIMIT = 5000
 const SEARCH_SCAN_LIMIT = 50000
 const AUDIT_SCAN_LIMIT = 50000
+const USERS_SELECT = 'id, meno, priezvisko, email, telefon, typ_stravy, aktivny, account_type, registration_group_id, registration_group_note, review_status, zdroj, manual_created_by, updated_at, created_at'
 
 function cleanText(value: any) {
   return String(value || '').trim()
@@ -296,6 +297,28 @@ async function fetchRecentAuditPage({
   }
 }
 
+async function fetchSearchUserRows() {
+  const rows: any[] = []
+  const batchSize = 1000
+
+  for (let from = 0; from < SEARCH_SCAN_LIMIT; from += batchSize) {
+    const { data, error } = await supabaseServer
+      .from('users')
+      .select(USERS_SELECT)
+      .order('priezvisko', { ascending: true })
+      .order('meno', { ascending: true })
+      .range(from, from + batchSize - 1)
+
+    if (error) throw error
+
+    rows.push(...(data || []))
+
+    if (!data || data.length < batchSize) break
+  }
+
+  return rows
+}
+
 function mapRegistrationGroupPeriod(row: any, registrationGroupById: Map<string, any>) {
   const group = Array.isArray(row.registration_groups)
     ? row.registration_groups[0]
@@ -461,7 +484,7 @@ export async function GET(req: NextRequest) {
 
     let usersQuery = supabaseServer
       .from('users')
-      .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, account_type, registration_group_id, registration_group_note, review_status, zdroj, manual_created_by, updated_at, created_at')
+      .select(USERS_SELECT)
       .limit(query.length >= 2 ? SEARCH_SCAN_LIMIT : filteredMode ? FILTERED_RESULT_LIMIT : RESULT_LIMIT)
     let mode = 'RECENT'
 
@@ -505,13 +528,19 @@ export async function GET(req: NextRequest) {
         .order(filteredMode ? 'meno' : 'created_at', { ascending: filteredMode })
     }
 
-    const { data: usersData, error: usersError } = await usersQuery
+    let users: any[] = []
 
-    if (usersError) {
-      return NextResponse.json({ error: usersError.message }, { status: 500 })
+    if (!userId && query.length >= 2) {
+      users = await fetchSearchUserRows()
+    } else {
+      const { data: usersData, error: usersError } = await usersQuery
+
+      if (usersError) {
+        return NextResponse.json({ error: usersError.message }, { status: 500 })
+      }
+
+      users = usersData || []
     }
-
-    let users = usersData || []
 
     if (!userId && query.length >= 2) {
       const normalizedQuery = normalizeSearchText(query)
