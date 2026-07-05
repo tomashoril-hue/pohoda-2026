@@ -381,22 +381,28 @@ export async function GET(req: NextRequest) {
     const pageSize = Math.min(100, Math.max(12, Number(req.nextUrl.searchParams.get('pageSize') || 50) || 50))
     const paged = req.nextUrl.searchParams.has('page') || req.nextUrl.searchParams.has('pageSize')
     const query = q.replaceAll('%', '').replaceAll(',', ' ')
+    const globalSearchActive = query.length >= 2
+    const effectiveRegistrationGroupId = globalSearchActive ? '' : registrationGroupId
+    const effectiveStatus = globalSearchActive ? '' : status
+    const effectiveEmailFilter = globalSearchActive ? 'ALL' : emailFilter
+    const effectiveQrFilter = globalSearchActive ? 'ALL' : qrFilter
+    const effectiveFoodFilter = globalSearchActive ? 'ALL' : foodFilter
 
     if (userId && !isUuid(userId)) {
       return NextResponse.json({ error: 'Neplatna osoba.' }, { status: 400 })
     }
 
-    if (registrationGroupId && !isUuid(registrationGroupId)) {
+    if (effectiveRegistrationGroupId && !isUuid(effectiveRegistrationGroupId)) {
       return NextResponse.json({ error: 'Neplatna registracna skupina.' }, { status: 400 })
     }
 
     let registrationGroupUserIds: string[] | null = null
 
-    if (registrationGroupId) {
+    if (effectiveRegistrationGroupId) {
       const { data: profileGroupRows, error: profileGroupError } = await supabaseServer
         .from('users')
         .select('id')
-        .eq('registration_group_id', registrationGroupId)
+        .eq('registration_group_id', effectiveRegistrationGroupId)
 
       if (profileGroupError) {
         return NextResponse.json({ error: profileGroupError.message }, { status: 500 })
@@ -420,7 +426,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const filteredMode = Boolean(registrationGroupUserIds || status || emailFilter !== 'ALL' || qrFilter !== 'ALL' || foodFilter !== 'ALL')
+    const filteredMode = Boolean(registrationGroupUserIds || effectiveStatus || effectiveEmailFilter !== 'ALL' || effectiveQrFilter !== 'ALL' || effectiveFoodFilter !== 'ALL')
     const recentMode = (
       !userId &&
       !filteredMode &&
@@ -467,19 +473,19 @@ export async function GET(req: NextRequest) {
       mode = 'REGISTRATION_GROUP'
     }
 
-    if (status === 'BLOCKED') {
+    if (effectiveStatus === 'BLOCKED') {
       usersQuery = usersQuery.neq('aktivny', 'ANO')
       mode = registrationGroupUserIds ? 'REGISTRATION_GROUP_BLOCKED' : 'BLOCKED'
-    } else if (status === 'PENDING_REVIEW') {
+    } else if (effectiveStatus === 'PENDING_REVIEW') {
       usersQuery = usersQuery.eq('review_status', 'PENDING_REVIEW')
       mode = registrationGroupUserIds ? 'REGISTRATION_GROUP_PENDING_REVIEW' : 'PENDING_REVIEW'
-    } else if (status === 'ACTIVE') {
+    } else if (effectiveStatus === 'ACTIVE') {
       usersQuery = usersQuery.eq('aktivny', 'ANO')
       mode = registrationGroupUserIds ? 'REGISTRATION_GROUP_ACTIVE' : 'ACTIVE'
     }
 
-    if (foodFilter === 'MASO' || foodFilter === 'VEGE' || foodFilter === 'DIETA') {
-      usersQuery = usersQuery.eq('typ_stravy', foodFilter)
+    if (effectiveFoodFilter === 'MASO' || effectiveFoodFilter === 'VEGE' || effectiveFoodFilter === 'DIETA') {
+      usersQuery = usersQuery.eq('typ_stravy', effectiveFoodFilter)
       mode = mode === 'RECENT' ? 'FOOD_FILTER' : mode
     }
 
@@ -728,19 +734,19 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    if (emailFilter === 'WITH') {
+    if (effectiveEmailFilter === 'WITH') {
       people = people.filter((person: any) => cleanText(person.email))
-    } else if (emailFilter === 'MISSING') {
+    } else if (effectiveEmailFilter === 'MISSING') {
       people = people.filter((person: any) => !cleanText(person.email))
     }
 
-    if (qrFilter === 'ACTIVE') {
+    if (effectiveQrFilter === 'ACTIVE') {
       people = people.filter((person: any) => person.activeQrCount > 0)
-    } else if (qrFilter === 'MISSING') {
+    } else if (effectiveQrFilter === 'MISSING') {
       people = people.filter((person: any) => person.activeQrCount <= 0)
     }
 
-    if (foodFilter === 'NEZADANE') {
+    if (effectiveFoodFilter === 'NEZADANE') {
       people = people.filter((person: any) => !cleanText(person.typStravy))
     }
 

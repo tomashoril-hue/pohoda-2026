@@ -1712,12 +1712,16 @@ export default function PersonalistaClient({
 
   useEffect(() => {
     const q = search.trim()
+    const globalSearchActive = q.length >= 2
     const hasActiveFilters = (
-      registrationGroupFilter !== 'ALL' ||
-      emailFilter !== 'ALL' ||
-      foodFilter !== 'ALL' ||
-      qrFilter !== 'ALL' ||
-      statusFilter !== 'ALL'
+      !globalSearchActive &&
+      (
+        registrationGroupFilter !== 'ALL' ||
+        emailFilter !== 'ALL' ||
+        foodFilter !== 'ALL' ||
+        qrFilter !== 'ALL' ||
+        statusFilter !== 'ALL'
+      )
     )
 
     if (q && q.length < 2 && !hasActiveFilters) {
@@ -1732,18 +1736,18 @@ export default function PersonalistaClient({
     let cancelled = false
     const timeout = window.setTimeout(async () => {
       setPeopleSearchLoading(true)
-      setPeopleSearchMessage('Hladam v databaze...')
+      setPeopleSearchMessage(globalSearchActive ? 'Hladam v celej databaze...' : 'Hladam v databaze...')
 
       try {
         const params = new URLSearchParams()
 
         if (!hasActiveFilters && q.length === 0) params.set('recentScope', peopleScope)
         if (q.length >= 2) params.set('q', q)
-        if (registrationGroupFilter !== 'ALL') params.set('registrationGroupId', registrationGroupFilter)
-        if (emailFilter !== 'ALL') params.set('emailFilter', emailFilter)
-        if (foodFilter !== 'ALL') params.set('foodFilter', foodFilter)
-        if (qrFilter !== 'ALL') params.set('qrFilter', qrFilter)
-        if (statusFilter !== 'ALL') params.set('status', statusFilter)
+        if (!globalSearchActive && registrationGroupFilter !== 'ALL') params.set('registrationGroupId', registrationGroupFilter)
+        if (!globalSearchActive && emailFilter !== 'ALL') params.set('emailFilter', emailFilter)
+        if (!globalSearchActive && foodFilter !== 'ALL') params.set('foodFilter', foodFilter)
+        if (!globalSearchActive && qrFilter !== 'ALL') params.set('qrFilter', qrFilter)
+        if (!globalSearchActive && statusFilter !== 'ALL') params.set('status', statusFilter)
         params.set('page', String(currentPage))
         params.set('pageSize', String(pageSize))
 
