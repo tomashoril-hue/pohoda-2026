@@ -71,6 +71,10 @@ export async function GET(req: NextRequest) {
     const registrationGroupId = cleanText(req.nextUrl.searchParams.get('registrationGroupId'))
     const validFrom = cleanText(req.nextUrl.searchParams.get('validFrom'))
     const validTo = cleanText(req.nextUrl.searchParams.get('validTo'))
+    const entitlementFromParam = cleanText(req.nextUrl.searchParams.get('entitlementFrom'))
+    const entitlementToParam = cleanText(req.nextUrl.searchParams.get('entitlementTo'))
+    const entitlementFrom = isIsoDate(entitlementFromParam) ? entitlementFromParam : validFrom
+    const entitlementTo = isIsoDate(entitlementToParam) ? entitlementToParam : validTo
     const resolved = await resolveAllowedGroup(actor.id, registrationGroupId)
 
     if ('error' in resolved) {
@@ -139,13 +143,13 @@ export async function GET(req: NextRequest) {
           .in('user_id', userIdChunk)
           .eq('registration_group_id', groupId)
           .order('valid_from', { ascending: true }),
-        isIsoDate(validFrom) && isIsoDate(validTo) && validTo >= validFrom
+        isIsoDate(entitlementFrom) && isIsoDate(entitlementTo) && entitlementTo >= entitlementFrom
           ? supabaseServer
             .from('user_food_entitlements')
             .select('user_id, datum, obed, vecera')
             .in('user_id', userIdChunk)
-            .gte('datum', validFrom)
-            .lte('datum', validTo)
+            .gte('datum', entitlementFrom)
+            .lte('datum', entitlementTo)
             .order('datum', { ascending: true })
           : Promise.resolve({ data: [], error: null })
       ])

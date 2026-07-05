@@ -102,6 +102,7 @@ export default function UpravaBrigadnikovClient({
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
   const calendarSet = useMemo(() => new Set(calendarDates), [calendarDates])
   const rangeDates = useMemo(() => dateRange(validFrom, validTo), [validFrom, validTo])
+  const defaultRangeDates = useMemo(() => dateRange(defaultFrom, defaultTo), [defaultFrom, defaultTo])
   const selectedGroup = groups.find(group => group.id === groupId)
 
   const filteredPeople = useMemo(() => {
@@ -124,6 +125,25 @@ export default function UpravaBrigadnikovClient({
     return people.filter(person => selectedSet.has(person.id))
   }, [people, selectedSet])
 
+  const selectedEntitlementDates = useMemo(() => {
+    return Array.from(new Set(
+      selectedPeople
+        .flatMap(person => person.entitlements)
+        .filter(entitlement => {
+          return (obed && entitlement.obed) || (vecera && entitlement.vecera)
+        })
+        .map(entitlement => entitlement.datum)
+    )).sort()
+  }, [selectedPeople, obed, vecera])
+
+  const calendarRangeDates = useMemo(() => {
+    return Array.from(new Set([
+      ...defaultRangeDates,
+      ...rangeDates,
+      ...selectedEntitlementDates
+    ])).sort()
+  }, [defaultRangeDates, rangeDates, selectedEntitlementDates])
+
   const loadPeople = async () => {
     if (!groupId) return
 
@@ -132,10 +152,14 @@ export default function UpravaBrigadnikovClient({
     setMessageType('')
 
     try {
+      const entitlementFrom = [validFrom, defaultFrom].filter(isIsoDate).sort()[0] || validFrom
+      const entitlementTo = [validTo, defaultTo].filter(isIsoDate).sort().slice(-1)[0] || validTo
       const params = new URLSearchParams({
         registrationGroupId: groupId,
         validFrom,
-        validTo
+        validTo,
+        entitlementFrom,
+        entitlementTo
       })
       const res = await fetch(`/api/uprava-brigadnikov/people?${params.toString()}`)
       const json = await res.json().catch(() => ({ error: 'Server vratil neplatnu odpoved.' }))
@@ -166,8 +190,8 @@ export default function UpravaBrigadnikovClient({
 
   useEffect(() => {
     if (!calendarOpen) return
-    setCalendarDates(current => current.filter(date => rangeDates.includes(date)))
-  }, [calendarOpen, rangeDates])
+    setCalendarDates(current => current.filter(date => calendarRangeDates.includes(date)))
+  }, [calendarOpen, calendarRangeDates])
 
   const buttonStyle = (base: React.CSSProperties, action: string, disabled = false) => ({
     ...base,
@@ -196,17 +220,10 @@ export default function UpravaBrigadnikovClient({
     setCalendarOpen(current => {
       const next = !current
       if (next && calendarDates.length === 0) {
-        const entitlementDates = Array.from(new Set(
-          selectedPeople
-            .flatMap(person => person.entitlements)
-            .filter(entitlement => {
-              return (obed && entitlement.obed) || (vecera && entitlement.vecera)
-            })
-            .map(entitlement => entitlement.datum)
-            .filter(date => rangeDates.includes(date))
-        )).sort()
+        const entitlementDates = selectedEntitlementDates
+          .filter(date => calendarRangeDates.includes(date))
 
-        setCalendarDates(entitlementDates.length > 0 ? entitlementDates : rangeDates)
+        setCalendarDates(entitlementDates.length > 0 ? entitlementDates : defaultRangeDates)
       }
       return next
     })
@@ -593,7 +610,7 @@ export default function UpravaBrigadnikovClient({
           <button type="button" style={buttonStyle(styles.lightButton, 'reload', loading || saving)} onClick={loadPeople} disabled={loading || saving}>
             Obnovit
           </button>
-          <button type="button" style={buttonStyle(calendarOpen ? styles.secondaryButton : styles.lightButton, 'calendar', saving || rangeDates.length === 0)} onClick={openCalendar} disabled={saving || rangeDates.length === 0}>
+          <button type="button" style={buttonStyle(calendarOpen ? styles.secondaryButton : styles.lightButton, 'calendar', saving || calendarRangeDates.length === 0)} onClick={openCalendar} disabled={saving || calendarRangeDates.length === 0}>
             Kalendar
           </button>
         </div>
@@ -602,8 +619,8 @@ export default function UpravaBrigadnikovClient({
           <section style={styles.calendarBox}>
             <div style={styles.calendarToolbar}>
               <b>Presne dni</b>
-              <span>{calendarDates.length} / {rangeDates.length}</span>
-              <button type="button" style={styles.tinyButton} onClick={() => setCalendarDates(rangeDates)} disabled={saving}>
+              <span>{calendarDates.length} / {calendarRangeDates.length}</span>
+              <button type="button" style={styles.tinyButton} onClick={() => setCalendarDates(calendarRangeDates)} disabled={saving}>
                 Vsetky
               </button>
               <button type="button" style={styles.tinyButton} onClick={() => setCalendarDates([])} disabled={saving}>
@@ -612,7 +629,7 @@ export default function UpravaBrigadnikovClient({
             </div>
 
             <div style={styles.calendarGrid}>
-              {rangeDates.map(date => {
+              {calendarRangeDates.map(date => {
                 const selected = calendarSet.has(date)
 
                 return (
