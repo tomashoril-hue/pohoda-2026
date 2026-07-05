@@ -220,7 +220,7 @@ export default function ExpressVydajClient({
       const res = await fetch(`/api/skupinovy-vydaj/express?${params.toString()}`)
       const json = await res.json().catch(() => ({ error: t('Server nevrátil platnú odpoveď.', 'The server did not return a valid response.') }))
 
-      if (!res.ok || json.error) throw new Error(json.error || t('Express výdaj sa nepodarilo načítať.', 'Express issue could not be loaded.'))
+      if (!res.ok || json.error) throw new Error(json.error || t('Skupinový expres výdaj sa nepodarilo načítať.', 'Group express issue could not be loaded.'))
 
       if (json.date && json.date !== selectedDate) setSelectedDate(json.date)
       if (json.meal && json.meal !== selectedMeal) setSelectedMeal(json.meal)
@@ -240,7 +240,7 @@ export default function ExpressVydajClient({
       setRedirectAfterCountdown(false)
       setEditingIssue(false)
       setActiveIssueId('')
-      setMessage(err?.message || t('Express výdaj sa nepodarilo načítať.', 'Express issue could not be loaded.'))
+      setMessage(err?.message || t('Skupinový expres výdaj sa nepodarilo načítať.', 'Group express issue could not be loaded.'))
       setMessageType('error')
     } finally {
       setLoading(false)
@@ -332,7 +332,7 @@ export default function ExpressVydajClient({
       })
       const json = await res.json().catch(() => ({ error: t('Server nevrátil platnú odpoveď.', 'The server did not return a valid response.') }))
 
-      if (!res.ok || json.error) throw new Error(json.error || t('Express výdaj sa nepodarilo uložiť.', 'Express issue could not be saved.'))
+      if (!res.ok || json.error) throw new Error(json.error || t('Skupinový expres výdaj sa nepodarilo uložiť.', 'Group express issue could not be saved.'))
 
       setData(current => ({
         date: json.date || current?.date || '',
@@ -368,14 +368,14 @@ export default function ExpressVydajClient({
       if (savedCountdownActive) {
         setRedirectAfterCountdown(true)
         setEditingIssue(false)
-        setMessage(t('Express výdaj je pripravený. Začne platiť po odpočte.', 'Express issue is ready. It will become valid after the countdown.'))
+        setMessage(t('Skupinový expres výdaj je pripravený. Začne platiť po odpočte.', 'Group express issue is ready. It will become valid after the countdown.'))
         setMessageType('ok')
       } else {
         setRedirectAfterCountdown(false)
-        redirectToQrSoon(t('Express výdaj je uložený a platný. Presmerovávam na Môj QR kód.', 'Express issue is saved and valid. Redirecting to My QR code.'))
+        redirectToQrSoon(t('Skupinový expres výdaj je uložený a platný. Presmerovávam na Môj QR kód.', 'Group express issue is saved and valid. Redirecting to My QR code.'))
       }
     } catch (err: any) {
-      setMessage(err?.message || t('Express výdaj sa nepodarilo uložiť.', 'Express issue could not be saved.'))
+      setMessage(err?.message || t('Skupinový expres výdaj sa nepodarilo uložiť.', 'Group express issue could not be saved.'))
       setMessageType('error')
     } finally {
       setSaving(false)
@@ -384,7 +384,7 @@ export default function ExpressVydajClient({
 
   const cancelCurrentIssue = async () => {
     if (!data?.issue?.id || cancelling) return
-    if (!confirm(t('Naozaj chceš zrušiť tento express výdaj?', 'Do you really want to cancel this express issue?'))) return
+    if (!confirm(t('Naozaj chceš zrušiť tento skupinový expres výdaj?', 'Do you really want to cancel this group express issue?'))) return
 
     setCancelling(true)
     setMessage('')
@@ -398,14 +398,14 @@ export default function ExpressVydajClient({
       })
       const json = await res.json().catch(() => ({ error: t('Server nevrátil platnú odpoveď.', 'The server did not return a valid response.') }))
 
-      if (!res.ok || json.error) throw new Error(json.error || t('Express výdaj sa nepodarilo zrušiť.', 'Express issue could not be cancelled.'))
+      if (!res.ok || json.error) throw new Error(json.error || t('Skupinový expres výdaj sa nepodarilo zrušiť.', 'Group express issue could not be cancelled.'))
 
       setRedirectAfterCountdown(false)
-      setMessage(json.message || t('Express výdaj bol zrušený.', 'Express issue has been cancelled.'))
+      setMessage(json.message || t('Skupinový expres výdaj bol zrušený.', 'Group express issue has been cancelled.'))
       setMessageType('ok')
       await loadData(groupId, selectedDate, selectedMeal)
     } catch (err: any) {
-      setMessage(err?.message || t('Express výdaj sa nepodarilo zrušiť.', 'Express issue could not be cancelled.'))
+      setMessage(err?.message || t('Skupinový expres výdaj sa nepodarilo zrušiť.', 'Group express issue could not be cancelled.'))
       setMessageType('error')
     } finally {
       setCancelling(false)
@@ -479,7 +479,7 @@ export default function ExpressVydajClient({
       <section className="express-card" style={styles.card}>
         <div style={styles.titleRow}>
           <div>
-            <h1 className="express-title" style={styles.title}>{t('Express výdaj', 'Express issue')}</h1>
+            <h1 className="express-title" style={styles.title}>{t('Skupinový expres výdaj', 'Group express issue')}</h1>
             <div style={styles.subtitle}>
               {data ? `${mealLabel(data.meal, language)} · ${formatDate(data.date)}` : t('Načítavam dnešný výdaj', 'Loading today issue')}
             </div>
@@ -546,11 +546,11 @@ export default function ExpressVydajClient({
           <section style={styles.issueListPanel}>
             <div style={styles.issueListHeader}>
               <div>
-                <div style={styles.issueListTitle}>{t('Express výdaje', 'Express issues')}</div>
+                <div style={styles.issueListTitle}>{t('Skupinové expres výdaje', 'Group express issues')}</div>
                 <div style={styles.issueListSubtitle}>{t('Pre tento deň a jedlo', 'For this day and meal')}</div>
               </div>
               <button type="button" onClick={() => void startNewIssue()} disabled={loading || saving} style={styles.newIssueButton}>
-                {t('Nový express výdaj', 'New express issue')}
+                {t('Nový skupinový expres výdaj', 'New group express issue')}
               </button>
             </div>
 
@@ -606,7 +606,7 @@ export default function ExpressVydajClient({
           <section style={countdownActive ? styles.issueStatusPanelWaiting : styles.issueStatusPanelReady}>
             <div style={styles.statusPanelHeader}>
               <div>
-                <div style={styles.statusPanelEyebrow}>{t('Express výdaj', 'Express issue')}</div>
+                <div style={styles.statusPanelEyebrow}>{t('Skupinový expres výdaj', 'Group express issue')}</div>
                 <h2 style={styles.statusPanelTitle}>{data.group.name || '-'}</h2>
                 <div style={styles.statusPanelMeta}>{mealLabel(data.meal, language)} · {formatDate(data.date)}</div>
               </div>

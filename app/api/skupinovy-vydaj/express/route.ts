@@ -586,7 +586,7 @@ export async function POST(req: NextRequest) {
         })
 
     if (issueId && !existingIssue) {
-      return NextResponse.json({ error: 'Express vydaj neexistuje alebo ho nie je mozne upravit.' }, { status: 404 })
+      return NextResponse.json({ error: 'Skupinovy expres vydaj neexistuje alebo ho nie je mozne upravit.' }, { status: 404 })
     }
     const requestedPeople = requestedPeopleFromIds(selectedUserIds)
     const currentItems = existingIssue ? await loadIssueItems(existingIssue.id) : []
@@ -635,7 +635,7 @@ export async function POST(req: NextRequest) {
 
       if (error || !data) {
         return NextResponse.json(
-          { error: error?.message || 'Express vydaj sa nepodarilo vytvorit.' },
+          { error: error?.message || 'Skupinovy expres vydaj sa nepodarilo vytvorit.' },
           { status: 500 }
         )
       }
@@ -753,8 +753,8 @@ export async function POST(req: NextRequest) {
       pickupUserIds,
       summary: choiceSummary(plannedPeople),
       message: nextIssueState.immediate
-        ? 'Express vydaj je pripraveny a je platny.'
-        : 'Express vydaj je pripraveny. Zacne platit o 15 minut.'
+        ? 'Skupinovy expres vydaj je pripraveny a je platny.'
+        : 'Skupinovy expres vydaj je pripraveny. Zacne platit o 15 minut.'
     })
   } catch (err: any) {
     return NextResponse.json(

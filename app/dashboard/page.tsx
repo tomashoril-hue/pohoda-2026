@@ -805,7 +805,7 @@ export default async function DashboardPage({
           {canOpenGroupIssue && (
             <Link className="dashboard-menu-tile" href="/dashboard/express-vydaj" style={{ ...styles.menuTile, ...styles.menuTileGreen }}>
               <span className="dashboard-menu-kicker" style={styles.menuTileKicker}>Rýchlo</span>
-              <b className="dashboard-menu-title" style={styles.menuTileTitle}>Express výdaj</b>
+              <b className="dashboard-menu-title" style={styles.menuTileTitle}>Skupinový expres výdaj</b>
             </Link>
           )}
           {canOpenBrigadnikEdit && (
