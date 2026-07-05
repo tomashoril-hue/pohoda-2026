@@ -187,7 +187,7 @@ export async function POST(req: NextRequest) {
         user_id: userId,
         valid_from: validFrom,
         valid_to: validTo,
-        source: 'MANAGER_REG_SKUPINY',
+        source: 'MANUAL',
         created_by: actor.id,
         updated_by: actor.id
       })
@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
         datum,
         obed,
         vecera,
-        source: 'MANAGER_REG_SKUPINY',
+        source: 'PERSONALISTA',
         note: `Pripravil manager registracnej skupiny ${registrationGroup.name}.`,
         created_by: actor.id,
         updated_by: actor.id,
