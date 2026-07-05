@@ -6,6 +6,7 @@ import { supabaseServer } from '@/lib/supabaseServer'
 
 const RESULT_LIMIT = 5000
 const FILTERED_RESULT_LIMIT = 5000
+const SEARCH_SCAN_LIMIT = 50000
 const AUDIT_SCAN_LIMIT = 50000
 
 function cleanText(value: any) {
@@ -20,9 +21,24 @@ function normalizeSearchText(value: any) {
     .toLowerCase()
 }
 
+function compactSearchText(value: any) {
+  return normalizeSearchText(value).replace(/\s+/g, '')
+}
+
+function firstSearchChar(value: any) {
+  return normalizeSearchText(value).charAt(0)
+}
+
 function personMatchesSearch(user: any, normalizedQuery: string) {
   if (!normalizedQuery) return true
 
+  const compactQuery = normalizedQuery.replace(/\s+/g, '')
+  const firstNameInitial = firstSearchChar(user?.meno)
+  const lastNameInitial = firstSearchChar(user?.priezvisko)
+  const initials = [
+    `${firstNameInitial}${lastNameInitial}`,
+    `${lastNameInitial}${firstNameInitial}`
+  ].filter(item => item.length >= 2)
   const values = [
     user?.meno,
     user?.priezvisko,
@@ -31,7 +47,14 @@ function personMatchesSearch(user: any, normalizedQuery: string) {
     user?.telefon
   ]
 
-  return values.some(value => normalizeSearchText(value).includes(normalizedQuery))
+  if (values.some(value => normalizeSearchText(value).includes(normalizedQuery))) return true
+  if (compactQuery && initials.includes(compactQuery)) return true
+  if (values.some(value => compactSearchText(value).includes(compactQuery))) return true
+
+  const queryParts = normalizedQuery.split(' ').filter(Boolean)
+  if (queryParts.length <= 1) return false
+
+  return queryParts.every(part => values.some(value => normalizeSearchText(value).includes(part)))
 }
 
 function isUuid(value: string) {
@@ -433,7 +456,7 @@ export async function GET(req: NextRequest) {
     let usersQuery = supabaseServer
       .from('users')
       .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, account_type, registration_group_id, registration_group_note, review_status, zdroj, manual_created_by, updated_at, created_at')
-      .limit(filteredMode ? FILTERED_RESULT_LIMIT : RESULT_LIMIT)
+      .limit(query.length >= 2 ? SEARCH_SCAN_LIMIT : filteredMode ? FILTERED_RESULT_LIMIT : RESULT_LIMIT)
     let mode = 'RECENT'
 
     if (recentAuditPage) {
