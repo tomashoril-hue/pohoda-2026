@@ -148,8 +148,10 @@ export default function UpravaBrigadnikovClient({
     const entitlementDates = selectedEntitlementDates
       .filter(date => calendarRangeDates.includes(date))
 
+    if (selectedPeople.length > 0) return entitlementDates
+
     return entitlementDates.length > 0 ? entitlementDates : defaultRangeDates
-  }, [calendarRangeDates, defaultRangeDates, selectedEntitlementDates])
+  }, [calendarRangeDates, defaultRangeDates, selectedEntitlementDates, selectedPeople.length])
 
   const loadPeople = async () => {
     if (!groupId) return
