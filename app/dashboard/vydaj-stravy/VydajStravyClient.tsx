@@ -387,6 +387,10 @@ export default function VydajStravyClient({
   const [cancelLoading, setCancelLoading] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
+  const [printOpen, setPrintOpen] = useState(false)
+  const [printLoadingId, setPrintLoadingId] = useState('')
+  const [printMessage, setPrintMessage] = useState('')
+  const [printMessageType, setPrintMessageType] = useState<Tone>('success')
   const [issueDecision, setIssueDecision] = useState<IssueDecision | null>(null)
   const [online, setOnline] = useState(true)
   const [offlineNotice, setOfflineNotice] = useState('')
@@ -753,6 +757,40 @@ export default function VydajStravyClient({
     setRecentIssued(items)
     setEditChoices(Object.fromEntries(editableItems.map(item => [item.issuedId, item.choice || ''])))
     setSelectedCancelIds(prev => prev.filter(id => items.some(item => item.issuedId === id)))
+  }
+
+  const openPrintModal = async () => {
+    setPrintOpen(true)
+    setPrintMessage('')
+    await refreshRecentIssued()
+  }
+
+  const printIssuedMeal = async (item: ScanItem) => {
+    if (!item.issuedId || printLoadingId) return
+
+    setPrintLoadingId(item.issuedId)
+    setPrintMessage('')
+
+    try {
+      const res = await fetch('/api/vydaj-stravy/print', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issuedId: item.issuedId })
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || 'Výdaj sa nepodarilo odoslať do tlače.')
+      }
+
+      setPrintMessage(json.message || 'Výdaj bol odoslaný do tlače.')
+      setPrintMessageType('success')
+    } catch (err: any) {
+      setPrintMessage(err?.message || 'Výdaj sa nepodarilo odoslať do tlače.')
+      setPrintMessageType('error')
+    } finally {
+      setPrintLoadingId('')
+    }
   }
 
   const syncPendingOfflineEventsInBackground = async () => {
@@ -1620,7 +1658,11 @@ export default function VydajStravyClient({
         </aside>
       </section>
 
-      <section style={{ ...styles.statsGrid, ...(isMobile ? styles.statsGridMobile : {}) }}>
+      <section style={{
+        ...styles.statsGrid,
+        ...(fullMode ? styles.statsGridWithPrint : {}),
+        ...(isMobile ? styles.statsGridMobile : {})
+      }}>
         <div style={styles.statBoxGreen}>
           <span>Vydané teraz</span>
           <b>{successCount}</b>
@@ -1629,10 +1671,76 @@ export default function VydajStravyClient({
           <span>Kontroly stop</span>
           <b>{errorCount}</b>
         </div>
+        {fullMode && (
+          <button type="button" onClick={openPrintModal} style={styles.printButton}>
+            Tlač výdaja
+          </button>
+        )}
         <button type="button" onClick={openStats} style={styles.statsButton}>
           Prehľad stravy
         </button>
       </section>
+
+      {printOpen && (
+        <div style={styles.modalBackdrop} onClick={() => setPrintOpen(false)}>
+          <div style={styles.printModal} onClick={event => event.stopPropagation()}>
+            <div style={styles.statsModalHeader}>
+              <div>
+                <h2 style={styles.sectionTitle}>Tlač výdaja</h2>
+                <p style={styles.cancelHint}>Vyber jeden z posledných výdajov. Vytlačia sa štítky aj report.</p>
+              </div>
+              <button type="button" onClick={() => setPrintOpen(false)} style={styles.closeButton}>
+                Zavrieť
+              </button>
+            </div>
+
+            {printMessage && (
+              <div style={printMessageType === 'success' ? styles.printMessageOk : styles.printMessageError}>
+                {printMessage}
+              </div>
+            )}
+
+            {recentIssued.length === 0 ? (
+              <div style={styles.emptyHistory}>Zatiaľ nie je čo tlačiť.</div>
+            ) : (
+              <div style={styles.printList}>
+                {recentIssued.map(item => (
+                  <div key={item.issuedId} style={styles.printItem}>
+                    <div style={styles.printItemText}>
+                      <b>{item.itemType === 'BULK' ? (item.groupName || item.personName || 'Skupinový výdaj') : (item.personName || item.email || '-')}</b>
+                      <span>
+                        {mealLabel(item.typJedla)} · {formatTime(item.issuedAt)} · {methodLabel(item.method)}
+                        {item.itemType === 'BULK' && item.children?.length ? ` · ${item.children.length} osôb` : ''}
+                      </span>
+                      {item.itemType === 'BULK' && item.summary && (
+                        <em>{choiceSummaryLabel(item.summary)}</em>
+                      )}
+                      {item.itemType !== 'BULK' && item.choice && (
+                        <em>{choiceLabel(item.choice)}</em>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => printIssuedMeal(item)}
+                      disabled={!!printLoadingId}
+                      style={{
+                        ...styles.printItemButton,
+                        opacity: printLoadingId && printLoadingId !== item.issuedId ? 0.45 : 1
+                      }}
+                    >
+                      {printLoadingId === item.issuedId ? 'Odosielam...' : 'Tlačiť'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button type="button" onClick={refreshRecentIssued} disabled={!!printLoadingId} style={styles.secondaryButton}>
+              Obnoviť zoznam
+            </button>
+          </div>
+        </div>
+      )}
 
       {issueDecision && (
         <div style={styles.modalBackdrop}>
@@ -2459,6 +2567,9 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
     gap: 10
   },
+  statsGridWithPrint: {
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))'
+  },
   statsGridMobile: {
     gridTemplateColumns: '1fr',
     gap: 8
@@ -2483,6 +2594,13 @@ const styles: Record<string, CSSProperties> = {
     ...baseButton,
     background: '#2563eb',
     borderColor: '#1d4ed8',
+    color: '#fff',
+    padding: '0 14px'
+  },
+  printButton: {
+    ...baseButton,
+    background: '#111827',
+    borderColor: '#020617',
     color: '#fff',
     padding: '0 14px'
   },
@@ -2593,6 +2711,17 @@ const styles: Record<string, CSSProperties> = {
     maxHeight: '86vh',
     overflowY: 'auto'
   },
+  printModal: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 12,
+    display: 'grid',
+    gap: 12,
+    width: 'min(760px, 100%)',
+    maxHeight: '86vh',
+    overflowY: 'auto'
+  },
   statsModalHeader: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -2651,6 +2780,54 @@ const styles: Record<string, CSSProperties> = {
     color: '#991b1b',
     padding: 10,
     fontWeight: 800
+  },
+  printMessageOk: {
+    background: '#dcfce7',
+    border: '1px solid #86efac',
+    borderRadius: 8,
+    color: '#14532d',
+    padding: 10,
+    fontSize: 14,
+    fontWeight: 850
+  },
+  printMessageError: {
+    background: '#fee2e2',
+    border: '1px solid #fecaca',
+    borderRadius: 8,
+    color: '#991b1b',
+    padding: 10,
+    fontSize: 14,
+    fontWeight: 850
+  },
+  printList: {
+    display: 'grid',
+    gap: 8
+  },
+  printItem: {
+    display: 'grid',
+    gridTemplateColumns: '1fr auto',
+    gap: 10,
+    alignItems: 'center',
+    background: '#f8fafc',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 10
+  },
+  printItemText: {
+    display: 'grid',
+    gap: 3,
+    minWidth: 0,
+    fontSize: 13,
+    fontWeight: 800
+  },
+  printItemButton: {
+    ...baseButton,
+    minHeight: 44,
+    background: '#16a34a',
+    borderColor: '#15803d',
+    color: '#fff',
+    padding: '0 14px',
+    fontSize: 14
   },
   cancelBox: {
     background: '#fff',
