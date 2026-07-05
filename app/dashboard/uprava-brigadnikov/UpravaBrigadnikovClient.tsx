@@ -144,6 +144,13 @@ export default function UpravaBrigadnikovClient({
     ])).sort()
   }, [defaultRangeDates, rangeDates, selectedEntitlementDates])
 
+  const currentCalendarDates = useMemo(() => {
+    const entitlementDates = selectedEntitlementDates
+      .filter(date => calendarRangeDates.includes(date))
+
+    return entitlementDates.length > 0 ? entitlementDates : defaultRangeDates
+  }, [calendarRangeDates, defaultRangeDates, selectedEntitlementDates])
+
   const loadPeople = async () => {
     if (!groupId) return
 
@@ -190,8 +197,8 @@ export default function UpravaBrigadnikovClient({
 
   useEffect(() => {
     if (!calendarOpen) return
-    setCalendarDates(current => current.filter(date => calendarRangeDates.includes(date)))
-  }, [calendarOpen, calendarRangeDates])
+    setCalendarDates(currentCalendarDates)
+  }, [calendarOpen, currentCalendarDates])
 
   const buttonStyle = (base: React.CSSProperties, action: string, disabled = false) => ({
     ...base,
@@ -220,10 +227,7 @@ export default function UpravaBrigadnikovClient({
     setCalendarOpen(current => {
       const next = !current
       if (next && calendarDates.length === 0) {
-        const entitlementDates = selectedEntitlementDates
-          .filter(date => calendarRangeDates.includes(date))
-
-        setCalendarDates(entitlementDates.length > 0 ? entitlementDates : defaultRangeDates)
+        setCalendarDates(currentCalendarDates)
       }
       return next
     })
