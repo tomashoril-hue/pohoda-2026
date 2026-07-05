@@ -449,7 +449,8 @@ export default function UpravaBrigadnikovClient({
           .brigadnici-grid { grid-template-columns: 1fr !important; }
           .brigadnici-create-grid { grid-template-columns: 1fr !important; }
           .brigadnici-date-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
-          .brigadnici-actions { grid-template-columns: 1fr 1fr !important; }
+          .brigadnici-actions { grid-template-columns: 1fr !important; }
+          .brigadnici-people-search { grid-template-columns: 1fr !important; }
           .brigadnici-person-row { grid-template-columns: 32px 1fr !important; }
           .brigadnici-person-meta { grid-column: 2 !important; }
         }
@@ -500,10 +501,6 @@ export default function UpravaBrigadnikovClient({
             </label>
           </div>
 
-          <label style={styles.field}>
-            <span>Hladat</span>
-            <input value={search} onChange={event => setSearch(event.target.value)} style={styles.input} placeholder="Meno, email, telefon" />
-          </label>
         </div>
 
         <section style={styles.createPendingBox}>
@@ -681,6 +678,29 @@ export default function UpravaBrigadnikovClient({
             {saving && activeAction === 'save' ? 'Ukladam...' : 'Ulozit naroky'}
           </button>
         </div>
+
+        <section className="brigadnici-people-search" style={styles.peopleSearchBox}>
+          <label style={styles.peopleSearchField}>
+            <span>Hladat medzi ludmi</span>
+            <input
+              value={search}
+              onChange={event => setSearch(event.target.value)}
+              style={styles.peopleSearchInput}
+              placeholder="Meno, priezvisko, email, telefon alebo QR"
+              autoComplete="off"
+            />
+          </label>
+
+          <div style={styles.peopleSearchMeta}>
+            <b>{filteredPeople.length}</b>
+            <span>/ {people.length}</span>
+            {search && (
+              <button type="button" style={styles.tinyButton} onClick={() => setSearch('')} disabled={saving}>
+                Zrusit
+              </button>
+            )}
+          </div>
+        </section>
 
         <section style={styles.peopleBox}>
           {loading ? (
@@ -908,8 +928,47 @@ const styles: Record<string, React.CSSProperties> = {
   },
   actionBar: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
     gap: 8
+  },
+  peopleSearchBox: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    background: '#f8fafc',
+    padding: 10,
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 10,
+    alignItems: 'end'
+  },
+  peopleSearchField: {
+    display: 'grid',
+    gap: 5,
+    minWidth: 0,
+    fontSize: 12,
+    fontWeight: 850,
+    color: '#374151'
+  },
+  peopleSearchInput: {
+    minHeight: 39,
+    border: '1px solid #d1d5db',
+    borderRadius: 7,
+    padding: '8px 10px',
+    fontSize: 15,
+    fontWeight: 750,
+    background: '#fff',
+    width: '100%',
+    minWidth: 0
+  },
+  peopleSearchMeta: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
+    minHeight: 39,
+    fontSize: 13,
+    color: '#4b5563',
+    whiteSpace: 'nowrap'
   },
   primaryButton: {
     ...buttonBase,
