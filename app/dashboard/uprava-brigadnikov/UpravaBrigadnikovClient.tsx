@@ -243,7 +243,7 @@ export default function UpravaBrigadnikovClient({
     ))
   }
 
-  const submit = async (mode: 'SET' | 'CLEAR') => {
+  const submit = async () => {
     if (!groupId) {
       setMessage('Chyba registracna skupina.')
       setMessageType('error')
@@ -262,35 +262,29 @@ export default function UpravaBrigadnikovClient({
       return
     }
 
-    if (calendarOpen && calendarDates.length === 0) {
-      setMessage('V kalendari vyber aspon jeden den.')
-      setMessageType('error')
-      return
-    }
-
     if (!obed && !vecera) {
       setMessage('Vyber obed alebo veceru.')
       setMessageType('error')
       return
     }
 
-    if (mode === 'CLEAR') {
+    const removedDates = calendarOpen
+      ? currentCalendarDates.filter(date => !calendarDates.includes(date))
+      : []
+
+    if (removedDates.length > 0) {
       const mealLabel = [obed ? 'obed' : '', vecera ? 'veceru' : ''].filter(Boolean).join(' a ')
-      const dateLabel = calendarOpen
-        ? `${calendarDates.length} vybranych dni`
-        : `obdobie ${validFrom} - ${validTo}`
       const peopleLabel = `${selectedIds.length} ${selectedIds.length === 1 ? 'osobe' : 'osobam'}`
 
       const confirmed = window.confirm(
-        `Naozaj vymazat ${mealLabel} pre ${peopleLabel} v rozsahu ${dateLabel}? Ostatne neoznacene jedla ostanu zachovane.`
+        `Odznacene dni zmazu ${mealLabel} pre ${peopleLabel}. Pokracovat a ulozit zmeny?`
       )
 
       if (!confirmed) return
     }
 
-    const action = mode === 'SET' ? 'save' : 'clear'
     setSaving(true)
-    setActiveAction(action)
+    setActiveAction('save')
     setMessage('')
     setMessageType('')
 
@@ -303,10 +297,11 @@ export default function UpravaBrigadnikovClient({
           userIds: selectedIds,
           validFrom,
           validTo,
-          mode,
+          mode: 'SET',
           obed,
           vecera,
-          selectedDates: calendarOpen ? calendarDates : undefined
+          selectedDates: calendarOpen ? calendarDates : undefined,
+          replaceDates: calendarOpen ? calendarRangeDates : undefined
         })
       })
       const json = await res.json().catch(() => ({ error: 'Server vratil neplatnu odpoved.' }))
@@ -682,11 +677,8 @@ export default function UpravaBrigadnikovClient({
           <button type="button" style={buttonStyle(styles.lightButton, 'clear-selected', selectedIds.length === 0 || saving)} onClick={clearSelection} disabled={selectedIds.length === 0 || saving}>
             Zrusit oznacenie
           </button>
-          <button type="button" style={buttonStyle(styles.primaryButton, 'save', selectedIds.length === 0 || saving)} onClick={() => void submit('SET')} disabled={selectedIds.length === 0 || saving}>
+          <button type="button" style={buttonStyle(styles.primaryButton, 'save', selectedIds.length === 0 || saving)} onClick={() => void submit()} disabled={selectedIds.length === 0 || saving}>
             {saving && activeAction === 'save' ? 'Ukladam...' : 'Ulozit naroky'}
-          </button>
-          <button type="button" style={buttonStyle(styles.dangerButton, 'clear', selectedIds.length === 0 || saving)} onClick={() => void submit('CLEAR')} disabled={selectedIds.length === 0 || saving}>
-            {saving && activeAction === 'clear' ? 'Mazem...' : 'Vymazat naroky'}
           </button>
         </div>
 
