@@ -114,7 +114,7 @@ function buildPersonSmallLabelZpl(input: {
     '^MMT',
     '^MNY',
     '^POI',
-    '~TA-020',
+    '~TA-010',
     '^LT0',
     '^FO14,16^GB356,220,2,12^FS',
     '^FO24,36',
