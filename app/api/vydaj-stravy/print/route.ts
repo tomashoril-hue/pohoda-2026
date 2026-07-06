@@ -120,7 +120,7 @@ function buildMealLabelZpl(input: {
     '^MMT',
     '^MNY',
     '^POI',
-    '~TA020',
+    '~TA000',
     '^LT0',
     '^FO14,16^GB356,220,2,12^FS',
     '^FO0,34^FB384,1,0,C,0^A0N,25,25^FD' + name + '^FS',
