@@ -33,6 +33,8 @@ type Person = {
   dinnerClaims: number
 }
 
+type BulkAction = 'ADD' | 'CLEAR'
+
 function normalizeText(value: string) {
   return String(value || '')
     .trim()
@@ -84,6 +86,7 @@ export default function UpravaBrigadnikovClient({
   const [vecera, setVecera] = useState(true)
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [calendarDates, setCalendarDates] = useState<string[]>([])
+  const [bulkAction, setBulkAction] = useState<BulkAction>('ADD')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -124,6 +127,8 @@ export default function UpravaBrigadnikovClient({
   const selectedPeople = useMemo(() => {
     return people.filter(person => selectedSet.has(person.id))
   }, [people, selectedSet])
+  const singleSelectedPerson = selectedPeople.length === 1 ? selectedPeople[0] : null
+  const selectedMealCount = (obed ? 1 : 0) + (vecera ? 1 : 0)
 
   const selectedEntitlementDates = useMemo(() => {
     return Array.from(new Set(
@@ -198,9 +203,15 @@ export default function UpravaBrigadnikovClient({
   }, [groupId])
 
   useEffect(() => {
-    if (!calendarOpen) return
-    setCalendarDates(currentCalendarDates)
-  }, [calendarOpen, currentCalendarDates])
+    if (selectedPeople.length === 1) {
+      setCalendarOpen(true)
+      setCalendarDates(currentCalendarDates)
+      return
+    }
+
+    setCalendarOpen(false)
+    setCalendarDates([])
+  }, [selectedIds.join('|'), selectedPeople.length, currentCalendarDates.join('|')])
 
   const buttonStyle = (base: React.CSSProperties, action: string, disabled = false) => ({
     ...base,
@@ -225,16 +236,6 @@ export default function UpravaBrigadnikovClient({
     setSelectedIds([])
   }
 
-  const openCalendar = () => {
-    setCalendarOpen(current => {
-      const next = !current
-      if (next && calendarDates.length === 0) {
-        setCalendarDates(currentCalendarDates)
-      }
-      return next
-    })
-  }
-
   const toggleCalendarDate = (date: string) => {
     setCalendarDates(current => (
       current.includes(date)
@@ -243,15 +244,93 @@ export default function UpravaBrigadnikovClient({
     ))
   }
 
-  const submit = async () => {
+  const submitSingleExact = async () => {
     if (!groupId) {
       setMessage('Chyba registracna skupina.')
       setMessageType('error')
       return
     }
 
-    if (selectedIds.length === 0) {
-      setMessage('Najprv oznac aspon jednu osobu.')
+    if (!singleSelectedPerson) {
+      setMessage('Presny kalendar je dostupny iba pre jedneho oznaceneho cloveka.')
+      setMessageType('error')
+      return
+    }
+
+    if (!obed && !vecera) {
+      setMessage('Vyber obed alebo veceru.')
+      setMessageType('error')
+      return
+    }
+
+    if (calendarRangeDates.length === 0) {
+      setMessage('Nie je dostupne ziadne obdobie na upravu.')
+      setMessageType('error')
+      return
+    }
+
+    const removedDates = currentCalendarDates.filter(date => !calendarDates.includes(date))
+    const addedDates = calendarDates.filter(date => !currentCalendarDates.includes(date))
+    const mealLabel = [obed ? 'obed' : '', vecera ? 'veceru' : ''].filter(Boolean).join(' a ')
+    const confirmed = window.confirm(
+      `Ulozit presny kalendar pre ${singleSelectedPerson.fullName || 'osobu'}?\n` +
+      `Jedlo: ${mealLabel || '-'}\n` +
+      `Prida sa dni: ${addedDates.length}\n` +
+      `Odoberie sa dni: ${removedDates.length}`
+    )
+
+    if (!confirmed) return
+
+    setSaving(true)
+    setActiveAction('save-single')
+    setMessage('')
+    setMessageType('')
+
+    try {
+      const res = await fetch('/api/uprava-brigadnikov/entitlements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          registrationGroupId: groupId,
+          userIds: [singleSelectedPerson.id],
+          validFrom,
+          validTo,
+          mode: 'SET',
+          obed,
+          vecera,
+          selectedDates: calendarDates,
+          replaceDates: calendarRangeDates
+        })
+      })
+      const json = await res.json().catch(() => ({ error: 'Server vratil neplatnu odpoved.' }))
+
+      if (!res.ok || json.error) {
+        setMessage(json.error || 'Ulozenie zlyhalo.')
+        setMessageType('error')
+        return
+      }
+
+      setMessage(json.message || 'Naroky boli ulozene.')
+      setMessageType('ok')
+      await loadPeople()
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err))
+      setMessageType('error')
+    } finally {
+      setSaving(false)
+      setActiveAction('')
+    }
+  }
+
+  const submitBulkAction = async (mode: BulkAction) => {
+    if (!groupId) {
+      setMessage('Chyba registracna skupina.')
+      setMessageType('error')
+      return
+    }
+
+    if (selectedIds.length < 2) {
+      setMessage('Hromadna uprava je dostupna od dvoch oznacenych ludi.')
       setMessageType('error')
       return
     }
@@ -268,23 +347,26 @@ export default function UpravaBrigadnikovClient({
       return
     }
 
-    const removedDates = calendarOpen
-      ? currentCalendarDates.filter(date => !calendarDates.includes(date))
-      : []
-
-    if (removedDates.length > 0) {
-      const mealLabel = [obed ? 'obed' : '', vecera ? 'veceru' : ''].filter(Boolean).join(' a ')
-      const peopleLabel = `${selectedIds.length} ${selectedIds.length === 1 ? 'osobe' : 'osobam'}`
-
-      const confirmed = window.confirm(
-        `Odznacene dni zmazu ${mealLabel} pre ${peopleLabel}. Pokracovat a ulozit zmeny?`
-      )
-
-      if (!confirmed) return
+    const days = rangeDates.length
+    if (days === 0) {
+      setMessage('Zadaj platne obdobie.')
+      setMessageType('error')
+      return
     }
 
+    const mealLabel = [obed ? 'obedy' : '', vecera ? 'vecere' : ''].filter(Boolean).join(' a ')
+    const operation = mode === 'ADD' ? 'Pridat' : 'Odoberat'
+    const confirmed = window.confirm(
+      `${operation} ${mealLabel} pre ${selectedIds.length} ludi?\n` +
+      `Obdobie: ${validFrom} - ${validTo}\n` +
+      `Dni: ${days}\n` +
+      `Maximalny pocet zmien: ${selectedIds.length * days * selectedMealCount}`
+    )
+
+    if (!confirmed) return
+
     setSaving(true)
-    setActiveAction('save')
+    setActiveAction(mode === 'ADD' ? 'bulk-add' : 'bulk-clear')
     setMessage('')
     setMessageType('')
 
@@ -297,11 +379,9 @@ export default function UpravaBrigadnikovClient({
           userIds: selectedIds,
           validFrom,
           validTo,
-          mode: 'SET',
+          mode,
           obed,
-          vecera,
-          selectedDates: calendarOpen ? calendarDates : undefined,
-          replaceDates: calendarOpen ? calendarRangeDates : undefined
+          vecera
         })
       })
       const json = await res.json().catch(() => ({ error: 'Server vratil neplatnu odpoved.' }))
@@ -350,12 +430,6 @@ export default function UpravaBrigadnikovClient({
       return
     }
 
-    if (calendarOpen && calendarDates.length === 0) {
-      setMessage('V kalendari vyber aspon jeden den.')
-      setMessageType('error')
-      return
-    }
-
     if (!obed && !vecera) {
       setMessage('Vyber obed alebo veceru.')
       setMessageType('error')
@@ -377,8 +451,7 @@ export default function UpravaBrigadnikovClient({
           validFrom,
           validTo,
           obed,
-          vecera,
-          selectedDates: calendarOpen ? calendarDates : undefined
+          vecera
         })
       })
       const json = await res.json().catch(() => ({ error: 'Server vratil neplatnu odpoved.' }))
@@ -450,6 +523,7 @@ export default function UpravaBrigadnikovClient({
           .brigadnici-create-grid { grid-template-columns: 1fr !important; }
           .brigadnici-date-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
           .brigadnici-actions { grid-template-columns: 1fr !important; }
+          .brigadnici-bulk-mode-grid { grid-template-columns: 1fr !important; }
           .brigadnici-person-row { grid-template-columns: 32px 1fr !important; }
         }
       `}</style>
@@ -606,46 +680,7 @@ export default function UpravaBrigadnikovClient({
           <button type="button" style={buttonStyle(styles.lightButton, 'reload', loading || saving)} onClick={loadPeople} disabled={loading || saving}>
             Obnovit
           </button>
-          <button type="button" style={buttonStyle(calendarOpen ? styles.secondaryButton : styles.lightButton, 'calendar', saving || calendarRangeDates.length === 0)} onClick={openCalendar} disabled={saving || calendarRangeDates.length === 0}>
-            Kalendar
-          </button>
         </div>
-
-        {calendarOpen && (
-          <section style={styles.calendarBox}>
-            <div style={styles.calendarToolbar}>
-              <b>Presne dni</b>
-              <span>{calendarDates.length} / {calendarRangeDates.length}</span>
-              <button type="button" style={styles.tinyButton} onClick={() => setCalendarDates(calendarRangeDates)} disabled={saving}>
-                Vsetky
-              </button>
-              <button type="button" style={styles.tinyButton} onClick={() => setCalendarDates([])} disabled={saving}>
-                Ziadny
-              </button>
-            </div>
-
-            <div style={styles.calendarGrid}>
-              {calendarRangeDates.map(date => {
-                const selected = calendarSet.has(date)
-
-                return (
-                  <button
-                    key={date}
-                    type="button"
-                    style={{
-                      ...styles.calendarDay,
-                      ...(selected ? styles.calendarDaySelected : {})
-                    }}
-                    onClick={() => toggleCalendarDate(date)}
-                    disabled={saving}
-                  >
-                    {formatDateShort(date)}
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-        )}
 
         <div style={styles.summary}>
           <b>{selectedGroup?.name || '-'}</b>
@@ -672,10 +707,119 @@ export default function UpravaBrigadnikovClient({
           <button type="button" style={buttonStyle(styles.lightButton, 'clear-selected', selectedIds.length === 0 || saving)} onClick={clearSelection} disabled={selectedIds.length === 0 || saving}>
             Zrusit oznacenie
           </button>
-          <button type="button" style={buttonStyle(styles.primaryButton, 'save', selectedIds.length === 0 || saving)} onClick={() => void submit()} disabled={selectedIds.length === 0 || saving}>
-            {saving && activeAction === 'save' ? 'Ukladam...' : 'Ulozit naroky'}
-          </button>
         </div>
+
+        {selectedIds.length === 0 && (
+          <section style={styles.emptyActionBox}>
+            <b>Najprv oznac brigadnikov</b>
+            <span>Pri jednom cloveku sa zobrazi presny kalendar. Pri viacerych sa zobrazia bezpecne hromadne akcie.</span>
+          </section>
+        )}
+
+        {singleSelectedPerson && calendarOpen && (
+          <section style={styles.singleEditBox}>
+            <div style={styles.modeHeader}>
+              <div>
+                <b>Presna uprava jednej osoby</b>
+                <span>{singleSelectedPerson.fullName || 'Bez mena'} · aktualne oznacene dni pre zvolene jedlo</span>
+              </div>
+              <button
+                type="button"
+                style={buttonStyle(styles.primaryButton, 'save-single', saving)}
+                onClick={() => void submitSingleExact()}
+                disabled={saving || selectedMealCount === 0 || calendarRangeDates.length === 0}
+              >
+                {saving && activeAction === 'save-single' ? 'Ukladam...' : 'Ulozit kalendar'}
+              </button>
+            </div>
+
+            <div style={styles.calendarBox}>
+              <div style={styles.calendarToolbar}>
+                <b>Dni</b>
+                <span>{calendarDates.length} / {calendarRangeDates.length}</span>
+                <button type="button" style={styles.tinyButton} onClick={() => setCalendarDates(calendarRangeDates)} disabled={saving}>
+                  Vsetky
+                </button>
+                <button type="button" style={styles.tinyButton} onClick={() => setCalendarDates([])} disabled={saving}>
+                  Ziadny
+                </button>
+              </div>
+
+              <div style={styles.calendarGrid}>
+                {calendarRangeDates.map(date => {
+                  const selected = calendarSet.has(date)
+
+                  return (
+                    <button
+                      key={date}
+                      type="button"
+                      style={{
+                        ...styles.calendarDay,
+                        ...(selected ? styles.calendarDaySelected : {})
+                      }}
+                      onClick={() => toggleCalendarDate(date)}
+                      disabled={saving}
+                    >
+                      {formatDateShort(date)}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {selectedIds.length > 1 && (
+          <section style={styles.bulkEditBox}>
+            <div style={styles.modeHeader}>
+              <div>
+                <b>Hromadna uprava</b>
+                <span>{selectedIds.length} oznacenych · {rangeDates.length} dni · {selectedMealCount === 2 ? 'obed aj vecera' : obed ? 'obed' : vecera ? 'vecera' : 'vyber jedlo'}</span>
+              </div>
+            </div>
+
+            <div className="brigadnici-bulk-mode-grid" style={styles.bulkModeGrid}>
+              <button
+                type="button"
+                onClick={() => setBulkAction('ADD')}
+                style={{
+                  ...styles.bulkModeCard,
+                  ...(bulkAction === 'ADD' ? styles.bulkModeCardActive : {})
+                }}
+                disabled={saving}
+              >
+                <b>Pridat naroky</b>
+                <span>Doplni chybajuce naroky. Existujuce naroky necha tak.</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBulkAction('CLEAR')}
+                style={{
+                  ...styles.bulkModeCard,
+                  ...(bulkAction === 'CLEAR' ? styles.bulkModeCardDangerActive : {})
+                }}
+                disabled={saving}
+              >
+                <b>Odoberat naroky</b>
+                <span>Odoberie iba vybrane jedlo v zadanom obdobi.</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              style={buttonStyle(bulkAction === 'ADD' ? styles.primaryButton : styles.dangerButton, bulkAction === 'ADD' ? 'bulk-add' : 'bulk-clear', saving || selectedMealCount === 0 || rangeDates.length === 0)}
+              onClick={() => void submitBulkAction(bulkAction)}
+              disabled={saving || selectedMealCount === 0 || rangeDates.length === 0}
+            >
+              {saving && (activeAction === 'bulk-add' || activeAction === 'bulk-clear')
+                ? 'Ukladam...'
+                : bulkAction === 'ADD'
+                  ? 'Pridat naroky'
+                  : 'Odoberat naroky'}
+            </button>
+          </section>
+        )}
 
         <section style={styles.peopleSearchBox}>
           <label style={styles.peopleSearchField}>
@@ -920,8 +1064,73 @@ const styles: Record<string, React.CSSProperties> = {
   },
   actionBar: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     gap: 8
+  },
+  emptyActionBox: {
+    border: '1px dashed #cbd5e1',
+    borderRadius: 8,
+    background: '#f8fafc',
+    padding: 14,
+    display: 'grid',
+    gap: 4,
+    fontSize: 13,
+    color: '#475569',
+    fontWeight: 800
+  },
+  singleEditBox: {
+    border: '1px solid #bfdbfe',
+    borderRadius: 8,
+    background: '#eff6ff',
+    padding: 10,
+    display: 'grid',
+    gap: 10
+  },
+  bulkEditBox: {
+    border: '1px solid #d8b4fe',
+    borderRadius: 8,
+    background: '#faf5ff',
+    padding: 10,
+    display: 'grid',
+    gap: 10
+  },
+  modeHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+    fontSize: 13,
+    fontWeight: 850,
+    color: '#334155'
+  },
+  bulkModeGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 8
+  },
+  bulkModeCard: {
+    minHeight: 86,
+    borderRadius: 8,
+    border: '2px solid #e5e7eb',
+    background: '#fff',
+    color: '#111827',
+    padding: 12,
+    display: 'grid',
+    gap: 5,
+    textAlign: 'left',
+    fontSize: 13,
+    fontWeight: 850
+  },
+  bulkModeCardActive: {
+    borderColor: '#16a34a',
+    background: '#dcfce7',
+    color: '#14532d'
+  },
+  bulkModeCardDangerActive: {
+    borderColor: '#ef4444',
+    background: '#fee2e2',
+    color: '#7f1d1d'
   },
   peopleSearchBox: {
     border: '1px solid #e5e7eb',

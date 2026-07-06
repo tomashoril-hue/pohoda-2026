@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
       : []
 
     if (!registrationGroupId) return NextResponse.json({ error: 'Chyba registracna skupina.' }, { status: 400 })
-    if (mode !== 'SET' && mode !== 'CLEAR') {
+    if (mode !== 'SET' && mode !== 'CLEAR' && mode !== 'ADD') {
       return NextResponse.json({ error: 'Neplatny sposob upravy.' }, { status: 400 })
     }
     if (!obed && !vecera) {
@@ -240,7 +240,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (mode === 'SET') {
+    if (mode === 'SET' || mode === 'ADD') {
       const conflicts = users.filter(user => {
         if (dates.length === 0) return false
 
@@ -364,6 +364,75 @@ export async function POST(req: NextRequest) {
         if (error) return NextResponse.json({ error: error.message }, { status: 500 })
         insertedEntitlements += rows.length
       }
+    } else if (mode === 'ADD') {
+      const beforeByUserDate = new Map<string, any>()
+      beforeRows.forEach(row => {
+        beforeByUserDate.set(`${row.user_id}|${row.datum}`, row)
+      })
+
+      for (const userChunk of chunk(users, 80)) {
+        const rowsToInsert: any[] = []
+        const rowsToUpdate: any[] = []
+
+        userChunk.forEach(user => {
+          dates.forEach(datum => {
+            const before = beforeByUserDate.get(`${user.id}|${datum}`)
+
+            if (before) {
+              const nextObed = obed ? true : Boolean(before.obed)
+              const nextVecera = vecera ? true : Boolean(before.vecera)
+
+              if (nextObed !== Boolean(before.obed) || nextVecera !== Boolean(before.vecera)) {
+                rowsToUpdate.push({
+                  user_id: user.id,
+                  datum,
+                  obed: nextObed,
+                  vecera: nextVecera
+                })
+              }
+
+              return
+            }
+
+            rowsToInsert.push({
+              user_id: user.id,
+              datum,
+              obed,
+              vecera,
+              source: 'PERSONALISTA',
+              note: `Uprava brigadnikov pre registracnu skupinu ${group.name}.`,
+              created_by: actor.id,
+              updated_by: actor.id,
+              updated_at: now
+            })
+          })
+        })
+
+        for (const row of rowsToUpdate) {
+          const { error } = await supabaseServer
+            .from('user_food_entitlements')
+            .update({
+              obed: row.obed,
+              vecera: row.vecera,
+              updated_by: actor.id,
+              updated_at: now
+            })
+            .eq('user_id', row.user_id)
+            .eq('datum', row.datum)
+
+          if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+          updatedEntitlements += 1
+        }
+
+        if (rowsToInsert.length > 0) {
+          const { error } = await supabaseServer
+            .from('user_food_entitlements')
+            .insert(rowsToInsert)
+
+          if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+          insertedEntitlements += rowsToInsert.length
+        }
+      }
     } else {
       const clearPatch = {
         ...(obed ? { obed: false } : {}),
@@ -407,16 +476,16 @@ export async function POST(req: NextRequest) {
 
     for (const user of users) {
       const userPeriods = periodsByUserId.get(user.id) || []
-      const shouldAdjustPeriods = (mode === 'SET' && dates.length > 0) || (selectedDates.length === 0 && obed && vecera)
-      const periodValidFrom = mode === 'SET' && dates.length > 0 ? dates[0] : validFrom
-      const periodValidTo = mode === 'SET' && dates.length > 0 ? dates[dates.length - 1] : validTo
+      const shouldAdjustPeriods = ((mode === 'SET' || mode === 'ADD') && dates.length > 0) || (selectedDates.length === 0 && obed && vecera)
+      const periodValidFrom = (mode === 'SET' || mode === 'ADD') && dates.length > 0 ? dates[0] : validFrom
+      const periodValidTo = (mode === 'SET' || mode === 'ADD') && dates.length > 0 ? dates[dates.length - 1] : validTo
       const sameGroupPeriods = userPeriods.filter(period => {
         return period.registration_group_id === registrationGroupId && periodOverlaps(period, periodValidFrom, periodValidTo)
       })
 
       if (!shouldAdjustPeriods) continue
 
-      if (mode === 'SET') {
+      if (mode === 'SET' || mode === 'ADD') {
         const mergedFrom = minIso([periodValidFrom, ...sameGroupPeriods.map(period => period.valid_from)])
         const hasOpenEnd = sameGroupPeriods.some(period => !period.valid_to)
         const mergedTo = hasOpenEnd
@@ -497,7 +566,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const baseRegistrationGroupUpdated = mode === 'SET'
+    const baseRegistrationGroupUpdated = mode === 'SET' || mode === 'ADD'
       ? await setMissingBaseRegistrationGroup(userIds, registrationGroupId)
       : 0
     await refreshCurrentRegistrationGroups(userIds)
@@ -542,7 +611,9 @@ export async function POST(req: NextRequest) {
       updatedEntitlements,
       message: mode === 'CLEAR'
         ? `Naroky boli vymazane pre ${users.length} osob.`
-        : `Naroky boli ulozene pre ${users.length} osob.`
+        : mode === 'ADD'
+          ? `Naroky boli doplnene pre ${users.length} osob.`
+          : `Naroky boli ulozene pre ${users.length} osob.`
     })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Neznama chyba servera.' }, { status: 500 })
