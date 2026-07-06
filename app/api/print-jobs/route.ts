@@ -119,10 +119,10 @@ function buildPersonSmallLabelZpl(input: {
     '^FO24,36',
     '^BQN,2,5',
     '^FDLA,' + qr + '^FS',
-    '^FO146,36^FB212,1,0,L,0^A0N,22,22^FD' + name + '^FS',
-    '^FO146,68^FB212,2,0,L,0^A0N,15,15^FD' + group + '^FS',
-    '^FO146,133^FB116,1,0,C,0^A0N,16,16^FD' + meal + '^FS',
-    '^FO146,178^FB212,1,0,L,0^A0N,17,17^FD' + printedAt + '^FS',
+    '^FO146,28^FB220,2,2,L,0^A0N,20,20^FD' + name + '^FS',
+    '^FO146,78^FB220,2,1,L,0^A0N,14,14^FD' + group + '^FS',
+    '^FO146,128^FB220,1,0,L,0^A0N,24,24^FD' + meal + '^FS',
+    '^FO146,168^FB220,1,0,L,0^A0N,22,22^FD' + printedAt + '^FS',
     '^FO22,184^FB112,1,0,C,0^A0N,14,14^FD' + qr + '^FS',
     '^XZ'
   ].join('\n')
