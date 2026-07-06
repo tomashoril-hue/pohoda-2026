@@ -470,7 +470,7 @@ export default function UpravaBrigadnikovClient({
         typStravy: 'MASO'
       })
       setCreateOpen(false)
-      setMessage(json.message || 'Brigadnik bol pripraveny na schvalenie.')
+      setMessage(json.message || 'Brigadnik bol pridany.')
       setMessageType('ok')
       await loadPeople()
     } catch (err) {
@@ -578,8 +578,8 @@ export default function UpravaBrigadnikovClient({
         <section style={styles.createPendingBox}>
           <div style={styles.createPendingHeader}>
             <div>
-              <b>Pridať brigádnika na schválenie</b>
-              <span>Použije vybranú skupinu, obdobie a nároky z tejto obrazovky. QR kód dostane až po schválení.</span>
+              <b>Pridať brigádnika</b>
+              <span>Použije vybranú skupinu, obdobie a nároky z tejto obrazovky. QR kód sa pridelí hneď.</span>
             </div>
 
             <button
@@ -662,7 +662,7 @@ export default function UpravaBrigadnikovClient({
                 onClick={() => void submitPendingPerson()}
                 disabled={saving}
               >
-                {saving && activeAction === 'create-pending' ? 'Pripravujem...' : 'Odoslať na schválenie'}
+                {saving && activeAction === 'create-pending' ? 'Pridávam...' : 'Pridať brigádnika'}
               </button>
             </div>
           )}

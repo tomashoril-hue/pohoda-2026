@@ -216,12 +216,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: entitlementError.message }, { status: 500 })
     }
 
+    const { data: qrRows, error: approveError } = await supabaseServer
+      .rpc('approve_registration_user', {
+        p_user_id: userId,
+        p_actor_id: actor.id,
+        p_registration_group_id: registrationGroupId,
+        p_registration_group_note: 'Pridane cez upravu brigadnikov.'
+      })
+
+    if (approveError) {
+      await rollbackPendingUser(userId)
+
+      const message = approveError.message.includes('NO_FREE_QR_AVAILABLE')
+        ? 'Nie je dostupny ziaden volny QR kod.'
+        : approveError.message
+
+      return NextResponse.json({ error: message }, { status: 409 })
+    }
+
+    const assigned = Array.isArray(qrRows) ? qrRows[0] : qrRows
+    const qrCode = assigned?.qr_code || ''
+
     await supabaseServer
       .from('personnel_audit_log')
       .insert({
         actor_user_id: actor.id,
         target_user_id: userId,
-        action: 'BRIGADNIK_PENDING_CREATED',
+        action: 'BRIGADNIK_CREATED_APPROVED',
         entity_table: 'users',
         entity_id: userId,
         after_data: {
@@ -233,14 +254,19 @@ export async function POST(req: NextRequest) {
           days: dates.length,
           obed,
           vecera,
-          typ_stravy: typStravy
+          typ_stravy: typStravy,
+          qr_assigned: !!qrCode
         }
       })
 
     return NextResponse.json({
       ok: true,
-      user: newUser,
-      message: `Brigadnik bol pripraveny na schvalenie personalistom.`
+      user: {
+        ...newUser,
+        qr_code: qrCode,
+        review_status: 'APPROVED'
+      },
+      message: `Brigadnik bol pridany a QR kod bol prideleny.`
     })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Neznama chyba servera.' }, { status: 500 })
