@@ -3,7 +3,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
-const DEFAULT_PRINTER_ID = 'vydaj-1'
+const DEFAULT_PRINTER_ID = 'vydaj-zurnal'
 const PRINT_TIME_ZONE = 'Europe/Bratislava'
 
 function cleanText(value: unknown) {

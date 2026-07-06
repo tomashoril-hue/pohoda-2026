@@ -1570,7 +1570,7 @@ export default function PersonalistaClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          printerId: 'vydaj-1',
+          printerId: 'vydaj-zurnal',
           personId: selectedPerson.id
         })
       })
