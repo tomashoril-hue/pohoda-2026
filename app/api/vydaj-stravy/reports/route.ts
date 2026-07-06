@@ -181,8 +181,8 @@ function buildReportZpl(input: {
   summary: ReturnType<typeof buildSummary>
 }) {
   const sections = groupRowsForPrint(input.rows)
-  const sectionHeight = 34
-  const rowHeight = input.type === 'ISSUED' ? 39 : 31
+  const sectionHeight = 38
+  const rowHeight = input.type === 'ISSUED' ? 46 : 34
   const contentHeight = sections.reduce((total, section) => total + sectionHeight + section.rows.length * rowHeight, 0)
   const height = Math.max(430, 160 + contentHeight)
   const title = reportTitle(input.type)
@@ -206,22 +206,23 @@ function buildReportZpl(input: {
   let rowNumber = 1
 
   sections.forEach(section => {
-    lines.push('^FO12,' + y + '^GB360,25,1,8^FS')
-    lines.push('^FO20,' + (y + 6) + '^FB280,1,0,L,0^A0N,16,16^FD' + zplText(section.name, 42) + '^FS')
-    lines.push('^FO305,' + (y + 6) + '^FB56,1,0,R,0^A0N,16,16^FD' + section.rows.length + ' ks^FS')
+    lines.push('^FO12,' + y + '^GB360,27,1,8^FS')
+    lines.push('^FO20,' + (y + 7) + '^FB270,1,0,L,0^A0N,16,16^FD' + zplText(section.name, 40) + '^FS')
+    lines.push('^FO300,' + (y + 7) + '^FB62,1,0,R,0^A0N,16,16^FD' + section.rows.length + ' ks^FS')
     y += sectionHeight
 
     section.rows.forEach(row => {
       const firstLine = `${rowNumber}. ${row.name}`
 
       if (input.type === 'ISSUED') {
-        lines.push('^FO16,' + y + '^FB260,1,0,L,0^A0N,17,17^FD' + zplText(firstLine, 43) + '^FS')
-        lines.push('^FO290,' + y + '^FB78,1,0,R,0^A0N,17,17^FD' + zplText(row.choice, 10) + '^FS')
-        lines.push('^FO32,' + (y + 20) + '^FB244,1,0,L,0^A0N,14,14^FD' + zplText(row.sourceName || row.method || '', 42) + '^FS')
-        lines.push('^FO290,' + (y + 20) + '^FB78,1,0,R,0^A0N,14,14^FD' + zplText(timeLabel(row.issuedAt), 12) + '^FS')
+        lines.push('^FO18,' + y + '^FB252,1,0,L,0^A0N,17,17^FD' + zplText(firstLine, 41) + '^FS')
+        lines.push('^FO286,' + y + '^FB82,1,0,R,0^A0N,17,17^FD' + zplText(row.choice, 10) + '^FS')
+        lines.push('^FO286,' + (y + 20) + '^FB82,1,0,R,0^A0N,14,14^FD' + zplText(timeLabel(row.issuedAt), 12) + '^FS')
+        lines.push('^FO24,' + (y + 36) + '^GB340,1,1^FS')
       } else {
-        lines.push('^FO16,' + y + '^FB270,1,0,L,0^A0N,16,16^FD' + zplText(firstLine, 45) + '^FS')
+        lines.push('^FO18,' + y + '^FB258,1,0,L,0^A0N,16,16^FD' + zplText(firstLine, 43) + '^FS')
         lines.push('^FO292,' + y + '^FB76,1,0,R,0^A0N,16,16^FD' + zplText(row.choice, 10) + '^FS')
+        lines.push('^FO24,' + (y + 25) + '^GB340,1,1^FS')
       }
 
       y += rowHeight

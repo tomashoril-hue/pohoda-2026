@@ -2027,7 +2027,6 @@ export default function VydajStravyClient({
                           <div key={`${row.userId}-${index}`} style={styles.reportRow}>
                             <div>
                               <b>{row.name || row.email || '-'}</b>
-                              <span>{row.sourceName || row.groupName || 'Nezaradený'}</span>
                             </div>
                             <div style={styles.reportRowMeta}>
                               <b>{choiceLabel(row.choice)}</b>
