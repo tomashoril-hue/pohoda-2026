@@ -21,7 +21,7 @@ function normalizeDate(value: unknown) {
 
 function normalizeMeal(value: unknown): Meal {
   const text = cleanText(value).toUpperCase()
-  return text === 'VECERA' || text === 'VEČERA' ? 'VECERA' : 'OBED'
+  return text === 'VECERA' || text === 'VE\u010CERA' ? 'VECERA' : 'OBED'
 }
 
 function normalizeReportType(value: unknown): ReportType {
@@ -36,7 +36,7 @@ function normalizeChoice(value: unknown): Choice {
   const text = cleanText(value).toUpperCase()
   if (text === 'MASO') return 'MASO'
   if (text === 'VEGE') return 'VEGE'
-  if (text === 'DIETA' || text === 'DIÉTA') return 'DIETA'
+  if (text === 'DIETA' || text === 'DI\u00C9TA') return 'DIETA'
   return 'NEZADANE'
 }
 
@@ -149,6 +149,30 @@ function buildSummary(rows: Array<{ choice: Choice }>) {
   }, { total: 0, MASO: 0, VEGE: 0, DIETA: 0, NEZADANE: 0 })
 }
 
+function zplSectionName(row: any) {
+  return zplText(row.sectionName || row.groupName || 'Nezaradeny', 58)
+}
+
+function groupRowsForPrint(rows: any[]) {
+  const sections: Array<{ name: string; rows: any[] }> = []
+  const sectionByName = new Map<string, { name: string; rows: any[] }>()
+
+  rows.forEach(row => {
+    const name = zplSectionName(row)
+    let section = sectionByName.get(name)
+
+    if (!section) {
+      section = { name, rows: [] }
+      sectionByName.set(name, section)
+      sections.push(section)
+    }
+
+    section.rows.push(row)
+  })
+
+  return sections
+}
+
 function buildReportZpl(input: {
   type: ReportType
   datum: string
@@ -156,8 +180,11 @@ function buildReportZpl(input: {
   rows: any[]
   summary: ReturnType<typeof buildSummary>
 }) {
-  const rowHeight = 45
-  const height = Math.max(430, 190 + input.rows.length * rowHeight)
+  const sections = groupRowsForPrint(input.rows)
+  const sectionHeight = 34
+  const rowHeight = input.type === 'ISSUED' ? 39 : 31
+  const contentHeight = sections.reduce((total, section) => total + sectionHeight + section.rows.length * rowHeight, 0)
+  const height = Math.max(430, 160 + contentHeight)
   const title = reportTitle(input.type)
   const lines = [
     '^XA',
@@ -175,13 +202,31 @@ function buildReportZpl(input: {
     '^FO12,116^GB360,1,1^FS'
   ]
 
-  input.rows.forEach((row, index) => {
-    const y = 136 + index * rowHeight
-    const firstLine = `${index + 1}. ${row.name}`
-    const right = row.issuedAt ? `${row.choice} ${timeLabel(row.issuedAt)}` : row.choice
-    lines.push('^FO12,' + y + '^FB260,1,0,L,0^A0N,17,17^FD' + zplText(firstLine, 42) + '^FS')
-    lines.push('^FO278,' + y + '^FB94,1,0,R,0^A0N,17,17^FD' + zplText(right, 18) + '^FS')
-    lines.push('^FO28,' + (y + 22) + '^FB330,1,0,L,0^A0N,15,15^FD' + zplText(row.groupName || '-', 52) + '^FS')
+  let y = 132
+  let rowNumber = 1
+
+  sections.forEach(section => {
+    lines.push('^FO12,' + y + '^GB360,25,1,8^FS')
+    lines.push('^FO20,' + (y + 6) + '^FB280,1,0,L,0^A0N,16,16^FD' + zplText(section.name, 42) + '^FS')
+    lines.push('^FO305,' + (y + 6) + '^FB56,1,0,R,0^A0N,16,16^FD' + section.rows.length + ' ks^FS')
+    y += sectionHeight
+
+    section.rows.forEach(row => {
+      const firstLine = `${rowNumber}. ${row.name}`
+
+      if (input.type === 'ISSUED') {
+        lines.push('^FO16,' + y + '^FB260,1,0,L,0^A0N,17,17^FD' + zplText(firstLine, 43) + '^FS')
+        lines.push('^FO290,' + y + '^FB78,1,0,R,0^A0N,17,17^FD' + zplText(row.choice, 10) + '^FS')
+        lines.push('^FO32,' + (y + 20) + '^FB244,1,0,L,0^A0N,14,14^FD' + zplText(row.sourceName || row.method || '', 42) + '^FS')
+        lines.push('^FO290,' + (y + 20) + '^FB78,1,0,R,0^A0N,14,14^FD' + zplText(timeLabel(row.issuedAt), 12) + '^FS')
+      } else {
+        lines.push('^FO16,' + y + '^FB270,1,0,L,0^A0N,16,16^FD' + zplText(firstLine, 45) + '^FS')
+        lines.push('^FO292,' + y + '^FB76,1,0,R,0^A0N,16,16^FD' + zplText(row.choice, 10) + '^FS')
+      }
+
+      y += rowHeight
+      rowNumber += 1
+    })
   })
 
   lines.push('^XZ')
@@ -200,7 +245,7 @@ async function buildReport(datum: string, meal: Meal, type: ReportType) {
 
   const issuedRows = await fetchAll((from, to) => supabaseServer
     .from('vydaj_jedal')
-    .select('id, user_id, datum, typ_jedla, volba, sposob, issued_at')
+    .select('id, user_id, group_id, hromadny_vydaj_id, registration_group_issue_id, datum, typ_jedla, volba, sposob, source, issued_at')
     .eq('datum', datum)
     .eq('typ_jedla', meal)
     .eq('status', 'VYDANE')
@@ -252,6 +297,33 @@ async function buildReport(datum: string, meal: Meal, type: ReportType) {
     ))
   }
 
+  const registrationIssueIds = Array.from(new Set(issuedRows.map((row: any) => row.registration_group_issue_id).filter(Boolean)))
+  const legacyIssueIds = Array.from(new Set(issuedRows.map((row: any) => row.hromadny_vydaj_id).filter(Boolean)))
+
+  const { data: registrationIssueRows, error: registrationIssueError } = registrationIssueIds.length > 0
+    ? await supabaseServer
+      .from('registration_group_issues')
+      .select('id, title, registration_group_id')
+      .in('id', registrationIssueIds)
+    : { data: [], error: null }
+
+  if (registrationIssueError) throw registrationIssueError
+
+  const { data: legacyIssueRows, error: legacyIssueError } = legacyIssueIds.length > 0
+    ? await supabaseServer
+      .from('hromadne_vydaje')
+      .select(`
+        id,
+        group_id,
+        groups (
+          name
+        )
+      `)
+      .in('id', legacyIssueIds)
+    : { data: [], error: null }
+
+  if (legacyIssueError) throw legacyIssueError
+
   const userById = new Map(userRows.map((row: any) => [row.id, row]))
   const periodsByUserId = new Map<string, any[]>()
   periodRows.forEach((row: any) => {
@@ -261,10 +333,14 @@ async function buildReport(datum: string, meal: Meal, type: ReportType) {
   })
 
   const selectionByUserId = new Map(selectionRows.map((row: any) => [row.user_id, row]))
+  const registrationIssueById = new Map((registrationIssueRows || []).map((row: any) => [row.id, row]))
+  const legacyIssueById = new Map((legacyIssueRows || []).map((row: any) => [row.id, row]))
+
   const groupIds = Array.from(new Set(userRows
     .flatMap((user: any) => [
       user.registration_group_id,
-      ...((periodsByUserId.get(user.id) || []).map(period => period.registration_group_id))
+      ...((periodsByUserId.get(user.id) || []).map(period => period.registration_group_id)),
+      ...((registrationIssueRows || []).map((issue: any) => issue.registration_group_id))
     ])
     .filter(Boolean)
   ))
@@ -286,6 +362,22 @@ async function buildReport(datum: string, meal: Meal, type: ReportType) {
 
   const entitlementByUserId = new Map(entitlementRows.map((row: any) => [row.user_id, row]))
 
+  function issuedSourceName(issued: any, fallbackGroupName: string) {
+    if (issued?.registration_group_issue_id) {
+      const issue: any = registrationIssueById.get(issued.registration_group_issue_id)
+      const group: any = groupById.get(issue?.registration_group_id)
+      return cleanText(issue?.title) || cleanText(group?.name) || fallbackGroupName
+    }
+
+    if (issued?.hromadny_vydaj_id) {
+      const legacyIssue: any = legacyIssueById.get(issued.hromadny_vydaj_id)
+      const legacyGroup = Array.isArray(legacyIssue?.groups) ? legacyIssue.groups[0] : legacyIssue?.groups
+      return cleanText(legacyGroup?.name) || fallbackGroupName
+    }
+
+    return ''
+  }
+
   const entitlementItems = entitlementRows
     .map((entitlement: any) => {
       const user: any = userById.get(entitlement.user_id)
@@ -300,12 +392,16 @@ async function buildReport(datum: string, meal: Meal, type: ReportType) {
       const groupId = registrationGroupForDate(user, periodsByUserId.get(user.id) || [], datum)
       const group: any = groupById.get(groupId)
       const issued = issuedByUserId.get(user.id)
+      const groupName = cleanText(group?.name) || 'Nezaradeny'
+      const sourceName = issuedSourceName(issued, groupName)
 
       return {
         userId: user.id,
         name: fullName(user),
         email: cleanText(user.email),
-        groupName: cleanText(group?.name) || 'Nezaradeny',
+        groupName,
+        sectionName: sourceName || groupName,
+        sourceName,
         choice,
         cancelled,
         issued: Boolean(issued),
@@ -324,12 +420,16 @@ async function buildReport(datum: string, meal: Meal, type: ReportType) {
       const selection: any = selectionByUserId.get(user.id)
       const groupId = registrationGroupForDate(user, periodsByUserId.get(user.id) || [], datum)
       const group: any = groupById.get(groupId)
+      const groupName = cleanText(group?.name) || 'Nezaradeny'
+      const sourceName = issuedSourceName(issued, groupName)
 
       return {
         userId: user.id,
         name: fullName(user),
         email: cleanText(user.email),
-        groupName: cleanText(group?.name) || 'Nezaradeny',
+        groupName,
+        sectionName: sourceName || groupName,
+        sourceName,
         choice: normalizeChoice(issued.volba || selection?.volba || user.typ_stravy),
         cancelled: isNoInterest(selection?.volba),
         issued: true,
@@ -352,14 +452,12 @@ async function buildReport(datum: string, meal: Meal, type: ReportType) {
   }
 
   rows.sort((a, b) => {
+    const sectionCompare = cleanText(a.sectionName).localeCompare(cleanText(b.sectionName), 'sk')
+    if (sectionCompare !== 0) return sectionCompare
     const groupCompare = cleanText(a.groupName).localeCompare(cleanText(b.groupName), 'sk')
     if (groupCompare !== 0) return groupCompare
     return cleanText(a.name).localeCompare(cleanText(b.name), 'sk')
   })
-
-  if (type === 'ISSUED') {
-    rows.sort((a, b) => new Date(a.issuedAt || 0).getTime() - new Date(b.issuedAt || 0).getTime())
-  }
 
   return {
     type,

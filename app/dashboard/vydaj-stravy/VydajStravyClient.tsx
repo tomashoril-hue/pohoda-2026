@@ -102,6 +102,8 @@ type IssueReportRow = {
   name: string
   email: string
   groupName: string
+  sectionName?: string
+  sourceName?: string
   choice: string
   issuedAt?: string
   method?: string
@@ -296,6 +298,26 @@ function reportTypeHint(type: IssueReportType) {
   if (type === 'ENTITLED') return 'Všetci ľudia so započítateľným nárokom na vybraný deň.'
   if (type === 'CANCELLED') return 'Štatistický zoznam ľudí, ktorí si jedlo odhlásili.'
   return 'Zoznam ľudí, ktorým už bolo jedlo vydané.'
+}
+
+function groupIssueReportRows(rows: IssueReportRow[]) {
+  const sections: Array<{ name: string; rows: IssueReportRow[] }> = []
+  const sectionByName = new Map<string, { name: string; rows: IssueReportRow[] }>()
+
+  rows.forEach(row => {
+    const name = row.sectionName || row.groupName || 'Nezaradený'
+    let section = sectionByName.get(name)
+
+    if (!section) {
+      section = { name, rows: [] }
+      sectionByName.set(name, section)
+      sections.push(section)
+    }
+
+    section.rows.push(row)
+  })
+
+  return sections
 }
 
 function makeCanvasImage(video: HTMLVideoElement, canvas: HTMLCanvasElement, maxWidth = 720) {
@@ -1995,16 +2017,24 @@ export default function VydajStravyClient({
                   <div style={styles.emptyHistory}>Report je prázdny.</div>
                 ) : (
                   <div style={styles.reportRows}>
-                    {reportData.rows.slice(0, 160).map((row, index) => (
-                      <div key={`${row.userId}-${index}`} style={styles.reportRow}>
-                        <div>
-                          <b>{index + 1}. {row.name || row.email || '-'}</b>
-                          <span>{row.groupName || 'Nezaradený'}</span>
+                    {groupIssueReportRows(reportData.rows.slice(0, 160)).map(section => (
+                      <div key={section.name} style={styles.reportSection}>
+                        <div style={styles.reportSectionHeader}>
+                          <b>{section.name}</b>
+                          <span>{section.rows.length} ks</span>
                         </div>
-                        <div style={styles.reportRowMeta}>
-                          <b>{choiceLabel(row.choice)}</b>
-                          {row.issuedAt && <span>{formatTime(row.issuedAt)}</span>}
-                        </div>
+                        {section.rows.map((row, index) => (
+                          <div key={`${row.userId}-${index}`} style={styles.reportRow}>
+                            <div>
+                              <b>{row.name || row.email || '-'}</b>
+                              <span>{row.sourceName || row.groupName || 'Nezaradený'}</span>
+                            </div>
+                            <div style={styles.reportRowMeta}>
+                              <b>{choiceLabel(row.choice)}</b>
+                              {row.issuedAt && <span>{formatTime(row.issuedAt)}</span>}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     ))}
                     {reportData.rows.length > 160 && (
@@ -3150,6 +3180,22 @@ const styles: Record<string, CSSProperties> = {
   reportRows: {
     display: 'grid',
     gap: 6
+  },
+  reportSection: {
+    display: 'grid',
+    gap: 6
+  },
+  reportSectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 10,
+    alignItems: 'center',
+    background: '#f1f5f9',
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    padding: '7px 9px',
+    fontSize: 13,
+    color: '#0f172a'
   },
   reportRow: {
     display: 'grid',
