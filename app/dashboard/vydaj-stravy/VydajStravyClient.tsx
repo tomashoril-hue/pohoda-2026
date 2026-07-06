@@ -765,17 +765,19 @@ export default function VydajStravyClient({
     await refreshRecentIssued()
   }
 
-  const printIssuedMeal = async (item: ScanItem) => {
+  const printIssuedMeal = async (item: ScanItem, printKind: 'LABELS' | 'JOURNAL') => {
     if (!item.issuedId || printLoadingId) return
 
-    setPrintLoadingId(item.issuedId)
+    const loadingKey = `${printKind}:${item.issuedId}`
+
+    setPrintLoadingId(loadingKey)
     setPrintMessage('')
 
     try {
       const res = await fetch('/api/vydaj-stravy/print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ issuedId: item.issuedId })
+        body: JSON.stringify({ issuedId: item.issuedId, printKind })
       })
       const json = await res.json().catch(() => ({}))
 
@@ -1687,7 +1689,7 @@ export default function VydajStravyClient({
             <div style={styles.statsModalHeader}>
               <div>
                 <h2 style={styles.sectionTitle}>Tlač výdaja</h2>
-                <p style={styles.cancelHint}>Vyber jeden z posledných výdajov. Vytlačia sa štítky aj report.</p>
+                <p style={styles.cancelHint}>Vyber výdaj a zvoľ, či chceš tlačiť etikety alebo žurnál.</p>
               </div>
               <button type="button" onClick={() => setPrintOpen(false)} style={styles.closeButton}>
                 Zavrieť
@@ -1719,17 +1721,30 @@ export default function VydajStravyClient({
                         <em>{choiceLabel(item.choice)}</em>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => printIssuedMeal(item)}
-                      disabled={!!printLoadingId}
-                      style={{
-                        ...styles.printItemButton,
-                        opacity: printLoadingId && printLoadingId !== item.issuedId ? 0.45 : 1
-                      }}
-                    >
-                      {printLoadingId === item.issuedId ? 'Odosielam...' : 'Tlačiť'}
-                    </button>
+                    <div style={styles.printItemActions}>
+                      <button
+                        type="button"
+                        onClick={() => printIssuedMeal(item, 'LABELS')}
+                        disabled={!!printLoadingId}
+                        style={{
+                          ...styles.printItemButton,
+                          opacity: printLoadingId && printLoadingId !== `LABELS:${item.issuedId}` ? 0.45 : 1
+                        }}
+                      >
+                        {printLoadingId === `LABELS:${item.issuedId}` ? 'Odosielam...' : 'Etikety'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => printIssuedMeal(item, 'JOURNAL')}
+                        disabled={!!printLoadingId}
+                        style={{
+                          ...styles.printItemJournalButton,
+                          opacity: printLoadingId && printLoadingId !== `JOURNAL:${item.issuedId}` ? 0.45 : 1
+                        }}
+                      >
+                        {printLoadingId === `JOURNAL:${item.issuedId}` ? 'Odosielam...' : 'Žurnál'}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2820,11 +2835,27 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 13,
     fontWeight: 800
   },
+  printItemActions: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end'
+  },
   printItemButton: {
     ...baseButton,
     minHeight: 44,
     background: '#16a34a',
     borderColor: '#15803d',
+    color: '#fff',
+    padding: '0 14px',
+    fontSize: 14
+  },
+  printItemJournalButton: {
+    ...baseButton,
+    minHeight: 44,
+    background: '#111827',
+    borderColor: '#111827',
     color: '#fff',
     padding: '0 14px',
     fontSize: 14

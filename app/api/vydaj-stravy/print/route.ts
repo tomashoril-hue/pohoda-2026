@@ -3,13 +3,16 @@ import { getCurrentUser } from '@/lib/auth'
 import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
-const DEFAULT_PRINTER_ID = 'vydaj-1'
+const DEFAULT_LABEL_PRINTER_ID = 'vydaj-etikety'
+const DEFAULT_JOURNAL_PRINTER_ID = 'vydaj-zurnal'
 const PRINT_TIME_ZONE = 'Europe/Bratislava'
 
 type PrintScope =
   | { kind: 'INDIVIDUAL'; id: string }
   | { kind: 'LEGACY_BULK'; id: string }
   | { kind: 'REGISTRATION_BULK'; id: string }
+
+type PrintKind = 'LABELS' | 'JOURNAL'
 
 function cleanText(value: unknown) {
   return String(value ?? '').trim()
@@ -22,16 +25,26 @@ function zplText(value: unknown, maxLength = 120) {
     .slice(0, maxLength)
 }
 
-function normalizePrinterId(value: unknown) {
-  const printerId = cleanText(value) || DEFAULT_PRINTER_ID
+function normalizePrinterId(value: unknown, fallback: string) {
+  const printerId = cleanText(value) || fallback
   return printerId.slice(0, 80)
+}
+
+function normalizePrintKind(value: unknown): PrintKind {
+  const text = cleanText(value).toUpperCase()
+
+  if (text === 'JOURNAL' || text === 'ZURNAL' || text === '\u017DURN\u00C1L' || text === 'REPORT') {
+    return 'JOURNAL'
+  }
+
+  return 'LABELS'
 }
 
 function normalizeChoice(value: unknown) {
   const text = cleanText(value).toUpperCase()
   if (text === 'MASO') return 'MASO'
   if (text === 'VEGE') return 'VEGE'
-  if (text === 'DIETA' || text === 'DIÉTA') return 'DIETA'
+  if (text === 'DIETA' || text === 'DI\u00C9TA') return 'DIETA'
   return 'NEZADANE'
 }
 
@@ -103,20 +116,18 @@ function buildMealLabelZpl(input: {
     '^XA',
     '^CI28',
     '^PW384',
-    '^LL360',
+    '^LL252',
     '^MMT',
     '^MNN',
     '^POI',
     '~TA020',
     '^LT0',
-    '^FO18,25^GB348,305,2,14^FS',
-    '^FO0,48^FB384,1,0,C,0^A0N,27,27^FD' + name + '^FS',
-    '^FO0,88^FB384,2,0,C,0^A0N,20,20^FDSkupina: ' + groupName + '^FS',
-    '^FO112,150^GB160,34,2,15^FS',
-    '^FO112,158^FB160,1,0,C,0^A0N,19,19^FD' + choice + '^FS',
-    '^FO0,212^FB384,1,0,C,0^A0N,21,21^FD' + issuedAt + '^FS',
-    '^FO28,264^A0N,22,22^FDPrevzal:^FS',
-    '^FO122,284^GB220,2,2^FS',
+    '^FO14,16^GB356,220,2,12^FS',
+    '^FO0,34^FB384,1,0,C,0^A0N,25,25^FD' + name + '^FS',
+    '^FO22,74^FB340,2,0,C,0^A0N,18,18^FD' + groupName + '^FS',
+    '^FO112,128^GB160,32,2,15^FS',
+    '^FO112,136^FB160,1,0,C,0^A0N,18,18^FD' + choice + '^FS',
+    '^FO0,188^FB384,1,0,C,0^A0N,21,21^FD' + issuedAt + '^FS',
     '^XZ'
   ].join('\n')
 }
@@ -276,8 +287,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Chyba ID vydaja.' }, { status: 400 })
     }
 
-    const labelPrinterId = normalizePrinterId(body.labelPrinterId || body.label_printer_id || body.printer_id)
-    const reportPrinterId = normalizePrinterId(body.reportPrinterId || body.report_printer_id || labelPrinterId)
+    const printKind = normalizePrintKind(body.printKind || body.print_kind || body.type)
+    const labelPrinterId = normalizePrinterId(
+      body.labelPrinterId || body.label_printer_id || (printKind === 'LABELS' ? body.printer_id : ''),
+      DEFAULT_LABEL_PRINTER_ID
+    )
+    const journalPrinterId = normalizePrinterId(
+      body.journalPrinterId || body.journal_printer_id || body.reportPrinterId || body.report_printer_id || (printKind === 'JOURNAL' ? body.printer_id : ''),
+      DEFAULT_JOURNAL_PRINTER_ID
+    )
     const { data: rowsData, error: rowsError } = await loadIssuedRows(scope)
 
     if (rowsError) {
@@ -360,12 +378,12 @@ export async function POST(req: NextRequest) {
     }))
 
     const reportJob = {
-      printer_id: reportPrinterId,
+      printer_id: journalPrinterId,
       status: 'pending',
       created_by: actor.id,
       payload: {
         type: 'zpl',
-        template: 'issued_meal_report',
+        template: 'issued_meal_journal',
         title: issueTitle,
         meal,
         count: printableRows.length,
@@ -382,19 +400,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const jobs = printKind === 'JOURNAL' ? [reportJob] : labelJobs
+
     const { error: insertError } = await supabaseServer
       .from('print_jobs')
-      .insert([...labelJobs, reportJob])
+      .insert(jobs)
 
     if (insertError) {
       return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
 
+    const message = printKind === 'JOURNAL'
+      ? 'Žurnál bol odoslaný do tlače.'
+      : `Etikety boli odoslané do tlače: ${labelJobs.length} ks.`
+
     return NextResponse.json({
       ok: true,
-      labelCount: labelJobs.length,
-      reportCount: 1,
-      message: `Odoslané do tlače: ${labelJobs.length} štítkov a 1 report.`
+      type: printKind,
+      labelCount: printKind === 'LABELS' ? labelJobs.length : 0,
+      journalCount: printKind === 'JOURNAL' ? 1 : 0,
+      message
     })
   } catch (err: any) {
     return NextResponse.json(
