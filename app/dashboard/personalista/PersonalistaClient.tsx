@@ -644,6 +644,7 @@ export default function PersonalistaClient({
   const [detailMode, setDetailMode] = useState<DetailMode>('')
   const [detailLoading, setDetailLoading] = useState(false)
   const [printJobLoading, setPrintJobLoading] = useState(false)
+  const [personPrintOpen, setPersonPrintOpen] = useState(false)
   const [detailMessage, setDetailMessage] = useState('')
   const [detailMessageType, setDetailMessageType] = useState<DetailMessageType>('')
   const [detailMessageMode, setDetailMessageMode] = useState<DetailMode>('')
@@ -1555,7 +1556,17 @@ export default function PersonalistaClient({
   const printPersonHref = selectedPerson
     ? `/dashboard/personalista/print-qr?personId=${encodeURIComponent(selectedPerson.id)}`
     : ''
-  const printSelectedPersonLabel = async () => {
+  const openPersonPrintModal = () => {
+    if (!selectedPerson) return
+
+    if (selectedPerson.activeQrCount <= 0) {
+      setDetailFeedback('Osoba nema aktivny QR kod.', 'error')
+      return
+    }
+
+    setPersonPrintOpen(true)
+  }
+  const printSelectedPersonLabel = async (printVariant: 'TICKET' | 'LABEL') => {
     if (!selectedPerson) return
 
     if (selectedPerson.activeQrCount <= 0) {
@@ -1570,8 +1581,8 @@ export default function PersonalistaClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          printerId: 'vydaj-zurnal',
-          personId: selectedPerson.id
+          personId: selectedPerson.id,
+          printVariant
         })
       })
       const json = await res.json().catch(() => ({}))
@@ -1588,6 +1599,7 @@ export default function PersonalistaClient({
           : json.message || 'Štítok bol odoslaný do tlače.',
         'ok'
       )
+      setPersonPrintOpen(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setDetailFeedback('Štítok sa nepodarilo odoslať do tlače: ' + message, 'error')
@@ -7417,11 +7429,53 @@ export default function PersonalistaClient({
                     opacity: detailLoading || printJobLoading || selectedPerson.activeQrCount <= 0 ? 0.6 : 1
                   }}
                   disabled={detailLoading || printJobLoading || selectedPerson.activeQrCount <= 0}
-                  onClick={printSelectedPersonLabel}
+                  onClick={openPersonPrintModal}
                 >
                   {printJobLoading ? 'Odosielam do tlače...' : 'Tlačiť štítok'}
                 </button>
               </div>
+
+              {personPrintOpen && (
+                <div style={styles.qrScannerOverlay} onClick={() => !printJobLoading && setPersonPrintOpen(false)}>
+                  <div style={styles.personPrintModal} onClick={event => event.stopPropagation()}>
+                    <div style={styles.qrScannerHeader}>
+                      <div>
+                        <b>Tlac stitku</b>
+                        <span>Vyber format pre tuto osobu.</span>
+                      </div>
+                      <button
+                        type="button"
+                        style={styles.qrScannerCloseButton}
+                        onClick={() => setPersonPrintOpen(false)}
+                        disabled={printJobLoading}
+                      >
+                        x
+                      </button>
+                    </div>
+
+                    <div style={styles.personPrintChoices}>
+                      <button
+                        type="button"
+                        style={styles.personPrintChoiceButton}
+                        disabled={printJobLoading}
+                        onClick={() => void printSelectedPersonLabel('LABEL')}
+                      >
+                        <b>Etiketa</b>
+                        <span>Maly stitok prisposobeny etikete.</span>
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.personPrintChoiceButton}
+                        disabled={printJobLoading}
+                        onClick={() => void printSelectedPersonLabel('TICKET')}
+                      >
+                        <b>Ako teraz</b>
+                        <span>Povodny QR listok v aktualnom formate.</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {detailMode === 'profile' && (
                 <div style={styles.detailEditBox}>
@@ -10181,6 +10235,36 @@ const styles: Record<string, CSSProperties> = {
     boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
     display: 'grid',
     gap: 12
+  },
+  personPrintModal: {
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '90vh',
+    overflow: 'auto',
+    background: '#fff',
+    borderRadius: 18,
+    padding: 14,
+    boxShadow: '0 24px 70px rgba(0,0,0,0.28)',
+    display: 'grid',
+    gap: 12
+  },
+  personPrintChoices: {
+    display: 'grid',
+    gap: 10
+  },
+  personPrintChoiceButton: {
+    width: '100%',
+    border: '1px solid #ddd6fe',
+    borderRadius: 12,
+    background: '#f8f5ff',
+    color: '#2e1065',
+    padding: '14px 16px',
+    display: 'grid',
+    gap: 5,
+    textAlign: 'left',
+    cursor: 'pointer',
+    fontSize: 14,
+    fontWeight: 850
   },
   qrScannerHeader: {
     display: 'flex',

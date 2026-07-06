@@ -4,7 +4,11 @@ import { getGlobalAccess } from '@/lib/globalRoles'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 const DEFAULT_PRINTER_ID = 'vydaj-zurnal'
+const PERSON_TICKET_PRINTER_ID = 'vydaj-zurnal'
+const PERSON_LABEL_PRINTER_ID = 'vydaj-1'
 const PRINT_TIME_ZONE = 'Europe/Bratislava'
+
+type PersonPrintVariant = 'TICKET' | 'LABEL'
 
 function cleanText(value: unknown) {
   return String(value ?? '').trim()
@@ -17,6 +21,14 @@ function fullName(user: any) {
 function normalizePrinterId(value: unknown) {
   const printerId = cleanText(value) || DEFAULT_PRINTER_ID
   return printerId.slice(0, 80)
+}
+
+function normalizePersonPrintVariant(value: unknown): PersonPrintVariant {
+  const text = cleanText(value).toUpperCase()
+
+  if (text === 'LABEL' || text === 'ETIKETA') return 'LABEL'
+
+  return 'TICKET'
 }
 
 function zplText(value: unknown, maxLength = 120) {
@@ -82,6 +94,42 @@ function buildPersonQrLabelZpl(input: {
   ].join('\n')
 }
 
+function buildPersonSmallLabelZpl(input: {
+  name: string
+  group: string
+  meal: string
+  qr: string
+}) {
+  const name = zplText(input.name, 36)
+  const group = zplText(input.group || '-', 42)
+  const meal = zplText(input.meal || 'NEZADANE', 14)
+  const qr = zplText(input.qr, 120)
+  const printedAt = zplText(currentPrintDateTime(), 24)
+
+  return [
+    '^XA',
+    '^CI28',
+    '^PW384',
+    '^LL252',
+    '^MMT',
+    '^MNY',
+    '^POI',
+    '~TA000',
+    '^LT0',
+    '^FO14,16^GB356,220,2,12^FS',
+    '^FO24,36',
+    '^BQN,2,5',
+    '^FDLA,' + qr + '^FS',
+    '^FO146,36^FB212,1,0,L,0^A0N,22,22^FD' + name + '^FS',
+    '^FO146,68^FB212,2,0,L,0^A0N,15,15^FD' + group + '^FS',
+    '^FO146,126^GB116,30,2,14^FS',
+    '^FO146,133^FB116,1,0,C,0^A0N,16,16^FD' + meal + '^FS',
+    '^FO146,178^FB212,1,0,L,0^A0N,17,17^FD' + printedAt + '^FS',
+    '^FO22,184^FB112,1,0,C,0^A0N,14,14^FD' + qr + '^FS',
+    '^XZ'
+  ].join('\n')
+}
+
 function sanitizeOptionalPayloadValue(value: unknown) {
   const text = cleanText(value)
   return text ? text.slice(0, 240) : undefined
@@ -117,7 +165,7 @@ function buildPayloadFromInput(input: Record<string, any>) {
   return { payload }
 }
 
-async function buildPersonQrPayload(personId: string) {
+async function buildPersonQrPayload(personId: string, variant: PersonPrintVariant) {
   const { data: user, error: userError } = await supabaseServer
     .from('users')
     .select('id, meno, priezvisko, email, typ_stravy, registration_group_id')
@@ -153,17 +201,25 @@ async function buildPersonQrPayload(personId: string) {
 
   const meal = cleanText(user.typ_stravy) || 'NEZADANE'
   const name = fullName(user)
-  const zpl = buildPersonQrLabelZpl({
-    name,
-    group: groupName,
-    meal,
-    qr
-  })
+  const zpl = variant === 'LABEL'
+    ? buildPersonSmallLabelZpl({
+      name,
+      group: groupName,
+      meal,
+      qr
+    })
+    : buildPersonQrLabelZpl({
+      name,
+      group: groupName,
+      meal,
+      qr
+    })
 
   return {
     payload: {
       type: 'zpl',
-      template: 'person_qr_label',
+      template: variant === 'LABEL' ? 'person_qr_small_label' : 'person_qr_label',
+      printVariant: variant,
       name,
       group: groupName,
       registrationGroup: groupName,
@@ -194,12 +250,15 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}))
     const personId = cleanText(body.person_id || body.personId)
+    const personPrintVariant = normalizePersonPrintVariant(body.printVariant || body.print_variant || body.variant)
     const printerId = personId
-      ? DEFAULT_PRINTER_ID
+      ? personPrintVariant === 'LABEL'
+        ? PERSON_LABEL_PRINTER_ID
+        : PERSON_TICKET_PRINTER_ID
       : normalizePrinterId(body.printer_id || body.printerId)
 
     const payloadResult = personId
-      ? await buildPersonQrPayload(personId)
+      ? await buildPersonQrPayload(personId, personPrintVariant)
       : buildPayloadFromInput(body.payload || {})
 
     if (payloadResult.error || !payloadResult.payload) {
