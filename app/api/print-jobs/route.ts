@@ -193,8 +193,10 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}))
-    const printerId = normalizePrinterId(body.printer_id || body.printerId)
     const personId = cleanText(body.person_id || body.personId)
+    const printerId = personId
+      ? DEFAULT_PRINTER_ID
+      : normalizePrinterId(body.printer_id || body.printerId)
 
     const payloadResult = personId
       ? await buildPersonQrPayload(personId)
