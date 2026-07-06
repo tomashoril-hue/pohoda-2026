@@ -95,6 +95,32 @@ type MealStats = {
   NEZADANE: ChoiceStats
 }
 
+type IssueReportType = 'ISSUED' | 'UNISSUED' | 'ENTITLED' | 'CANCELLED'
+
+type IssueReportRow = {
+  userId: string
+  name: string
+  email: string
+  groupName: string
+  choice: string
+  issuedAt?: string
+  method?: string
+}
+
+type IssueReport = {
+  type: IssueReportType
+  datum: string
+  meal: Meal
+  rows: IssueReportRow[]
+  summary: {
+    total: number
+    MASO: number
+    VEGE: number
+    DIETA: number
+    NEZADANE: number
+  }
+}
+
 function emptyMealStats(issued = 0): MealStats {
   return {
     total: 0,
@@ -258,6 +284,20 @@ function choiceSummaryLabel(summary: ChoiceSummary) {
   ].filter(Boolean).join(' · ')
 }
 
+function reportTypeLabel(type: IssueReportType) {
+  if (type === 'UNISSUED') return 'Nevydané jedlá'
+  if (type === 'ENTITLED') return 'Všetky platné jedlá'
+  if (type === 'CANCELLED') return 'Odhlásené jedlá'
+  return 'Vydané jedlá'
+}
+
+function reportTypeHint(type: IssueReportType) {
+  if (type === 'UNISSUED') return 'Mali platný nárok, nie sú odhlásení a ešte neboli vydaní.'
+  if (type === 'ENTITLED') return 'Všetci ľudia so započítateľným nárokom na vybraný deň.'
+  if (type === 'CANCELLED') return 'Štatistický zoznam ľudí, ktorí si jedlo odhlásili.'
+  return 'Zoznam ľudí, ktorým už bolo jedlo vydané.'
+}
+
 function makeCanvasImage(video: HTMLVideoElement, canvas: HTMLCanvasElement, maxWidth = 720) {
   const videoWidth = video.videoWidth || 1280
   const videoHeight = video.videoHeight || 720
@@ -391,6 +431,15 @@ export default function VydajStravyClient({
   const [printLoadingId, setPrintLoadingId] = useState('')
   const [printMessage, setPrintMessage] = useState('')
   const [printMessageType, setPrintMessageType] = useState<Tone>('success')
+  const [reportsOpen, setReportsOpen] = useState(false)
+  const [reportType, setReportType] = useState<IssueReportType>('UNISSUED')
+  const [reportDate, setReportDate] = useState(initialDate)
+  const [reportMeal, setReportMeal] = useState<Meal>(initialMeal === 'VECERA' ? 'VECERA' : 'OBED')
+  const [reportData, setReportData] = useState<IssueReport | null>(null)
+  const [reportLoading, setReportLoading] = useState(false)
+  const [reportPrinting, setReportPrinting] = useState(false)
+  const [reportMessage, setReportMessage] = useState('')
+  const [reportMessageType, setReportMessageType] = useState<Tone>('success')
   const [issueDecision, setIssueDecision] = useState<IssueDecision | null>(null)
   const [online, setOnline] = useState(true)
   const [offlineNotice, setOfflineNotice] = useState('')
@@ -1025,6 +1074,84 @@ export default function VydajStravyClient({
   const openStats = () => {
     setStatsOpen(true)
     refreshStats()
+  }
+
+  const loadIssueReport = async (nextType = reportType) => {
+    setReportLoading(true)
+    setReportMessage('')
+
+    try {
+      const params = new URLSearchParams({
+        datum: reportDate,
+        typJedla: reportMeal,
+        type: nextType
+      })
+      const res = await fetch(`/api/vydaj-stravy/reports?${params.toString()}`)
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || !json.ok || !json.report) {
+        setReportData(null)
+        setReportMessage(json.error || 'Report sa nepodarilo načítať.')
+        setReportMessageType('error')
+        return
+      }
+
+      setReportData(json.report)
+      setReportMessage('')
+    } catch {
+      setReportData(null)
+      setReportMessage('Report sa nepodarilo načítať.')
+      setReportMessageType('error')
+    } finally {
+      setReportLoading(false)
+    }
+  }
+
+  const openReports = () => {
+    setReportDate(datum)
+    setReportMeal(typJedla)
+    setReportType('UNISSUED')
+    setReportData(null)
+    setReportMessage('')
+    setReportsOpen(true)
+  }
+
+  const selectReportType = (nextType: IssueReportType) => {
+    setReportType(nextType)
+    void loadIssueReport(nextType)
+  }
+
+  const printIssueReport = async () => {
+    setReportPrinting(true)
+    setReportMessage('')
+
+    try {
+      const res = await fetch('/api/vydaj-stravy/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          datum: reportDate,
+          typJedla: reportMeal,
+          type: reportType
+        })
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || !json.ok) {
+        setReportMessage(json.error || 'Report sa nepodarilo odoslať do tlače.')
+        setReportMessageType('error')
+        return
+      }
+
+      if (json.report) setReportData(json.report)
+      setReportMessage(json.message || 'Report bol odoslaný do tlače.')
+      setReportMessageType('success')
+    } catch {
+      setReportMessage('Report sa nepodarilo odoslať do tlače.')
+      setReportMessageType('error')
+    } finally {
+      setReportPrinting(false)
+    }
   }
 
   useEffect(() => {
@@ -1678,6 +1805,11 @@ export default function VydajStravyClient({
             Tlač výdaja
           </button>
         )}
+        {fullMode && (
+          <button type="button" onClick={openReports} style={styles.reportsButton}>
+            Reporty výdaja
+          </button>
+        )}
         <button type="button" onClick={openStats} style={styles.statsButton}>
           Prehľad stravy
         </button>
@@ -1753,6 +1885,137 @@ export default function VydajStravyClient({
             <button type="button" onClick={refreshRecentIssued} disabled={!!printLoadingId} style={styles.secondaryButton}>
               Obnoviť zoznam
             </button>
+          </div>
+        </div>
+      )}
+
+      {reportsOpen && (
+        <div style={styles.modalBackdrop} onClick={() => setReportsOpen(false)}>
+          <div style={styles.reportModal} onClick={event => event.stopPropagation()}>
+            <div style={styles.statsModalHeader}>
+              <div>
+                <h2 style={styles.sectionTitle}>Reporty výdaja</h2>
+                <p style={styles.cancelHint}>Vyber deň, jedlo a typ reportu. Náhľad môžeš následne vytlačiť na pásku.</p>
+              </div>
+              <button type="button" onClick={() => setReportsOpen(false)} style={styles.closeButton}>
+                Zavrieť
+              </button>
+            </div>
+
+            <div style={styles.reportFilters}>
+              <label style={styles.reportField}>
+                <span>Dátum</span>
+                <input
+                  type="date"
+                  value={reportDate}
+                  onChange={event => {
+                    setReportDate(event.target.value)
+                    setReportData(null)
+                  }}
+                  style={styles.reportInput}
+                />
+              </label>
+              <label style={styles.reportField}>
+                <span>Jedlo</span>
+                <select
+                  value={reportMeal}
+                  onChange={event => {
+                    setReportMeal(event.target.value === 'VECERA' ? 'VECERA' : 'OBED')
+                    setReportData(null)
+                  }}
+                  style={styles.reportInput}
+                >
+                  <option value="OBED">Obed</option>
+                  <option value="VECERA">Večera</option>
+                </select>
+              </label>
+            </div>
+
+            <div style={styles.reportTypeGrid}>
+              {(['UNISSUED', 'ISSUED', 'ENTITLED', 'CANCELLED'] as IssueReportType[]).map(type => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => selectReportType(type)}
+                  disabled={reportLoading || reportPrinting}
+                  style={{
+                    ...styles.reportTypeButton,
+                    ...(reportType === type ? styles.reportTypeButtonActive : {})
+                  }}
+                >
+                  <b>{reportTypeLabel(type)}</b>
+                  <span>{reportTypeHint(type)}</span>
+                </button>
+              ))}
+            </div>
+
+            <div style={styles.reportActions}>
+              <button
+                type="button"
+                onClick={() => loadIssueReport()}
+                disabled={reportLoading || reportPrinting}
+                style={styles.secondaryButton}
+              >
+                {reportLoading ? 'Načítavam...' : 'Zobraziť'}
+              </button>
+              <button
+                type="button"
+                onClick={printIssueReport}
+                disabled={reportLoading || reportPrinting}
+                style={styles.printButton}
+              >
+                {reportPrinting ? 'Odosielam...' : 'Tlačiť na pásku'}
+              </button>
+            </div>
+
+            {reportMessage && (
+              <div style={reportMessageType === 'success' ? styles.printMessageOk : styles.printMessageError}>
+                {reportMessage}
+              </div>
+            )}
+
+            {reportData ? (
+              <section style={styles.reportPreview}>
+                <div style={styles.reportPreviewHeader}>
+                  <div>
+                    <b>{reportTypeLabel(reportData.type)}</b>
+                    <span>{formatIssueDate(reportData.datum)} · {mealLabel(reportData.meal)}</span>
+                  </div>
+                  <strong>{reportData.summary.total}</strong>
+                </div>
+
+                <div style={styles.reportSummaryGrid}>
+                  <span>MASO <b>{reportData.summary.MASO}</b></span>
+                  <span>VEGE <b>{reportData.summary.VEGE}</b></span>
+                  <span>DIÉTA <b>{reportData.summary.DIETA}</b></span>
+                  {reportData.summary.NEZADANE > 0 && <span>NEZADANÉ <b>{reportData.summary.NEZADANE}</b></span>}
+                </div>
+
+                {reportData.rows.length === 0 ? (
+                  <div style={styles.emptyHistory}>Report je prázdny.</div>
+                ) : (
+                  <div style={styles.reportRows}>
+                    {reportData.rows.slice(0, 160).map((row, index) => (
+                      <div key={`${row.userId}-${index}`} style={styles.reportRow}>
+                        <div>
+                          <b>{index + 1}. {row.name || row.email || '-'}</b>
+                          <span>{row.groupName || 'Nezaradený'}</span>
+                        </div>
+                        <div style={styles.reportRowMeta}>
+                          <b>{choiceLabel(row.choice)}</b>
+                          {row.issuedAt && <span>{formatTime(row.issuedAt)}</span>}
+                        </div>
+                      </div>
+                    ))}
+                    {reportData.rows.length > 160 && (
+                      <div style={styles.cancelHint}>Zobrazených prvých 160 riadkov. Na pásku sa tlačí celý report.</div>
+                    )}
+                  </div>
+                )}
+              </section>
+            ) : (
+              <div style={styles.emptyHistory}>Vyber typ reportu alebo stlač Zobraziť.</div>
+            )}
           </div>
         </div>
       )}
@@ -2583,7 +2846,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 10
   },
   statsGridWithPrint: {
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))'
+    gridTemplateColumns: 'repeat(5, minmax(0, 1fr))'
   },
   statsGridMobile: {
     gridTemplateColumns: '1fr',
@@ -2616,6 +2879,13 @@ const styles: Record<string, CSSProperties> = {
     ...baseButton,
     background: '#111827',
     borderColor: '#020617',
+    color: '#fff',
+    padding: '0 14px'
+  },
+  reportsButton: {
+    ...baseButton,
+    background: '#7c3aed',
+    borderColor: '#6d28d9',
     color: '#fff',
     padding: '0 14px'
   },
@@ -2737,6 +3007,17 @@ const styles: Record<string, CSSProperties> = {
     maxHeight: '86vh',
     overflowY: 'auto'
   },
+  reportModal: {
+    background: '#fff',
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 12,
+    display: 'grid',
+    gap: 12,
+    width: 'min(860px, 100%)',
+    maxHeight: '90vh',
+    overflowY: 'auto'
+  },
   statsModalHeader: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -2795,6 +3076,95 @@ const styles: Record<string, CSSProperties> = {
     color: '#991b1b',
     padding: 10,
     fontWeight: 800
+  },
+  reportFilters: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 10
+  },
+  reportField: {
+    display: 'grid',
+    gap: 5,
+    fontSize: 12,
+    fontWeight: 900,
+    color: '#475569'
+  },
+  reportInput: {
+    minHeight: 42,
+    border: '1px solid #d1d5db',
+    borderRadius: 8,
+    padding: '0 10px',
+    fontSize: 15,
+    fontWeight: 850,
+    color: '#111827',
+    background: '#fff'
+  },
+  reportTypeGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 10
+  },
+  reportTypeButton: {
+    border: '1px solid #ddd6fe',
+    borderRadius: 8,
+    background: '#f8f5ff',
+    color: '#2e1065',
+    padding: 12,
+    display: 'grid',
+    gap: 4,
+    textAlign: 'left',
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 850
+  },
+  reportTypeButtonActive: {
+    background: '#ede9fe',
+    borderColor: '#7c3aed',
+    boxShadow: '0 0 0 2px rgba(124, 58, 237, 0.15)'
+  },
+  reportActions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'flex-end'
+  },
+  reportPreview: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    padding: 10,
+    display: 'grid',
+    gap: 10
+  },
+  reportPreviewHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 10,
+    alignItems: 'center',
+    fontSize: 15
+  },
+  reportSummaryGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
+    gap: 8
+  },
+  reportRows: {
+    display: 'grid',
+    gap: 6
+  },
+  reportRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr auto',
+    gap: 10,
+    alignItems: 'center',
+    borderTop: '1px solid #e5e7eb',
+    paddingTop: 7,
+    fontSize: 13
+  },
+  reportRowMeta: {
+    display: 'grid',
+    justifyItems: 'end',
+    gap: 2,
+    whiteSpace: 'nowrap'
   },
   printMessageOk: {
     background: '#dcfce7',
