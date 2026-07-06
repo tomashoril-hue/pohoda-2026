@@ -118,7 +118,7 @@ function buildMealLabelZpl(input: {
     '^PW384',
     '^LL252',
     '^MMT',
-    '^MNN',
+    '^MNY',
     '^POI',
     '~TA020',
     '^LT0',
