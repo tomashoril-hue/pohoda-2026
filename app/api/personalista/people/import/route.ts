@@ -80,6 +80,46 @@ function personNameKey(meno: any, priezvisko: any) {
   return firstName && lastName ? `${firstName}|${lastName}` : ''
 }
 
+function personNameParts(meno: any, priezvisko: any) {
+  const normalized = normalizeComparableText(`${normalizeText(meno)} ${normalizeText(priezvisko)}`)
+  const parts = normalized.match(/[a-z0-9]+/g) || []
+
+  return Array.from(new Set(parts.filter(part => part.length > 1)))
+}
+
+function personNamesMatch(importMeno: any, importPriezvisko: any, dbMeno: any, dbPriezvisko: any) {
+  const importKey = personNameKey(importMeno, importPriezvisko)
+  const dbKey = personNameKey(dbMeno, dbPriezvisko)
+
+  if (!importKey || !dbKey) return false
+  if (importKey === dbKey) return true
+
+  const importParts = personNameParts(importMeno, importPriezvisko)
+  const dbParts = personNameParts(dbMeno, dbPriezvisko)
+
+  if (importParts.length < 2 || dbParts.length < 2) return false
+
+  const dbPartSet = new Set(dbParts)
+  const matchingParts = importParts.filter(part => dbPartSet.has(part))
+
+  return matchingParts.length >= 2
+}
+
+function personNameKeysMatch(leftNameKey: string, rightNameKey: string) {
+  if (!leftNameKey || !rightNameKey) return false
+  if (leftNameKey === rightNameKey) return true
+
+  const leftParts = Array.from(new Set(leftNameKey.split('|').flatMap(part => part.split(' ')).filter(part => part.length > 1)))
+  const rightParts = Array.from(new Set(rightNameKey.split('|').flatMap(part => part.split(' ')).filter(part => part.length > 1)))
+
+  if (leftParts.length < 2 || rightParts.length < 2) return false
+
+  const rightPartSet = new Set(rightParts)
+  const matchingParts = leftParts.filter(part => rightPartSet.has(part))
+
+  return matchingParts.length >= 2
+}
+
 function phoneKey(value: any) {
   return normalizeText(value).replace(/[^\d+]/g, '')
 }
@@ -265,12 +305,12 @@ function buildImportIdentities(rows: any[], existingUsersByEmail: Map<string, Ex
 
       group.rowNumbers.push(rowNumber)
 
-      if (group.nameKey !== nameKey) {
+      if (!personNameKeysMatch(group.nameKey, nameKey)) {
         group.invalid = true
         setGroupError(group.rowNumbers, 'Rovnaky e-mail je pouzity pri roznych menach.')
       }
 
-      if (existingUser && existingNameKey && existingNameKey !== nameKey) {
+      if (existingUser && existingNameKey && !personNamesMatch(row.meno, row.priezvisko, existingUser.meno, existingUser.priezvisko)) {
         errorsByRowNumber.set(rowNumber, 'E-mail uz patri inej osobe v databaze.')
       }
 
