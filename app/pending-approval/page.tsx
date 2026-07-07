@@ -12,6 +12,7 @@ const pendingCopy: Record<AppLanguage, {
   rejectedStatus: string
   pendingStatus: string
   text: string
+  contactText?: string
 }> = {
   SK: {
     logout: 'Odhlásiť sa',
@@ -27,7 +28,8 @@ const pendingCopy: Record<AppLanguage, {
     pendingBadge: 'Registration received',
     rejectedStatus: 'Your registration could not be approved. Please contact the personnel team.',
     pendingStatus: 'Your registration is waiting for personnel approval.',
-    text: 'After approval, the system will automatically assign your QR code and unlock the application.'
+    text: 'After approval, the system will automatically assign your QR code and unlock the application.',
+    contactText: 'Please find the brigade lead Juliana Kohutova.'
   }
 }
 
@@ -40,6 +42,9 @@ export default async function PendingApprovalPage() {
 
   const language = await requestLanguage(user)
   const copy = pendingCopy[language]
+  const contactText = language === 'EN'
+    ? (copy.contactText || 'Please find the brigade lead Juliana Kohutova.')
+    : 'Prosime, vyhladaj veducu brigadnikov Julianu Kohutovu.'
   const reviewStatus = String(user.review_status || 'APPROVED').toUpperCase()
 
   if (reviewStatus === 'APPROVED') {
@@ -157,6 +162,11 @@ export default async function PendingApprovalPage() {
         <p className="pending-text" style={styles.text}>
           {copy.text}
         </p>
+        {!rejected && (
+          <p className="pending-contact" style={styles.contactText}>
+            {contactText}
+          </p>
+        )}
       </section>
     </main>
   )
@@ -253,5 +263,16 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 17,
     lineHeight: 1.5,
     fontWeight: 700
+  },
+  contactText: {
+    margin: '14px 0 0',
+    background: '#fffbeb',
+    border: '2px solid #f59e0b',
+    borderRadius: 16,
+    padding: '12px 14px',
+    fontSize: 17,
+    lineHeight: 1.35,
+    fontWeight: 900,
+    color: '#92400e'
   }
 }
