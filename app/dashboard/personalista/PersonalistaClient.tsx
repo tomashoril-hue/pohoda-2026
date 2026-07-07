@@ -510,7 +510,8 @@ export default function PersonalistaClient({
   currentUserId,
   currentUserName,
   currentUserRoleLabel,
-  legacyFoodGroupsEnabled
+  legacyFoodGroupsEnabled,
+  publicRegistrationEnabled
 }: {
   people: PersonItem[]
   pendingReviewPeople: PersonItem[]
@@ -529,6 +530,7 @@ export default function PersonalistaClient({
   currentUserName: string
   currentUserRoleLabel: string
   legacyFoodGroupsEnabled: boolean
+  publicRegistrationEnabled: boolean
 }) {
   const router = useRouter()
   const initialPeopleSearchMessage = peopleScope === 'all'
@@ -623,6 +625,7 @@ export default function PersonalistaClient({
   })
   const [qrRulesOpen, setQrRulesOpen] = useState(false)
   const [legacyFoodGroupsOpen, setLegacyFoodGroupsOpen] = useState(false)
+  const [publicRegistrationOpen, setPublicRegistrationOpen] = useState(false)
   const [qrRulesLoading, setQrRulesLoading] = useState(false)
   const [qrRulesMessage, setQrRulesMessage] = useState('')
   const [qrRulesMessageType, setQrRulesMessageType] = useState<'ok' | 'error' | ''>('')
@@ -631,6 +634,10 @@ export default function PersonalistaClient({
   const [legacyFoodGroupsLoading, setLegacyFoodGroupsLoading] = useState(false)
   const [legacyFoodGroupsMessage, setLegacyFoodGroupsMessage] = useState('')
   const [legacyFoodGroupsMessageType, setLegacyFoodGroupsMessageType] = useState<'ok' | 'error' | ''>('')
+  const [publicRegistrationEnabledState, setPublicRegistrationEnabledState] = useState(publicRegistrationEnabled)
+  const [publicRegistrationLoading, setPublicRegistrationLoading] = useState(false)
+  const [publicRegistrationMessage, setPublicRegistrationMessage] = useState('')
+  const [publicRegistrationMessageType, setPublicRegistrationMessageType] = useState<'ok' | 'error' | ''>('')
   const [registrationAssignmentOpen, setRegistrationAssignmentOpen] = useState(false)
   const [registrationAssignmentLoading, setRegistrationAssignmentLoading] = useState(false)
   const [registrationAssignmentMessage, setRegistrationAssignmentMessage] = useState('')
@@ -757,6 +764,7 @@ export default function PersonalistaClient({
     setPrintQrOpen(false)
     setQrRulesOpen(false)
     setLegacyFoodGroupsOpen(false)
+    setPublicRegistrationOpen(false)
     setPersonnelTool('')
   }
 
@@ -2514,6 +2522,44 @@ export default function PersonalistaClient({
       setLegacyFoodGroupsMessageType('error')
     } finally {
       setLegacyFoodGroupsLoading(false)
+    }
+  }
+
+  const savePublicRegistrationSetting = async (enabled: boolean) => {
+    if (!canAssignSensitiveRoles) {
+      setPublicRegistrationMessage('Toto nastavenie moze menit iba ADMIN.')
+      setPublicRegistrationMessageType('error')
+      return
+    }
+
+    setPublicRegistrationLoading(true)
+    setPublicRegistrationMessage('')
+    setPublicRegistrationMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/app-settings/public-registration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || json.error) {
+        setPublicRegistrationMessage(json.error || 'Nastavenie registracie sa nepodarilo ulozit.')
+        setPublicRegistrationMessageType('error')
+        return
+      }
+
+      setPublicRegistrationEnabledState(json.enabled === true)
+      setPublicRegistrationMessage(json.message || 'Nastavenie registracie bolo ulozene.')
+      setPublicRegistrationMessageType('ok')
+      router.refresh()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setPublicRegistrationMessage('Chyba spojenia so serverom: ' + message)
+      setPublicRegistrationMessageType('error')
+    } finally {
+      setPublicRegistrationLoading(false)
     }
   }
 
@@ -4360,6 +4406,7 @@ export default function PersonalistaClient({
             setCreateOpen(false)
             setRegistrationGroupsOpen(false)
             setQrRulesOpen(false)
+            setPublicRegistrationOpen(false)
             setPersonnelTool('')
           }}
         >
@@ -4376,6 +4423,7 @@ export default function PersonalistaClient({
               setRegistrationGroupsOpen(false)
               setPrintQrOpen(false)
               setLegacyFoodGroupsOpen(false)
+              setPublicRegistrationOpen(false)
               setPersonnelTool('')
               setQrRulesMessage('')
               setQrRulesMessageType('')
@@ -4396,12 +4444,34 @@ export default function PersonalistaClient({
               setRegistrationGroupsOpen(false)
               setPrintQrOpen(false)
               setQrRulesOpen(false)
+              setPublicRegistrationOpen(false)
               setPersonnelTool('')
               setLegacyFoodGroupsMessage('')
               setLegacyFoodGroupsMessageType('')
             }}
           >
             Starý hromadný výdaj
+          </button>
+        )}
+
+        {canAssignSensitiveRoles && (
+          <button
+            type="button"
+            style={styles.lightButton}
+            disabled={publicRegistrationLoading}
+            onClick={() => {
+              setPublicRegistrationOpen(prev => !prev)
+              setCreateOpen(false)
+              setRegistrationGroupsOpen(false)
+              setPrintQrOpen(false)
+              setQrRulesOpen(false)
+              setLegacyFoodGroupsOpen(false)
+              setPersonnelTool('')
+              setPublicRegistrationMessage('')
+              setPublicRegistrationMessageType('')
+            }}
+          >
+            Registracia
           </button>
         )}
 
@@ -5266,6 +5336,78 @@ export default function PersonalistaClient({
               }}
             >
               {legacyFoodGroupsMessage}
+            </div>
+          )}
+        </section>
+      )}
+
+      {!showMobilePersonDetail && publicRegistrationOpen && (
+        <section style={styles.createPanel}>
+          <div style={styles.createHeader}>
+            <div>
+              <b>Registracia</b>
+              <span>Admin prepina verejnu registraciu na uvodnej stranke.</span>
+            </div>
+
+            <button
+              type="button"
+              style={styles.closeButton}
+              disabled={publicRegistrationLoading}
+              onClick={() => setPublicRegistrationOpen(false)}
+            >
+              x
+            </button>
+          </div>
+
+          <div style={styles.detailEditBoxSoft}>
+            <div style={styles.detailEditTitle}>
+              Stav: {publicRegistrationEnabledState ? 'zapnuta' : 'vypnuta'}
+            </div>
+
+            <div style={styles.optionHint}>
+              Ked je vypnuta, na uvodnej stranke ostane aktivne iba prihlasenie a tlacidlo registracie bude sive. Priame otvorenie registracie tiez nepusti formular.
+            </div>
+
+            <div style={styles.toolActionRow}>
+              <button
+                type="button"
+                style={{
+                  ...styles.confirmButton,
+                  opacity: publicRegistrationLoading || publicRegistrationEnabledState ? 0.55 : 1
+                }}
+                disabled={publicRegistrationLoading || publicRegistrationEnabledState}
+                onClick={() => void savePublicRegistrationSetting(true)}
+              >
+                Zapnut
+              </button>
+
+              <button
+                type="button"
+                style={{
+                  ...styles.dangerButton,
+                  opacity: publicRegistrationLoading || !publicRegistrationEnabledState ? 0.55 : 1
+                }}
+                disabled={publicRegistrationLoading || !publicRegistrationEnabledState}
+                onClick={() => {
+                  const ok = window.confirm('Naozaj vypnut verejnu registraciu?')
+                  if (ok) void savePublicRegistrationSetting(false)
+                }}
+              >
+                Vypnut
+              </button>
+            </div>
+          </div>
+
+          {publicRegistrationMessage && (
+            <div
+              style={{
+                ...styles.message,
+                background: publicRegistrationMessageType === 'ok' ? '#dcfce7' : '#fee2e2',
+                color: publicRegistrationMessageType === 'ok' ? '#166534' : '#991b1b',
+                borderColor: publicRegistrationMessageType === 'ok' ? '#86efac' : '#fecaca'
+              }}
+            >
+              {publicRegistrationMessage}
             </div>
           )}
         </section>

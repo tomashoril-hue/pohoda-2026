@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getSessionUser } from '@/lib/auth'
+import { getPublicRegistrationEnabled } from '@/lib/appSettings'
 import { requestLanguage } from '@/lib/i18nServer'
 import LanguageSwitcher from '@/components/LanguageSwitcher'
 
@@ -14,6 +15,7 @@ export default async function HomePage() {
   }
 
   const language = await requestLanguage()
+  const registrationEnabled = await getPublicRegistrationEnabled()
   const isEnglish = language === 'EN'
   const copy = isEnglish
     ? {
@@ -21,6 +23,7 @@ export default async function HomePage() {
       subtitle: 'Choose meals, show your QR code and manage groups in one simple app.',
       login: 'Sign in',
       register: 'Register',
+      registerDisabled: 'Registration is currently disabled. Sign in if you already have an account.',
       selectionTitle: 'Meal selection',
       selectionText: 'Lunch and dinner clearly organized by day.',
       qrTitle: 'QR identification',
@@ -42,6 +45,10 @@ export default async function HomePage() {
       groupsText: 'Vhodné pre tímy, partie a spoločné stravovanie.',
       note: 'Ak si už prihlásený, aplikácia ťa automaticky presmeruje na dashboard.'
     }
+
+  const registrationDisabledText = isEnglish
+    ? 'Registration is currently disabled. Sign in if you already have an account.'
+    : 'Registracia je momentalne vypnuta. Ak uz mas ucet, prihlas sa.'
 
   return (
     <main className="home-page" style={styles.page}>
@@ -179,10 +186,22 @@ export default async function HomePage() {
             {copy.login}
           </Link>
 
-          <Link href="/register" style={styles.secondaryButton}>
-            {copy.register}
-          </Link>
+          {registrationEnabled ? (
+            <Link href="/register" style={styles.secondaryButton}>
+              {copy.register}
+            </Link>
+          ) : (
+            <span aria-disabled="true" title={registrationDisabledText} style={styles.secondaryButtonDisabled}>
+              {copy.register}
+            </span>
+          )}
         </div>
+
+        {!registrationEnabled && (
+          <p style={styles.registrationDisabledNote}>
+            {registrationDisabledText}
+          </p>
+        )}
 
         <div className="home-info-grid" style={styles.infoGrid}>
           <div style={styles.infoCard}>
@@ -350,6 +369,27 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 18,
     fontWeight: 950,
     textDecoration: 'none'
+  },
+  secondaryButtonDisabled: {
+    display: 'block',
+    textAlign: 'center',
+    background: '#e5e7eb',
+    color: '#6b7280',
+    border: '3px solid #9ca3af',
+    borderRadius: 999,
+    padding: '17px 22px',
+    fontSize: 18,
+    fontWeight: 950,
+    textDecoration: 'none',
+    cursor: 'not-allowed',
+    userSelect: 'none'
+  },
+  registrationDisabledNote: {
+    margin: '10px 0 0',
+    fontSize: 13,
+    fontWeight: 850,
+    color: '#6b7280',
+    textAlign: 'center'
   },
   infoGrid: {
     marginTop: 28,
