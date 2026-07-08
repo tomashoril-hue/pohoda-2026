@@ -27,11 +27,13 @@ type ExpressIssue = {
   title: string
   status: string
   validAfter: string | null
+  issuedCount?: number
 }
 
 type ExpressIssueListItem = ExpressIssue & {
   selectedCount: number
   pickupCount: number
+  issuedCount: number
 }
 
 type ExpressData = {
@@ -103,6 +105,7 @@ function displayPersonName(person: ExpressPerson) {
 
 export default function ExpressVydajClient({
   language = 'SK',
+  currentUserId,
   userName,
   groups,
   canSelectDateMeal = false,
@@ -110,6 +113,7 @@ export default function ExpressVydajClient({
   initialMeal
 }: {
   language?: AppLanguage
+  currentUserId: string
   userName: string
   groups: RegistrationGroupOption[]
   canSelectDateMeal?: boolean
@@ -152,6 +156,8 @@ export default function ExpressVydajClient({
   const allPeopleSelected = allPersonIds.length > 0 && selectedIds.length === allPersonIds.length
   const allPickupSelected = allPickupPersonIds.length > 0 && pickupUserIds.length === allPickupPersonIds.length
   const issueList = data?.issues || []
+  const currentUserCanPickup = !!currentUserId && pickupUserIds.includes(currentUserId)
+  const currentIssuedCount = Number(data?.issue?.issuedCount || 0)
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
@@ -161,6 +167,10 @@ export default function ExpressVydajClient({
   useEffect(() => {
     if (!redirectAfterCountdown || !data?.issue?.validAfter) return
     if (Date.parse(data.issue.validAfter) > Date.now()) return
+    if (!currentUserCanPickup) {
+      setRedirectAfterCountdown(false)
+      return
+    }
 
     const messageTimeout = window.setTimeout(() => {
       setRedirectingToQr(true)
@@ -175,7 +185,7 @@ export default function ExpressVydajClient({
       window.clearTimeout(messageTimeout)
       window.clearTimeout(redirectTimeout)
     }
-  }, [data?.issue?.validAfter, redirectAfterCountdown, router, nowMs])
+  }, [currentUserCanPickup, data?.issue?.validAfter, redirectAfterCountdown, router, nowMs])
 
   useEffect(() => {
     return () => {
@@ -224,12 +234,13 @@ export default function ExpressVydajClient({
 
       if (json.date && json.date !== selectedDate) setSelectedDate(json.date)
       if (json.meal && json.meal !== selectedMeal) setSelectedMeal(json.meal)
+      const loadedPickupUserIds = Array.isArray(json.pickupUserIds) ? json.pickupUserIds : []
       const loadedCountdownActive = !!json.issue?.validAfter && Date.parse(json.issue.validAfter) > Date.now()
       setData(json)
       setSelectedIds(Array.isArray(json.selectedIds) ? json.selectedIds : [])
-      setPickupUserIds(Array.isArray(json.pickupUserIds) ? json.pickupUserIds : [])
+      setPickupUserIds(loadedPickupUserIds)
       setPickupOpen(false)
-      setRedirectAfterCountdown(loadedCountdownActive)
+      setRedirectAfterCountdown(loadedCountdownActive && loadedPickupUserIds.includes(currentUserId))
       setEditingIssue(!json.issue)
       setActiveIssueId(json.issue?.id || '')
     } catch (err: any) {
@@ -347,7 +358,8 @@ export default function ExpressVydajClient({
               status: json.issue.status,
               validAfter: json.issue.validAfter,
               selectedCount: Array.isArray(json.selectedIds) ? json.selectedIds.length : selectedIds.length,
-              pickupCount: Array.isArray(json.pickupUserIds) ? json.pickupUserIds.length : pickupUserIds.length
+              pickupCount: Array.isArray(json.pickupUserIds) ? json.pickupUserIds.length : pickupUserIds.length,
+              issuedCount: Number(json.issue.issuedCount || 0)
             },
             ...(current?.issues || []).filter(issue => issue.id !== json.issue.id)
           ]
@@ -360,18 +372,29 @@ export default function ExpressVydajClient({
       setActiveIssueId(json.issue?.id || activeIssueId)
       if (json.date && json.date !== selectedDate) setSelectedDate(json.date)
       if (json.meal && json.meal !== selectedMeal) setSelectedMeal(json.meal)
+      const savedPickupUserIds = Array.isArray(json.pickupUserIds) ? json.pickupUserIds : pickupUserIds
+      const shouldOpenQr = savedPickupUserIds.includes(currentUserId)
       setSelectedIds(Array.isArray(json.selectedIds) ? json.selectedIds : selectedIds)
-      setPickupUserIds(Array.isArray(json.pickupUserIds) ? json.pickupUserIds : pickupUserIds)
+      setPickupUserIds(savedPickupUserIds)
       const savedValidAfter = json.issue?.validAfter || null
       const savedCountdownActive = !!savedValidAfter && Date.parse(savedValidAfter) > Date.now()
 
       if (savedCountdownActive) {
-        setRedirectAfterCountdown(true)
+        setRedirectAfterCountdown(shouldOpenQr)
         setEditingIssue(false)
-        setMessage(t('Skupinový expres výdaj je pripravený. Začne platiť po odpočte.', 'Group express issue is ready. It will become valid after the countdown.'))
+        setMessage(shouldOpenQr
+          ? t('Skupinový expres výdaj je pripravený. Začne platiť po odpočte.', 'Group express issue is ready. It will become valid after the countdown.')
+          : t('Skupinový expres výdaj je pripravený. QR kód sa neotvorí, lebo nie si medzi osobami Prevezme.', 'Group express issue is ready. QR code will not open because you are not in Pickup.')
+        )
         setMessageType('ok')
       } else {
         setRedirectAfterCountdown(false)
+        if (!shouldOpenQr) {
+          setEditingIssue(false)
+          setMessage(t('Skupinový expres výdaj je uložený a platný. QR kód sa neotvorí, lebo nie si medzi osobami Prevezme.', 'Group express issue is saved and valid. QR code will not open because you are not in Pickup.'))
+          setMessageType('ok')
+          return
+        }
         redirectToQrSoon(t('Skupinový expres výdaj je uložený a platný. Presmerovávam na Môj QR kód.', 'Group express issue is saved and valid. Redirecting to My QR code.'))
       }
     } catch (err: any) {
@@ -558,6 +581,12 @@ export default function ExpressVydajClient({
               {issueList.map(issue => {
                 const active = data.issue?.id === issue.id
                 const waiting = !!issue.validAfter && Date.parse(issue.validAfter) > nowMs
+                const issued = Number(issue.issuedCount || 0)
+                const statusLabel = issued > 0
+                  ? `${t('Vydaných', 'Issued')} ${issued}`
+                  : waiting
+                    ? `${t('Platí o', 'Valid in')} ${remainingLabel(issue.validAfter, nowMs)}`
+                    : t('Platný', 'Valid')
 
                 return (
                   <button
@@ -572,7 +601,7 @@ export default function ExpressVydajClient({
                   >
                     <span style={styles.issueListItemTitle}>{issue.title}</span>
                     <span style={styles.issueListItemMeta}>
-                      {waiting ? `${t('Platí o', 'Valid in')} ${remainingLabel(issue.validAfter, nowMs)}` : t('Platný', 'Valid')} · {issue.selectedCount} {t('osôb', 'people')} · {issue.pickupCount} {t('prevezme', 'pickup')}
+                      {statusLabel} · {t('Ozn.', 'Sel.')} {issue.selectedCount} · {t('Prevezme', 'Pickup')} {issue.pickupCount}
                     </span>
                   </button>
                 )
@@ -594,10 +623,6 @@ export default function ExpressVydajClient({
             <div className="express-counter-box" style={styles.metaBox}>
               <span>{t('Prevezme', 'Pickup')}</span>
               <b>{pickupUserIds.length}</b>
-            </div>
-            <div className="express-counter-box" style={styles.metaBox}>
-              <span>{t('Vydateľných', 'Issuable')}</span>
-              <b>{data.people.length}</b>
             </div>
           </div>
         )}
@@ -624,11 +649,13 @@ export default function ExpressVydajClient({
             <div style={styles.statusPanelStats}>
               <div style={styles.statusPanelStatBox}><span>{t('Označených', 'Selected')}</span><b>{selectedCount}</b></div>
               <div style={styles.statusPanelStatBox}><span>{t('Prevezme', 'Pickup')}</span><b>{pickupUserIds.length}</b></div>
-              <div style={styles.statusPanelStatBox}><span>{t('Vydateľných', 'Issuable')}</span><b>{data.people.length}</b></div>
+              {currentIssuedCount > 0 && (
+                <div style={styles.statusPanelStatBox}><span>{t('Vydaných', 'Issued')}</span><b>{currentIssuedCount}</b></div>
+              )}
             </div>
 
             <div style={styles.statusPanelActions}>
-              {!countdownActive && (
+              {!countdownActive && currentUserCanPickup && (
                 <button type="button" onClick={() => router.push('/dashboard/qr')} disabled={saving || cancelling} style={styles.statusPrimaryButton}>
                   {t('Môj QR kód', 'My QR code')}
                 </button>
@@ -990,7 +1017,7 @@ const styles: Record<string, CSSProperties> = {
   },
   statusPanelStats: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))',
     gap: 8
   },
   statusPanelStatBox: {
@@ -1147,9 +1174,9 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid #e1deea',
     borderRadius: 16,
     background: '#fbfbfd',
-    padding: 10,
+    padding: 8,
     display: 'grid',
-    gap: 9
+    gap: 7
   },
   issueListHeader: {
     display: 'flex',
@@ -1182,8 +1209,8 @@ const styles: Record<string, CSSProperties> = {
   },
   issueList: {
     display: 'grid',
-    gap: 6,
-    maxHeight: 180,
+    gap: 5,
+    maxHeight: 150,
     overflowY: 'auto',
     paddingRight: 2
   },
@@ -1192,9 +1219,11 @@ const styles: Record<string, CSSProperties> = {
     border: '1px solid #e1deea',
     borderRadius: 12,
     background: '#fff',
-    padding: '9px 10px',
+    padding: '7px 9px',
     display: 'grid',
-    gap: 3,
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    alignItems: 'center',
+    gap: 8,
     textAlign: 'left',
     fontFamily: 'Arial, Helvetica, sans-serif',
     color: '#211b35'
@@ -1209,7 +1238,7 @@ const styles: Record<string, CSSProperties> = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 950
   },
   issueListItemMeta: {
@@ -1217,9 +1246,10 @@ const styles: Record<string, CSSProperties> = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 850,
-    color: '#6b667c'
+    color: '#6b667c',
+    textAlign: 'right'
   },
   issueListEmpty: {
     border: '1px dashed #d7d3e8',
@@ -1233,7 +1263,7 @@ const styles: Record<string, CSSProperties> = {
   },
   metaGrid: {
     display: 'grid',
-    gridTemplateColumns: '2fr 1fr 1fr 1fr',
+    gridTemplateColumns: '2fr 1fr 1fr',
     gap: 8
   },
   metaBox: {

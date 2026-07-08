@@ -91,6 +91,7 @@ export default async function ExpressVydajPage() {
   return (
     <ExpressVydajClient
       language={language}
+      currentUserId={user.id}
       userName={`${user.meno || ''} ${user.priezvisko || ''}`.trim()}
       groups={groups}
       canSelectDateMeal={canSelectDateMeal}

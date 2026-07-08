@@ -408,6 +408,17 @@ async function loadIssuePeople(issueId: string) {
   })
 }
 
+function issuePeopleCounts(people: Array<IssuablePerson & { itemStatus?: string }>) {
+  return people.reduce(
+    (counts, person) => {
+      if (person.itemStatus === 'PLANNED') counts.selectedCount += 1
+      if (person.itemStatus === 'BULK_ISSUED' || person.itemStatus === 'INDIVIDUAL_ISSUED') counts.issuedCount += 1
+      return counts
+    },
+    { selectedCount: 0, issuedCount: 0 }
+  )
+}
+
 function comparePeople(a: IssuablePerson, b: IssuablePerson) {
   return (
     cleanText(a.lastName).localeCompare(cleanText(b.lastName), 'sk', { sensitivity: 'base' }) ||
@@ -466,6 +477,9 @@ export async function GET(req: NextRequest) {
     const selectedPeople = issue
       ? await loadIssuePeople(issue.id)
       : []
+    const selectedIssueCounts = issue
+      ? issuePeopleCounts(selectedPeople)
+      : { selectedCount: 0, issuedCount: 0 }
     const selectedIds = selectedPeople
       .filter(person => person.itemStatus === 'PLANNED')
       .map(person => person.id)
@@ -487,11 +501,12 @@ export async function GET(req: NextRequest) {
         id: issue.id,
         title: issue.title,
         status: issue.status,
-        validAfter: issue.valid_after
+        validAfter: issue.valid_after,
+        issuedCount: selectedIssueCounts.issuedCount
       } : null,
       issues: await Promise.all(expressIssues.map(async (item: any) => {
         const itemPeople = await loadIssuePeople(item.id)
-        const plannedPeople = itemPeople.filter(person => person.itemStatus === 'PLANNED')
+        const counts = issuePeopleCounts(itemPeople)
         const pickupUserIds = await loadPickupUsers(item.id)
 
         return {
@@ -499,8 +514,9 @@ export async function GET(req: NextRequest) {
           title: item.title,
           status: item.status,
           validAfter: item.valid_after,
-          selectedCount: plannedPeople.length,
-          pickupCount: pickupUserIds.length
+          selectedCount: counts.selectedCount,
+          pickupCount: pickupUserIds.length,
+          issuedCount: counts.issuedCount
         }
       })),
       people: issuablePeople,
@@ -737,6 +753,7 @@ export async function POST(req: NextRequest) {
 
     const refreshedPeople = await loadIssuePeople(issue.id)
     const plannedPeople = refreshedPeople.filter(person => person.itemStatus === 'PLANNED')
+    const refreshedCounts = issuePeopleCounts(refreshedPeople)
 
     return NextResponse.json({
       ok: true,
@@ -744,7 +761,8 @@ export async function POST(req: NextRequest) {
         id: issue.id,
         title: issue.title || title,
         status: nextIssueState.status,
-        validAfter: nextIssueState.validAfter
+        validAfter: nextIssueState.validAfter,
+        issuedCount: refreshedCounts.issuedCount
       },
       date,
       meal,
