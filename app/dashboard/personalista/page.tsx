@@ -583,7 +583,7 @@ export default async function PersonalistaPage({
   const groupsById = new Map<string, any>()
   const { data: registrationGroupsData } = await supabaseServer
     .from('registration_groups')
-    .select('id, name, active')
+    .select('id, name, active, production_village_dinner')
     .order('name', { ascending: true })
 
   const registrationGroups = registrationGroupsData || []

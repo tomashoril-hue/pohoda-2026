@@ -14,6 +14,9 @@ type GroupItem = {
 type RegistrationGroupItem = {
   id: string
   name: string
+  active?: boolean
+  productionVillageDinner?: boolean
+  production_village_dinner?: boolean
 }
 
 type QrWristbandRuleRange = {
@@ -2012,6 +2015,10 @@ export default function PersonalistaClient({
   const selectedBulkRegistrationGroup = useMemo(() => {
     return registrationGroups.find(group => group.id === bulkRegistrationEntitlementsForm.registrationGroupId) || null
   }, [registrationGroups, bulkRegistrationEntitlementsForm.registrationGroupId])
+  const selectedBulkRegistrationGroupProductionVillageDinner = !!(
+    selectedBulkRegistrationGroup?.productionVillageDinner ||
+    selectedBulkRegistrationGroup?.production_village_dinner
+  )
   const selectedBulkRegistrationGroupPeopleCount = useMemo(() => {
     if (!bulkRegistrationEntitlementsForm.registrationGroupId) return 0
 
@@ -3136,6 +3143,49 @@ export default function PersonalistaClient({
       if (json.group?.id) {
         selectManagedRegistrationGroup(json.group.id)
       }
+      router.refresh()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setRegistrationGroupMessage('Chyba spojenia so serverom: ' + message)
+      setRegistrationGroupMessageType('error')
+    } finally {
+      setRegistrationGroupLoading(false)
+    }
+  }
+
+  const updateRegistrationGroupProductionVillageDinner = async (enabled: boolean) => {
+    if (!selectedBulkRegistrationGroup?.id) {
+      setRegistrationGroupMessage('Vyber registracnu skupinu.')
+      setRegistrationGroupMessageType('error')
+      return
+    }
+
+    setRegistrationGroupLoading(true)
+    setRegistrationGroupMessage('')
+    setRegistrationGroupMessageType('')
+
+    try {
+      const res = await fetch('/api/personalista/registration-groups', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId: selectedBulkRegistrationGroup.id,
+          productionVillageDinner: enabled
+        })
+      })
+      const json = await res.json()
+
+      if (!res.ok || json.error) {
+        setRegistrationGroupMessage(json.error || 'Nastavenie sa nepodarilo ulozit.')
+        setRegistrationGroupMessageType('error')
+        return
+      }
+
+      setRegistrationGroupMessage(enabled
+        ? 'Vecera Production Village bola zapnuta pre vybranu skupinu.'
+        : 'Vecera Production Village bola vypnuta pre vybranu skupinu.'
+      )
+      setRegistrationGroupMessageType('ok')
       router.refresh()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -5598,6 +5648,19 @@ export default function PersonalistaClient({
               </span>
               <span style={styles.optionHint}>
                 Osob vo vybranej skupine: {selectedBulkRegistrationGroupAllPeopleCount}
+              </span>
+              <label style={styles.checkRow}>
+                <input
+                  type="checkbox"
+                  checked={selectedBulkRegistrationGroupProductionVillageDinner}
+                  onChange={event => updateRegistrationGroupProductionVillageDinner(event.target.checked)}
+                  disabled={registrationGroupLoading || !selectedBulkRegistrationGroup}
+                  style={styles.checkbox}
+                />
+                <span>Vecera Production Village</span>
+              </label>
+              <span style={styles.optionHint}>
+                Na dashboarde sa vecera oznaci cervenou a ukaze napovedu k miestu vydaja.
               </span>
             </div>
           </div>

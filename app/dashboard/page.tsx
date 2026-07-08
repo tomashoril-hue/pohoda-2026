@@ -123,6 +123,14 @@ function isProductionVillageDinnerGroup(groupName: string) {
   return PRODUCTION_VILLAGE_DINNER_GROUPS.some(name => normalizeGroupName(name) === normalizedGroupName)
 }
 
+function activeRegistrationGroupProductionVillageDinner(period: any, fallbackGroup: any) {
+  const group = Array.isArray(period?.registration_groups)
+    ? period.registration_groups[0]
+    : period?.registration_groups
+
+  return Boolean(group?.production_village_dinner || fallbackGroup?.production_village_dinner)
+}
+
 function fullName(person: any) {
   return `${person?.meno || ''} ${person?.priezvisko || ''}`.trim()
 }
@@ -319,7 +327,8 @@ export default async function DashboardPage({
         valid_from,
         valid_to,
         registration_groups (
-          name
+          name,
+          production_village_dinner
         )
       `)
       .eq('user_id', user.id)
@@ -331,7 +340,7 @@ export default async function DashboardPage({
     user.registration_group_id
       ? supabaseServer
         .from('registration_groups')
-        .select('name')
+        .select('name, production_village_dinner')
         .eq('id', user.registration_group_id)
         .maybeSingle()
       : Promise.resolve({ data: null }),
@@ -479,7 +488,8 @@ export default async function DashboardPage({
   const hasPendingInvites = !!pendingInvites && pendingInvites.length > 0
   const hasEntitlementRow = !!entitlement
   const registrationGroupName = activeRegistrationGroupName(activeRegistrationPeriod, fallbackRegistrationGroup)
-  const hasProductionVillageDinner = isProductionVillageDinnerGroup(registrationGroupName)
+  const hasProductionVillageDinner = activeRegistrationGroupProductionVillageDinner(activeRegistrationPeriod, fallbackRegistrationGroup) ||
+    isProductionVillageDinnerGroup(registrationGroupName)
   const canOpenPersonalista = globalAccess.canUsePersonalista
   const canOpenFoodIssue = globalAccess.canUseFoodIssue
   const canOpenMenuDeadline = globalAccess.isAdmin
