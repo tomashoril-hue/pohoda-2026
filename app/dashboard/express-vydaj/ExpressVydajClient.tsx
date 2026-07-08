@@ -933,44 +933,45 @@ const styles: Record<string, CSSProperties> = {
   },
   issueStatusPanelWaiting: {
     border: '1px solid #f59e0b',
-    borderRadius: 18,
-    background: 'linear-gradient(180deg, #fff7ed 0%, #ffffff 100%)',
-    padding: 14,
+    borderRadius: 12,
+    background: '#fffaf0',
+    padding: 8,
     display: 'grid',
-    gap: 12,
-    boxShadow: '0 12px 28px rgba(146, 64, 14, 0.12)'
+    gap: 6,
+    boxShadow: 'none'
   },
   issueStatusPanelReady: {
     border: '1px solid #86efac',
-    borderRadius: 18,
-    background: 'linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%)',
-    padding: 14,
+    borderRadius: 12,
+    background: '#f7fff9',
+    padding: 8,
     display: 'grid',
-    gap: 12,
-    boxShadow: '0 12px 28px rgba(22, 101, 52, 0.12)'
+    gap: 6,
+    boxShadow: 'none'
   },
   statusPanelHeader: {
     display: 'flex',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12
+    gap: 8
   },
   statusPanelEyebrow: {
+    display: 'none',
     fontSize: 12,
     fontWeight: 950,
     color: '#5b21b6',
     textTransform: 'uppercase'
   },
   statusPanelTitle: {
-    margin: '3px 0 0',
-    fontSize: 28,
-    lineHeight: 1,
+    margin: 0,
+    fontSize: 15,
+    lineHeight: 1.1,
     fontWeight: 950,
     color: '#211b35'
   },
   statusPanelMeta: {
-    marginTop: 5,
-    fontSize: 13,
+    marginTop: 2,
+    fontSize: 11,
     fontWeight: 900,
     color: '#5b5870'
   },
@@ -996,74 +997,69 @@ const styles: Record<string, CSSProperties> = {
   },
   inlineCountdownBox: {
     border: '1px solid #fed7aa',
-    borderRadius: 16,
+    borderRadius: 10,
     background: '#fff7ed',
-    padding: '12px 14px',
-    display: 'grid',
-    justifyItems: 'center',
-    gap: 4,
+    padding: '6px 8px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 8,
     color: '#92400e',
+    fontSize: 11,
     fontWeight: 950
   },
   inlineReadyBox: {
-    border: '1px solid #bbf7d0',
-    borderRadius: 16,
-    background: '#dcfce7',
-    padding: '12px 14px',
-    color: '#166534',
-    fontSize: 17,
-    fontWeight: 950,
-    textAlign: 'center'
+    display: 'none'
   },
   statusPanelStats: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))',
-    gap: 8
+    gridTemplateColumns: 'repeat(auto-fit, minmax(74px, 1fr))',
+    gap: 5
   },
   statusPanelStatBox: {
     border: '1px solid #e1deea',
-    borderRadius: 14,
+    borderRadius: 10,
     background: '#fff',
-    padding: '10px 8px',
+    padding: '5px 7px',
     display: 'grid',
-    gap: 3,
+    gap: 1,
     textAlign: 'center',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: 900,
     color: '#5b5870'
   },
   statusPanelActions: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-    gap: 8
+    display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 5
   },
   statusPrimaryButton: {
     border: '1px solid #5b21b6',
     borderRadius: 999,
-    padding: '11px 14px',
+    padding: '7px 10px',
     background: '#7417e8',
     color: '#fff',
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: 950,
     fontFamily: 'Arial, Helvetica, sans-serif'
   },
   statusSecondaryButton: {
     border: '1px solid #d7d3e8',
     borderRadius: 999,
-    padding: '11px 14px',
+    padding: '7px 10px',
     background: '#fff',
     color: '#211b35',
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: 950,
     fontFamily: 'Arial, Helvetica, sans-serif'
   },
   statusDangerButton: {
     border: '1px solid #fecaca',
     borderRadius: 999,
-    padding: '11px 14px',
+    padding: '7px 10px',
     background: '#fee2e2',
     color: '#991b1b',
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: 950,
     fontFamily: 'Arial, Helvetica, sans-serif'
   },
