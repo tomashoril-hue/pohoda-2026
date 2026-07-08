@@ -5641,14 +5641,14 @@ export default function PersonalistaClient({
               </select>
             </label>
 
-            <div style={styles.optionBox}>
-              <div style={styles.optionTitle}>Prehľad</div>
-              <span style={styles.optionHint}>
-                Registračných skupín: {registrationGroups.length}
-              </span>
-              <span style={styles.optionHint}>
-                Osob vo vybranej skupine: {selectedBulkRegistrationGroupAllPeopleCount}
-              </span>
+            <div
+              style={{
+                ...styles.optionBox,
+                borderColor: selectedBulkRegistrationGroupProductionVillageDinner ? '#fca5a5' : '#e5e7eb',
+                background: selectedBulkRegistrationGroupProductionVillageDinner ? '#fef2f2' : '#f9fafb'
+              }}
+            >
+              <div style={styles.optionTitle}>Vecera Production Village</div>
               <label style={styles.checkRow}>
                 <input
                   type="checkbox"
@@ -5657,10 +5657,20 @@ export default function PersonalistaClient({
                   disabled={registrationGroupLoading || !selectedBulkRegistrationGroup}
                   style={styles.checkbox}
                 />
-                <span>Vecera Production Village</span>
+                <span>Zapnut pre vybranu registracnu skupinu</span>
               </label>
               <span style={styles.optionHint}>
                 Na dashboarde sa vecera oznaci cervenou a ukaze napovedu k miestu vydaja.
+              </span>
+            </div>
+
+            <div style={styles.optionBox}>
+              <div style={styles.optionTitle}>Prehľad</div>
+              <span style={styles.optionHint}>
+                Registračných skupín: {registrationGroups.length}
+              </span>
+              <span style={styles.optionHint}>
+                Osob vo vybranej skupine: {selectedBulkRegistrationGroupAllPeopleCount}
               </span>
             </div>
           </div>
