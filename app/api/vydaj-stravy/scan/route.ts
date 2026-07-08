@@ -194,6 +194,10 @@ function isProductionVillageDinnerGroup(group: any) {
   return Boolean(group?.production_village_dinner)
 }
 
+function classicDinnerBlockedForProductionVillageDevice(typJedla: string, access: { canIssueProductionVillageDinner: boolean }, isProductionVillageDinner: boolean) {
+  return typJedla === 'VECERA' && access.canIssueProductionVillageDinner && !isProductionVillageDinner
+}
+
 async function findUserIdByQr(qrCode: string) {
   const [qrResult, userResult] = await Promise.all([
     supabaseServer
@@ -1010,6 +1014,7 @@ export async function POST(req: NextRequest) {
       if (issue.datum !== datum || issue.typ_jedla !== typJedla) return false
       if (issue.status !== 'READY' && issue.status !== 'WAITING') return false
       if (!access.global && !access.groupIds.includes(issue.group_id)) return false
+      if (classicDinnerBlockedForProductionVillageDevice(typJedla, access, false)) return false
 
       return true
     })
@@ -1189,6 +1194,7 @@ export async function POST(req: NextRequest) {
         if (issue.datum !== datum || issue.typ_jedla !== typJedla) return false
         if (!isActiveIssue(issue, now)) return false
         if (typJedla === 'VECERA' && isProductionVillageDinnerGroup(registrationGroupOf(issue)) && !access.canIssueProductionVillageDinner) return false
+        if (classicDinnerBlockedForProductionVillageDevice(typJedla, access, isProductionVillageDinnerGroup(registrationGroupOf(issue)))) return false
         return true
       })
       const activeRegistrationIssueIds = activeRegistrationIssues.map((issue: any) => issue.id)
@@ -1492,6 +1498,20 @@ export async function POST(req: NextRequest) {
         }, { status: 403 }, { mode: 'REGISTRATION_GROUP_BULK', result: 'PRODUCTION_VILLAGE_DEVICE_REQUIRED' })
       }
 
+      if (classicDinnerBlockedForProductionVillageDevice(typJedla, access, isProductionVillageDinnerGroup(relatedGroup))) {
+        return timedScanJson({
+          ok: false,
+          status: 'CLASSIC_DINNER_DEVICE_REQUIRED',
+          tone: 'error',
+          person: {
+            id: profile.id,
+            fullName: fullName(profile) || profile.email || '',
+            email: profile.email || ''
+          },
+          message: 'Toto je klasicka vecera. Pouzi zariadenie pre bezny vydaj vecere.'
+        }, { status: 403 }, { mode: 'REGISTRATION_GROUP_BULK', result: 'CLASSIC_DINNER_DEVICE_REQUIRED' })
+      }
+
       const { data: bulkItems, error: bulkItemsError } = await supabaseServer
         .from('registration_group_issue_items')
         .select('id, user_id, volba')
@@ -1763,6 +1783,31 @@ export async function POST(req: NextRequest) {
         },
         message: 'Tato vecera sa vydava v Production Village. Pouzi zariadenie s opravnenim PRODUCTION_VILLAGE_VECER.'
       }, { status: 403 }, { mode: 'REGISTRATION_GROUP_INDIVIDUAL', result: 'PRODUCTION_VILLAGE_DEVICE_REQUIRED' })
+    }
+
+    const effectiveProductionVillageDinner =
+      relatedRegistrationIssueNeedsProductionVillageDinnerDevice ||
+      (!relatedRegistrationIssue?.id && scannedPersonNeedsProductionVillageDinnerDevice)
+
+    if (classicDinnerBlockedForProductionVillageDevice(typJedla, access, effectiveProductionVillageDinner)) {
+      return timedScanJson({
+        ok: false,
+        status: 'CLASSIC_DINNER_DEVICE_REQUIRED',
+        tone: 'error',
+        person: {
+          id: profile.id,
+          fullName: fullName(profile) || profile.email || '',
+          email: profile.email || ''
+        },
+        message: 'Toto je klasicka vecera. Pouzi zariadenie pre bezny vydaj vecere.'
+      }, { status: 403 }, {
+        mode: relatedRegistrationIssue?.id
+          ? 'REGISTRATION_GROUP_INDIVIDUAL'
+          : relatedIssue?.id
+            ? 'LEGACY_INDIVIDUAL'
+            : 'INDIVIDUAL',
+        result: 'CLASSIC_DINNER_DEVICE_REQUIRED'
+      })
     }
 
     if (selectedBulkOption && relatedIssue?.id) {

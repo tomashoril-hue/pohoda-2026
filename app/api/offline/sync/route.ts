@@ -345,6 +345,21 @@ async function processIssue(event: OfflineSyncEvent, actorId: string, access: Gl
     }
   }
 
+  if (meal === 'VECERA' && access.isProductionVillageDinnerIssue) {
+    const productionVillageDinnerRequired = event.registrationGroupIssueId
+      ? await issueGroupRequiresProductionVillageDinner(event.registrationGroupIssueId)
+      : await userRequiresProductionVillageDinner(event.personId, event.mealDate)
+
+    if (!productionVillageDinnerRequired) {
+      return conflict(
+        event,
+        actorId,
+        'CONFLICT_CLASSIC_DINNER_DEVICE_REQUIRED',
+        'Toto je klasicka vecera. Synchronizovat ju moze iba zariadenie pre bezny vydaj vecere.'
+      )
+    }
+  }
+
   const activeIssuedRows = await loadActiveIssuedRows(issuedPersonIds, event.mealDate, meal)
   if (activeIssuedRows.length > 0) {
     return conflict(event, actorId, 'CONFLICT_DUPLICATE_ISSUE', 'Niektorá osoba už má jedlo vydané na serveri.')

@@ -403,6 +403,7 @@ export async function GET(req: NextRequest) {
       if (!isIssueActive(issue, now)) return false
       const group = relationOne(issue.registration_groups)
       if (meal === 'VECERA' && group?.production_village_dinner && !access.isProductionVillageDinnerIssue) return false
+      if (meal === 'VECERA' && !group?.production_village_dinner && access.isProductionVillageDinnerIssue) return false
       return true
     })
     const issueIds = issues.map((issue: any) => issue.id).filter(Boolean)
@@ -451,9 +452,12 @@ export async function GET(req: NextRequest) {
     ])
 
     const usersById = new Map(users.map((user: any) => [user.id, user]))
-    if (meal === 'VECERA' && !access.isProductionVillageDinnerIssue) {
+    if (meal === 'VECERA') {
       const productionVillageUserIds = await loadProductionVillageDinnerUserIds(individualUserIds, date, usersById)
-      individualUserIds = individualUserIds.filter(userId => !productionVillageUserIds.has(userId))
+      individualUserIds = individualUserIds.filter(userId => {
+        const productionVillageDinner = productionVillageUserIds.has(userId)
+        return access.isProductionVillageDinnerIssue ? productionVillageDinner : !productionVillageDinner
+      })
     }
     const registrationGroupNameByUserId = await loadRegistrationGroupNamesByUserId(individualUserIds, date, usersById)
     const issuesById = new Map(issues.map((issue: any) => [issue.id, issue]))
