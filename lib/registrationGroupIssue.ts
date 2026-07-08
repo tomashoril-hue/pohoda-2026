@@ -107,7 +107,7 @@ function registrationGroupForDate(user: any, periods: any[], date: string) {
 export async function getIssueAccess(actorId: string, registrationGroupId: string): Promise<IssueAccess> {
   const access = await getGlobalAccess(actorId)
 
-  if (access.isAdmin) return 'ADMIN'
+  if (access.isAdmin || access.isPersonalista) return 'ADMIN'
 
   if (await canManageRegistrationGroup(actorId, registrationGroupId)) {
     return 'MANAGER'
