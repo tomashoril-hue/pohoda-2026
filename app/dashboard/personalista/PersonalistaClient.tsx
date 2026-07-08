@@ -747,7 +747,8 @@ export default function PersonalistaClient({
     menuKiosk: false,
     offlineObsluha: false,
     selfOrderingMeal: false,
-    adminRegSkupiny: false
+    adminRegSkupiny: false,
+    productionVillageDinner: false
   })
   const [accessCodeLoading, setAccessCodeLoading] = useState(false)
   const [accessCodeLoaded, setAccessCodeLoaded] = useState(false)
@@ -1893,7 +1894,8 @@ export default function PersonalistaClient({
       menuKiosk: selectedPerson.globalRoles.includes('MENU_KIOSK'),
       offlineObsluha: selectedPerson.globalRoles.includes('OFFLINE_OBSLUHA'),
       selfOrderingMeal: selectedPerson.globalRoles.includes('SAMOSTATNE_OBJEDNAVANIE_STRAVY'),
-      adminRegSkupiny: selectedPerson.globalRoles.includes('ADMIN_REG_SKUPINY')
+      adminRegSkupiny: selectedPerson.globalRoles.includes('ADMIN_REG_SKUPINY'),
+      productionVillageDinner: selectedPerson.globalRoles.includes('PRODUCTION_VILLAGE_VECER')
     })
     const preservedMessage = preservedDetailMessageRef.current
 
@@ -4116,7 +4118,8 @@ export default function PersonalistaClient({
       ...(roleForm.menuKiosk ? ['MENU_KIOSK'] : []),
       ...(roleForm.offlineObsluha ? ['OFFLINE_OBSLUHA'] : []),
       ...(roleForm.selfOrderingMeal ? ['SAMOSTATNE_OBJEDNAVANIE_STRAVY'] : []),
-      ...(roleForm.adminRegSkupiny ? ['ADMIN_REG_SKUPINY'] : [])
+      ...(roleForm.adminRegSkupiny ? ['ADMIN_REG_SKUPINY'] : []),
+      ...(roleForm.productionVillageDinner ? ['PRODUCTION_VILLAGE_VECER'] : [])
     ]
 
     postDetailAction(
@@ -8508,6 +8511,20 @@ export default function PersonalistaClient({
                         style={styles.checkbox}
                       />
                       <span>ADMIN_REG_SKUPINY</span>
+                    </label>
+
+                    <label style={styles.checkRow}>
+                      <input
+                        type="checkbox"
+                        checked={roleForm.productionVillageDinner}
+                        onChange={event => setRoleForm(prev => ({
+                          ...prev,
+                          productionVillageDinner: event.target.checked
+                        }))}
+                        disabled={detailLoading}
+                        style={styles.checkbox}
+                      />
+                      <span>PRODUCTION_VILLAGE_VECER</span>
                     </label>
                   </div>
 

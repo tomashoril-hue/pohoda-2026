@@ -151,8 +151,47 @@ async function issuerAccess(actorId: string) {
   return {
     global: globalAccess.canUseFoodIssue,
     groupIds: [] as string[],
-    canUse: globalAccess.canUseFoodIssue
+    canUse: globalAccess.canUseFoodIssue,
+    canIssueProductionVillageDinner: globalAccess.isProductionVillageDinnerIssue
   }
+}
+
+async function loadActiveRegistrationGroupForUser(userId: string, fallbackGroupId: string, date: string) {
+  const [{ data: periodRow, error: periodError }, fallbackResult] = await Promise.all([
+    supabaseServer
+      .from('user_registration_group_periods')
+      .select(`
+        registration_group_id,
+        registration_groups (
+          id,
+          name,
+          production_village_dinner
+        )
+      `)
+      .eq('user_id', userId)
+      .lte('valid_from', date)
+      .or(`valid_to.is.null,valid_to.gte.${date}`)
+      .order('valid_from', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    fallbackGroupId
+      ? supabaseServer
+        .from('registration_groups')
+        .select('id, name, production_village_dinner')
+        .eq('id', fallbackGroupId)
+        .maybeSingle()
+      : Promise.resolve({ data: null, error: null })
+  ])
+
+  if (periodError) throw new Error(periodError.message)
+  if (fallbackResult.error) throw new Error(fallbackResult.error.message)
+
+  const periodGroup = registrationGroupOf(periodRow)
+  return periodGroup || fallbackResult.data || null
+}
+
+function isProductionVillageDinnerGroup(group: any) {
+  return Boolean(group?.production_village_dinner)
 }
 
 async function findUserIdByQr(qrCode: string) {
@@ -738,7 +777,7 @@ export async function POST(req: NextRequest) {
     ] = await Promise.all([
       supabaseServer
         .from('users')
-        .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny')
+        .select('id, meno, priezvisko, email, telefon, typ_stravy, aktivny, registration_group_id')
         .eq('id', targetUserId)
         .maybeSingle(),
       supabaseServer
@@ -816,7 +855,9 @@ export async function POST(req: NextRequest) {
               status,
               valid_after,
               registration_groups (
-                name
+                id,
+                name,
+                production_village_dinner
               )
             )
           `)
@@ -837,7 +878,9 @@ export async function POST(req: NextRequest) {
               status,
               valid_after,
               registration_groups (
-                name
+                id,
+                name,
+                production_village_dinner
               )
             )
           `)
@@ -898,6 +941,28 @@ export async function POST(req: NextRequest) {
         },
         message: 'Blokovaný'
       }, { status: 403 })
+    }
+
+    const activeRegistrationGroup = await loadActiveRegistrationGroupForUser(
+      targetUserId,
+      clean(profile.registration_group_id),
+      datum
+    )
+    const scannedPersonNeedsProductionVillageDinnerDevice =
+      typJedla === 'VECERA' && isProductionVillageDinnerGroup(activeRegistrationGroup)
+
+    if (scannedPersonNeedsProductionVillageDinnerDevice && !access.canIssueProductionVillageDinner) {
+      return timedScanJson({
+        ok: false,
+        status: 'PRODUCTION_VILLAGE_DEVICE_REQUIRED',
+        tone: 'error',
+        person: {
+          id: profile.id,
+          fullName: fullName(profile) || profile.email || '',
+          email: profile.email || ''
+        },
+        message: 'Tato vecera sa vydava v Production Village. Pouzi zariadenie s opravnenim PRODUCTION_VILLAGE_VECER.'
+      }, { status: 403 }, { mode: 'INDIVIDUAL', result: 'PRODUCTION_VILLAGE_DEVICE_REQUIRED' })
     }
 
     const { data: alreadyIssued, error: alreadyIssuedError } = alreadyIssuedResult
@@ -1123,6 +1188,7 @@ export async function POST(req: NextRequest) {
       const activeRegistrationIssues = Array.from(registrationIssueMap.values()).filter((issue: any) => {
         if (issue.datum !== datum || issue.typ_jedla !== typJedla) return false
         if (!isActiveIssue(issue, now)) return false
+        if (typJedla === 'VECERA' && isProductionVillageDinnerGroup(registrationGroupOf(issue)) && !access.canIssueProductionVillageDinner) return false
         return true
       })
       const activeRegistrationIssueIds = activeRegistrationIssues.map((issue: any) => issue.id)
@@ -1412,6 +1478,20 @@ export async function POST(req: NextRequest) {
       const relatedIssue = selectedBulkOption.issue
       const relatedGroup = registrationGroupOf(relatedIssue)
 
+      if (typJedla === 'VECERA' && isProductionVillageDinnerGroup(relatedGroup) && !access.canIssueProductionVillageDinner) {
+        return timedScanJson({
+          ok: false,
+          status: 'PRODUCTION_VILLAGE_DEVICE_REQUIRED',
+          tone: 'error',
+          person: {
+            id: profile.id,
+            fullName: fullName(profile) || profile.email || '',
+            email: profile.email || ''
+          },
+          message: 'Tato vecera sa vydava v Production Village. Pouzi zariadenie s opravnenim PRODUCTION_VILLAGE_VECER.'
+        }, { status: 403 }, { mode: 'REGISTRATION_GROUP_BULK', result: 'PRODUCTION_VILLAGE_DEVICE_REQUIRED' })
+      }
+
       const { data: bulkItems, error: bulkItemsError } = await supabaseServer
         .from('registration_group_issue_items')
         .select('id, user_id, volba')
@@ -1662,12 +1742,28 @@ export async function POST(req: NextRequest) {
     const relatedIssue = selectedBulkOption?.issue || issueOf(relatedPlannedItem)
     const relatedGroup = groupOf(relatedIssue)
     const relatedRegistrationGroup = registrationGroupOf(relatedRegistrationIssue)
+    const relatedRegistrationIssueNeedsProductionVillageDinnerDevice =
+      typJedla === 'VECERA' && isProductionVillageDinnerGroup(relatedRegistrationGroup)
     const fallbackGroupId =
       relatedIssue?.group_id ||
       allowedTargetGroups[0]?.group_id ||
       null
 
     const sposob = selectedBulkOption ? 'HROMADNE' : 'INDIVIDUALNE'
+
+    if (relatedRegistrationIssueNeedsProductionVillageDinnerDevice && !access.canIssueProductionVillageDinner) {
+      return timedScanJson({
+        ok: false,
+        status: 'PRODUCTION_VILLAGE_DEVICE_REQUIRED',
+        tone: 'error',
+        person: {
+          id: profile.id,
+          fullName: fullName(profile) || profile.email || '',
+          email: profile.email || ''
+        },
+        message: 'Tato vecera sa vydava v Production Village. Pouzi zariadenie s opravnenim PRODUCTION_VILLAGE_VECER.'
+      }, { status: 403 }, { mode: 'REGISTRATION_GROUP_INDIVIDUAL', result: 'PRODUCTION_VILLAGE_DEVICE_REQUIRED' })
+    }
 
     if (selectedBulkOption && relatedIssue?.id) {
       const { data: bulkItems, error: bulkItemsError } = await supabaseServer

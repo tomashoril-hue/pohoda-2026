@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
-import { getGlobalAccess } from '@/lib/globalRoles'
+import { getGlobalAccess, type GlobalAccess } from '@/lib/globalRoles'
 import { checkActorRateLimit, checkRateLimit, rateLimitResponse } from '@/lib/rateLimit'
 import {
   cleanText,
@@ -252,7 +252,75 @@ async function assertIndividualEntitlement(event: OfflineSyncEvent, meal: MealTy
   }
 }
 
-async function processIssue(event: OfflineSyncEvent, actorId: string): Promise<EventResult> {
+async function issueGroupRequiresProductionVillageDinner(issueId: string) {
+  if (!issueId) return false
+
+  const { data, error } = await supabaseServer
+    .from('registration_group_issues')
+    .select(`
+      id,
+      registration_groups (
+        production_village_dinner
+      )
+    `)
+    .eq('id', issueId)
+    .maybeSingle()
+
+  if (error) throw error
+  const group = Array.isArray(data?.registration_groups)
+    ? data?.registration_groups[0]
+    : data?.registration_groups
+
+  return Boolean(group?.production_village_dinner)
+}
+
+async function userRequiresProductionVillageDinner(userId: string, date: string) {
+  if (!userId) return false
+
+  const { data: user, error: userError } = await supabaseServer
+    .from('users')
+    .select('id, registration_group_id')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (userError) throw userError
+
+  const [{ data: period, error: periodError }, fallbackResult] = await Promise.all([
+    supabaseServer
+      .from('user_registration_group_periods')
+      .select(`
+        registration_group_id,
+        registration_groups (
+          production_village_dinner
+        )
+      `)
+      .eq('user_id', userId)
+      .lte('valid_from', date)
+      .or(`valid_to.is.null,valid_to.gte.${date}`)
+      .order('valid_from', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    user?.registration_group_id
+      ? supabaseServer
+        .from('registration_groups')
+        .select('id, production_village_dinner')
+        .eq('id', user.registration_group_id)
+        .maybeSingle()
+      : Promise.resolve({ data: null, error: null })
+  ])
+
+  if (periodError) throw periodError
+  if (fallbackResult.error) throw fallbackResult.error
+
+  const periodGroup = Array.isArray(period?.registration_groups)
+    ? period?.registration_groups[0]
+    : period?.registration_groups
+  const group = periodGroup || fallbackResult.data
+
+  return Boolean(group?.production_village_dinner)
+}
+
+async function processIssue(event: OfflineSyncEvent, actorId: string, access: GlobalAccess): Promise<EventResult> {
   const meal = normalizeMeal(event.mealType)
   if (!meal || !event.personId) {
     return conflict(event, actorId, 'CONFLICT_INVALID_EVENT', 'Offline udalosť nemá povinné údaje.')
@@ -261,6 +329,21 @@ async function processIssue(event: OfflineSyncEvent, actorId: string): Promise<E
   const issuedPersonIds = event.issueAction === 'REGISTRATION_GROUP_BULK'
     ? uniqueClean(event.issuedPersonIds || [])
     : [event.personId]
+
+  if (meal === 'VECERA' && !access.isProductionVillageDinnerIssue) {
+    const productionVillageDinnerRequired = event.registrationGroupIssueId
+      ? await issueGroupRequiresProductionVillageDinner(event.registrationGroupIssueId)
+      : await userRequiresProductionVillageDinner(event.personId, event.mealDate)
+
+    if (productionVillageDinnerRequired) {
+      return conflict(
+        event,
+        actorId,
+        'CONFLICT_PRODUCTION_VILLAGE_DEVICE_REQUIRED',
+        'Tato vecera sa vydava v Production Village. Synchronizovat ju moze iba zariadenie s opravnenim PRODUCTION_VILLAGE_VECER.'
+      )
+    }
+  }
 
   const activeIssuedRows = await loadActiveIssuedRows(issuedPersonIds, event.mealDate, meal)
   if (activeIssuedRows.length > 0) {
@@ -507,14 +590,14 @@ async function processCancel(event: OfflineSyncEvent, actorId: string): Promise<
   return result
 }
 
-async function processEvent(event: OfflineSyncEvent, actorId: string): Promise<EventResult> {
+async function processEvent(event: OfflineSyncEvent, actorId: string, access: GlobalAccess): Promise<EventResult> {
   const existing = await existingResult(event.offlineEventId)
   if (existing) return existing
 
   try {
     return event.operation === 'CANCEL_ISSUE'
       ? await processCancel(event, actorId)
-      : await processIssue(event, actorId)
+      : await processIssue(event, actorId, access)
   } catch (err: any) {
     return {
       offlineEventId: event.offlineEventId,
@@ -555,7 +638,7 @@ export async function POST(req: NextRequest) {
     const results: EventResult[] = []
 
     for (const event of limitedEvents) {
-      results.push(await processEvent(event, actor.id))
+      results.push(await processEvent(event, actor.id, access))
     }
 
     return NextResponse.json({

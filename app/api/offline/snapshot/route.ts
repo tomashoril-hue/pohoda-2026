@@ -237,6 +237,61 @@ async function loadRegistrationGroupNamesByUserId(userIds: string[], date: strin
   return result
 }
 
+async function loadProductionVillageDinnerUserIds(userIds: string[], date: string, usersById: Map<string, any>) {
+  const periods: any[] = []
+
+  for (const idChunk of chunk(userIds)) {
+    const { data, error } = await supabaseServer
+      .from('user_registration_group_periods')
+      .select('id, user_id, registration_group_id, valid_from, valid_to')
+      .in('user_id', idChunk)
+      .lte('valid_from', date)
+      .or(`valid_to.is.null,valid_to.gte.${date}`)
+
+    if (error) throw error
+    periods.push(...(data || []))
+  }
+
+  const groupIdByUserId = new Map<string, string>()
+  const periodsByUserId = new Map<string, any[]>()
+
+  periods.forEach(period => {
+    const list = periodsByUserId.get(period.user_id) || []
+    list.push(period)
+    periodsByUserId.set(period.user_id, list)
+  })
+
+  userIds.forEach(userId => {
+    const period = (periodsByUserId.get(userId) || [])
+      .sort((a, b) => cleanText(b.valid_from).localeCompare(cleanText(a.valid_from)))[0]
+    const fallbackGroupId = cleanText(usersById.get(userId)?.registration_group_id)
+    const groupId = cleanText(period?.registration_group_id) || fallbackGroupId
+    if (groupId) groupIdByUserId.set(userId, groupId)
+  })
+
+  const groupIds = uniqueClean(Array.from(groupIdByUserId.values()))
+  const productionGroupIds = new Set<string>()
+
+  for (const groupChunk of chunk(groupIds)) {
+    const { data, error } = await supabaseServer
+      .from('registration_groups')
+      .select('id, production_village_dinner')
+      .in('id', groupChunk)
+
+    if (error) throw error
+    ;(data || []).forEach((group: any) => {
+      if (group.production_village_dinner) productionGroupIds.add(group.id)
+    })
+  }
+
+  return new Set(
+    userIds.filter(userId => {
+      const groupId = groupIdByUserId.get(userId)
+      return groupId ? productionGroupIds.has(groupId) : false
+    })
+  )
+}
+
 type QrIndexMode = 'GROUP_ISSUE' | 'INDIVIDUAL' | 'PICKUP_USER'
 
 function addQrIndexRows({
@@ -332,7 +387,8 @@ export async function GET(req: NextRequest) {
         updated_at,
         registration_groups:registration_groups!registration_group_issues_registration_group_id_fkey (
           id,
-          name
+          name,
+          production_village_dinner
         )
       `)
       .eq('datum', date)
@@ -343,7 +399,12 @@ export async function GET(req: NextRequest) {
     if (issuesError) throw issuesError
 
     const now = new Date()
-    const issues = (rawIssues || []).filter((issue: any) => isIssueActive(issue, now))
+    const issues = (rawIssues || []).filter((issue: any) => {
+      if (!isIssueActive(issue, now)) return false
+      const group = relationOne(issue.registration_groups)
+      if (meal === 'VECERA' && group?.production_village_dinner && !access.isProductionVillageDinnerIssue) return false
+      return true
+    })
     const issueIds = issues.map((issue: any) => issue.id).filter(Boolean)
 
     const snapshotId = randomUUID()
@@ -375,7 +436,7 @@ export async function GET(req: NextRequest) {
       loadIssuedUserIds(date, meal)
     ])
 
-    const individualUserIds = individualEntitlementUserIds
+    let individualUserIds = individualEntitlementUserIds
     const userIds = uniqueClean([
       ...itemRows.map((row: any) => row.user_id),
       ...pickupRows.map((row: any) => row.user_id),
@@ -390,6 +451,10 @@ export async function GET(req: NextRequest) {
     ])
 
     const usersById = new Map(users.map((user: any) => [user.id, user]))
+    if (meal === 'VECERA' && !access.isProductionVillageDinnerIssue) {
+      const productionVillageUserIds = await loadProductionVillageDinnerUserIds(individualUserIds, date, usersById)
+      individualUserIds = individualUserIds.filter(userId => !productionVillageUserIds.has(userId))
+    }
     const registrationGroupNameByUserId = await loadRegistrationGroupNamesByUserId(individualUserIds, date, usersById)
     const issuesById = new Map(issues.map((issue: any) => [issue.id, issue]))
     const qrRowsByCode = new Map<string, any>()

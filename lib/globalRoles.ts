@@ -1,6 +1,6 @@
 import { supabaseServer } from '@/lib/supabaseServer'
 
-export type GlobalRole = 'ADMIN' | 'PERSONALISTA' | 'VYDAJ' | 'ADMIN_VYDAJ' | 'GROUP_CREATOR' | 'WRISTBAND_KIOSK' | 'MENU_KIOSK' | 'OFFLINE_OBSLUHA' | 'SAMOSTATNE_OBJEDNAVANIE_STRAVY' | 'ADMIN_REG_SKUPINY'
+export type GlobalRole = 'ADMIN' | 'PERSONALISTA' | 'VYDAJ' | 'ADMIN_VYDAJ' | 'GROUP_CREATOR' | 'WRISTBAND_KIOSK' | 'MENU_KIOSK' | 'OFFLINE_OBSLUHA' | 'SAMOSTATNE_OBJEDNAVANIE_STRAVY' | 'ADMIN_REG_SKUPINY' | 'PRODUCTION_VILLAGE_VECER'
 
 export type GlobalAccess = {
   roles: GlobalRole[]
@@ -14,6 +14,7 @@ export type GlobalAccess = {
   isOfflineObsluha: boolean
   isSelfOrderingMeal: boolean
   isRegistrationGroupAdmin: boolean
+  isProductionVillageDinnerIssue: boolean
   canUsePersonalista: boolean
   canUseFoodIssue: boolean
   canAdminFoodIssue: boolean
@@ -33,7 +34,7 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
   const roles = (data || [])
     .map(item => String(item.role || '').toUpperCase())
     .filter((role): role is GlobalRole => {
-      return role === 'ADMIN' || role === 'PERSONALISTA' || role === 'VYDAJ' || role === 'ADMIN_VYDAJ' || role === 'GROUP_CREATOR' || role === 'WRISTBAND_KIOSK' || role === 'MENU_KIOSK' || role === 'OFFLINE_OBSLUHA' || role === 'SAMOSTATNE_OBJEDNAVANIE_STRAVY' || role === 'ADMIN_REG_SKUPINY'
+      return role === 'ADMIN' || role === 'PERSONALISTA' || role === 'VYDAJ' || role === 'ADMIN_VYDAJ' || role === 'GROUP_CREATOR' || role === 'WRISTBAND_KIOSK' || role === 'MENU_KIOSK' || role === 'OFFLINE_OBSLUHA' || role === 'SAMOSTATNE_OBJEDNAVANIE_STRAVY' || role === 'ADMIN_REG_SKUPINY' || role === 'PRODUCTION_VILLAGE_VECER'
     })
 
   const isAdmin = roles.includes('ADMIN')
@@ -46,6 +47,7 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
   const isOfflineObsluha = roles.includes('OFFLINE_OBSLUHA')
   const isSelfOrderingMeal = roles.includes('SAMOSTATNE_OBJEDNAVANIE_STRAVY')
   const isRegistrationGroupAdmin = roles.includes('ADMIN_REG_SKUPINY')
+  const isProductionVillageDinnerIssue = roles.includes('PRODUCTION_VILLAGE_VECER')
 
   return {
     roles,
@@ -59,6 +61,7 @@ export async function getGlobalAccess(userId: string): Promise<GlobalAccess> {
     isOfflineObsluha,
     isSelfOrderingMeal,
     isRegistrationGroupAdmin,
+    isProductionVillageDinnerIssue,
     canUsePersonalista: isAdmin || isPersonalista,
     canUseFoodIssue: isAdmin || isAdminVydaj || isVydaj,
     canAdminFoodIssue: isAdmin || isAdminVydaj,
