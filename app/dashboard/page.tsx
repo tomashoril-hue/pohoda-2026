@@ -101,6 +101,28 @@ function activeRegistrationGroupName(period: any, fallbackGroup: any) {
   return '-'
 }
 
+const PRODUCTION_VILLAGE_DINNER_GROUPS = [
+  ...String(process.env.PRODUCTION_VILLAGE_DINNER_GROUPS || '')
+    .split(',')
+    .map(name => name.trim())
+    .filter(Boolean)
+]
+
+function normalizeGroupName(value: string) {
+  return String(value || '')
+    .trim()
+    .toLocaleLowerCase('sk-SK')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function isProductionVillageDinnerGroup(groupName: string) {
+  if (!groupName || PRODUCTION_VILLAGE_DINNER_GROUPS.length === 0) return false
+  const normalizedGroupName = normalizeGroupName(groupName)
+
+  return PRODUCTION_VILLAGE_DINNER_GROUPS.some(name => normalizeGroupName(name) === normalizedGroupName)
+}
+
 function fullName(person: any) {
   return `${person?.meno || ''} ${person?.priezvisko || ''}`.trim()
 }
@@ -457,6 +479,7 @@ export default async function DashboardPage({
   const hasPendingInvites = !!pendingInvites && pendingInvites.length > 0
   const hasEntitlementRow = !!entitlement
   const registrationGroupName = activeRegistrationGroupName(activeRegistrationPeriod, fallbackRegistrationGroup)
+  const hasProductionVillageDinner = isProductionVillageDinnerGroup(registrationGroupName)
   const canOpenPersonalista = globalAccess.canUsePersonalista
   const canOpenFoodIssue = globalAccess.canUseFoodIssue
   const canOpenMenuDeadline = globalAccess.isAdmin
@@ -560,7 +583,8 @@ export default async function DashboardPage({
       menuItems: getMenuDisplayItems('OBED', showDiet),
       issued: getIssued('OBED'),
       bulk: getBulk('OBED'),
-      registrationBulk: getRegistrationBulk('OBED')
+      registrationBulk: getRegistrationBulk('OBED'),
+      productionVillage: false
     },
     {
       typJedla: 'VECERA',
@@ -570,7 +594,8 @@ export default async function DashboardPage({
       menuItems: getMenuDisplayItems('VECERA', showDiet),
       issued: getIssued('VECERA'),
       bulk: getBulk('VECERA'),
-      registrationBulk: getRegistrationBulk('VECERA')
+      registrationBulk: getRegistrationBulk('VECERA'),
+      productionVillage: hasProductionVillageDinner
     }
   ]
 
@@ -681,6 +706,7 @@ export default async function DashboardPage({
               const entitlementIsYes = meal.entitlement === 'YES' || meal.entitlement === 'ÁNO'
               const entitlementIsNo = meal.entitlement === 'NO' || meal.entitlement === 'NIE'
               const noInterest = meal.selection?.volba === 'BEZ_ZAUJMU'
+              const isProductionVillageDinner = meal.productionVillage === true
               const state = mealState({
                 entitlement: meal.entitlement,
                 hasEntitlementRow: meal.hasEntitlementRow,
@@ -703,12 +729,15 @@ export default async function DashboardPage({
                   key={meal.typJedla}
                   style={{
                     ...styles.todayMealCard,
-                    ...(noInterest ? styles.todayMealCardNoInterest : {})
+                    ...(noInterest ? styles.todayMealCardNoInterest : {}),
+                    ...(isProductionVillageDinner ? styles.todayMealCardProductionVillage : {})
                   }}
                 >
                   <div style={styles.todayMealTop}>
                     <h3 className="dashboard-meal-title" style={styles.todayMealTitle}>
-                      {mealLabel(meal.typJedla, language)}
+                      {isProductionVillageDinner
+                        ? (language === 'EN' ? 'Dinner Production Village' : 'Vecera Production Village')
+                        : mealLabel(meal.typJedla, language)}
                     </h3>
 
                     <span
@@ -725,6 +754,14 @@ export default async function DashboardPage({
                       {copy.entitlement} {meal.entitlement}
                     </span>
                   </div>
+
+                  {isProductionVillageDinner && (
+                    <div style={styles.productionVillageHint}>
+                      {language === 'EN'
+                        ? 'Production Village is behind Bazant Stage on the production road.'
+                        : 'Production Village sa nachadza za Bazant stageom na produkcnej ceste.'}
+                    </div>
+                  )}
 
                   <div style={styles.todayRows}>
                     <div
@@ -1072,6 +1109,11 @@ const styles: Record<string, React.CSSProperties> = {
   todayMealCardNoInterest: {
     background: '#fff'
   },
+  todayMealCardProductionVillage: {
+    borderColor: '#b91c1c',
+    background: '#fff1f2',
+    boxShadow: '0 0 0 3px rgba(185, 28, 28, 0.12)'
+  },
   todayMealTop: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -1083,6 +1125,17 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     fontSize: 22,
     fontWeight: 950
+  },
+  productionVillageHint: {
+    margin: '-4px 0 12px',
+    border: '2px solid #b91c1c',
+    borderRadius: 12,
+    background: '#fee2e2',
+    color: '#7f1d1d',
+    padding: '8px 10px',
+    fontSize: 12,
+    fontWeight: 950,
+    lineHeight: 1.25
   },
   entitlementBadge: {
     border: '3px solid #000',
