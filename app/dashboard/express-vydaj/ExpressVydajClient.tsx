@@ -103,6 +103,15 @@ function displayPersonName(person: ExpressPerson) {
   return person.name
 }
 
+function compactIssueTitle(title: string) {
+  const match = String(title || '').match(/^Express\s+(obed|vecera)(\s+c\.\s+(\d+))?\s*-\s*(.+)$/i)
+  if (!match) return title || '-'
+
+  const groupName = match[4]?.trim() || '-'
+  const sequence = match[3]?.trim()
+  return sequence ? `${groupName} #${sequence}` : groupName
+}
+
 export default function ExpressVydajClient({
   language = 'SK',
   currentUserId,
@@ -570,12 +579,12 @@ export default function ExpressVydajClient({
             <div style={styles.issueListHeader}>
               <div>
                 <div style={styles.issueListTitle}>{t('Skupinové expres výdaje', 'Group express issues')}</div>
-                <div style={styles.issueListSubtitle}>{t('Pre tento deň a jedlo', 'For this day and meal')}</div>
               </div>
-              <button type="button" onClick={() => void startNewIssue()} disabled={loading || saving} style={styles.newIssueButton}>
-                {t('Nový skupinový expres výdaj', 'New group express issue')}
-              </button>
             </div>
+
+            <button type="button" onClick={() => void startNewIssue()} disabled={loading || saving} style={styles.newIssueButton}>
+              {t('Nový skupinový expres výdaj', 'New group express issue')}
+            </button>
 
             <div style={styles.issueList}>
               {issueList.map(issue => {
@@ -599,7 +608,7 @@ export default function ExpressVydajClient({
                       ...(active ? styles.issueListItemActive : {})
                     }}
                   >
-                    <span style={styles.issueListItemTitle}>{issue.title}</span>
+                    <span style={styles.issueListItemTitle}>{compactIssueTitle(issue.title)}</span>
                     <span style={styles.issueListItemMeta}>
                       {statusLabel} · {t('Ozn.', 'Sel.')} {issue.selectedCount} · {t('Prevezme', 'Pickup')} {issue.pickupCount}
                     </span>
@@ -1175,7 +1184,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 7
   },
   issueListHeader: {
-    display: 'flex',
+    display: 'block',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
@@ -1193,9 +1202,10 @@ const styles: Record<string, CSSProperties> = {
     color: '#6b667c'
   },
   newIssueButton: {
+    width: '100%',
     border: '1px solid #5b21b6',
-    borderRadius: 999,
-    padding: '8px 11px',
+    borderRadius: 12,
+    padding: '9px 11px',
     background: '#7417e8',
     color: '#fff',
     fontSize: 12,
