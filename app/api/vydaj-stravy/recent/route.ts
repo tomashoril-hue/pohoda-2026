@@ -25,6 +25,21 @@ function displayIssueTitle(value: any) {
     .replace(/([^\s])((?:OBED)|(?:VECERA)|(?:VEČERA))$/i, '$1 $2')
 }
 
+function normalizeSearch(value: any) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function positiveInt(value: any, fallback: number, max: number) {
+  const parsed = Number.parseInt(String(value || ''), 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return Math.min(parsed, max)
+}
+
 async function issuerAccess(actorId: string) {
   const globalAccess = await getGlobalAccess(actorId)
 
@@ -50,20 +65,30 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const datum = normalizeDate(searchParams.get('datum'))
     const typJedla = normalizeMeal(searchParams.get('typJedla'))
+    const search = normalizeSearch(searchParams.get('q') || searchParams.get('search'))
+    const mineOnly = searchParams.get('mineOnly') === '1' || searchParams.get('mineOnly') === 'true'
+    const page = positiveInt(searchParams.get('page'), 1, 500)
+    const pageSize = positiveInt(searchParams.get('pageSize'), mineOnly || search ? 20 : 10, 100)
 
     if (!datum || !typJedla) {
       return NextResponse.json({ error: 'Chýba dátum alebo typ jedla.' }, { status: 400 })
     }
 
     const selectIssued = 'id, user_id, group_id, hromadny_vydaj_id, registration_group_issue_id, datum, typ_jedla, volba, sposob, issued_by, issued_at'
-    const { data, error } = await supabaseServer
+    let issuedQuery = supabaseServer
       .from('vydaj_jedal')
       .select(selectIssued)
       .eq('datum', datum)
       .eq('typ_jedla', typJedla)
       .eq('status', 'VYDANE')
       .order('issued_at', { ascending: false })
-      .limit(160)
+      .limit(search ? 2200 : mineOnly ? Math.min(page * pageSize, 500) : 160)
+
+    if (mineOnly && !search) {
+      issuedQuery = issuedQuery.eq('issued_by', actor.id)
+    }
+
+    const { data, error } = await issuedQuery
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
@@ -178,6 +203,26 @@ export async function GET(req: NextRequest) {
         }
     }
 
+    const itemMatchesSearch = (item: any) => {
+      if (!search) return true
+
+      const searchable = normalizeSearch([
+        item.personName,
+        item.email,
+        item.groupName,
+        item.method,
+        item.choice,
+        ...(item.children || []).flatMap((child: any) => [
+          child.personName,
+          child.email,
+          child.groupName,
+          child.choice
+        ])
+      ].filter(Boolean).join(' '))
+
+      return searchable.includes(search)
+    }
+
     const bulkGroups = new Map<string, any[]>()
     const registrationBulkGroups = new Map<string, any[]>()
     const items: any[] = []
@@ -262,11 +307,23 @@ export async function GET(req: NextRequest) {
       })
     })
 
-    items.sort((a: any, b: any) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime())
+    const filteredItems = items
+      .filter(itemMatchesSearch)
+      .sort((a: any, b: any) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime())
+
+    const offset = (page - 1) * pageSize
+    const pagedItems = filteredItems.slice(offset, offset + pageSize)
 
     return NextResponse.json({
       ok: true,
-      items: items.slice(0, 10)
+      items: pagedItems,
+      meta: {
+        page,
+        pageSize,
+        total: filteredItems.length,
+        mineOnly: mineOnly && !search,
+        search
+      }
     })
   } catch (err: any) {
     return NextResponse.json(

@@ -453,6 +453,11 @@ export default function VydajStravyClient({
   const [printLoadingId, setPrintLoadingId] = useState('')
   const [printMessage, setPrintMessage] = useState('')
   const [printMessageType, setPrintMessageType] = useState<Tone>('success')
+  const [printSearch, setPrintSearch] = useState('')
+  const [printPage, setPrintPage] = useState(1)
+  const [printPageSize, setPrintPageSize] = useState(20)
+  const [printTotal, setPrintTotal] = useState(0)
+  const [printListLoading, setPrintListLoading] = useState(false)
   const [reportsOpen, setReportsOpen] = useState(false)
   const [reportType, setReportType] = useState<IssueReportType>('UNISSUED')
   const [reportDate, setReportDate] = useState(initialDate)
@@ -481,6 +486,7 @@ export default function VydajStravyClient({
     return item.children.filter(child => selectedCancelIds.includes(child.issuedId))
   })
   const selectedCancelItems = [...selectedCancelTopItems, ...selectedCancelChildItems]
+  const printPageCount = Math.max(1, Math.ceil(printTotal / printPageSize))
   const editableIssuedItems = recentIssued.flatMap(item => item.children?.length ? item.children : [item])
   const changedChoiceCount = editableIssuedItems.filter(item => {
     const nextChoice = editChoices[item.issuedId]
@@ -779,18 +785,39 @@ export default function VydajStravyClient({
     })
   }
 
-  const refreshRecentIssued = async () => {
+  const refreshRecentIssued = async (options?: { printMode?: boolean; search?: string; page?: number; pageSize?: number }) => {
     const currentDatum = datumRef.current
     const currentTypJedla = typJedlaRef.current
+    const search = (options?.search || '').trim()
+    const nextPage = options?.page || 1
+    const nextPageSize = options?.pageSize || printPageSize
     const params = new URLSearchParams({
       datum: currentDatum,
       typJedla: currentTypJedla
     })
 
+    if (options?.printMode) {
+      params.set('page', String(nextPage))
+      params.set('pageSize', String(nextPageSize))
+      if (search) {
+        params.set('q', search)
+      } else {
+        params.set('mineOnly', '1')
+      }
+    }
+
+    if (options?.printMode) setPrintListLoading(true)
     const res = await fetch(`/api/vydaj-stravy/recent?${params.toString()}`)
     const json = await res.json().catch(() => ({}))
 
-    if (!res.ok || !json.ok) return
+    if (!res.ok || !json.ok) {
+      if (options?.printMode) {
+        setPrintTotal(0)
+        setRecentIssued([])
+        setPrintListLoading(false)
+      }
+      return
+    }
 
     const items: ScanItem[] = (json.items || []).map((item: any) => ({
       id: item.issuedId,
@@ -826,6 +853,12 @@ export default function VydajStravyClient({
     const editableItems = items.flatMap(item => item.children?.length ? item.children : [item])
 
     setRecentIssued(items)
+    if (options?.printMode) {
+      setPrintTotal(Number(json.meta?.total || items.length || 0))
+      setPrintPage(Number(json.meta?.page || nextPage))
+      setPrintPageSize(Number(json.meta?.pageSize || nextPageSize))
+      setPrintListLoading(false)
+    }
     setEditChoices(Object.fromEntries(editableItems.map(item => [item.issuedId, item.choice || ''])))
     setSelectedCancelIds(prev => prev.filter(id => items.some(item => item.issuedId === id)))
   }
@@ -833,7 +866,33 @@ export default function VydajStravyClient({
   const openPrintModal = async () => {
     setPrintOpen(true)
     setPrintMessage('')
-    await refreshRecentIssued()
+    setPrintSearch('')
+    setPrintPage(1)
+    await refreshRecentIssued({ printMode: true, search: '', page: 1, pageSize: printPageSize })
+  }
+
+  const refreshPrintList = async (overrides?: { search?: string; page?: number; pageSize?: number }) => {
+    const nextSearch = overrides?.search ?? printSearch
+    const nextPage = overrides?.page ?? printPage
+    const nextPageSize = overrides?.pageSize ?? printPageSize
+    await refreshRecentIssued({
+      printMode: true,
+      search: nextSearch,
+      page: nextPage,
+      pageSize: nextPageSize
+    })
+  }
+
+  const updatePrintSearch = (value: string) => {
+    setPrintSearch(value)
+    setPrintPage(1)
+    void refreshPrintList({ search: value, page: 1 })
+  }
+
+  const updatePrintPageSize = (value: number) => {
+    setPrintPageSize(value)
+    setPrintPage(1)
+    void refreshPrintList({ page: 1, pageSize: value })
   }
 
   const printIssuedMeal = async (item: ScanItem, printKind: 'LABELS' | 'JOURNAL') => {
@@ -1856,6 +1915,31 @@ export default function VydajStravyClient({
               </div>
             )}
 
+            <div style={styles.printSearchRow}>
+              <input
+                type="search"
+                value={printSearch}
+                onChange={event => updatePrintSearch(event.target.value)}
+                placeholder="Hľadať osobu alebo skupinu"
+                style={styles.printSearchInput}
+              />
+              <select
+                value={printPageSize}
+                onChange={event => updatePrintPageSize(Number(event.target.value))}
+                style={styles.printPageSizeSelect}
+              >
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+            <div style={styles.printListMeta}>
+              {printSearch.trim()
+                ? `Hľadanie vo všetkých vydajoch · nájdené ${printTotal}`
+                : `Moje vydaje · nájdené ${printTotal}`}
+              {printListLoading ? ' · načítavam' : ''}
+            </div>
+
             {recentIssued.length === 0 ? (
               <div style={styles.emptyHistory}>Zatiaľ nie je čo tlačiť.</div>
             ) : (
@@ -1904,9 +1988,36 @@ export default function VydajStravyClient({
               </div>
             )}
 
-            <button type="button" onClick={refreshRecentIssued} disabled={!!printLoadingId} style={styles.secondaryButton}>
-              Obnoviť zoznam
-            </button>
+            <div style={styles.printPager}>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextPage = Math.max(1, printPage - 1)
+                  setPrintPage(nextPage)
+                  void refreshPrintList({ page: nextPage })
+                }}
+                disabled={!!printLoadingId || printPage <= 1}
+                style={styles.secondaryButton}
+              >
+                Späť
+              </button>
+              <span style={styles.printListMeta}>Strana {printPage} / {printPageCount}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextPage = Math.min(printPageCount, printPage + 1)
+                  setPrintPage(nextPage)
+                  void refreshPrintList({ page: nextPage })
+                }}
+                disabled={!!printLoadingId || printPage >= printPageCount}
+                style={styles.secondaryButton}
+              >
+                Ďalej
+              </button>
+              <button type="button" onClick={() => void refreshPrintList()} disabled={!!printLoadingId} style={styles.secondaryButton}>
+                Obnoviť
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3232,6 +3343,43 @@ const styles: Record<string, CSSProperties> = {
   printList: {
     display: 'grid',
     gap: 8
+  },
+  printSearchRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr auto',
+    gap: 8,
+    alignItems: 'center'
+  },
+  printSearchInput: {
+    width: '100%',
+    minHeight: 44,
+    border: '1px solid #cbd5e1',
+    borderRadius: 8,
+    padding: '0 12px',
+    fontSize: 15,
+    fontWeight: 750,
+    outline: 'none'
+  },
+  printPageSizeSelect: {
+    minHeight: 44,
+    border: '1px solid #cbd5e1',
+    borderRadius: 8,
+    padding: '0 10px',
+    fontSize: 14,
+    fontWeight: 800,
+    background: '#fff'
+  },
+  printListMeta: {
+    color: '#64748b',
+    fontSize: 12,
+    fontWeight: 800
+  },
+  printPager: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between'
   },
   printItem: {
     display: 'grid',
