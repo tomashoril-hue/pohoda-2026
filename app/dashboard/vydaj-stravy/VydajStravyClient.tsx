@@ -458,6 +458,7 @@ export default function VydajStravyClient({
   const [printPageSize, setPrintPageSize] = useState(20)
   const [printTotal, setPrintTotal] = useState(0)
   const [printListLoading, setPrintListLoading] = useState(false)
+  const [printScope, setPrintScope] = useState<'MINE' | 'ALL'>('MINE')
   const [reportsOpen, setReportsOpen] = useState(false)
   const [reportType, setReportType] = useState<IssueReportType>('UNISSUED')
   const [reportDate, setReportDate] = useState(initialDate)
@@ -780,12 +781,14 @@ export default function VydajStravyClient({
   const refreshRecentIssuedInBackground = () => {
     if (!fullMode) return
 
-    refreshRecentIssued().catch(() => {
+    const refresh = printOpen ? refreshPrintList() : refreshRecentIssued()
+
+    refresh.catch(() => {
       // Obnova prehľadov nesmie blokovať ďalšie skenovanie.
     })
   }
 
-  const refreshRecentIssued = async (options?: { printMode?: boolean; search?: string; page?: number; pageSize?: number }) => {
+  const refreshRecentIssued = async (options?: { printMode?: boolean; search?: string; page?: number; pageSize?: number; scope?: 'MINE' | 'ALL' }) => {
     const currentDatum = datumRef.current
     const currentTypJedla = typJedlaRef.current
     const search = (options?.search || '').trim()
@@ -801,7 +804,7 @@ export default function VydajStravyClient({
       params.set('pageSize', String(nextPageSize))
       if (search) {
         params.set('q', search)
-      } else {
+      } else if ((options.scope || 'MINE') === 'MINE') {
         params.set('mineOnly', '1')
       }
     }
@@ -867,20 +870,29 @@ export default function VydajStravyClient({
     setPrintOpen(true)
     setPrintMessage('')
     setPrintSearch('')
+    setPrintScope('MINE')
     setPrintPage(1)
-    await refreshRecentIssued({ printMode: true, search: '', page: 1, pageSize: printPageSize })
+    await refreshRecentIssued({ printMode: true, search: '', page: 1, pageSize: printPageSize, scope: 'MINE' })
   }
 
-  const refreshPrintList = async (overrides?: { search?: string; page?: number; pageSize?: number }) => {
+  const refreshPrintList = async (overrides?: { search?: string; page?: number; pageSize?: number; scope?: 'MINE' | 'ALL' }) => {
     const nextSearch = overrides?.search ?? printSearch
     const nextPage = overrides?.page ?? printPage
     const nextPageSize = overrides?.pageSize ?? printPageSize
+    const nextScope = overrides?.scope ?? printScope
     await refreshRecentIssued({
       printMode: true,
       search: nextSearch,
       page: nextPage,
-      pageSize: nextPageSize
+      pageSize: nextPageSize,
+      scope: nextScope
     })
+  }
+
+  const updatePrintScope = (scope: 'MINE' | 'ALL') => {
+    setPrintScope(scope)
+    setPrintPage(1)
+    void refreshPrintList({ scope, page: 1 })
   }
 
   const updatePrintSearch = (value: string) => {
@@ -1915,6 +1927,31 @@ export default function VydajStravyClient({
               </div>
             )}
 
+            {fullMode && (
+              <div style={styles.printScopeTabs}>
+                <button
+                  type="button"
+                  onClick={() => updatePrintScope('MINE')}
+                  style={{
+                    ...styles.printScopeTab,
+                    ...(printScope === 'MINE' ? styles.printScopeTabActive : {})
+                  }}
+                >
+                  Moje
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updatePrintScope('ALL')}
+                  style={{
+                    ...styles.printScopeTab,
+                    ...(printScope === 'ALL' ? styles.printScopeTabActive : {})
+                  }}
+                >
+                  Všetky
+                </button>
+              </div>
+            )}
+
             <div style={styles.printSearchRow}>
               <input
                 type="search"
@@ -1936,7 +1973,7 @@ export default function VydajStravyClient({
             <div style={styles.printListMeta}>
               {printSearch.trim()
                 ? `Hľadanie vo všetkých vydajoch · nájdené ${printTotal}`
-                : `Moje vydaje · nájdené ${printTotal}`}
+                : `${printScope === 'ALL' && fullMode ? 'Všetky vydaje' : 'Moje vydaje'} · nájdené ${printTotal}`}
               {printListLoading ? ' · načítavam' : ''}
             </div>
 
@@ -3349,6 +3386,30 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: '1fr auto',
     gap: 8,
     alignItems: 'center'
+  },
+  printScopeTabs: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 6,
+    background: '#f1f5f9',
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    padding: 4
+  },
+  printScopeTab: {
+    ...baseButton,
+    minHeight: 38,
+    borderRadius: 6,
+    background: 'transparent',
+    borderColor: 'transparent',
+    color: '#475569',
+    fontSize: 14
+  },
+  printScopeTabActive: {
+    background: '#fff',
+    borderColor: '#cbd5e1',
+    color: '#111827',
+    boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)'
   },
   printSearchInput: {
     width: '100%',
