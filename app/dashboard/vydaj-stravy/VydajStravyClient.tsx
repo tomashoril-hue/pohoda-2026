@@ -1000,6 +1000,34 @@ export default function VydajStravyClient({
     }
   }
 
+  const cancelPendingPrintJobs = async (printerId: 'vydaj-1' | 'vydaj-zurnal') => {
+    const loadingKey = `${printerId}:CANCEL`
+
+    setPrintControlLoading(loadingKey)
+    setPrintMessage('')
+
+    try {
+      const res = await fetch('/api/vydaj-stravy/print-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ printerId, stop: true, cancelPending: true })
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || 'Čakajúce tlačové úlohy sa nepodarilo zrušiť.')
+      }
+
+      setPrintMessage(json.message || 'Čakajúce tlačové úlohy boli zrušené.')
+      setPrintMessageType('success')
+    } catch (err: any) {
+      setPrintMessage(err?.message || 'Čakajúce tlačové úlohy sa nepodarilo zrušiť.')
+      setPrintMessageType('error')
+    } finally {
+      setPrintControlLoading('')
+    }
+  }
+
   const syncPendingOfflineEventsInBackground = async () => {
     if (offlineSyncingRef.current || typeof navigator === 'undefined' || !navigator.onLine) return
 
@@ -2011,6 +2039,22 @@ export default function VydajStravyClient({
                   style={styles.printStopButton}
                 >
                   {printControlLoading === 'vydaj-zurnal:STOP' ? 'Zastavujem...' : 'Stop žurnál'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void cancelPendingPrintJobs('vydaj-1')}
+                  disabled={!!printControlLoading}
+                  style={styles.printCancelButton}
+                >
+                  {printControlLoading === 'vydaj-1:CANCEL' ? 'Ruším...' : 'Zrušiť etikety'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void cancelPendingPrintJobs('vydaj-zurnal')}
+                  disabled={!!printControlLoading}
+                  style={styles.printCancelButton}
+                >
+                  {printControlLoading === 'vydaj-zurnal:CANCEL' ? 'Ruším...' : 'Zrušiť žurnál'}
                 </button>
                 <button
                   type="button"
@@ -3512,6 +3556,15 @@ const styles: Record<string, CSSProperties> = {
     minHeight: 38,
     background: '#dc2626',
     borderColor: '#b91c1c',
+    color: '#fff',
+    padding: '0 12px',
+    fontSize: 13
+  },
+  printCancelButton: {
+    ...baseButton,
+    minHeight: 38,
+    background: '#7f1d1d',
+    borderColor: '#7f1d1d',
     color: '#fff',
     padding: '0 12px',
     fontSize: 13

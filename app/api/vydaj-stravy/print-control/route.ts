@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Neplatná tlačiareň.' }, { status: 400 })
     }
 
+    const cancelPending = Boolean(body.cancelPending || body.cancel_pending)
     const stopRequested = Boolean(body.stop)
     const now = new Date().toISOString()
 
@@ -52,6 +53,33 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    if (cancelPending) {
+      const { data: cancelledJobs, error: cancelError } = await supabaseServer
+        .from('print_jobs')
+        .update({
+          status: 'failed',
+          error_message: 'Zrušené používateľom pred tlačou.'
+        })
+        .eq('printer_id', printerId)
+        .eq('status', 'pending')
+        .select('id')
+
+      if (cancelError) {
+        return NextResponse.json({ error: cancelError.message }, { status: 500 })
+      }
+
+      const cancelledCount = cancelledJobs?.length || 0
+
+      return NextResponse.json({
+        ok: true,
+        control: data,
+        cancelledCount,
+        message: cancelledCount > 0
+          ? `Zrušených čakajúcich úloh: ${cancelledCount}.`
+          : 'Žiadne čakajúce úlohy nebolo treba zrušiť.'
+      })
     }
 
     return NextResponse.json({
