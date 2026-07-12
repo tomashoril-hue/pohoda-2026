@@ -1966,215 +1966,217 @@ export default function VydajStravyClient({
       </section>
 
       {printOpen && (
-        <section style={styles.printPanel}>
-          <div style={styles.statsModalHeader}>
-            <div>
-              <h2 style={styles.sectionTitle}>Tlač výdaja</h2>
+        <div style={styles.modalBackdrop} onClick={() => setPrintOpen(false)}>
+          <div style={styles.printModal} onClick={event => event.stopPropagation()}>
+            <div style={styles.statsModalHeader}>
+              <div>
+                <h2 style={styles.sectionTitle}>Tlač výdaja</h2>
+              </div>
+              <button type="button" onClick={() => setPrintOpen(false)} style={styles.closeButton}>
+                Zavrieť
+              </button>
             </div>
-            <button type="button" onClick={() => setPrintOpen(false)} style={styles.closeButton}>
-              Zavrieť
-            </button>
-          </div>
 
-          {lastItem && (
-            <div
-              style={{
-                ...styles.printScanStatus,
-                background: `${scanFlashColor(lastItem.tone)}1a`,
-                borderColor: scanFlashColor(lastItem.tone)
-              }}
-            >
-              <b>{scanFlashLabel(lastItem.tone)}</b>
-              <span style={styles.printScanStatusText}>{historyDetail(lastItem)}</span>
-            </div>
-          )}
-
-          {printMessage && (
-            <div style={printMessageType === 'success' ? styles.printMessageOk : styles.printMessageError}>
-              {printMessage}
-            </div>
-          )}
-
-          <div style={styles.printControlBox}>
-            <button
-              type="button"
-              onClick={() => void setPrintStop('vydaj-1', true)}
-              disabled={!!printControlLoading}
-              style={styles.printStopButton}
-            >
-              {printControlLoading === 'vydaj-1:STOP' ? 'Zastavujem...' : 'Stop etikety'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void setPrintStop('vydaj-1', false)}
-              disabled={!!printControlLoading}
-              style={styles.printResumeButton}
-            >
-              {printControlLoading === 'vydaj-1:START' ? 'Povoľujem...' : 'Povoliť etikety'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void cancelPendingPrintJobs('vydaj-1')}
-              disabled={!!printControlLoading}
-              style={styles.printCancelButton}
-            >
-              {printControlLoading === 'vydaj-1:CANCEL' ? 'Ruším...' : 'Zrušiť etikety'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void setPrintStop('vydaj-zurnal', true)}
-              disabled={!!printControlLoading}
-              style={styles.printStopButton}
-            >
-              {printControlLoading === 'vydaj-zurnal:STOP' ? 'Zastavujem...' : 'Stop žurnál'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void setPrintStop('vydaj-zurnal', false)}
-              disabled={!!printControlLoading}
-              style={styles.printResumeButton}
-            >
-              {printControlLoading === 'vydaj-zurnal:START' ? 'Povoľujem...' : 'Povoliť žurnál'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void cancelPendingPrintJobs('vydaj-zurnal')}
-              disabled={!!printControlLoading}
-              style={styles.printCancelButton}
-            >
-              {printControlLoading === 'vydaj-zurnal:CANCEL' ? 'Ruším...' : 'Zrušiť žurnál'}
-            </button>
-          </div>
-
-          {fullMode && (
-            <div style={styles.printScopeTabs}>
-              <button
-                type="button"
-                onClick={() => updatePrintScope('MINE')}
+            {lastItem && (
+              <div
                 style={{
-                  ...styles.printScopeTab,
-                  ...(printScope === 'MINE' ? styles.printScopeTabActive : {})
+                  ...styles.printScanStatus,
+                  background: `${scanFlashColor(lastItem.tone)}1a`,
+                  borderColor: scanFlashColor(lastItem.tone)
                 }}
               >
-                Moje
+                <b>{scanFlashLabel(lastItem.tone)}</b>
+                <span style={styles.printScanStatusText}>{historyDetail(lastItem)}</span>
+              </div>
+            )}
+
+            {printMessage && (
+              <div style={printMessageType === 'success' ? styles.printMessageOk : styles.printMessageError}>
+                {printMessage}
+              </div>
+            )}
+
+            <div style={styles.printControlBox}>
+              <button
+                type="button"
+                onClick={() => void setPrintStop('vydaj-1', true)}
+                disabled={!!printControlLoading}
+                style={styles.printStopButton}
+              >
+                {printControlLoading === 'vydaj-1:STOP' ? 'Zastavujem...' : 'Stop etikety'}
               </button>
               <button
                 type="button"
-                onClick={() => updatePrintScope('ALL')}
-                style={{
-                  ...styles.printScopeTab,
-                  ...(printScope === 'ALL' ? styles.printScopeTabActive : {})
-                }}
+                onClick={() => void setPrintStop('vydaj-1', false)}
+                disabled={!!printControlLoading}
+                style={styles.printResumeButton}
               >
-                Všetky
+                {printControlLoading === 'vydaj-1:START' ? 'Povoľujem...' : 'Povoliť etikety'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void cancelPendingPrintJobs('vydaj-1')}
+                disabled={!!printControlLoading}
+                style={styles.printCancelButton}
+              >
+                {printControlLoading === 'vydaj-1:CANCEL' ? 'Ruším...' : 'Zrušiť etikety'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void setPrintStop('vydaj-zurnal', true)}
+                disabled={!!printControlLoading}
+                style={styles.printStopButton}
+              >
+                {printControlLoading === 'vydaj-zurnal:STOP' ? 'Zastavujem...' : 'Stop žurnál'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void setPrintStop('vydaj-zurnal', false)}
+                disabled={!!printControlLoading}
+                style={styles.printResumeButton}
+              >
+                {printControlLoading === 'vydaj-zurnal:START' ? 'Povoľujem...' : 'Povoliť žurnál'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void cancelPendingPrintJobs('vydaj-zurnal')}
+                disabled={!!printControlLoading}
+                style={styles.printCancelButton}
+              >
+                {printControlLoading === 'vydaj-zurnal:CANCEL' ? 'Ruším...' : 'Zrušiť žurnál'}
               </button>
             </div>
-          )}
 
-          <div style={styles.printSearchRow}>
-            <input
-              type="search"
-              value={printSearch}
-              onChange={event => updatePrintSearch(event.target.value)}
-              placeholder="Hľadať osobu alebo skupinu"
-              style={styles.printSearchInput}
-            />
-            <select
-              value={printPageSize}
-              onChange={event => updatePrintPageSize(Number(event.target.value))}
-              style={styles.printPageSizeSelect}
-            >
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-          </div>
-          <div style={styles.printListMeta}>
-            {printSearch.trim()
-              ? `Hľadanie vo všetkých vydajoch · nájdené ${printTotal}`
-              : `${printScope === 'ALL' && fullMode ? 'Všetky vydaje' : 'Moje vydaje'} · nájdené ${printTotal}`}
-            {printListLoading ? ' · načítavam' : ''}
-          </div>
+            {fullMode && (
+              <div style={styles.printScopeTabs}>
+                <button
+                  type="button"
+                  onClick={() => updatePrintScope('MINE')}
+                  style={{
+                    ...styles.printScopeTab,
+                    ...(printScope === 'MINE' ? styles.printScopeTabActive : {})
+                  }}
+                >
+                  Moje
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updatePrintScope('ALL')}
+                  style={{
+                    ...styles.printScopeTab,
+                    ...(printScope === 'ALL' ? styles.printScopeTabActive : {})
+                  }}
+                >
+                  Všetky
+                </button>
+              </div>
+            )}
 
-          {recentIssued.length === 0 ? (
-            <div style={styles.emptyHistory}>Zatiaľ nie je čo tlačiť.</div>
-          ) : (
-            <div style={styles.printList}>
-              {recentIssued.map(item => (
-                <div key={item.issuedId} style={styles.printItem}>
-                  <div style={styles.printItemText}>
-                    <b>{item.itemType === 'BULK' ? (item.groupName || item.personName || 'Skupinový výdaj') : (item.personName || item.email || '-')}</b>
-                    <span>
-                      {mealLabel(item.typJedla)} · {formatTime(item.issuedAt)} · {methodLabel(item.method)}
-                      {item.itemType === 'BULK' && item.children?.length ? ` · ${item.children.length} osôb` : ''}
-                    </span>
-                    {item.itemType === 'BULK' && item.summary && (
-                      <em>{choiceSummaryLabel(item.summary)}</em>
-                    )}
-                    {item.itemType !== 'BULK' && item.choice && (
-                      <em>{choiceLabel(item.choice)}</em>
-                    )}
-                  </div>
-                  <div style={styles.printItemActions}>
-                    <button
-                      type="button"
-                      onClick={() => printIssuedMeal(item, 'LABELS')}
-                      disabled={!!printLoadingId}
-                      style={{
-                        ...styles.printItemButton,
-                        opacity: printLoadingId && printLoadingId !== `LABELS:${item.issuedId}` ? 0.45 : 1
-                      }}
-                    >
-                      {printLoadingId === `LABELS:${item.issuedId}` ? 'Odosielam...' : 'Etikety'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => printIssuedMeal(item, 'JOURNAL')}
-                      disabled={!!printLoadingId}
-                      style={{
-                        ...styles.printItemJournalButton,
-                        opacity: printLoadingId && printLoadingId !== `JOURNAL:${item.issuedId}` ? 0.45 : 1
-                      }}
-                    >
-                      {printLoadingId === `JOURNAL:${item.issuedId}` ? 'Odosielam...' : 'Žurnál'}
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div style={styles.printSearchRow}>
+              <input
+                type="search"
+                value={printSearch}
+                onChange={event => updatePrintSearch(event.target.value)}
+                placeholder="Hľadať osobu alebo skupinu"
+                style={styles.printSearchInput}
+              />
+              <select
+                value={printPageSize}
+                onChange={event => updatePrintPageSize(Number(event.target.value))}
+                style={styles.printPageSizeSelect}
+              >
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
             </div>
-          )}
+            <div style={styles.printListMeta}>
+              {printSearch.trim()
+                ? `Hľadanie vo všetkých vydajoch · nájdené ${printTotal}`
+                : `${printScope === 'ALL' && fullMode ? 'Všetky vydaje' : 'Moje vydaje'} · nájdené ${printTotal}`}
+              {printListLoading ? ' · načítavam' : ''}
+            </div>
 
-          <div style={styles.printPager}>
-            <button
-              type="button"
-              onClick={() => {
-                const nextPage = Math.max(1, printPage - 1)
-                setPrintPage(nextPage)
-                void refreshPrintList({ page: nextPage })
-              }}
-              disabled={!!printLoadingId || printPage <= 1}
-              style={styles.secondaryButton}
-            >
-              Späť
-            </button>
-            <span style={styles.printListMeta}>Strana {printPage} / {printPageCount}</span>
-            <button
-              type="button"
-              onClick={() => {
-                const nextPage = Math.min(printPageCount, printPage + 1)
-                setPrintPage(nextPage)
-                void refreshPrintList({ page: nextPage })
-              }}
-              disabled={!!printLoadingId || printPage >= printPageCount}
-              style={styles.secondaryButton}
-            >
-              Ďalej
-            </button>
-            <button type="button" onClick={() => void refreshPrintList()} disabled={!!printLoadingId} style={styles.secondaryButton}>
-              Obnoviť
-            </button>
+            {recentIssued.length === 0 ? (
+              <div style={styles.emptyHistory}>Zatiaľ nie je čo tlačiť.</div>
+            ) : (
+              <div style={styles.printList}>
+                {recentIssued.map(item => (
+                  <div key={item.issuedId} style={styles.printItem}>
+                    <div style={styles.printItemText}>
+                      <b>{item.itemType === 'BULK' ? (item.groupName || item.personName || 'Skupinový výdaj') : (item.personName || item.email || '-')}</b>
+                      <span>
+                        {mealLabel(item.typJedla)} · {formatTime(item.issuedAt)} · {methodLabel(item.method)}
+                        {item.itemType === 'BULK' && item.children?.length ? ` · ${item.children.length} osôb` : ''}
+                      </span>
+                      {item.itemType === 'BULK' && item.summary && (
+                        <em>{choiceSummaryLabel(item.summary)}</em>
+                      )}
+                      {item.itemType !== 'BULK' && item.choice && (
+                        <em>{choiceLabel(item.choice)}</em>
+                      )}
+                    </div>
+                    <div style={styles.printItemActions}>
+                      <button
+                        type="button"
+                        onClick={() => printIssuedMeal(item, 'LABELS')}
+                        disabled={!!printLoadingId}
+                        style={{
+                          ...styles.printItemButton,
+                          opacity: printLoadingId && printLoadingId !== `LABELS:${item.issuedId}` ? 0.45 : 1
+                        }}
+                      >
+                        {printLoadingId === `LABELS:${item.issuedId}` ? 'Odosielam...' : 'Etikety'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => printIssuedMeal(item, 'JOURNAL')}
+                        disabled={!!printLoadingId}
+                        style={{
+                          ...styles.printItemJournalButton,
+                          opacity: printLoadingId && printLoadingId !== `JOURNAL:${item.issuedId}` ? 0.45 : 1
+                        }}
+                      >
+                        {printLoadingId === `JOURNAL:${item.issuedId}` ? 'Odosielam...' : 'Žurnál'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={styles.printPager}>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextPage = Math.max(1, printPage - 1)
+                  setPrintPage(nextPage)
+                  void refreshPrintList({ page: nextPage })
+                }}
+                disabled={!!printLoadingId || printPage <= 1}
+                style={styles.secondaryButton}
+              >
+                Späť
+              </button>
+              <span style={styles.printListMeta}>Strana {printPage} / {printPageCount}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextPage = Math.min(printPageCount, printPage + 1)
+                  setPrintPage(nextPage)
+                  void refreshPrintList({ page: nextPage })
+                }}
+                disabled={!!printLoadingId || printPage >= printPageCount}
+                style={styles.secondaryButton}
+              >
+                Ďalej
+              </button>
+              <button type="button" onClick={() => void refreshPrintList()} disabled={!!printLoadingId} style={styles.secondaryButton}>
+                Obnoviť
+              </button>
+            </div>
           </div>
-        </section>
+        </div>
       )}
 
       {reportsOpen && (
@@ -3297,19 +3299,10 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 8,
     padding: 12,
     display: 'grid',
-    gap: 12,
-    width: 'min(760px, 100%)',
-    maxHeight: '86vh',
-    overflowY: 'auto'
-  },
-  printPanel: {
-    background: '#fff',
-    border: '1px solid #dbe4ef',
-    borderRadius: 8,
-    padding: 10,
-    display: 'grid',
     gap: 9,
-    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)'
+    width: 'min(1080px, calc(100vw - 18px))',
+    maxHeight: '94vh',
+    overflowY: 'auto'
   },
   reportModal: {
     background: '#fff',
