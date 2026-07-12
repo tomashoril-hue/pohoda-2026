@@ -966,40 +966,6 @@ export default function VydajStravyClient({
     }
   }
 
-  const resumeAllPrinters = async () => {
-    setPrintControlLoading('ALL:START')
-    setPrintMessage('')
-
-    try {
-      const responses = await Promise.all([
-        fetch('/api/vydaj-stravy/print-control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ printerId: 'vydaj-1', stop: false })
-        }),
-        fetch('/api/vydaj-stravy/print-control', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ printerId: 'vydaj-zurnal', stop: false })
-        })
-      ])
-      const bodies = await Promise.all(responses.map(res => res.json().catch(() => ({}))))
-      const failed = responses.findIndex((res, index) => !res.ok || !bodies[index]?.ok)
-
-      if (failed >= 0) {
-        throw new Error(bodies[failed]?.error || 'Tlač sa nepodarilo povoliť.')
-      }
-
-      setPrintMessage('Tlač etikiet aj žurnálu je znovu povolená.')
-      setPrintMessageType('success')
-    } catch (err: any) {
-      setPrintMessage(err?.message || 'Tlač sa nepodarilo povoliť.')
-      setPrintMessageType('error')
-    } finally {
-      setPrintControlLoading('')
-    }
-  }
-
   const cancelPendingPrintJobs = async (printerId: 'vydaj-1' | 'vydaj-zurnal') => {
     const loadingKey = `${printerId}:CANCEL`
 
@@ -2019,52 +1985,54 @@ export default function VydajStravyClient({
             )}
 
             <div style={styles.printControlBox}>
-              <div style={styles.printControlText}>
-                <b>Zastavenie tlače</b>
-                <span>Zastaví ďalšie etikety alebo žurnál po aktuálne tlačenom štítku.</span>
-              </div>
-              <div style={styles.printControlActions}>
-                <button
-                  type="button"
-                  onClick={() => void setPrintStop('vydaj-1', true)}
-                  disabled={!!printControlLoading}
-                  style={styles.printStopButton}
-                >
-                  {printControlLoading === 'vydaj-1:STOP' ? 'Zastavujem...' : 'Stop etikety'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void setPrintStop('vydaj-zurnal', true)}
-                  disabled={!!printControlLoading}
-                  style={styles.printStopButton}
-                >
-                  {printControlLoading === 'vydaj-zurnal:STOP' ? 'Zastavujem...' : 'Stop žurnál'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void cancelPendingPrintJobs('vydaj-1')}
-                  disabled={!!printControlLoading}
-                  style={styles.printCancelButton}
-                >
-                  {printControlLoading === 'vydaj-1:CANCEL' ? 'Ruším...' : 'Zrušiť etikety'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void cancelPendingPrintJobs('vydaj-zurnal')}
-                  disabled={!!printControlLoading}
-                  style={styles.printCancelButton}
-                >
-                  {printControlLoading === 'vydaj-zurnal:CANCEL' ? 'Ruším...' : 'Zrušiť žurnál'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void resumeAllPrinters()}
-                  disabled={!!printControlLoading}
-                  style={styles.printResumeButton}
-                >
-                  {printControlLoading === 'ALL:START' ? 'Povoľujem...' : 'Povoliť tlač'}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => void setPrintStop('vydaj-1', true)}
+                disabled={!!printControlLoading}
+                style={styles.printStopButton}
+              >
+                {printControlLoading === 'vydaj-1:STOP' ? 'Zastavujem...' : 'Stop etikety'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void setPrintStop('vydaj-1', false)}
+                disabled={!!printControlLoading}
+                style={styles.printResumeButton}
+              >
+                {printControlLoading === 'vydaj-1:START' ? 'Povoľujem...' : 'Povoliť etikety'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void cancelPendingPrintJobs('vydaj-1')}
+                disabled={!!printControlLoading}
+                style={styles.printCancelButton}
+              >
+                {printControlLoading === 'vydaj-1:CANCEL' ? 'Ruším...' : 'Zrušiť etikety'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void setPrintStop('vydaj-zurnal', true)}
+                disabled={!!printControlLoading}
+                style={styles.printStopButton}
+              >
+                {printControlLoading === 'vydaj-zurnal:STOP' ? 'Zastavujem...' : 'Stop žurnál'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void setPrintStop('vydaj-zurnal', false)}
+                disabled={!!printControlLoading}
+                style={styles.printResumeButton}
+              >
+                {printControlLoading === 'vydaj-zurnal:START' ? 'Povoľujem...' : 'Povoliť žurnál'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void cancelPendingPrintJobs('vydaj-zurnal')}
+                disabled={!!printControlLoading}
+                style={styles.printCancelButton}
+              >
+                {printControlLoading === 'vydaj-zurnal:CANCEL' ? 'Ruším...' : 'Zrušiť žurnál'}
+              </button>
             </div>
 
             {fullMode && (
@@ -3528,28 +3496,11 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center'
   },
   printControlBox: {
-    display: 'grid',
-    gridTemplateColumns: '1fr auto',
-    gap: 10,
-    alignItems: 'center',
-    background: '#f8fafc',
-    border: '1px solid #e2e8f0',
-    borderRadius: 8,
-    padding: 10
-  },
-  printControlText: {
-    display: 'grid',
-    gap: 2,
-    color: '#0f172a',
-    fontSize: 13,
-    fontWeight: 800
-  },
-  printControlActions: {
     display: 'flex',
-    gap: 8,
+    gap: 6,
     alignItems: 'center',
     flexWrap: 'wrap',
-    justifyContent: 'flex-end'
+    justifyContent: 'flex-start'
   },
   printStopButton: {
     ...baseButton,
