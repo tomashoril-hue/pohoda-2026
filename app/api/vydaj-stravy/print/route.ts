@@ -56,6 +56,14 @@ function choiceLabel(value: unknown) {
   return 'NEZADANE'
 }
 
+function choiceSortRank(value: unknown) {
+  const choice = normalizeChoice(value)
+  if (choice === 'MASO') return 0
+  if (choice === 'VEGE') return 1
+  if (choice === 'DIETA') return 2
+  return 3
+}
+
 function mealLabel(value: unknown) {
   return cleanText(value).toUpperCase() === 'VECERA' ? 'VECERA' : 'OBED'
 }
@@ -353,7 +361,15 @@ export async function POST(req: NextRequest) {
           issuedAt: row.issued_at || firstIssuedAt
         }
       })
-      .sort((a, b) => a.name.localeCompare(b.name, 'sk'))
+      .sort((a, b) => {
+        const choiceDiff = choiceSortRank(a.choice) - choiceSortRank(b.choice)
+        if (choiceDiff !== 0) return choiceDiff
+
+        const groupDiff = a.groupName.localeCompare(b.groupName, 'sk')
+        if (groupDiff !== 0) return groupDiff
+
+        return a.name.localeCompare(b.name, 'sk')
+      })
 
     const summary = summaryFromRows(issuedRows)
     const labelJobs = printableRows.map(item => ({
