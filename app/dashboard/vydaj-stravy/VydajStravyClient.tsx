@@ -474,7 +474,7 @@ export default function VydajStravyClient({
   const [offlineNotice, setOfflineNotice] = useState('')
   const [, setOfflineSyncing] = useState(false)
   const [offlineSnapshotLoading, setOfflineSnapshotLoading] = useState(false)
-  const [isMobile, setIsMobile] = useState(false)
+  const [isMobile, setIsMobile] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const flashTimerRef = useRef<number | null>(null)
 
@@ -1967,6 +1967,18 @@ export default function VydajStravyClient({
 
       {printOpen && (
         <div style={styles.modalBackdrop} onClick={() => setPrintOpen(false)}>
+          {lastItem && (
+            <div
+              style={{
+                ...styles.printScanRibbon,
+                background: `${scanFlashColor(lastItem.tone)}1a`,
+                borderColor: scanFlashColor(lastItem.tone)
+              }}
+            >
+              <b>{scanFlashLabel(lastItem.tone)}</b>
+              <span style={styles.printScanStatusText}>{historyDetail(lastItem)}</span>
+            </div>
+          )}
           <div style={styles.printModal} onClick={event => event.stopPropagation()}>
             <div style={styles.statsModalHeader}>
               <div>
@@ -1976,19 +1988,6 @@ export default function VydajStravyClient({
                 Zavrieť
               </button>
             </div>
-
-            {lastItem && (
-              <div
-                style={{
-                  ...styles.printScanStatus,
-                  background: `${scanFlashColor(lastItem.tone)}1a`,
-                  borderColor: scanFlashColor(lastItem.tone)
-                }}
-              >
-                <b>{scanFlashLabel(lastItem.tone)}</b>
-                <span style={styles.printScanStatusText}>{historyDetail(lastItem)}</span>
-              </div>
-            )}
 
             {printMessage && (
               <div style={printMessageType === 'success' ? styles.printMessageOk : styles.printMessageError}>
@@ -3195,9 +3194,12 @@ const styles: Record<string, CSSProperties> = {
     zIndex: 50,
     background: 'rgba(15, 23, 42, 0.55)',
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12
+    justifyContent: 'flex-start',
+    gap: 8,
+    padding: 'max(8px, env(safe-area-inset-top)) 8px 8px',
+    overflowY: 'auto'
   },
   decisionModal: {
     background: '#fff',
@@ -3300,8 +3302,8 @@ const styles: Record<string, CSSProperties> = {
     padding: 12,
     display: 'grid',
     gap: 9,
-    width: 'min(1080px, calc(100vw - 18px))',
-    maxHeight: '94vh',
+    width: 'min(1080px, calc(100vw - 16px))',
+    maxHeight: 'calc(100dvh - 58px)',
     overflowY: 'auto'
   },
   reportModal: {
@@ -3507,7 +3509,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     alignItems: 'center'
   },
-  printScanStatus: {
+  printScanRibbon: {
     minHeight: 32,
     border: '1px solid',
     borderRadius: 8,
@@ -3516,10 +3518,12 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: 'auto 1fr',
     gap: 8,
     alignItems: 'center',
+    width: 'min(1080px, calc(100vw - 16px))',
     color: '#0f172a',
     fontSize: 12,
     fontWeight: 850,
-    overflow: 'hidden'
+    overflow: 'hidden',
+    boxShadow: '0 6px 18px rgba(15, 23, 42, 0.18)'
   },
   printScanStatusText: {
     minWidth: 0,
