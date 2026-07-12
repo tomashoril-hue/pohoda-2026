@@ -465,6 +465,7 @@ export default function VydajStravyClient({
   const offlineSnapshotDownloadRef = useRef(false)
   const submitQrRef = useRef<((manualValue?: string, issueAction?: 'INDIVIDUAL' | 'BULK', bulkIssueId?: string) => Promise<void>) | null>(null)
   const scannerKeyBufferRef = useRef({ value: '', firstAt: 0, lastAt: 0 })
+  const printLoadingKeysRef = useRef<Set<string>>(new Set())
 
   const [datum, setDatum] = useState(initialDate)
   const [typJedla, setTypJedla] = useState<Meal>(initialMeal === 'VECERA' ? 'VECERA' : 'OBED')
@@ -494,7 +495,7 @@ export default function VydajStravyClient({
   const [editLoading, setEditLoading] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [printOpen, setPrintOpen] = useState(false)
-  const [printLoadingId, setPrintLoadingId] = useState('')
+  const [printLoadingIds, setPrintLoadingIds] = useState<string[]>([])
   const [printMessage, setPrintMessage] = useState('')
   const [printMessageType, setPrintMessageType] = useState<Tone>('success')
   const [printSearch, setPrintSearch] = useState('')
@@ -957,11 +958,13 @@ export default function VydajStravyClient({
   }
 
   const printIssuedMeal = async (item: ScanItem, printKind: 'LABELS' | 'JOURNAL') => {
-    if (!item.issuedId || printLoadingId) return
+    if (!item.issuedId) return
 
     const loadingKey = `${printKind}:${item.issuedId}`
+    if (printLoadingKeysRef.current.has(loadingKey)) return
 
-    setPrintLoadingId(loadingKey)
+    printLoadingKeysRef.current.add(loadingKey)
+    setPrintLoadingIds(prev => [...prev, loadingKey])
     setPrintMessage('')
 
     try {
@@ -982,7 +985,8 @@ export default function VydajStravyClient({
       setPrintMessage(err?.message || 'Výdaj sa nepodarilo odoslať do tlače.')
       setPrintMessageType('error')
     } finally {
-      setPrintLoadingId('')
+      printLoadingKeysRef.current.delete(loadingKey)
+      setPrintLoadingIds(prev => prev.filter(key => key !== loadingKey))
     }
   }
 
@@ -2253,24 +2257,24 @@ export default function VydajStravyClient({
                         <button
                           type="button"
                           onClick={() => printIssuedMeal(item, 'LABELS')}
-                          disabled={!!printLoadingId}
+                          disabled={printLoadingIds.includes(`LABELS:${item.issuedId}`)}
                           style={{
                             ...styles.printItemButton,
-                            opacity: printLoadingId && printLoadingId !== `LABELS:${item.issuedId}` ? 0.45 : 1
+                            opacity: printLoadingIds.includes(`LABELS:${item.issuedId}`) ? 0.65 : 1
                           }}
                         >
-                          {printLoadingId === `LABELS:${item.issuedId}` ? 'Odosielam...' : 'Etikety'}
+                          Etikety
                         </button>
                         <button
                           type="button"
                           onClick={() => printIssuedMeal(item, 'JOURNAL')}
-                          disabled={!!printLoadingId}
+                          disabled={printLoadingIds.includes(`JOURNAL:${item.issuedId}`)}
                           style={{
                             ...styles.printItemJournalButton,
-                            opacity: printLoadingId && printLoadingId !== `JOURNAL:${item.issuedId}` ? 0.45 : 1
+                            opacity: printLoadingIds.includes(`JOURNAL:${item.issuedId}`) ? 0.65 : 1
                           }}
                         >
-                          {printLoadingId === `JOURNAL:${item.issuedId}` ? 'Odosielam...' : 'Žurnál'}
+                          Žurnál
                         </button>
                       </div>
                     </div>
@@ -2287,7 +2291,7 @@ export default function VydajStravyClient({
                   setPrintPage(nextPage)
                   void refreshPrintList({ page: nextPage })
                 }}
-                disabled={!!printLoadingId || printPage <= 1}
+                disabled={printPage <= 1}
                 style={styles.printPagerButton}
               >
                 Späť
@@ -2300,12 +2304,12 @@ export default function VydajStravyClient({
                   setPrintPage(nextPage)
                   void refreshPrintList({ page: nextPage })
                 }}
-                disabled={!!printLoadingId || printPage >= printPageCount}
+                disabled={printPage >= printPageCount}
                 style={styles.printPagerButton}
               >
                 Ďalej
               </button>
-              <button type="button" onClick={() => void refreshPrintList()} disabled={!!printLoadingId} style={styles.printPagerButton}>
+              <button type="button" onClick={() => void refreshPrintList()} style={styles.printPagerButton}>
                 Obnoviť
               </button>
             </div>
