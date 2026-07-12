@@ -3336,7 +3336,7 @@ const styles: Record<string, CSSProperties> = {
     overflowY: 'auto'
   },
   printBackdrop: {
-    padding: '48px 8px 8px'
+    padding: 'calc(env(safe-area-inset-top, 0px) + 42px) 8px 8px'
   },
   decisionBackdrop: {
     zIndex: 70
@@ -3443,7 +3443,7 @@ const styles: Record<string, CSSProperties> = {
     display: 'grid',
     gap: 9,
     width: 'min(1080px, calc(100vw - 16px))',
-    maxHeight: 'calc(100dvh - 58px)',
+    maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - 50px)',
     overflowY: 'auto'
   },
   reportModal: {
@@ -3650,15 +3650,16 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center'
   },
   printScanRibbon: {
-    minHeight: 32,
+    minHeight: 34,
     border: '1px solid',
-    borderRadius: 4,
-    padding: '5px 9px',
+    borderRadius: 0,
+    padding: '5px 10px',
+    paddingTop: 'calc(env(safe-area-inset-top, 0px) + 5px)',
     display: 'grid',
     gridTemplateColumns: 'auto 1fr',
     gap: 8,
     alignItems: 'center',
-    width: 'min(1080px, calc(100vw - 16px))',
+    width: '100%',
     color: '#fff',
     fontSize: 12,
     fontWeight: 950,
@@ -3667,9 +3668,9 @@ const styles: Record<string, CSSProperties> = {
   },
   printScanRibbonOverlay: {
     position: 'fixed',
-    top: 'max(8px, env(safe-area-inset-top))',
-    left: 8,
-    right: 8,
+    top: 0,
+    left: 0,
+    right: 0,
     zIndex: 90,
     width: 'auto'
   },
