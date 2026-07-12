@@ -2028,55 +2028,65 @@ export default function VydajStravyClient({
               </div>
             )}
 
-            <div style={styles.printControlBox}>
-              <button
-                type="button"
-                onClick={() => void setPrintStop('vydaj-1', true)}
-                disabled={!!printControlLoading}
-                style={styles.printStopButton}
-              >
-                {printControlLoading === 'vydaj-1:STOP' ? 'Zastavujem...' : 'Stop etikety'}
-              </button>
-              <button
-                type="button"
-                onClick={() => void setPrintStop('vydaj-1', false)}
-                disabled={!!printControlLoading}
-                style={styles.printResumeButton}
-              >
-                {printControlLoading === 'vydaj-1:START' ? 'Povoľujem...' : 'Povoliť etikety'}
-              </button>
-              <button
-                type="button"
-                onClick={() => void cancelPendingPrintJobs('vydaj-1')}
-                disabled={!!printControlLoading}
-                style={styles.printCancelButton}
-              >
-                {printControlLoading === 'vydaj-1:CANCEL' ? 'Ruším...' : 'Zrušiť etikety'}
-              </button>
-              <button
-                type="button"
-                onClick={() => void setPrintStop('vydaj-zurnal', true)}
-                disabled={!!printControlLoading}
-                style={styles.printStopButton}
-              >
-                {printControlLoading === 'vydaj-zurnal:STOP' ? 'Zastavujem...' : 'Stop žurnál'}
-              </button>
-              <button
-                type="button"
-                onClick={() => void setPrintStop('vydaj-zurnal', false)}
-                disabled={!!printControlLoading}
-                style={styles.printResumeButton}
-              >
-                {printControlLoading === 'vydaj-zurnal:START' ? 'Povoľujem...' : 'Povoliť žurnál'}
-              </button>
-              <button
-                type="button"
-                onClick={() => void cancelPendingPrintJobs('vydaj-zurnal')}
-                disabled={!!printControlLoading}
-                style={styles.printCancelButton}
-              >
-                {printControlLoading === 'vydaj-zurnal:CANCEL' ? 'Ruším...' : 'Zrušiť žurnál'}
-              </button>
+            <div style={{ ...styles.printControlBox, ...(isMobile ? styles.printControlBoxMobile : {}) }}>
+              <div style={styles.printControlGroup}>
+                <span style={styles.printControlLabel}>Etikety</span>
+                <div style={styles.printControlButtons}>
+                  <button
+                    type="button"
+                    onClick={() => void setPrintStop('vydaj-1', true)}
+                    disabled={!!printControlLoading}
+                    style={styles.printStopButton}
+                  >
+                    {printControlLoading === 'vydaj-1:STOP' ? 'Stop...' : 'Stop'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void setPrintStop('vydaj-1', false)}
+                    disabled={!!printControlLoading}
+                    style={styles.printResumeButton}
+                  >
+                    {printControlLoading === 'vydaj-1:START' ? 'Povoľujem...' : 'Povoliť'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void cancelPendingPrintJobs('vydaj-1')}
+                    disabled={!!printControlLoading}
+                    style={styles.printCancelButton}
+                  >
+                    {printControlLoading === 'vydaj-1:CANCEL' ? 'Ruším...' : 'Zrušiť'}
+                  </button>
+                </div>
+              </div>
+              <div style={styles.printControlGroup}>
+                <span style={styles.printControlLabel}>Žurnál</span>
+                <div style={styles.printControlButtons}>
+                  <button
+                    type="button"
+                    onClick={() => void setPrintStop('vydaj-zurnal', true)}
+                    disabled={!!printControlLoading}
+                    style={styles.printStopButton}
+                  >
+                    {printControlLoading === 'vydaj-zurnal:STOP' ? 'Stop...' : 'Stop'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void setPrintStop('vydaj-zurnal', false)}
+                    disabled={!!printControlLoading}
+                    style={styles.printResumeButton}
+                  >
+                    {printControlLoading === 'vydaj-zurnal:START' ? 'Povoľujem...' : 'Povoliť'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void cancelPendingPrintJobs('vydaj-zurnal')}
+                    disabled={!!printControlLoading}
+                    style={styles.printCancelButton}
+                  >
+                    {printControlLoading === 'vydaj-zurnal:CANCEL' ? 'Ruším...' : 'Zrušiť'}
+                  </button>
+                </div>
+              </div>
             </div>
 
             {fullMode && (
@@ -3569,40 +3579,62 @@ const styles: Record<string, CSSProperties> = {
   },
   printControlBox: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-    gap: 6,
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 8,
     alignItems: 'stretch'
+  },
+  printControlBoxMobile: {
+    gridTemplateColumns: '1fr'
+  },
+  printControlGroup: {
+    display: 'grid',
+    gridTemplateColumns: '70px 1fr',
+    gap: 6,
+    alignItems: 'center',
+    minWidth: 0
+  },
+  printControlLabel: {
+    color: '#334155',
+    fontSize: 12,
+    fontWeight: 950,
+    whiteSpace: 'nowrap'
+  },
+  printControlButtons: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 5,
+    minWidth: 0
   },
   printStopButton: {
     ...baseButton,
-    minHeight: 36,
+    minHeight: 34,
     width: '100%',
     background: '#dc2626',
     borderColor: '#b91c1c',
     color: '#fff',
-    padding: '0 10px',
+    padding: '0 8px',
     fontSize: 12,
     whiteSpace: 'nowrap'
   },
   printCancelButton: {
     ...baseButton,
-    minHeight: 36,
+    minHeight: 34,
     width: '100%',
     background: '#7f1d1d',
     borderColor: '#7f1d1d',
     color: '#fff',
-    padding: '0 10px',
+    padding: '0 8px',
     fontSize: 12,
     whiteSpace: 'nowrap'
   },
   printResumeButton: {
     ...baseButton,
-    minHeight: 36,
+    minHeight: 34,
     width: '100%',
     background: '#fff',
     borderColor: '#cbd5e1',
     color: '#0f172a',
-    padding: '0 10px',
+    padding: '0 8px',
     fontSize: 12,
     whiteSpace: 'nowrap'
   },
