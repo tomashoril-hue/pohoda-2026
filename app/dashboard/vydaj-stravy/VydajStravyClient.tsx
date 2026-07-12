@@ -459,6 +459,7 @@ export default function VydajStravyClient({
   const [printTotal, setPrintTotal] = useState(0)
   const [printListLoading, setPrintListLoading] = useState(false)
   const [printScope, setPrintScope] = useState<'MINE' | 'ALL'>('MINE')
+  const [printControlLoading, setPrintControlLoading] = useState('')
   const [reportsOpen, setReportsOpen] = useState(false)
   const [reportType, setReportType] = useState<IssueReportType>('UNISSUED')
   const [reportDate, setReportDate] = useState(initialDate)
@@ -934,6 +935,68 @@ export default function VydajStravyClient({
       setPrintMessageType('error')
     } finally {
       setPrintLoadingId('')
+    }
+  }
+
+  const setPrintStop = async (printerId: 'vydaj-1' | 'vydaj-zurnal', stop: boolean) => {
+    const loadingKey = `${printerId}:${stop ? 'STOP' : 'START'}`
+
+    setPrintControlLoading(loadingKey)
+    setPrintMessage('')
+
+    try {
+      const res = await fetch('/api/vydaj-stravy/print-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ printerId, stop })
+      })
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || 'Tlač sa nepodarilo ovládať.')
+      }
+
+      setPrintMessage(json.message || (stop ? 'Tlač bola zastavená.' : 'Tlač bola povolená.'))
+      setPrintMessageType('success')
+    } catch (err: any) {
+      setPrintMessage(err?.message || 'Tlač sa nepodarilo ovládať.')
+      setPrintMessageType('error')
+    } finally {
+      setPrintControlLoading('')
+    }
+  }
+
+  const resumeAllPrinters = async () => {
+    setPrintControlLoading('ALL:START')
+    setPrintMessage('')
+
+    try {
+      const responses = await Promise.all([
+        fetch('/api/vydaj-stravy/print-control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ printerId: 'vydaj-1', stop: false })
+        }),
+        fetch('/api/vydaj-stravy/print-control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ printerId: 'vydaj-zurnal', stop: false })
+        })
+      ])
+      const bodies = await Promise.all(responses.map(res => res.json().catch(() => ({}))))
+      const failed = responses.findIndex((res, index) => !res.ok || !bodies[index]?.ok)
+
+      if (failed >= 0) {
+        throw new Error(bodies[failed]?.error || 'Tlač sa nepodarilo povoliť.')
+      }
+
+      setPrintMessage('Tlač etikiet aj žurnálu je znovu povolená.')
+      setPrintMessageType('success')
+    } catch (err: any) {
+      setPrintMessage(err?.message || 'Tlač sa nepodarilo povoliť.')
+      setPrintMessageType('error')
+    } finally {
+      setPrintControlLoading('')
     }
   }
 
@@ -1926,6 +1989,39 @@ export default function VydajStravyClient({
                 {printMessage}
               </div>
             )}
+
+            <div style={styles.printControlBox}>
+              <div style={styles.printControlText}>
+                <b>Zastavenie tlače</b>
+                <span>Zastaví ďalšie etikety alebo žurnál po aktuálne tlačenom štítku.</span>
+              </div>
+              <div style={styles.printControlActions}>
+                <button
+                  type="button"
+                  onClick={() => void setPrintStop('vydaj-1', true)}
+                  disabled={!!printControlLoading}
+                  style={styles.printStopButton}
+                >
+                  {printControlLoading === 'vydaj-1:STOP' ? 'Zastavujem...' : 'Stop etikety'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void setPrintStop('vydaj-zurnal', true)}
+                  disabled={!!printControlLoading}
+                  style={styles.printStopButton}
+                >
+                  {printControlLoading === 'vydaj-zurnal:STOP' ? 'Zastavujem...' : 'Stop žurnál'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void resumeAllPrinters()}
+                  disabled={!!printControlLoading}
+                  style={styles.printResumeButton}
+                >
+                  {printControlLoading === 'ALL:START' ? 'Povoľujem...' : 'Povoliť tlač'}
+                </button>
+              </div>
+            </div>
 
             {fullMode && (
               <div style={styles.printScopeTabs}>
@@ -3386,6 +3482,48 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: '1fr auto',
     gap: 8,
     alignItems: 'center'
+  },
+  printControlBox: {
+    display: 'grid',
+    gridTemplateColumns: '1fr auto',
+    gap: 10,
+    alignItems: 'center',
+    background: '#f8fafc',
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    padding: 10
+  },
+  printControlText: {
+    display: 'grid',
+    gap: 2,
+    color: '#0f172a',
+    fontSize: 13,
+    fontWeight: 800
+  },
+  printControlActions: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end'
+  },
+  printStopButton: {
+    ...baseButton,
+    minHeight: 38,
+    background: '#dc2626',
+    borderColor: '#b91c1c',
+    color: '#fff',
+    padding: '0 12px',
+    fontSize: 13
+  },
+  printResumeButton: {
+    ...baseButton,
+    minHeight: 38,
+    background: '#fff',
+    borderColor: '#cbd5e1',
+    color: '#0f172a',
+    padding: '0 12px',
+    fontSize: 13
   },
   printScopeTabs: {
     display: 'grid',
