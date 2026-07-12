@@ -319,6 +319,14 @@ function choiceSummaryLabel(summary: ChoiceSummary) {
   ].filter(Boolean).join(' · ')
 }
 
+function decisionRibbonDetail(decision: IssueDecision) {
+  const firstBulkIssue = decision.bulkIssues[0]
+  if (!firstBulkIssue) return 'Vyber spôsob výdaja'
+
+  const counts = choiceSummaryLabel(firstBulkIssue.summary)
+  return counts || personCountLabel(firstBulkIssue.count)
+}
+
 function reportTypeLabel(type: IssueReportType) {
   if (type === 'UNISSUED') return 'Nevydané jedlá'
   if (type === 'ENTITLED') return 'Všetky platné jedlá'
@@ -438,6 +446,7 @@ export default function VydajStravyClient({
   activeIssues: ActiveIssue[]
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const printSearchInputRef = useRef<HTMLInputElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -454,6 +463,8 @@ export default function VydajStravyClient({
   const typJedlaRef = useRef<Meal>(initialMeal === 'VECERA' ? 'VECERA' : 'OBED')
   const offlineSyncingRef = useRef(false)
   const offlineSnapshotDownloadRef = useRef(false)
+  const submitQrRef = useRef<((manualValue?: string, issueAction?: 'INDIVIDUAL' | 'BULK', bulkIssueId?: string) => Promise<void>) | null>(null)
+  const scannerKeyBufferRef = useRef({ value: '', firstAt: 0, lastAt: 0 })
 
   const [datum, setDatum] = useState(initialDate)
   const [typJedla, setTypJedla] = useState<Meal>(initialMeal === 'VECERA' ? 'VECERA' : 'OBED')
@@ -906,6 +917,10 @@ export default function VydajStravyClient({
     setPrintSearch('')
     setPrintScope('MINE')
     setPrintPage(1)
+    setPrintTotal(0)
+    setRecentIssued([])
+    setSelectedCancelIds([])
+    setPrintListLoading(true)
     await refreshRecentIssued({ printMode: true, search: '', page: 1, pageSize: printPageSize, scope: 'MINE' })
   }
 
@@ -1729,6 +1744,78 @@ export default function VydajStravyClient({
     }
   }
 
+  useEffect(() => {
+    submitQrRef.current = submitQr
+  })
+
+  useEffect(() => {
+    const resetScannerBuffer = () => {
+      scannerKeyBufferRef.current = { value: '', firstAt: 0, lastAt: 0 }
+    }
+
+    const removeScannerTextFromFocusedInput = (target: EventTarget | null, scanText: string) => {
+      if (target !== printSearchInputRef.current) return
+
+      setPrintSearch(prev => {
+        if (!prev) return prev
+        if (prev.endsWith(scanText)) return prev.slice(0, -scanText.length)
+        return prev
+      })
+    }
+
+    const handleScannerKey = (event: globalThis.KeyboardEvent) => {
+      if (event.ctrlKey || event.altKey || event.metaKey) return
+
+      const now = performance.now()
+      const buffer = scannerKeyBufferRef.current
+
+      if (event.key.length === 1) {
+        if (!buffer.value || now - buffer.lastAt > 80) {
+          scannerKeyBufferRef.current = {
+            value: event.key,
+            firstAt: now,
+            lastAt: now
+          }
+          return
+        }
+
+        scannerKeyBufferRef.current = {
+          value: (buffer.value + event.key).slice(-160),
+          firstAt: buffer.firstAt,
+          lastAt: now
+        }
+        return
+      }
+
+      if (event.key !== 'Enter') {
+        if (now - buffer.lastAt > 120) resetScannerBuffer()
+        return
+      }
+
+      const scanText = buffer.value.trim()
+      const duration = Math.max(1, buffer.lastAt - buffer.firstAt)
+      const avgGap = scanText.length > 1 ? duration / (scanText.length - 1) : duration
+      const isLikelyScanner =
+        scanText.length >= 6 &&
+        now - buffer.lastAt < 160 &&
+        (duration < 700 || avgGap < 35)
+
+      resetScannerBuffer()
+
+      if (!isLikelyScanner) return
+
+      event.preventDefault()
+      event.stopPropagation()
+
+      removeScannerTextFromFocusedInput(event.target, scanText)
+      setQrValue('')
+      void submitQrRef.current?.(scanText)
+    }
+
+    window.addEventListener('keydown', handleScannerKey, true)
+    return () => window.removeEventListener('keydown', handleScannerKey, true)
+  }, [])
+
   const cancelLastOfflineIssued = async () => {
     if (cancelLoading) return
 
@@ -1999,19 +2086,21 @@ export default function VydajStravyClient({
       </section>
 
       {printOpen && (
-        <div style={styles.modalBackdrop} onClick={() => setPrintOpen(false)}>
-          {lastItem && (
-            <div
-              style={{
-                ...styles.printScanRibbon,
-                background: scanRibbonColor(lastItem.tone),
-                borderColor: scanRibbonColor(lastItem.tone)
-              }}
-            >
-              <b>{scanRibbonLabel(lastItem)}</b>
-              <span style={styles.printScanStatusText}>{scanRibbonDetail(lastItem)}</span>
-            </div>
-          )}
+        <>
+          <div
+            style={{
+              ...styles.printScanRibbon,
+              ...styles.printScanRibbonOverlay,
+              background: issueDecision ? '#16a34a' : lastItem ? scanRibbonColor(lastItem.tone) : '#334155',
+              borderColor: issueDecision ? '#16a34a' : lastItem ? scanRibbonColor(lastItem.tone) : '#334155'
+            }}
+          >
+            <b>{issueDecision ? 'HROMADNÝ' : lastItem ? scanRibbonLabel(lastItem) : 'SKENER PRIPRAVENÝ'}</b>
+            <span style={styles.printScanStatusText}>
+              {issueDecision ? decisionRibbonDetail(issueDecision) : lastItem ? scanRibbonDetail(lastItem) : 'Čaká na QR kód'}
+            </span>
+          </div>
+          <div style={{ ...styles.modalBackdrop, ...styles.printBackdrop }} onClick={() => setPrintOpen(false)}>
           <div style={styles.printModal} onClick={event => event.stopPropagation()}>
             <div style={styles.statsModalHeader}>
               <div>
@@ -2116,6 +2205,7 @@ export default function VydajStravyClient({
 
             <div style={styles.printSearchRow}>
               <input
+                ref={printSearchInputRef}
                 type="search"
                 value={printSearch}
                 onChange={event => updatePrintSearch(event.target.value)}
@@ -2219,6 +2309,7 @@ export default function VydajStravyClient({
             </div>
           </div>
         </div>
+        </>
       )}
 
       {reportsOpen && (
@@ -3244,6 +3335,9 @@ const styles: Record<string, CSSProperties> = {
     padding: 'max(8px, env(safe-area-inset-top)) 8px 8px',
     overflowY: 'auto'
   },
+  printBackdrop: {
+    padding: '48px 8px 8px'
+  },
   decisionBackdrop: {
     zIndex: 70
   },
@@ -3558,7 +3652,7 @@ const styles: Record<string, CSSProperties> = {
   printScanRibbon: {
     minHeight: 32,
     border: '1px solid',
-    borderRadius: 8,
+    borderRadius: 4,
     padding: '5px 9px',
     display: 'grid',
     gridTemplateColumns: 'auto 1fr',
@@ -3570,6 +3664,14 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 950,
     overflow: 'hidden',
     boxShadow: '0 6px 18px rgba(15, 23, 42, 0.18)'
+  },
+  printScanRibbonOverlay: {
+    position: 'fixed',
+    top: 'max(8px, env(safe-area-inset-top))',
+    left: 8,
+    right: 8,
+    zIndex: 90,
+    width: 'auto'
   },
   printScanStatusText: {
     minWidth: 0,
