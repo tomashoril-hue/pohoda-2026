@@ -2229,53 +2229,55 @@ export default function VydajStravyClient({
               {printListLoading ? ' · načítavam' : ''}
             </div>
 
-            {recentIssued.length === 0 ? (
-              <div style={styles.emptyHistory}>Zatiaľ nie je čo tlačiť.</div>
-            ) : (
-              <div style={styles.printList}>
-                {recentIssued.map(item => (
-                  <div key={item.issuedId} style={styles.printItem}>
-                    <div style={styles.printItemText}>
-                      <b>{item.itemType === 'BULK' ? (item.groupName || item.personName || 'Skupinový výdaj') : (item.personName || item.email || '-')}</b>
-                      <span>
-                        {mealLabel(item.typJedla)} · {formatTime(item.issuedAt)} · {methodLabel(item.method)}
-                        {item.itemType === 'BULK' && item.children?.length ? ` · ${item.children.length} osôb` : ''}
-                      </span>
-                      {item.itemType === 'BULK' && item.summary && (
-                        <em>{choiceSummaryLabel(item.summary)}</em>
-                      )}
-                      {item.itemType !== 'BULK' && item.choice && (
-                        <em>{choiceLabel(item.choice)}</em>
-                      )}
+            <div style={styles.printScrollArea}>
+              {recentIssued.length === 0 ? (
+                <div style={styles.emptyHistory}>Zatiaľ nie je čo tlačiť.</div>
+              ) : (
+                <div style={styles.printList}>
+                  {recentIssued.map(item => (
+                    <div key={item.issuedId} style={styles.printItem}>
+                      <div style={styles.printItemText}>
+                        <b>{item.itemType === 'BULK' ? (item.groupName || item.personName || 'Skupinový výdaj') : (item.personName || item.email || '-')}</b>
+                        <span>
+                          {mealLabel(item.typJedla)} · {formatTime(item.issuedAt)} · {methodLabel(item.method)}
+                          {item.itemType === 'BULK' && item.children?.length ? ` · ${item.children.length} osôb` : ''}
+                        </span>
+                        {item.itemType === 'BULK' && item.summary && (
+                          <em>{choiceSummaryLabel(item.summary)}</em>
+                        )}
+                        {item.itemType !== 'BULK' && item.choice && (
+                          <em>{choiceLabel(item.choice)}</em>
+                        )}
+                      </div>
+                      <div style={styles.printItemActions}>
+                        <button
+                          type="button"
+                          onClick={() => printIssuedMeal(item, 'LABELS')}
+                          disabled={!!printLoadingId}
+                          style={{
+                            ...styles.printItemButton,
+                            opacity: printLoadingId && printLoadingId !== `LABELS:${item.issuedId}` ? 0.45 : 1
+                          }}
+                        >
+                          {printLoadingId === `LABELS:${item.issuedId}` ? 'Odosielam...' : 'Etikety'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => printIssuedMeal(item, 'JOURNAL')}
+                          disabled={!!printLoadingId}
+                          style={{
+                            ...styles.printItemJournalButton,
+                            opacity: printLoadingId && printLoadingId !== `JOURNAL:${item.issuedId}` ? 0.45 : 1
+                          }}
+                        >
+                          {printLoadingId === `JOURNAL:${item.issuedId}` ? 'Odosielam...' : 'Žurnál'}
+                        </button>
+                      </div>
                     </div>
-                    <div style={styles.printItemActions}>
-                      <button
-                        type="button"
-                        onClick={() => printIssuedMeal(item, 'LABELS')}
-                        disabled={!!printLoadingId}
-                        style={{
-                          ...styles.printItemButton,
-                          opacity: printLoadingId && printLoadingId !== `LABELS:${item.issuedId}` ? 0.45 : 1
-                        }}
-                      >
-                        {printLoadingId === `LABELS:${item.issuedId}` ? 'Odosielam...' : 'Etikety'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => printIssuedMeal(item, 'JOURNAL')}
-                        disabled={!!printLoadingId}
-                        style={{
-                          ...styles.printItemJournalButton,
-                          opacity: printLoadingId && printLoadingId !== `JOURNAL:${item.issuedId}` ? 0.45 : 1
-                        }}
-                      >
-                        {printLoadingId === `JOURNAL:${item.issuedId}` ? 'Odosielam...' : 'Žurnál'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
 
             <div style={styles.printPager}>
               <button
@@ -3441,10 +3443,11 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 8,
     padding: 12,
     display: 'grid',
+    gridTemplateRows: 'auto auto auto auto auto minmax(0, 1fr) auto',
     gap: 9,
     width: 'min(1080px, calc(100vw - 16px))',
     maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - 50px)',
-    overflowY: 'auto'
+    overflow: 'hidden'
   },
   reportModal: {
     background: '#fff',
@@ -3642,6 +3645,11 @@ const styles: Record<string, CSSProperties> = {
   printList: {
     display: 'grid',
     gap: 8
+  },
+  printScrollArea: {
+    minHeight: 0,
+    overflowY: 'auto',
+    paddingRight: 2
   },
   printSearchRow: {
     display: 'grid',
