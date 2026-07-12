@@ -192,10 +192,43 @@ function scanFlashColor(tone: Tone) {
   return '#ef4444'
 }
 
+function scanRibbonColor(tone: Tone) {
+  if (tone === 'success') return '#16a34a'
+  return '#dc2626'
+}
+
 function scanFlashLabel(tone: Tone) {
   if (tone === 'success') return 'VYDANÉ'
   if (tone === 'warning') return 'ROZPOZNANÉ'
   return 'ZAMIETNUTÉ'
+}
+
+function scanRibbonLabel(item: ScanItem) {
+  if (item.method === 'HROMADNE' && item.status === 'ISSUED') return 'HROMADNÝ'
+  if (item.status === 'ALREADY_ISSUED') return 'UŽ VYDANÉ'
+  if (item.status === 'ISSUE_DECISION_REQUIRED') return 'HROMADNÝ'
+  if (item.tone === 'success') return 'VYDANÉ'
+  if (item.tone === 'warning') return 'UŽ VYDANÉ'
+  return 'STOP'
+}
+
+function scanRibbonDetail(item: ScanItem) {
+  const summary = item.summary
+  const counts = summary
+    ? [
+        summary.MASO ? `${summary.MASO} x MASO` : '',
+        summary.VEGE ? `${summary.VEGE} x VEGE` : '',
+        summary.DIETA ? `${summary.DIETA} x DIÉTA` : '',
+        summary.NEZADANE ? `${summary.NEZADANE} x NEZADANÉ` : ''
+      ].filter(Boolean).join(' · ')
+    : ''
+
+  if (item.method === 'HROMADNE' && counts) return counts
+  if (item.status === 'ISSUE_DECISION_REQUIRED') return 'Vyber spôsob výdaja'
+
+  const name = item.personName || item.email || ''
+  const choice = item.choice ? choiceLabel(item.choice) : ''
+  return [name, choice].filter(Boolean).join(' · ') || item.message
 }
 
 function issueStatusLabel(value: string) {
@@ -1971,12 +2004,12 @@ export default function VydajStravyClient({
             <div
               style={{
                 ...styles.printScanRibbon,
-                background: `${scanFlashColor(lastItem.tone)}1a`,
-                borderColor: scanFlashColor(lastItem.tone)
+                background: scanRibbonColor(lastItem.tone),
+                borderColor: scanRibbonColor(lastItem.tone)
               }}
             >
-              <b>{scanFlashLabel(lastItem.tone)}</b>
-              <span style={styles.printScanStatusText}>{historyDetail(lastItem)}</span>
+              <b>{scanRibbonLabel(lastItem)}</b>
+              <span style={styles.printScanStatusText}>{scanRibbonDetail(lastItem)}</span>
             </div>
           )}
           <div style={styles.printModal} onClick={event => event.stopPropagation()}>
@@ -2153,7 +2186,7 @@ export default function VydajStravyClient({
                   void refreshPrintList({ page: nextPage })
                 }}
                 disabled={!!printLoadingId || printPage <= 1}
-                style={styles.secondaryButton}
+                style={styles.printPagerButton}
               >
                 Späť
               </button>
@@ -2166,11 +2199,11 @@ export default function VydajStravyClient({
                   void refreshPrintList({ page: nextPage })
                 }}
                 disabled={!!printLoadingId || printPage >= printPageCount}
-                style={styles.secondaryButton}
+                style={styles.printPagerButton}
               >
                 Ďalej
               </button>
-              <button type="button" onClick={() => void refreshPrintList()} disabled={!!printLoadingId} style={styles.secondaryButton}>
+              <button type="button" onClick={() => void refreshPrintList()} disabled={!!printLoadingId} style={styles.printPagerButton}>
                 Obnoviť
               </button>
             </div>
@@ -2317,7 +2350,7 @@ export default function VydajStravyClient({
       )}
 
       {issueDecision && (
-        <div style={styles.modalBackdrop}>
+        <div style={{ ...styles.modalBackdrop, ...styles.decisionBackdrop }}>
           <div style={styles.decisionModal}>
             <div style={styles.decisionHeader}>
               <div>
@@ -3201,6 +3234,9 @@ const styles: Record<string, CSSProperties> = {
     padding: 'max(8px, env(safe-area-inset-top)) 8px 8px',
     overflowY: 'auto'
   },
+  decisionBackdrop: {
+    zIndex: 70
+  },
   decisionModal: {
     background: '#fff',
     border: '1px solid #e5e7eb',
@@ -3519,9 +3555,9 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     alignItems: 'center',
     width: 'min(1080px, calc(100vw - 16px))',
-    color: '#0f172a',
+    color: '#fff',
     fontSize: 12,
-    fontWeight: 850,
+    fontWeight: 950,
     overflow: 'hidden',
     boxShadow: '0 6px 18px rgba(15, 23, 42, 0.18)'
   },
@@ -3624,6 +3660,14 @@ const styles: Record<string, CSSProperties> = {
     alignItems: 'center',
     flexWrap: 'wrap',
     justifyContent: 'space-between'
+  },
+  printPagerButton: {
+    ...baseButton,
+    minHeight: 34,
+    background: '#111827',
+    color: '#fff',
+    padding: '0 10px',
+    fontSize: 12
   },
   printItem: {
     display: 'grid',
