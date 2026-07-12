@@ -2698,7 +2698,7 @@ export default function VydajStravyClient({
                       onChange={() => toggleCancelSelection(item.issuedId)}
                       style={styles.cancelCheckbox}
                     />
-                    <span>
+                    <span style={styles.cancelPersonText}>
                       <b>{item.personName || item.email || '-'}</b>
                       <em>{mealLabel(item.typJedla)} · {formatTime(item.issuedAt)}</em>
                     </span>
@@ -3946,7 +3946,7 @@ const styles: Record<string, CSSProperties> = {
   },
   cancelPersonText: {
     display: 'grid',
-    gap: 2,
+    gap: 3,
     minWidth: 0
   },
   choiceSelect: {
