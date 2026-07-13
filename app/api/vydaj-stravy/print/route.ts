@@ -132,7 +132,7 @@ function buildMealLabelZpl(input: {
     '^POI',
     '~TA000',
     '^LT0',
-    '^FO30,18' + POHODA_TITLE_GFA + '^FS',
+    '^FO30,50' + POHODA_TITLE_GFA + '^FS',
     '^FO0,34^FB384,1,0,C,0^A0N,25,25^FD' + name + '^FS',
     '^FO22,74^FB340,2,0,C,0^A0N,18,18^FD' + groupName + '^FS',
     '^FO112,128^GB160,32,2,15^FS',
