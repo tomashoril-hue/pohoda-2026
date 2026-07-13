@@ -466,6 +466,7 @@ export default function VydajStravyClient({
   const submitQrRef = useRef<((manualValue?: string, issueAction?: 'INDIVIDUAL' | 'BULK', bulkIssueId?: string) => Promise<void>) | null>(null)
   const refreshPrintListRef = useRef<((overrides?: { search?: string; page?: number; pageSize?: number; scope?: 'MINE' | 'ALL' }) => Promise<void>) | null>(null)
   const printSearchRef = useRef('')
+  const scannerSuppressUntilRef = useRef(0)
   const scannerKeyBufferRef = useRef({ value: '', firstAt: 0, lastAt: 0, printSearchBefore: null as string | null })
   const printLoadingKeysRef = useRef<Set<string>>(new Set())
 
@@ -1000,6 +1001,12 @@ export default function VydajStravyClient({
 
     event.preventDefault()
     event.stopPropagation()
+    window.setTimeout(() => printSearchInputRef.current?.focus(), 0)
+  }
+
+  const handlePrintSearchBlur = () => {
+    if (performance.now() > scannerSuppressUntilRef.current) return
+
     window.setTimeout(() => printSearchInputRef.current?.focus(), 0)
   }
 
@@ -1830,14 +1837,38 @@ export default function VydajStravyClient({
 
       const now = performance.now()
       const buffer = scannerKeyBufferRef.current
+      const isPrintSearchTarget = event.target === printSearchInputRef.current
+
+      if (
+        isPrintSearchTarget &&
+        now < scannerSuppressUntilRef.current &&
+        event.key !== 'Enter' &&
+        event.key.length !== 1
+      ) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
 
       if (event.key.length === 1) {
+        if (
+          isPrintSearchTarget &&
+          (
+            now < scannerSuppressUntilRef.current ||
+            (buffer.value.length >= 3 && now - buffer.lastAt < 45)
+          )
+        ) {
+          scannerSuppressUntilRef.current = now + 900
+          event.preventDefault()
+          event.stopPropagation()
+        }
+
         if (!buffer.value || now - buffer.lastAt > 80) {
           scannerKeyBufferRef.current = {
             value: event.key,
             firstAt: now,
             lastAt: now,
-            printSearchBefore: event.target === printSearchInputRef.current ? printSearchRef.current : null
+            printSearchBefore: isPrintSearchTarget ? printSearchRef.current : null
           }
           return
         }
@@ -1859,7 +1890,6 @@ export default function VydajStravyClient({
       const scanText = buffer.value.trim()
       const duration = Math.max(1, buffer.lastAt - buffer.firstAt)
       const avgGap = scanText.length > 1 ? duration / (scanText.length - 1) : duration
-      const isPrintSearchTarget = event.target === printSearchInputRef.current
       const looksLikeQrInput = /^[A-Za-z0-9_-]{6,160}$/.test(scanText)
       const isLikelyScanner =
         scanText.length >= 6 &&
@@ -1877,6 +1907,7 @@ export default function VydajStravyClient({
 
       if (!isLikelyScanner) return
 
+      scannerSuppressUntilRef.current = now + 900
       event.preventDefault()
       event.stopPropagation()
 
@@ -1885,8 +1916,22 @@ export default function VydajStravyClient({
       void submitQrRef.current?.(scanText)
     }
 
+    const handleScannerKeyUp = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.target === printSearchInputRef.current &&
+        performance.now() < scannerSuppressUntilRef.current
+      ) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+    }
+
     window.addEventListener('keydown', handleScannerKey, true)
-    return () => window.removeEventListener('keydown', handleScannerKey, true)
+    window.addEventListener('keyup', handleScannerKeyUp, true)
+    return () => {
+      window.removeEventListener('keydown', handleScannerKey, true)
+      window.removeEventListener('keyup', handleScannerKeyUp, true)
+    }
   }, [])
 
   const cancelLastOfflineIssued = async () => {
@@ -2284,6 +2329,7 @@ export default function VydajStravyClient({
                 value={printSearch}
                 onChange={event => updatePrintSearch(event.target.value)}
                 onKeyDown={handlePrintSearchKeyDown}
+                onBlur={handlePrintSearchBlur}
                 placeholder="Hľadať osobu alebo skupinu"
                 style={styles.printSearchInput}
               />
