@@ -540,6 +540,28 @@ export default function VydajStravyClient({
     return nextChoice && nextChoice !== item.choice
   }).length
 
+  const focusQrInputIfSafe = (delay = 70) => {
+    return window.setTimeout(() => {
+      if (printOpen) return
+
+      const activeElement = document.activeElement
+      const isTypingElsewhere =
+        activeElement instanceof HTMLElement &&
+        activeElement !== inputRef.current &&
+        (
+          activeElement.isContentEditable ||
+          activeElement.tagName === 'INPUT' ||
+          activeElement.tagName === 'TEXTAREA' ||
+          activeElement.tagName === 'SELECT'
+        )
+
+      if (isTypingElsewhere) return
+      if (isMobile && cameraOpen) return
+
+      inputRef.current?.focus()
+    }, delay)
+  }
+
   useEffect(() => {
     const timer = setTimeout(() => inputRef.current?.focus(), 100)
     return () => clearTimeout(timer)
@@ -823,7 +845,7 @@ export default function VydajStravyClient({
     } catch (err: any) {
       setCameraReady(false)
       setCameraStatus(err?.message || 'Kamera sa nepodarila zapnúť. Použi manuálne pole.')
-      setTimeout(() => inputRef.current?.focus(), 80)
+      focusQrInputIfSafe(80)
     }
   }
 
@@ -1566,7 +1588,7 @@ export default function VydajStravyClient({
       busyRef.current = false
       setLoading(false)
       if (!decisionOpenRef.current) {
-        setTimeout(() => inputRef.current?.focus(), 70)
+        focusQrInputIfSafe()
       }
     }
   }
@@ -1576,7 +1598,7 @@ export default function VydajStravyClient({
 
     decisionOpenRef.current = false
     setIssueDecision(null)
-    setTimeout(() => inputRef.current?.focus(), 70)
+    focusQrInputIfSafe()
   }
 
   const confirmIssueDecision = async (
@@ -1690,7 +1712,7 @@ export default function VydajStravyClient({
       })
     } finally {
       setEditLoading(false)
-      setTimeout(() => inputRef.current?.focus(), 70)
+      focusQrInputIfSafe()
     }
   }
 
@@ -1762,7 +1784,7 @@ export default function VydajStravyClient({
       }
     } finally {
       setCancelLoading(false)
-      setTimeout(() => inputRef.current?.focus(), 70)
+      focusQrInputIfSafe()
     }
   }
 
@@ -1873,7 +1895,7 @@ export default function VydajStravyClient({
       })
     } finally {
       setCancelLoading(false)
-      setTimeout(() => inputRef.current?.focus(), 70)
+      focusQrInputIfSafe()
     }
   }
 
