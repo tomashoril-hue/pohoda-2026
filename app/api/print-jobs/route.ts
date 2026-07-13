@@ -116,7 +116,6 @@ function buildPersonSmallLabelZpl(input: {
     '^POI',
     '~TA-010',
     '^LT0',
-    '^FO8,228^A0B,14,14^FDPOHODA 2026^FS',
     '^FO24,36',
     '^BQN,2,5',
     '^FDLA,' + qr + '^FS',
