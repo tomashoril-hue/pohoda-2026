@@ -597,16 +597,13 @@ export default function VydajStravyClient({
     if (!printOpen) return
 
     const bodyOverflow = document.body.style.overflow
-    const bodyTouchAction = document.body.style.touchAction
     const htmlOverscrollBehavior = document.documentElement.style.overscrollBehavior
 
     document.body.style.overflow = 'hidden'
-    document.body.style.touchAction = 'none'
     document.documentElement.style.overscrollBehavior = 'none'
 
     return () => {
       document.body.style.overflow = bodyOverflow
-      document.body.style.touchAction = bodyTouchAction
       document.documentElement.style.overscrollBehavior = htmlOverscrollBehavior
     }
   }, [printOpen])
@@ -1001,13 +998,22 @@ export default function VydajStravyClient({
 
     event.preventDefault()
     event.stopPropagation()
-    window.setTimeout(() => printSearchInputRef.current?.focus(), 0)
+    keepPrintSearchFocused()
+  }
+
+  const keepPrintSearchFocused = () => {
+    const focusSearch = () => printSearchInputRef.current?.focus({ preventScroll: true })
+
+    focusSearch()
+    window.setTimeout(focusSearch, 0)
+    window.setTimeout(focusSearch, 80)
+    window.setTimeout(focusSearch, 220)
   }
 
   const handlePrintSearchBlur = () => {
     if (performance.now() > scannerSuppressUntilRef.current) return
 
-    window.setTimeout(() => printSearchInputRef.current?.focus(), 0)
+    keepPrintSearchFocused()
   }
 
   const updatePrintPageSize = (value: number) => {
@@ -1829,7 +1835,7 @@ export default function VydajStravyClient({
       setPrintSearch(restoredSearch)
       setPrintPage(1)
       void refreshPrintListRef.current?.({ search: restoredSearch, page: 1 })
-      window.setTimeout(() => printSearchInputRef.current?.focus(), 0)
+      keepPrintSearchFocused()
     }
 
     const handleScannerKey = (event: globalThis.KeyboardEvent) => {
@@ -1901,7 +1907,7 @@ export default function VydajStravyClient({
       if (isPrintSearchTarget && (!isLikelyScanner || !looksLikeQrInput)) {
         event.preventDefault()
         event.stopPropagation()
-        window.setTimeout(() => printSearchInputRef.current?.focus(), 0)
+        keepPrintSearchFocused()
         return
       }
 
@@ -1923,13 +1929,16 @@ export default function VydajStravyClient({
       ) {
         event.preventDefault()
         event.stopPropagation()
+        keepPrintSearchFocused()
       }
     }
 
     window.addEventListener('keydown', handleScannerKey, true)
+    window.addEventListener('keypress', handleScannerKeyUp, true)
     window.addEventListener('keyup', handleScannerKeyUp, true)
     return () => {
       window.removeEventListener('keydown', handleScannerKey, true)
+      window.removeEventListener('keypress', handleScannerKeyUp, true)
       window.removeEventListener('keyup', handleScannerKeyUp, true)
     }
   }, [])
@@ -3461,8 +3470,7 @@ const styles: Record<string, CSSProperties> = {
   printBackdrop: {
     padding: 'calc(env(safe-area-inset-top, 0px) + 42px) 8px 8px',
     overflow: 'hidden',
-    overscrollBehavior: 'contain',
-    touchAction: 'none'
+    overscrollBehavior: 'contain'
   },
   decisionBackdrop: {
     zIndex: 70
