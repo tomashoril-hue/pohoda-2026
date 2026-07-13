@@ -568,6 +568,24 @@ export default function VydajStravyClient({
     return () => query.removeListener(updateMobileState)
   }, [])
 
+  useEffect(() => {
+    if (!printOpen) return
+
+    const bodyOverflow = document.body.style.overflow
+    const bodyTouchAction = document.body.style.touchAction
+    const htmlOverscrollBehavior = document.documentElement.style.overscrollBehavior
+
+    document.body.style.overflow = 'hidden'
+    document.body.style.touchAction = 'none'
+    document.documentElement.style.overscrollBehavior = 'none'
+
+    return () => {
+      document.body.style.overflow = bodyOverflow
+      document.body.style.touchAction = bodyTouchAction
+      document.documentElement.style.overscrollBehavior = htmlOverscrollBehavior
+    }
+  }, [printOpen])
+
   const triggerScanFlash = (tone: Tone) => {
     if (flashTimerRef.current) {
       window.clearTimeout(flashTimerRef.current)
@@ -3342,7 +3360,10 @@ const styles: Record<string, CSSProperties> = {
     overflowY: 'auto'
   },
   printBackdrop: {
-    padding: 'calc(env(safe-area-inset-top, 0px) + 42px) 8px 8px'
+    padding: 'calc(env(safe-area-inset-top, 0px) + 42px) 8px 8px',
+    overflow: 'hidden',
+    overscrollBehavior: 'contain',
+    touchAction: 'none'
   },
   decisionBackdrop: {
     zIndex: 70
@@ -3451,7 +3472,9 @@ const styles: Record<string, CSSProperties> = {
     gap: 9,
     width: 'min(1080px, calc(100vw - 16px))',
     maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - 50px)',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    overscrollBehavior: 'contain',
+    touchAction: 'auto'
   },
   reportModal: {
     background: '#fff',
@@ -3653,6 +3676,9 @@ const styles: Record<string, CSSProperties> = {
   printScrollArea: {
     minHeight: 0,
     overflowY: 'auto',
+    overscrollBehavior: 'contain',
+    WebkitOverflowScrolling: 'touch',
+    touchAction: 'pan-y',
     paddingRight: 2
   },
   printSearchRow: {
