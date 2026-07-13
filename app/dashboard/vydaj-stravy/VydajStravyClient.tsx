@@ -991,6 +991,14 @@ export default function VydajStravyClient({
     void refreshPrintList({ search: value, page: 1 })
   }
 
+  const handlePrintSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') return
+
+    event.preventDefault()
+    event.stopPropagation()
+    window.setTimeout(() => printSearchInputRef.current?.focus(), 0)
+  }
+
   const updatePrintPageSize = (value: number) => {
     setPrintPageSize(value)
     setPrintPage(1)
@@ -1839,12 +1847,21 @@ export default function VydajStravyClient({
       const scanText = buffer.value.trim()
       const duration = Math.max(1, buffer.lastAt - buffer.firstAt)
       const avgGap = scanText.length > 1 ? duration / (scanText.length - 1) : duration
+      const isPrintSearchTarget = event.target === printSearchInputRef.current
+      const looksLikeQrInput = /^[A-Za-z0-9_-]{6,160}$/.test(scanText)
       const isLikelyScanner =
         scanText.length >= 6 &&
         now - buffer.lastAt < 160 &&
         (duration < 700 || avgGap < 35)
 
       resetScannerBuffer()
+
+      if (isPrintSearchTarget && (!isLikelyScanner || !looksLikeQrInput)) {
+        event.preventDefault()
+        event.stopPropagation()
+        window.setTimeout(() => printSearchInputRef.current?.focus(), 0)
+        return
+      }
 
       if (!isLikelyScanner) return
 
@@ -2250,9 +2267,11 @@ export default function VydajStravyClient({
             <div style={styles.printSearchRow}>
               <input
                 ref={printSearchInputRef}
-                type="search"
+                type="text"
+                inputMode="search"
                 value={printSearch}
                 onChange={event => updatePrintSearch(event.target.value)}
+                onKeyDown={handlePrintSearchKeyDown}
                 placeholder="Hľadať osobu alebo skupinu"
                 style={styles.printSearchInput}
               />
