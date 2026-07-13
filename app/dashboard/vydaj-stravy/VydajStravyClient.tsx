@@ -464,7 +464,9 @@ export default function VydajStravyClient({
   const offlineSyncingRef = useRef(false)
   const offlineSnapshotDownloadRef = useRef(false)
   const submitQrRef = useRef<((manualValue?: string, issueAction?: 'INDIVIDUAL' | 'BULK', bulkIssueId?: string) => Promise<void>) | null>(null)
-  const scannerKeyBufferRef = useRef({ value: '', firstAt: 0, lastAt: 0 })
+  const refreshPrintListRef = useRef<((overrides?: { search?: string; page?: number; pageSize?: number; scope?: 'MINE' | 'ALL' }) => Promise<void>) | null>(null)
+  const printSearchRef = useRef('')
+  const scannerKeyBufferRef = useRef({ value: '', firstAt: 0, lastAt: 0, printSearchBefore: null as string | null })
   const printLoadingKeysRef = useRef<Set<string>>(new Set())
 
   const [datum, setDatum] = useState(initialDate)
@@ -955,6 +957,7 @@ export default function VydajStravyClient({
   const openPrintModal = async () => {
     setPrintOpen(true)
     setPrintMessage('')
+    printSearchRef.current = ''
     setPrintSearch('')
     setPrintScope('MINE')
     setPrintPage(1)
@@ -986,6 +989,7 @@ export default function VydajStravyClient({
   }
 
   const updatePrintSearch = (value: string) => {
+    printSearchRef.current = value
     setPrintSearch(value)
     setPrintPage(1)
     void refreshPrintList({ search: value, page: 1 })
@@ -1798,21 +1802,27 @@ export default function VydajStravyClient({
 
   useEffect(() => {
     submitQrRef.current = submitQr
+    refreshPrintListRef.current = refreshPrintList
   })
 
   useEffect(() => {
     const resetScannerBuffer = () => {
-      scannerKeyBufferRef.current = { value: '', firstAt: 0, lastAt: 0 }
+      scannerKeyBufferRef.current = { value: '', firstAt: 0, lastAt: 0, printSearchBefore: null }
     }
 
-    const removeScannerTextFromFocusedInput = (target: EventTarget | null, scanText: string) => {
+    const restorePrintSearchAfterScan = (target: EventTarget | null, scanText: string, searchBefore: string | null) => {
       if (target !== printSearchInputRef.current) return
 
-      setPrintSearch(prev => {
-        if (!prev) return prev
-        if (prev.endsWith(scanText)) return prev.slice(0, -scanText.length)
-        return prev
-      })
+      const fallbackSearch = printSearchInputRef.current?.value.endsWith(scanText)
+        ? printSearchInputRef.current.value.slice(0, -scanText.length)
+        : printSearchRef.current
+      const restoredSearch = searchBefore ?? fallbackSearch
+
+      printSearchRef.current = restoredSearch
+      setPrintSearch(restoredSearch)
+      setPrintPage(1)
+      void refreshPrintListRef.current?.({ search: restoredSearch, page: 1 })
+      window.setTimeout(() => printSearchInputRef.current?.focus(), 0)
     }
 
     const handleScannerKey = (event: globalThis.KeyboardEvent) => {
@@ -1826,7 +1836,8 @@ export default function VydajStravyClient({
           scannerKeyBufferRef.current = {
             value: event.key,
             firstAt: now,
-            lastAt: now
+            lastAt: now,
+            printSearchBefore: event.target === printSearchInputRef.current ? printSearchRef.current : null
           }
           return
         }
@@ -1834,7 +1845,8 @@ export default function VydajStravyClient({
         scannerKeyBufferRef.current = {
           value: (buffer.value + event.key).slice(-160),
           firstAt: buffer.firstAt,
-          lastAt: now
+          lastAt: now,
+          printSearchBefore: buffer.printSearchBefore
         }
         return
       }
@@ -1868,7 +1880,7 @@ export default function VydajStravyClient({
       event.preventDefault()
       event.stopPropagation()
 
-      removeScannerTextFromFocusedInput(event.target, scanText)
+      restorePrintSearchAfterScan(event.target, scanText, buffer.printSearchBefore)
       setQrValue('')
       void submitQrRef.current?.(scanText)
     }
