@@ -571,7 +571,26 @@ export async function POST(req: NextRequest) {
       : 0
     await refreshCurrentRegistrationGroups(userIds)
 
-    await supabaseServer
+    const sharedAuditAfterData = {
+      registration_group_id: registrationGroupId,
+      registration_group_name: group.name,
+      user_ids: userIds,
+      users: users.length,
+      valid_from: validFrom,
+      valid_to: validTo,
+      selected_dates: selectedDates,
+      replace_dates: replaceDates,
+      mode,
+      obed,
+      vecera,
+      days: dates.length,
+      deleted_entitlements: deletedEntitlements,
+      updated_entitlements: updatedEntitlements,
+      inserted_entitlements: insertedEntitlements,
+      base_registration_group_updated: baseRegistrationGroupUpdated
+    }
+
+    const groupAuditResult = await supabaseServer
       .from('personnel_audit_log')
       .insert({
         actor_user_id: actor.id,
@@ -582,25 +601,44 @@ export async function POST(req: NextRequest) {
         before_data: {
           rows: beforeRows
         },
-        after_data: {
-          registration_group_id: registrationGroupId,
-          registration_group_name: group.name,
-          user_ids: userIds,
-          users: users.length,
-          valid_from: validFrom,
-          valid_to: validTo,
-          selected_dates: selectedDates,
-          replace_dates: replaceDates,
-          mode,
-          obed,
-          vecera,
-          days: dates.length,
-          deleted_entitlements: deletedEntitlements,
-          updated_entitlements: updatedEntitlements,
-          inserted_entitlements: insertedEntitlements,
-          base_registration_group_updated: baseRegistrationGroupUpdated
-        }
+        after_data: sharedAuditAfterData
       })
+
+    if (groupAuditResult.error) {
+      return NextResponse.json({ error: groupAuditResult.error.message }, { status: 500 })
+    }
+
+    const beforeRowsByUserId = new Map<string, any[]>()
+    beforeRows.forEach(row => {
+      const list = beforeRowsByUserId.get(row.user_id) || []
+      list.push(row)
+      beforeRowsByUserId.set(row.user_id, list)
+    })
+
+    for (const userChunk of chunk(users, 250)) {
+      const auditRows = userChunk.map(user => ({
+        actor_user_id: actor.id,
+        target_user_id: user.id,
+        action: mode === 'CLEAR' ? 'BRIGADNIK_ENTITLEMENTS_CLEARED' : 'BRIGADNIK_ENTITLEMENTS_UPDATED',
+        entity_table: 'user_food_entitlements',
+        entity_id: null,
+        before_data: {
+          rows: beforeRowsByUserId.get(user.id) || []
+        },
+        after_data: {
+          ...sharedAuditAfterData,
+          user_id: user.id
+        }
+      }))
+
+      const { error: auditError } = await supabaseServer
+        .from('personnel_audit_log')
+        .insert(auditRows)
+
+      if (auditError) {
+        return NextResponse.json({ error: auditError.message }, { status: 500 })
+      }
+    }
 
     return NextResponse.json({
       ok: true,
